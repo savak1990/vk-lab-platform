@@ -1,12 +1,12 @@
 # Platform Architecture and Target State
 
-## 1. Purpose
+# 1. Purpose
 
 This document defines the target architecture for the AWS/EKS learning platform.
 
 It is the architectural source of truth for implementation specifications under `/specs`.
 
-Individual specifications may introduce implementation details, but they must remain consistent with the architectural boundaries, lifecycle rules, ownership model, security requirements, and invariants defined here.
+Individual specifications may add implementation details. Each specification must stay consistent with the boundaries, lifecycle rules, ownership model, security requirements, and invariants in this document.
 
 The platform is intended to provide a realistic, reproducible, observable, dynamically scalable, and cost-conscious environment for experimenting with:
 
@@ -133,7 +133,7 @@ Cost, simplicity, learning value, reproducibility, and architectural correctness
 The target repository structure is:
 
 ```text
-platform/
+vk-lab-platform/
 ├── .github/
 │   └── workflows/
 │       ├── validate.yml
