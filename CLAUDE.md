@@ -59,9 +59,9 @@ Long-lived and rarely destroyed:
 
 Must survive `make down`:
 
-- VPC/subnets
-- Route 53
-- ACM
+- VPC/subnets (deferred — spec 020; the AWS account's default VPC/public subnets are used until then)
+- Route 53 (the delegated `lab.<root-domain>` subdomain zone — never the parent/root zone)
+- ACM (the lab subdomain certificate — never the root domain's existing certificate)
 - Secrets Manager
 - RDS where configured
 - retained EBS data volumes
@@ -108,6 +108,26 @@ Envoy Gateway is responsible for:
 - gateway telemetry
 
 Do not duplicate routing logic between ALB and Envoy.
+
+---
+
+## DNS and domain ownership
+
+The platform does NOT own the root domain or its parent Route 53 hosted zone — both are external infrastructure managed outside this repository.
+
+The platform owns a delegated subdomain, `lab.<root-domain>`, plus an ACM certificate for `lab.<root-domain>` and `*.lab.<root-domain>`. Both are Persistent-lifecycle and are never deleted by `make down`.
+
+Delegating `lab.<root-domain>` from the parent zone is a one-time external/manual bootstrap step. The platform MUST NOT require write access to the parent/root hosted zone during normal operation, and MUST NOT reuse the existing root-domain ACM certificate.
+
+Records inside the lab zone (e.g., the ALB's record) are disposable; the zone and certificate are not.
+
+Never use a real root domain in code, tfvars, Helm values, or docs — use placeholders like `<root-domain>` or `lab.<root-domain>`. The domain is private configuration, not a secret — keep it out of the public repo for hygiene reasons, not as a security control. See `docs/adr/0002-delegated-lab-subdomain.md` and `specs/000-constitution/spec.md` §14.
+
+---
+
+## Resource tagging
+
+Every Terraform-managed AWS resource MUST carry: `Project=vk-lab-platform`, `Scope=platform` (marks it as platform infra, not a business/service resource), `Lifecycle=bootstrap|persistent|disposable`, `ManagedBy=terraform`. Set these once via a provider-level `default_tags` block (bootstrap stack) rather than per-resource. See `specs/000-constitution/spec.md` §16.
 
 ---
 
@@ -207,12 +227,18 @@ Runtime secrets live in AWS Secrets Manager.
 
 Helm/GitOps configuration contains only secret references.
 
-The repository may contain KMS-encrypted deterministic bootstrap ciphertext,
-for example:
+The repository may contain KMS-encrypted deterministic bootstrap ciphertext.
+Each secret or private config value gets its own committed ciphertext file
+under `secrets/`, named after its contents, for example:
 
-`secrets/lab-secrets.enc`
+`secrets/root-domain.enc`
+`secrets/postgres-admin-password.enc`
 
-Never commit the plaintext equivalent.
+Never commit the plaintext equivalent, and never combine multiple secrets
+or config values into one committed ciphertext file.
+
+The root domain (`secrets/root-domain.enc`) is private/hygiene data, not a
+credential — do not claim obscuring it is a security control.
 
 Avoid unnecessarily putting decrypted secret values into Terraform state.
 
