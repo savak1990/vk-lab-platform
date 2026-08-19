@@ -19,21 +19,6 @@ for what went wrong and how this platform fixes it.
 Only the architecture, constitution, and ADR exist today. No Terraform,
 GitOps config, or CI workflows are in this repository yet.
 
-Current files:
-
-```text
-vk-lab-platform/
-├── CLAUDE.md
-├── docs/
-│   ├── architecture.md
-│   └── adr/
-│       └── 0001-lessons-from-prior-attempts.md
-├── specs/
-│   └── 000-constitution/
-│       └── spec.md
-└── README.md
-```
-
 ## Planned usage
 
 Not runnable yet. Once built, the platform starts and stops with:

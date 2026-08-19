@@ -17,7 +17,9 @@ similar ground:
   separate GitOps repository with cluster add-ons and ArgoCD Applications.
 
 Each repo worked on its own. Together they had gaps that this platform's
-constitution and architecture now address on purpose.
+constitution and architecture now address on purpose. They also used EKS
+IRSA for pod-level IAM rather than EKS Pod Identity — not a mistake, but a
+mechanism this platform intentionally prefers going forward.
 
 ## What the prior attempts got wrong
 
@@ -34,10 +36,6 @@ constitution and architecture now address on purpose.
 4. **Three repositories to keep in sync.** Bootstrap, infrastructure, and
    GitOps config lived in separate repos with no shared versioning, so a
    change that spanned all three had no atomic unit of review.
-5. **Narrower scope.** No Kafka, no PostgreSQL, no CDC, no Envoy Gateway,
-   no Loki/Tempo/Alloy. The monitoring stack (`kube-prometheus-stack`) was
-   the only observability component.
-6. **IAM via IRSA**, not EKS Pod Identity.
 
 ## Decision
 
@@ -50,7 +48,7 @@ in `docs/architecture.md` and `specs/000-constitution/spec.md`:
 | No lifecycle separation | Explicit bootstrap / persistent / disposable classes ([architecture §6](../architecture.md)) |
 | No destroy/recreate test | Full lifecycle CI test is mandatory for infrastructure-critical changes ([constitution §11](../../specs/000-constitution/spec.md)) |
 | Three repos, no atomic review | One platform-only repository; application code stays external |
-| IRSA | EKS Pod Identity |
+| IRSA used, Pod Identity not evaluated | Prefer EKS Pod Identity going forward; IRSA remains a permitted mechanism per [constitution §5](../../specs/000-constitution/spec.md) |
 
 Kafka, PostgreSQL, CDC, Envoy Gateway, and the wider observability stack are
 new scope, not a fix — they extend what the platform teaches beyond the
