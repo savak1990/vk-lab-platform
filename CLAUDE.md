@@ -123,7 +123,7 @@ The platform does NOT own the root domain or its parent Route 53 hosted zone —
 
 The platform owns a delegated subdomain, `lab.<root-domain>`, plus an ACM certificate for `lab.<root-domain>` and `*.lab.<root-domain>`. Both are Persistent-lifecycle and are never deleted by `make down`.
 
-Delegating `lab.<root-domain>` from the parent zone is a one-time external/manual bootstrap step. The platform MUST NOT require write access to the parent/root hosted zone during normal operation, and MUST NOT reuse the existing root-domain ACM certificate.
+The persistent stack's `route53` unit manages the single NS record delegating `lab.<root-domain>` from the parent zone directly — located by name (`data "aws_route53_zone"`, `private_zone = false`, not an explicit zone-ID input), never by creating/deleting the parent zone or touching any other record inside it. This assumes the parent zone is itself a Route 53 hosted zone reachable with the same credentials; otherwise delegation remains a one-time external/manual bootstrap step. The platform MUST NOT create, delete, or otherwise manage the parent/root hosted zone itself, or any record inside it other than that one delegation record, and MUST NOT reuse the existing root-domain ACM certificate.
 
 Records inside the lab zone (e.g., the ALB's record) are disposable; the zone and certificate are not.
 
@@ -235,16 +235,16 @@ Helm/GitOps configuration contains only secret references.
 
 The repository may contain KMS-encrypted deterministic bootstrap ciphertext.
 Each secret or private config value gets its own committed ciphertext file
-under `secrets/`, named after its contents, for example:
+under `secrets/<project>/`, named after its contents, for example:
 
-`secrets/root-domain.enc`
-`secrets/postgres-admin-password.enc`
+`secrets/vk-lab-platform/root-domain.enc`
+`secrets/vk-lab-platform/postgres-admin-password.enc`
 
 Never commit the plaintext equivalent, and never combine multiple secrets
 or config values into one committed ciphertext file.
 
-The root domain (`secrets/root-domain.enc`) is private/hygiene data, not a
-credential — do not claim obscuring it is a security control.
+The root domain (`secrets/<project>/root-domain.enc`) is private/hygiene
+data, not a credential — do not claim obscuring it is a security control.
 
 Avoid unnecessarily putting decrypted secret values into Terraform state.
 

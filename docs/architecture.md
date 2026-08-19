@@ -620,9 +620,9 @@ The existing root-domain certificate is not reused for the platform. The lab sub
 
 The parent/root hosted zone, and the root domain registration itself, are external infrastructure and outside this repository's lifecycle. The platform:
 
-- MUST NOT require write access to the parent/root hosted zone during normal operation (`make up`/`make down`);
-- MUST NOT manage records in the parent hosted zone;
-- treats delegation of `lab.<root-domain>` from the parent zone (creating the NS records in the parent zone that point at the lab zone's name servers) as a one-time external/manual bootstrap step, performed outside normal platform lifecycle, unless an existing documented bootstrap mechanism already covers it.
+- MUST NOT create or delete the parent/root hosted zone itself, during normal operation (`make up`/`make down`) or otherwise;
+- MUST NOT manage any record in the parent hosted zone other than the single NS record delegating `lab.<root-domain>`;
+- manages that one delegation record directly: the persistent stack's `route53` unit locates the parent zone by name (`data "aws_route53_zone"`, `private_zone = false` — not an explicit zone-ID input) and creates/removes the NS record pointing at the lab zone's name servers, as part of `make persistent-up`/`make persistent-down`. This assumes the parent zone is itself a Route 53 hosted zone reachable with the same AWS credentials; where that assumption doesn't hold (the root domain is at a registrar or another DNS provider with no Route 53 API), delegation instead remains a one-time external/manual bootstrap step, performed outside normal platform lifecycle.
 
 ## Desired DNS model
 
@@ -1011,7 +1011,7 @@ make down              destroys them — the routine, frequently-used command
 
 `make persistent-down` and `make bootstrap-down` are destructive, rarely-used escape hatches, not part of the routine up/down cycle:
 
-- `make persistent-down` MUST refuse to run while any Disposable-lifecycle resource still exists (mirroring the controller-cleanup ordering in §21 — Disposable resources that reference Persistent ones, such as DNS records inside the lab hosted zone, must be gone first) and MUST require an explicit confirmation step, since it deletes the lab DNS zone/certificate, Secrets Manager contents, and retained EBS volumes permanently.
+- `make persistent-down` MUST refuse to run while any Disposable-lifecycle resource still exists (mirroring the controller-cleanup ordering in §21 — Disposable resources that reference Persistent ones, such as DNS records inside the lab hosted zone, must be gone first) and MUST require an explicit confirmation step, since it deletes the lab DNS zone (and its parent-zone NS delegation record), certificate, Secrets Manager contents, and retained EBS volumes permanently. It MUST verify afterward that every unit's Terraform state is actually empty before reporting success, rather than trusting a possibly-partial destroy.
 - `make bootstrap-down` MUST refuse to run while Persistent or Disposable state still exists, and MUST require its own explicit confirmation step. This repository does not expect it to run against a live environment in normal operation.
 
 ---

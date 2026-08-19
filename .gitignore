@@ -22,10 +22,13 @@ override.tf.json
 **/charts/*.tgz
 
 # Secrets: only per-value encrypted ciphertext files (one file per value,
-# never combined - constitution §5/§14) and this directory's own docs are
-# tracked. Any plaintext dropped here locally must never be committed.
+# never combined - constitution §5/§14), nested under secrets/<project>/,
+# and this directory's own docs are tracked. Any plaintext dropped here
+# locally must never be committed.
 secrets/*
-!secrets/*.enc
+!secrets/*/
+secrets/*/*
+!secrets/**/*.enc
 !secrets/README.md
 
 # Editors

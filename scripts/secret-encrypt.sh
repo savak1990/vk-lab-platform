@@ -16,11 +16,20 @@ VALUE="${SECRET_VALUE:-}"
 test -n "$NAME" || { echo "Usage: SECRET_NAME=<name> SECRET_VALUE=<value> scripts/secret-encrypt.sh"; exit 1; }
 test -n "$VALUE" || { echo "Usage: SECRET_NAME=<name> SECRET_VALUE=<value> scripts/secret-encrypt.sh"; exit 1; }
 
+mkdir -p "$REPO_ROOT/secrets/$PROJECT_NAME"
+
+DEST="$REPO_ROOT/secrets/$PROJECT_NAME/$NAME.enc"
+TMP="$(mktemp "$DEST.tmp.XXXXXX")"
+trap 'rm -f "$TMP"' EXIT
+
 printf '%s' "$VALUE" | aws kms encrypt \
   --key-id "$KMS_KEY" \
   --region "$REGION" \
   --plaintext fileb:///dev/stdin \
   --output text \
-  --query CiphertextBlob | base64 --decode > "$REPO_ROOT/secrets/$NAME.enc"
+  --query CiphertextBlob | base64 --decode > "$TMP"
 
-echo "Wrote secrets/$NAME.enc"
+mv "$TMP" "$DEST"
+trap - EXIT
+
+echo "Wrote secrets/$PROJECT_NAME/$NAME.enc"

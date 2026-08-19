@@ -252,9 +252,9 @@ The platform does NOT own the root domain or its parent Route 53 hosted zone. Bo
 
 The platform owns a delegated subdomain, `lab.<root-domain>`, and an ACM certificate covering `lab.<root-domain>` and `*.lab.<root-domain>`. Both are Persistent-lifecycle (§3).
 
-Delegating `lab.<root-domain>` from the parent hosted zone (creating NS records in the parent zone) is a one-time external/manual bootstrap step, outside this repository's normal `make up`/`make down` lifecycle, unless an existing documented bootstrap mechanism already covers it.
+The persistent stack's Terraform MAY manage the single NS record set delegating `lab.<root-domain>` from the parent hosted zone, locating the parent zone by name (not by an explicit zone-ID input) and creating/removing only that one record — it MUST NOT create, delete, or otherwise manage the parent zone itself, and MUST NOT manage any other record inside it. `make persistent-up` creates this delegation record as part of applying the `route53` unit; `make persistent-down` removes it as part of destroying that same unit. If the real root domain is not itself a Route 53 hosted zone reachable with the credentials in use, this automated delegation does not apply and delegation remains a one-time external/manual bootstrap step, outside this repository's normal `make up`/`make down` lifecycle.
 
-The platform MUST NOT require write access to the parent/root hosted zone during normal operation.
+The platform MUST NOT create or delete the parent/root hosted zone during normal operation, and MUST NOT manage any record inside it other than the single delegation NS record described above.
 
 `make down` MUST NOT delete the delegated `lab.<root-domain>` hosted zone, the ACM certificate, or the parent/root hosted zone.
 
