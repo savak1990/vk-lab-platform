@@ -33,6 +33,17 @@ Terraform and Argo CD MUST NOT manage the same Kubernetes resource.
 
 All infrastructure MUST belong to exactly one lifecycle class:
 
+### State
+Essentially never destroyed (see ADR 0004, amended by ADR 0005):
+- the Terraform remote-state S3 bucket itself
+
+This is the one resource that cannot remote-store its own Terraform state
+on a true first run (the bucket it would store state in doesn't exist
+yet). Splitting it into its own layer below Bootstrap avoids the
+self-referential problem: destroy (`make state-down`, guarded, essentially
+never run) bypasses Terraform entirely, so there is no final state write to
+fail. See `terraform/live/state/README.md`, ADR 0004, and ADR 0005.
+
 ### Bootstrap
 Rarely destroyed:
 - Terraform backend
@@ -279,7 +290,7 @@ At minimum, every Terraform-managed resource MUST carry:
 
 - `Project = vk-lab-platform` — identifies the resource as belonging to this repository/platform, distinct from any other project or unrelated resource in the same AWS account.
 - `Scope = platform` — marks the resource as platform infrastructure, not a business/application service, reinforcing at the AWS resource level the repository-scope rule in §1 (this repository contains platform code only).
-- `Lifecycle = bootstrap | persistent | disposable` — the resource's lifecycle class (§3).
+- `Lifecycle = state | bootstrap | persistent | disposable` — the resource's lifecycle class (§3).
 - `ManagedBy = terraform` — distinguishes Terraform-owned resources from resources created indirectly by Argo CD-managed Kubernetes controllers (e.g., an ALB created by the AWS Load Balancer Controller), reinforcing the ownership boundary in §2.
 
 Default tags SHOULD be applied at the provider level (e.g., a Terraform `default_tags` block established in the bootstrap stack and inherited by every later stack) rather than repeated per resource, so the rule cannot be silently skipped when a new resource is added.
@@ -290,9 +301,10 @@ Resources created indirectly by Kubernetes controllers (ALB, Route 53 records vi
 
 ## 17. Lifecycle Command Surface
 
-Each lifecycle class (Bootstrap, Persistent, Disposable — §3) MUST have its own explicit create and destroy command. No command may implicitly create or destroy a different lifecycle class's resources.
+Each lifecycle class (State, Bootstrap, Persistent, Disposable — §3) MUST have its own explicit create command. No command may implicitly create or destroy a different lifecycle class's resources.
 
-- `make bootstrap-up` creates Bootstrap-lifecycle resources. `make bootstrap-down` destroys them; this repository does not expect `make bootstrap-down` to run against a live environment in normal operation. It MUST require an explicit, separate confirmation step and MUST refuse to run while Persistent or Disposable resources still exist.
+- `make state-up` creates the State layer (the Terraform state S3 bucket). `make state-down` destroys it — see §3, ADR 0004, and ADR 0005. This is expected to run essentially never; it MUST require an explicit confirmation step and MUST refuse to run while Bootstrap, Persistent, Disposable, or CI state still exists. Never invoked by `make bootstrap-down` or any other command.
+- `make bootstrap-up` creates Bootstrap-lifecycle resources; it MUST verify the State layer already exists first and MUST fail with an actionable error if it does not — it MUST NOT create the State layer on the caller's behalf. `make bootstrap-down` destroys Bootstrap resources; this repository does not expect `make bootstrap-down` to run against a live environment in normal operation. It MUST require an explicit, separate confirmation step and MUST refuse to run while Persistent or Disposable resources still exist.
 - `make persistent-up` creates Persistent-lifecycle resources. `make persistent-down` destroys them — including retained EBS volumes and everything in Secrets Manager — permanently. This is a deliberate, rarely-used, explicit action, never a side effect of `make down`. `make persistent-down` MUST require an explicit confirmation step and MUST refuse to run while any Disposable-lifecycle resource still exists (the same controller-cleanup ordering principle as §7: Disposable resources that reference Persistent ones, such as DNS records inside the lab hosted zone, MUST be gone first).
 - `make up` creates Disposable-lifecycle resources. It MUST verify Persistent-lifecycle resources already exist before proceeding, and MUST fail with an actionable error if they do not — it MUST NOT create Persistent resources on the caller's behalf. `make down` destroys Disposable-lifecycle resources only (§3); it MUST NOT touch Persistent or Bootstrap resources.
 

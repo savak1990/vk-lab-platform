@@ -163,12 +163,13 @@ vk-lab-platform/
 │   └── live/
 │       ├── root.hcl
 │       │
+│       ├── state/                      # ADR 0004; own lifecycle class below Bootstrap; make state-up / state-down (ADR 0005, guarded)
+│       │
 │       ├── bootstrap/
 │       │   ├── terragrunt.stack.hcl
-│       │   ├── state/
-│       │   ├── github-oidc/
 │       │   ├── kms/
-│       │   └── atlantis/               # spec 017; standalone compute, independent of EKS
+│       │   ├── github-oidc/            # spec 015, not spec 001 — the first GitHub OIDC consumer
+│       │   └── atlantis/               # spec 017; standalone compute, independent of EKS; own instance/task role, not OIDC
 │       │
 │       ├── persistent/
 │       │   ├── terragrunt.stack.hcl
@@ -286,7 +287,24 @@ vk-lab-platform/
 
 # 6. Infrastructure Lifecycle Boundaries
 
-Infrastructure is divided into three lifecycle classes.
+Infrastructure is divided into four lifecycle classes.
+
+## State
+
+The Terraform remote-state S3 bucket itself — the one resource every other
+unit in this repository, including Bootstrap, depends on to store its own
+state. See ADR 0004 for why this is its own layer rather than a unit
+inside Bootstrap, and ADR 0005 for why a guarded `make state-down` exists
+despite that: destroy bypasses Terraform entirely (plain S3 API calls), so
+there's no final state write to fail.
+
+Lifecycle:
+
+```text
+created once (make state-up)
+    ↓
+essentially never destroyed (make state-down — guarded, ADR 0005)
+```
 
 ## Bootstrap
 
@@ -294,7 +312,6 @@ Bootstrap infrastructure establishes the root of trust and infrastructure-manage
 
 Examples:
 
-- Terraform state infrastructure
 - GitHub OIDC provider
 - foundational IAM
 - KMS
@@ -974,10 +991,13 @@ controller deleted afterward
 
 # 21a. Lifecycle Command Surface
 
-Each lifecycle class (Bootstrap, Persistent, Disposable — §6) gets its own explicit create and destroy command. No command implicitly creates or destroys a different lifecycle class's resources; see constitution §17 for the binding rule.
+Each lifecycle class (State, Bootstrap, Persistent, Disposable — §6) gets its own explicit create command. No command implicitly creates or destroys a different lifecycle class's resources; see constitution §17 for the binding rule.
 
 ```text
-make bootstrap-up      creates Bootstrap-lifecycle resources (state, OIDC, IAM, KMS, Atlantis)
+make state-up           creates the State layer (the Terraform state S3 bucket)
+make state-down         destroys it — guarded, expected to run essentially never (ADR 0004, ADR 0005)
+
+make bootstrap-up      verifies the State layer exists (fails if not, never creates it), then creates Bootstrap-lifecycle resources (OIDC, IAM, KMS, Atlantis)
 make bootstrap-down    destroys them — guarded, expected to run essentially never
 
 make persistent-up     creates Persistent-lifecycle resources (lab DNS zone, ACM cert, Secrets Manager, retained EBS)
@@ -1647,7 +1667,7 @@ Minimum tag set, applied to every Terraform-managed resource:
 ```text
 Project     = vk-lab-platform
 Scope       = platform
-Lifecycle   = bootstrap | persistent | disposable
+Lifecycle   = state | bootstrap | persistent | disposable
 ManagedBy   = terraform
 ```
 

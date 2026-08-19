@@ -4,7 +4,7 @@
 **Risk:** Medium–High — a manually-triggered create→destroy→recreate→destroy run against CI's own AWS environment; the main risk is leaked or orphaned CI resources, not damage to the personal lab (isolation is this spec's core requirement).
 **Estimated cost:** ~2–3 days · AWS runtime cost: CI's own persistent/disposable stacks incur real cost while a run is active; budget for the stale-resource cleanup job from day one.
 **Recommended model:** Opus for the run orchestration and postcondition checklist (the same reasoning burden as spec 014, now run unattended); Sonnet is fine for the scheduled cleanup job.
-**Depends on:** 001-bootstrap (OIDC pattern), 002-persistent-foundation (delegated-subdomain pattern to replicate for CI's own zone), 014-lifecycle (the exact `make up`/`make down` sequence this spec runs), 017-atlantis-terraform-automation (this spec's CI-scoped IAM role follows the same per-stack scoping convention)
+**Depends on:** 001-bootstrap (state/tagging conventions), 002-persistent-foundation (delegated-subdomain pattern to replicate for CI's own zone), 014-lifecycle (the exact `make up`/`make down` sequence this spec runs), 015-github-actions-lifecycle (this spec's CI-scoped OIDC role mirrors 015's OIDC provider/role pattern, not spec 001 — 001 no longer creates OIDC), 017-atlantis-terraform-automation (this spec's CI-scoped IAM role follows the same per-stack scoping convention)
 **Lifecycle class(es) touched:** Bootstrap (CI's own OIDC trust), Persistent/Disposable (CI-specific `ci/persistent` and `ci/disposable` state, separate from the personal lab)
 
 ## Scope
@@ -29,7 +29,7 @@ Excludes: the fast, lint-only PR checks (018); Atlantis's PR-triggered plan/appl
 
 ## Implementation hints
 
-- Mirror the OIDC role pattern from spec 001, but scoped to `terraform/live/ci/*` state paths only — this is the actual isolation mechanism, not just a naming convention.
+- Mirror the OIDC provider/role pattern spec 015 establishes (the platform's first GitHub-OIDC consumer), but scoped to `terraform/live/ci/*` state paths only — this is the actual isolation mechanism, not just a naming convention.
 - Use a GitHub Actions `concurrency:` group keyed on the CI state path (e.g., `ci-disposable-lifecycle`) so overlapping runs queue instead of racing.
 - CI's own delegated subdomain (Requirement 3) can be created as part of `terraform/live/ci/persistent/`, reusing the exact same Terraform module as the personal lab's zone/certificate from spec 002 — same mechanism, different zone, so the two environments' DNS never overlaps.
 - The scheduled cleanup job can reuse the same postcondition-checking logic built in spec 014, scoped to the CI account/tag namespace, run on a cron trigger independent of any specific workflow run.

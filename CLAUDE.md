@@ -1,5 +1,11 @@
 # CLAUDE.md
 
+## Code comments
+
+Comments are allowed only in very complex parts of code, and must be at most 3 lines. Prefer a single line where a comment is necessary at all. Do not comment straightforward code.
+
+Never reference specific documents (specs, ADRs, tickets) in code comments, e.g. do not write "never the state bucket - ADR 0004". Explain the WHY directly in the comment instead; document links belong in commit messages or PR descriptions, not in code.
+
 ## Project purpose
 
 This repository defines and validates a disposable AWS/EKS learning platform.

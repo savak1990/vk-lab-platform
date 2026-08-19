@@ -21,9 +21,12 @@ override.tf.json
 # Helm
 **/charts/*.tgz
 
-# Secrets: only the encrypted bootstrap ciphertext is tracked.
+# Secrets: only per-value encrypted ciphertext files (one file per value,
+# never combined - constitution §5/§14) and this directory's own docs are
+# tracked. Any plaintext dropped here locally must never be committed.
 secrets/*
-!secrets/lab-secrets.enc
+!secrets/*.enc
+!secrets/README.md
 
 # Editors
 .vscode/

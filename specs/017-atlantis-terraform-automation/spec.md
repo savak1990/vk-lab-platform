@@ -4,7 +4,7 @@
 **Risk:** High — this service gets IAM permission to run `terraform apply` against every lifecycle stack, including the ones that create/destroy EKS itself; a scoping mistake has real blast radius, and getting the hosting model wrong recreates the exact chicken-and-egg problem this spec exists to avoid.
 **Estimated cost:** ~2 days · AWS runtime cost: one small always-on compute resource (see Requirement 3) — budget a few dollars/month, and treat that cost as a deliberate, justified exception to the "avoid always-on resources" cost rule.
 **Recommended model:** Opus — the hosting-location decision and per-stack IAM scoping both carry real correctness/security risk, not routine Terraform module usage.
-**Depends on:** 001-bootstrap (state, OIDC pattern, per-stack IAM role convention), 016-branch-protection (Atlantis's plan/apply-on-merge model assumes `main` only changes through reviewed PRs)
+**Depends on:** 001-bootstrap (state backend and per-stack IAM role convention — Atlantis does not use GitHub OIDC; it authenticates via its own compute's instance/task role plus `sts:AssumeRole`, unlike spec 015's OIDC-based workflows), 016-branch-protection (Atlantis's plan/apply-on-merge model assumes `main` only changes through reviewed PRs)
 **Lifecycle class(es) touched:** Bootstrap (Atlantis's own compute and IAM roles)
 
 ## Scope
