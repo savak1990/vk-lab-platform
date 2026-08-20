@@ -9,10 +9,22 @@ resource "helm_release" "argocd" {
 
   # No ingress: reached via port-forward until spec 012 wires up the real
   # ALB/Envoy edge.
-  set = [{
-    name  = "server.service.type"
-    value = "ClusterIP"
-  }]
+  set = [
+    {
+      name  = "server.service.type"
+      value = "ClusterIP"
+    },
+    {
+      # Bcrypt hash, not the password itself — safe to read from a
+      # plaintext committed file, see secrets/README.md.
+      name  = "configs.secret.argocdServerAdminPassword"
+      value = trimspace(file(var.admin_password_bcrypt_hash_path))
+    },
+    {
+      name  = "configs.secret.argocdServerAdminPasswordMtime"
+      value = "2026-08-20T00:00:00Z"
+    },
+  ]
 }
 
 # The root ("app-of-apps") Application, rendered from the gitops/bootstrap

@@ -20,3 +20,8 @@ variable "root_application_chart_path" {
   type        = string
 }
 
+variable "admin_password_bcrypt_hash_path" {
+  description = "Local path to the committed bcrypt hash of the Argo CD admin password (secrets/<project>/argocd-admin-password.bcrypt)."
+  type        = string
+}
+

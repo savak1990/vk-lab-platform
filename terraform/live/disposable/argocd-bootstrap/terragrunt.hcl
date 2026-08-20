@@ -39,6 +39,7 @@ EOF
 }
 
 inputs = {
-  repo_url                    = "https://github.com/savak1990/vk-lab-platform"
-  root_application_chart_path = "${get_repo_root()}/gitops/bootstrap"
+  repo_url                        = "https://github.com/savak1990/vk-lab-platform"
+  root_application_chart_path     = "${get_repo_root()}/gitops/bootstrap"
+  admin_password_bcrypt_hash_path = "${get_repo_root()}/secrets/vk-lab-platform/argocd-admin-password.bcrypt"
 }

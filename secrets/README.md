@@ -1,5 +1,11 @@
 # secrets/ — per-file KMS-encrypted values
 
+**Exception — `.bcrypt` files:** a one-way bcrypt hash (e.g.
+`argocd-admin-password.bcrypt`) is not encrypted and needs no key to read —
+it can't be reversed back into the original password, only checked against
+a login attempt. It's committed as plain text on purpose; nothing here
+decrypts it, and `make secret-decrypt`/`secret-encrypt` don't apply to it.
+
 Each file here is one value — a runtime secret or a piece of non-secret
 private configuration (like the root domain, constitution §14) — encrypted
 independently with the bootstrap KMS key (`alias/<project>-secrets`).
