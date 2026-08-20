@@ -12,7 +12,7 @@ The obvious candidate — hosting it as a workload on the platform's own disposa
 
 Atlantis runs on **Bootstrap-lifecycle** compute — a small, standalone resource (a single EC2 instance or a single ECS Fargate service) created by the bootstrap Terraform stack, independent of EKS. It is rarely destroyed, alongside the other bootstrap resources (state backend, OIDC provider, foundational IAM, KMS).
 
-Atlantis assumes a distinct IAM role per Terragrunt stack (`bootstrap`, `persistent`, `disposable`, `ci/persistent`, `ci/disposable`), matching the least-privilege, per-stack role pattern spec 001 already establishes for other actors.
+Atlantis assumes a distinct IAM role per Terragrunt stack (`bootstrap`, `persistent`, `disposable`, `ci/persistent`), matching the least-privilege, per-stack role pattern spec 001 already establishes for other actors. (Superseded in part by ADR 0007: `ci/disposable` is excluded from this list — spec 019's own OIDC-authenticated workflow creates and destroys it on every full-lifecycle run, a test lifecycle rather than a routine Terraform edit, so Atlantis holds no role for it.)
 
 This is a deliberate, explicit exception to constitution §9's general preference for avoiding always-on resources — the always-on cost here is small (a single small instance/task), and the alternative (no automation, or automation that can strand itself) is worse.
 

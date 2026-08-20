@@ -16,6 +16,8 @@ Deploys PostgreSQL **in-cluster** via an operator (project decision: operator-ma
 - Logical replication enabled (`wal_level = logical`), since Debezium (spec 009) requires it.
 - Basic connection/auth wiring for later application/integration workloads.
 
+This spec's persistence guarantees (Requirement 2, Retain-based storage) are `aws`-target-only. On the `local` target (spec 021), Postgres runs the same operator/CR but on the default local StorageClass with `Delete` semantics — data is throwaway, and no destroy/recreate persistence proof is required there.
+
 Excludes: Debezium and its connector configuration (009), observability dashboards (010 covers Postgres metrics, though this spec should expose them).
 
 ## Requirements

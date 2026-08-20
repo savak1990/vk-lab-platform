@@ -31,7 +31,7 @@ Terraform and Argo CD MUST NOT manage the same Kubernetes resource.
 
 ## 3. Lifecycle Separation
 
-All infrastructure MUST belong to exactly one lifecycle class:
+All infrastructure MUST belong to exactly one lifecycle class. This applies to the `aws` execution target only — the `local` target's cluster and workloads are not governed by this taxonomy at all; see §18.
 
 ### State
 Essentially never destroyed (see ADR 0004, amended by ADR 0005):
@@ -105,6 +105,8 @@ Runtime secrets MUST be stored in AWS Secrets Manager.
 Helm and GitOps configuration may contain secret identifiers but MUST NOT contain secret values.
 
 Where a secret or private configuration value is committed to Git in KMS-encrypted form, each value MUST be its own ciphertext file under `secrets/` (e.g. `secrets/root-domain.enc`). Secrets MUST NOT be combined into a single committed ciphertext file (see §14).
+
+Exactly one GitHub OIDC provider MUST exist per AWS account, created once as Bootstrap-lifecycle infrastructure (§3) and never recreated or destroyed by `make up`/`make down`/`make bootstrap-down`. It is account-level and region-agnostic — the same provider is reused regardless of which region a given stack deploys into. Individual IAM roles trusting that provider are a separate, per-consumer concern (e.g. a personal-lab deploy role, a privileged CI full-environment-test role) and MAY be created independently by whichever spec needs one; no spec MUST create a second provider (see ADR 0007).
 
 ---
 
@@ -219,9 +221,13 @@ CREATE
 → DESTROY
 → VERIFY NO LEAKS
 
-CI infrastructure MUST be isolated from the personal lab environment.
+A required GitHub status check MUST NOT itself be path-filtered in a way that lets it stay pending forever — fast validation MUST include an always-running gate job that reports a result (success or explicit skip) for every change category, fanning out to path-filtered sub-jobs rather than exposing them directly as required checks.
+
+CI infrastructure MUST be isolated from the personal lab environment. Full-lifecycle validation runs against one shared, isolated `ci/persistent`/`ci/disposable` environment, tagged `Ephemeral=true` (§16) so a scheduled cleanup job can find leftovers. Runs MUST be serialized — a GitHub Actions concurrency group MUST queue successive triggers rather than let two runs race against the same environment (ADR 0007).
 
 Untrusted public pull requests MUST NOT receive privileged AWS deployment access.
+
+Platform verification against a running environment (kind or real EKS) MUST be expressed as a real test suite (spec 022) reused across both targets, not duplicated bash scripts per environment.
 
 ---
 
@@ -307,5 +313,39 @@ Each lifecycle class (State, Bootstrap, Persistent, Disposable — §3) MUST hav
 - `make bootstrap-up` creates Bootstrap-lifecycle resources; it MUST verify the State layer already exists first and MUST fail with an actionable error if it does not — it MUST NOT create the State layer on the caller's behalf. `make bootstrap-down` destroys Bootstrap resources; this repository does not expect `make bootstrap-down` to run against a live environment in normal operation. It MUST require an explicit, separate confirmation step and MUST refuse to run while Persistent or Disposable resources still exist.
 - `make persistent-up` creates Persistent-lifecycle resources. `make persistent-down` destroys them — including retained EBS volumes and everything in Secrets Manager — permanently. This is a deliberate, rarely-used, explicit action, never a side effect of `make down`. `make persistent-down` MUST require an explicit confirmation step and MUST refuse to run while any Disposable-lifecycle resource still exists (the same controller-cleanup ordering principle as §7: Disposable resources that reference Persistent ones, such as DNS records inside the lab hosted zone, MUST be gone first).
 - `make up` creates Disposable-lifecycle resources. It MUST verify Persistent-lifecycle resources already exist before proceeding, and MUST fail with an actionable error if they do not — it MUST NOT create Persistent resources on the caller's behalf. `make down` destroys Disposable-lifecycle resources only (§3); it MUST NOT touch Persistent or Bootstrap resources.
+- `make minikube-up` and `make kind-up` (the `local` target, §18) are separate, non-lifecycle-class commands. They MUST NOT create or destroy any State/Bootstrap/Persistent/Disposable resource, and are not governed by this section's "one command per class" rule.
 
 A command that destroys Persistent or Bootstrap resources is a different, explicit, rarely-invoked action from the routine `make up`/`make down` cycle, and MUST be presented and guarded as such — not folded into, or reachable as a side effect of, routine shutdown.
+
+---
+
+## 18. Local Execution Target Scope
+
+The platform supports a second execution target, `local` (minikube or kind), alongside the `aws` target described everywhere else in this constitution unless stated otherwise. See ADR 0006 and spec 021 for the full design.
+
+The `local` target is AWS-free except for one deliberate, opt-in exception: decrypting real secret values from `secrets/*.enc` via AWS KMS, when explicitly requested instead of the default placeholder credentials (spec 021). No other AWS API call exists anywhere in the `local` path.
+
+Because the `local` target does not fit the assumptions several sections above make unconditionally, the following sections apply to the `aws` target only, per §13's rule that a conflict with this constitution MUST be recorded and the constitution updated intentionally rather than silently worked around:
+
+- **§3 (Lifecycle Separation)** — the `local` target's cluster and workloads are not State, Bootstrap, Persistent, or Disposable; they are not governed by this taxonomy at all, and are not a fifth class.
+- **§4 (Persistence Safety)** — `local` data (Postgres, Kafka) is fully throwaway. There is no local persistence guarantee, no destructive-reclaim-policy prohibition, and no destroy/recreate proof requirement for `local`. Deleting the local cluster is expected to delete everything in it.
+- **§5 (Security)** — the `local` target MUST NOT use AWS Secrets Manager or EKS Pod Identity. Its secrets mechanism (placeholder-by-default, KMS-decrypt-opt-in, loaded directly into Kubernetes `Secret` objects) is defined in spec 021, not this section.
+- **§8 (Public Traffic)** — the `local` target has no Route 53, ALB, or ACM. Access is via `kubectl port-forward` directly to Envoy Gateway's Service; there is no TLS termination in the `local` path at all.
+
+The following sections' requirements are vacuously satisfied for `local` and need no separate enforcement there, since the resources they govern simply don't exist on that target:
+
+- **§9 (Compute and Cost)** — no Karpenter, no dynamic AWS compute, locally.
+- **§14 (DNS Domain Ownership)** — no Route 53 hosted zone, delegation record, or ACM certificate locally.
+- **§16 (Resource Tagging)** — no AWS resources are created by the `local` target to tag.
+
+A successful `local` run is never a substitute for the `aws`-target full lifecycle test (§11) or §12's Definition of Done — it is a faster inner development loop, not a smaller version of the real thing.
+
+---
+
+## 19. Fork Configurability
+
+A forked copy of this repository MUST be runnable against the fork owner's own AWS account and domain with zero source-code changes. The only setup steps a fork owner needs are: run account bootstrap (§17's `make bootstrap-up`, creating the account-level GitHub OIDC provider per §5) once against their own AWS account; set `AWS_ROLE_ARN` and `AWS_REGION` as GitHub Environment/repository variables; set `ROOT_DOMAIN` as a GitHub Environment/repository secret.
+
+`AWS_ROLE_ARN` and `AWS_REGION` are configuration, not credentials. `ROOT_DOMAIN` is private/hygiene data (§14), delivered to GitHub Actions workflows as a secret directly — a separate delivery path from the KMS-encrypted `secrets/root-domain.enc` ciphertext (§14, §5), which remains the mechanism for workstation/local use only.
+
+No workflow, module, or spec MUST hardcode an AWS account ID, IAM role ARN, AWS region, or domain value (see ADR 0007).

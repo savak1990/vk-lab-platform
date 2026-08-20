@@ -15,6 +15,8 @@ Deploys Kafka via Strimzi, per architecture.md §14:
 - A `Kafka` CR in KRaft mode (no separate ZooKeeper — simpler, and the current upstream direction; record the choice) with persistent storage on the `Retain` StorageClass from spec 005.
 - Broker sizing appropriate for a single-broker or minimal-multi-broker lab setup (no multi-AZ replication requirement — explicitly a non-goal per architecture.md §4).
 
+This spec's persistence guarantee (Requirement 1, Retain-based storage) is `aws`-target-only. On the `local` target (spec 021), the same Strimzi/Kafka CR runs on the default local StorageClass with `Delete` semantics — data is throwaway, no rebind procedure needed.
+
 Excludes: Debezium and its Kafka Connect deployment (009), Kafka-specific Grafana dashboards (010 covers this, though this spec should expose the metrics).
 
 ## Requirements

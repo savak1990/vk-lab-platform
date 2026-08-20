@@ -15,7 +15,7 @@ Implements `make up` and `make down` as the coordinated entry points for the ful
 - `make down`: trigger cascading Argo-driven deletion in reverse order (public exposure → dependent workloads → Debezium → stateful workloads → platform services/operators) → verify Argo-managed platform is empty → Terragrunt destroy disposable → verify AWS-side disposable resources are gone → verify persistent resources remain untouched.
 - Explicit postcondition verification for both directions, not just "the command exited 0."
 
-Excludes: any new platform component — this spec orchestrates what specs 001–013 already built, it doesn't add new infrastructure. Also excludes `make bootstrap-up`/`make bootstrap-down` (spec 001) and `make persistent-up`/`make persistent-down` (spec 002) themselves — this spec's `make up` calls the Persistent-existence check those specs define, but does not own creating or destroying Bootstrap or Persistent resources.
+Excludes: any new platform component — this spec orchestrates what specs 001–013 already built, it doesn't add new infrastructure. Also excludes `make bootstrap-up`/`make bootstrap-down` (spec 001) and `make persistent-up`/`make persistent-down` (spec 002) themselves — this spec's `make up` calls the Persistent-existence check those specs define, but does not own creating or destroying Bootstrap or Persistent resources. Also excludes `make minikube-up`/`make kind-up` (spec 021, the `local` target) — those are separate, non-lifecycle-class commands outside the State/Bootstrap/Persistent/Disposable command surface this spec orchestrates.
 
 ## Requirements
 

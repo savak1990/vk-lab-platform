@@ -15,6 +15,8 @@ Deploys the full observability stack from architecture.md §19, wired to every p
 - Dashboards/scrape configs covering: Kubernetes cluster health, Karpenter, Envoy (dashboards ready even though Envoy itself lands in spec 011 — wire it there, stub here), AWS Load Balancer Controller, Kafka/Strimzi, PostgreSQL + operator, Debezium.
 - Basic alerting for the invariants that matter most in a lab (e.g., replication slot lag, disk pressure), not a full production alerting suite.
 
+On the `local` target (spec 021), this stack runs a trimmed, laptop-scale subset (reduced replica counts, resource requests, and retention) — any component omitted for `local` MUST be stated explicitly in `values-local.yaml`, not silently dropped. See spec 021 for specifics.
+
 Excludes: Envoy/ALB-specific dashboards' actual data source (those land with spec 011/012 — this spec should leave the scrape config ready, wired in once those exist), tracing instrumentation of any application code (out of scope — no application code in this repo).
 
 ## Requirements

@@ -15,6 +15,8 @@ Completes the public traffic path from architecture.md §8/§10–12: `Client �
 - ALB configured for AWS-level ingress and ACM TLS termination, using the `lab.<root-domain>`/`*.lab.<root-domain>` certificate from spec 002.
 - Disposable Route 53 records inside the delegated `lab.<root-domain>` hosted zone (spec 002/ADR 0002), pointing hostnames such as `grafana.lab.<root-domain>` and `argocd.lab.<root-domain>` at the ALB.
 
+This entire spec is `aws`-target-only. The `local` target (spec 021) has no ALB, Route 53, or ACM at all — access there is via `kubectl port-forward` directly to Envoy Gateway's Service (spec 011 Requirements 5–6), with no equivalent public-edge layer.
+
 Excludes: any Gateway API routing logic (011 already owns this — this spec's ALB should route everything to Envoy Gateway, not duplicate host/path rules); the `lab.<root-domain>` hosted zone and certificate themselves (persistent, created in spec 002 — this spec only adds disposable records inside that zone); the parent/root hosted zone and its NS delegation (external, constitution §14 — never touched by this spec).
 
 ## Requirements

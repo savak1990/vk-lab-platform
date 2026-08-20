@@ -15,6 +15,8 @@ Completes the full secrets lifecycle described in architecture.md §17–18, rep
 - The deterministic KMS-encrypted bootstrap ciphertext flow for *runtime application secrets*: one dedicated ciphertext file per credential under `secrets/` (e.g. `secrets/postgres-admin-password.enc`, `secrets/kafka-cluster-credentials.enc`) → each decrypted independently via the bootstrap KMS key → written into AWS Secrets Manager (not into Terraform state any more than necessary).
 - Migration of Postgres/Kafka/Debezium credentials (currently handled minimally per specs 007–009) onto this real mechanism.
 
+This entire spec is `aws`-target-only. The `local` target (spec 021) does not use Secrets Manager, Pod Identity, or External Secrets Operator under any circumstance — it either loads generated placeholder credentials directly into Kubernetes `Secret` objects, or, opt-in, decrypts `secrets/*.enc` via the same AWS KMS key this spec's ciphertext files use and loads the result directly, bypassing everything else in this spec entirely. See spec 021 Requirements 11–13.
+
 Excludes: application-level secrets (no application code in this repo); a full secrets-rotation automation story (not required by architecture.md, though the mechanism should not actively prevent rotation later); the root domain value (`secrets/root-domain.enc`) — that non-secret private config value is already bootstrapped in specs 001/002, since Terraform needs it before EKS or Argo CD exist, well before this spec's in-cluster Pod Identity mechanism is available. This spec extends the same one-file-per-secret pattern to runtime application credentials, it doesn't re-do the domain.
 
 ## Requirements

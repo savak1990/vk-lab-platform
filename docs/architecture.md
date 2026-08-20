@@ -137,7 +137,8 @@ vk-lab-platform/
 ├── .github/
 │   └── workflows/
 │       ├── validate.yml
-│       ├── platform-integration.yml
+│       ├── kind-integration.yml        # spec 023; cheap GitOps test, trusted-context PRs only
+│       ├── platform-integration.yml    # spec 019; full-AWS test; mode=routine|resilience
 │       ├── lab-up.yml
 │       ├── lab-down.yml
 │       └── cleanup-stale-ci.yml
@@ -168,7 +169,7 @@ vk-lab-platform/
 │       ├── bootstrap/
 │       │   ├── terragrunt.stack.hcl
 │       │   ├── kms/
-│       │   ├── github-oidc/            # spec 015, not spec 001 — the first GitHub OIDC consumer
+│       │   ├── github-oidc/            # spec 001; one account-level provider, created once (§17a, ADR 0007)
 │       │   └── atlantis/               # spec 017; standalone compute, independent of EKS; own instance/task role, not OIDC
 │       │
 │       ├── persistent/
@@ -180,7 +181,7 @@ vk-lab-platform/
 │       │   ├── rds/
 │       │   └── persistent-storage/
 │       │
-│       ├── disposable/
+│       ├── disposable/            # aws target only; the local target (§10a) has no Terraform-managed equivalent
 │       │   ├── terragrunt.stack.hcl
 │       │   ├── eks/
 │       │   ├── eks-addons/
@@ -199,12 +200,12 @@ vk-lab-platform/
 │   ├── platform/
 │   │   ├── argocd/
 │   │   │
-│   │   ├── aws/
+│   │   ├── aws/                   # values-aws.yaml only; omitted from the local target's app list (§10a)
 │   │   │   ├── aws-load-balancer-controller/
 │   │   │   └── secrets-store-csi/
 │   │   │
 │   │   ├── autoscaling/
-│   │   │   └── karpenter/
+│   │   │   └── karpenter/         # values-aws.yaml only; omitted from the local target's app list (§10a)
 │   │   │       ├── nodepool.yaml
 │   │   │       └── ec2nodeclass.yaml
 │   │   │
@@ -270,7 +271,13 @@ vk-lab-platform/
 │   ├── 017-atlantis-terraform-automation/
 │   ├── 018-ci-fast-validation/
 │   ├── 019-ci-full-lifecycle-validation/
-│   └── 020-vpc/
+│   ├── 020-vpc/
+│   ├── 021-local-dev-mode/        # local (minikube/kind) target; shapes specs 004, 006-013 from inception (§10a, ADR 0006)
+│   ├── 022-e2e-test-framework/    # Go/Ginkgo/Gomega suite + environment abstraction, reused by 019 and 023
+│   └── 023-ci-kind-integration-test/  # cheap kind-based GitOps CI test consuming 021 and 022
+│
+├── tests/
+│   └── e2e/                       # spec 022; suite_test.go, per-service tests, framework/
 │
 ├── docs/
 │   ├── architecture.md
@@ -287,7 +294,7 @@ vk-lab-platform/
 
 # 6. Infrastructure Lifecycle Boundaries
 
-Infrastructure is divided into four lifecycle classes.
+Infrastructure is divided into four lifecycle classes. These four classes govern the `aws` target only. The `local` target (§10a) sits outside this taxonomy entirely — it is not a fifth class; its cluster and workloads simply are not managed by, or subject to, any of the rules below (constitution §18).
 
 ## State
 
@@ -537,6 +544,61 @@ Unnecessary permanent network costs, especially NAT Gateway costs, should be avo
 
 ---
 
+# 10a. Execution Targets: `aws` and `local`
+
+The platform supports two Argo CD execution targets: **`aws`** (real EKS, the
+target described throughout the rest of this document unless stated
+otherwise) and **`local`** (minikube or kind, AWS-free except where noted).
+See ADR 0006 and spec 021 for the full design; this section summarizes the
+shape of it so later sections can refer to "the `aws` target" and "the
+`local` target" unambiguously.
+
+Both targets share a single `gitops/` tree. Every component under `gitops/`
+is one Helm chart with a shared `values.yaml` plus `values-aws.yaml` and
+`values-local.yaml` overrides — not a duplicated manifest tree, not
+Kustomize overlays. A single root Argo `Application` (spec 004) is
+parameterized by a `target` value at install time; an umbrella/app-of-apps
+chart uses that value to omit AWS-only components (Karpenter, AWS Load
+Balancer Controller, external-dns, EBS CSI driver, RDS) from the rendered
+app list entirely when `target=local`.
+
+The two targets diverge in kind, not just in values, on several points:
+
+- **Install path.** `aws`: Terraform installs Argo CD (spec 004). `local`: a
+  plain script/Makefile target installs Argo CD — no Terraform involved.
+  Entry points are `make minikube-up` and `make kind-up`; there is no unified
+  `make local-up` wrapper.
+- **Persistence.** `aws`: Postgres/Kafka data is Persistent-lifecycle,
+  surviving `make down` (§6, spec 005). `local`: fully throwaway — no
+  persistent-lifecycle class, default local StorageClass with `Delete`
+  reclaim semantics, no destroy/recreate persistence proof.
+- **Public edge.** `aws`: Route53 → ALB → Envoy (§11–12). `local`: no
+  ALB/Route53/ACM; access is via `kubectl port-forward` directly to Envoy
+  Gateway's Service, forced to `ClusterIP` in `values-local.yaml`.
+- **Routing.** `aws`: Gateway API `HTTPRoute`s match by hostname
+  (`api.lab.<root-domain>`). `local`: routes match by path (`/api`,
+  `/grafana`, `/argocd`), since `kubectl port-forward` to `localhost` can't
+  present a matching Host header. This is a permanent, accepted divergence.
+- **TLS.** `aws`: ACM certificate, terminated at ALB (§12). `local`: plain
+  HTTP, no TLS anywhere in the request path.
+- **Secrets.** `aws`: Secrets Manager + Pod Identity (spec 013). `local`:
+  placeholder credentials loaded directly into Kubernetes `Secret` objects by
+  default, with an opt-in path to decrypt real values from `secrets/*.enc`
+  via AWS KMS instead (spec 021) — neither local path touches Secrets
+  Manager, Pod Identity, or External Secrets Operator.
+- **Sync source.** `aws`: the root Application syncs from the GitHub repo.
+  `local`: the root Application syncs from the local working directory on
+  disk, so `gitops/` edits reconcile without a commit/push.
+
+The `local` target sits outside the State/Bootstrap/Persistent/Disposable
+lifecycle model (§6) entirely — it is not a fifth class, it simply isn't
+governed by that taxonomy (constitution §18). A successful `local` run is
+never a substitute for the `aws`-target full lifecycle acceptance test (§38)
+or constitution §12's Definition of Done; it is a faster inner dev loop, not
+a smaller version of the real thing.
+
+---
+
 # 11. Public Edge
 
 The public request path is:
@@ -781,6 +843,8 @@ This behavior must be covered by full lifecycle CI.
 
 # 17. Secrets and Identity
 
+This section describes the `aws` target. The `local` target does not use Secrets Manager, Pod Identity, or External Secrets Operator at all — see §10a and spec 021 for its placeholder-by-default, KMS-decrypt-opt-in secrets mechanism.
+
 No plaintext runtime secret may exist in Git.
 
 GitHub Actions authenticate to AWS through:
@@ -812,6 +876,36 @@ Secrets Manager
 ```
 
 Helm and GitOps configuration contain references to secret resources, never plaintext values.
+
+---
+
+# 17a. Account Bootstrap and GitHub OIDC
+
+The GitHub OIDC provider (`token.actions.githubusercontent.com`) is
+account-level, region-agnostic AWS IAM infrastructure: AWS permits exactly
+one such provider per provider URL per account, and the same provider
+authenticates GitHub Actions runs deploying into any AWS region. It is
+created exactly once, as part of Bootstrap (§6, spec 001), and is never
+recreated or destroyed by `make up`/`make down`/`make bootstrap-down` — it
+sits alongside the KMS key as foundational, essentially-permanent account
+infrastructure (ADR 0007).
+
+Individual **IAM roles** trusting that provider are a separate concern.
+Each role belongs to the spec that uses it. Each role is scoped to only
+the state paths and actions it needs:
+
+```text
+one GitHub OIDC provider (spec 001, Bootstrap, created once)
+        │
+        ├── personal-lab role (spec 015) — "normal deploy"
+        │     scoped to the personal lab's persistent/disposable state
+        │
+        └── CI role (spec 019) — "privileged full-environment test"
+              scoped to ci/* state paths only
+```
+
+Atlantis (spec 017) does not use this provider at all — it authenticates via
+its own compute's instance/task role, never OIDC (ADR 0003).
 
 ---
 
@@ -857,9 +951,22 @@ Terraform must obtain the decrypted domain value through this same secure bootst
 
 Because the domain value is used to create real Route 53 and ACM resources, it will necessarily appear in the persistent stack's Terraform state. Remote state for the persistent stack must therefore remain private and access-controlled; the domain cannot be fully hidden from Terraform state, and this document does not claim otherwise.
 
+## GitHub Actions' path to the domain value
+
+The KMS-encrypted `secrets/root-domain.enc` mechanism above is for
+workstation/local use (Terraform apply from a laptop, `scripts/secret-decrypt.sh`).
+GitHub Actions workflows that need the root domain value (spec 002, 015, 019)
+instead read it from a GitHub Actions secret (`ROOT_DOMAIN`, §24a) supplied
+directly by the repository/environment configuration — a separate delivery
+path for the same value, not a replacement for the committed ciphertext file.
+This avoids granting every consuming workflow KMS decrypt permission just to
+learn a non-secret hostname.
+
 ---
 
 # 19. Observability
+
+This section describes the full `aws`-target stack. The `local` target runs the same components but with a reduced, explicitly-stated sizing/retention posture for laptop scale (§10a); any component omitted for `local` must be stated explicitly, not silently dropped — see spec 021 for specifics.
 
 The platform uses:
 
@@ -1007,6 +1114,8 @@ make up                creates Disposable-lifecycle resources (EKS, Argo, worklo
 make down              destroys them — the routine, frequently-used command
 ```
 
+`make minikube-up` and `make kind-up` (the `local` target, §10a) are separate commands outside this lifecycle-class command surface entirely — they don't create or destroy any State/Bootstrap/Persistent/Disposable resource, so they aren't governed by the "one command per class" rule below.
+
 `make up` verifies that Persistent-lifecycle resources already exist before doing anything else. If they do not, it fails with an actionable error telling the operator to run `make persistent-up` first — it never creates Persistent resources on the caller's behalf. This keeps the "what survives `make down`" boundary (§6) visible at the command layer, not just in Terraform state layout.
 
 `make persistent-down` and `make bootstrap-down` are destructive, rarely-used escape hatches, not part of the routine up/down cycle:
@@ -1151,11 +1260,28 @@ Postconditions must be verified.
 
 ---
 
+# 24a. Fork Configurability
+
+A forked repository must be runnable against the fork owner's own AWS
+account and domain with **zero source-code changes**. Constitution §19 is
+the binding statement of the required setup steps and the GitHub
+variable/secret contract — this section only adds the rationale: this is
+what makes the repository genuinely forkable rather than personally-owned
+infrastructure with a public mirror.
+
+`AWS_ROLE_ARN` and `AWS_REGION` are configuration, not credentials — plain
+GitHub variables are appropriate. `ROOT_DOMAIN` is private/hygiene data
+(§12, §18) delivered to GitHub Actions as a secret directly (§18's "GitHub
+Actions' path to the domain value"), never a hardcoded value in workflow
+YAML, Terraform, Helm values, or documentation (constitution §19, ADR 0007).
+
+---
+
 # 25. CI/CD Philosophy
 
 CI/CD is part of the platform architecture, not an optional afterthought.
 
-All changes reach `main` through a reviewed pull request — direct pushes to `main` are disabled (spec 016). The platform uses three complementary mechanisms on top of that:
+All changes reach `main` through a reviewed pull request — direct pushes to `main` are disabled (spec 016). The platform uses four complementary mechanisms on top of that, chosen by what actually changed (change-aware CI, §26):
 
 ```text
 FAST VALIDATION
@@ -1164,11 +1290,16 @@ every pull request — lint/format/schema checks only, no AWS credentials
 TERRAFORM PLAN/APPLY AUTOMATION
 every pull request touching terraform/** — plan on PR, apply on merge
 
+KIND-BASED GITOPS INTEGRATION TEST
+pull requests touching gitops/** (or the disposable stack) — real Argo CD
+reconciliation and E2E assertions against a kind cluster, no AWS at all
+
 FULL LIFECYCLE VALIDATION
-manually triggered, or on infrastructure-relevant changes to main
+manually triggered, or on infrastructure-relevant changes to main — a real,
+shared, serialized AWS/EKS environment
 ```
 
-The goal is to combine fast developer feedback, safe and auditable Terraform changes, and high confidence in real platform lifecycle behavior.
+The goal is to combine fast developer feedback, safe and auditable Terraform changes, and high confidence in real platform lifecycle behavior — at a cost proportional to what the change actually touches, not a fixed cost per PR.
 
 ---
 
@@ -1195,6 +1326,18 @@ Fast validation should detect most structural/configuration problems before expe
 
 Documentation-only changes should normally require only appropriate fast checks.
 
+## Change-aware gate
+
+Because different checks apply to different changes (path filters), a
+required GitHub status check must not itself be path-filtered — a
+path-filtered job that never runs leaves a required check permanently
+pending, blocking merge indefinitely. Fast validation therefore includes an
+always-running gate job that determines which change categories (Terraform,
+GitOps/Helm, documentation-only) apply to the PR and always reports a
+result — success or explicit skip — for each, fanning out to the relevant
+path-filtered sub-jobs rather than letting them stand as required checks on
+their own.
+
 ---
 
 # 26a. Terraform Plan/Apply Automation
@@ -1216,9 +1359,40 @@ This mechanism only touches Terraform/Terragrunt-managed AWS state. It never app
 
 ---
 
+# 26b. Kind-Based GitOps Integration Test
+
+Pull requests touching `gitops/**` (or anything in the disposable stack that
+affects what Argo CD reconciles) get a cheap, AWS-free integration test
+(spec 023): create a kind cluster, install Argo CD via the `local` target's
+plain-script install path (§10a, spec 021), apply the repository's normal
+GitOps bootstrap with the root Application's `targetRevision` pointed at the
+PR's exact commit (not `main`), let Argo reconcile the platform, then run the
+same Go/Ginkgo E2E suite (§27, spec 022) used against real EKS.
+
+Tests never install Postgres/Kafka/Grafana themselves — Argo CD owns
+installation here exactly as it does for the `aws` target; the point is to
+test the actual GitOps reconciliation path, not to re-implement it in test
+setup code.
+
+This test cannot faithfully exercise AWS-specific integrations: ALB/NLB,
+Route 53, ACM, EBS/EFS CSI, Pod Identity, or AWS Secrets Manager integration.
+Those remain Full Lifecycle Validation's job (§27–28). It runs only in a
+trusted GitHub context (§30) — even though it touches no AWS resources, it
+still spends real runner compute on PR-controlled code.
+
+---
+
 # 27. Full Platform Validation
 
 Infrastructure-relevant changes should be capable of triggering a complete platform lifecycle test.
+
+Verification against the real platform, here and in the kind-based test
+(§26b), is expressed as a Go test suite (Ginkgo v2/Gomega, `client-go` for
+Kubernetes access, `pgx` for PostgreSQL, `net/http` for HTTP API checks —
+spec 022), not a bash script re-implemented per environment. An
+`Environment` abstraction lets the same assertions run against a kind
+cluster or real EKS by changing only how a service is reached (port-forward
+vs. real ingress/DSN), not what is asserted.
 
 Typical triggers include changes under:
 
@@ -1320,13 +1494,23 @@ personal/
 └── disposable
 
 ci/
-├── persistent
-└── disposable
+├── persistent     CI's own delegated subdomain (ci.lab.<root-domain>)
+│                  and certificate (*.ci.lab.<root-domain>)
+└── disposable     one shared ephemeral environment, torn down after
+                   each run
 ```
 
-CI lifecycle tests must never operate on personal persistent volumes, databases, or state.
+CI lifecycle tests must never operate on personal persistent volumes,
+databases, or state. CI's persistent layer (the `ci.lab.<root-domain>` zone
+and certificate) and its disposable layer are both shared, single
+environments — not one per PR. A full-lifecycle run tags its disposable
+resources `Ephemeral=true` (§16) so a stale-resource cleanup job can find
+them (§31).
 
-A dedicated CI persistent layer may be shared between CI runs where doing so reduces cost, provided test isolation is maintained.
+Only one full-lifecycle run proceeds at a time (§32) — full lifecycle tests
+already require a trusted/maintainer trigger (§30), not every fork PR, so
+one shared, serialized environment keeps the design simple without a real
+concurrency cost at that trigger frequency.
 
 ---
 
@@ -1382,9 +1566,35 @@ This protects against:
 
 Destructive lifecycle tests must be protected against conflicting concurrent runs.
 
-The CI architecture must prevent two workflows from mutating the same Terraform state or shared persistent CI environment simultaneously.
+The CI architecture must prevent two workflows from mutating the same Terraform state simultaneously. One GitHub Actions `concurrency:` group, with `cancel-in-progress: false`, covers the full-lifecycle workflow as a whole: successive triggers queue behind each other rather than racing against the same shared `ci/disposable` environment (§29). Terraform state locking (native S3 lockfile locking, per stack) provides the underlying guarantee that two runs can never write the same state concurrently even if the GitHub-side concurrency group were somehow bypassed.
 
-Terraform state locking and GitHub Actions concurrency controls must both be used where appropriate.
+Cheap, stateless jobs (fast validation, the kind-based GitOps test) use ordinary PR-scoped concurrency with `cancel-in-progress: true` instead — nothing is lost by cancelling a superseded run of a check that holds no infrastructure.
+
+---
+
+# 32a. Test Frequency and Confidence Levels
+
+Not every change deserves the same test cost. Roughly:
+
+```text
+GitOps/Argo/Helm/Kubernetes config change
+    → kind-based GitOps integration test (§26b) + Go/Ginkgo E2E suite
+
+Terraform/full-infra pull request
+    → apply → E2E suite → idempotency check (plan shows no diff) → destroy
+    (the shared ci/disposable environment, §29)
+
+scheduled (e.g. nightly) or manually triggered
+    → recreate-after-destroy resilience test:
+      create → E2E → destroy → create → E2E → destroy
+      (platform-integration.yml, run with mode=resilience)
+```
+
+The recreate-after-destroy resilience proof is deliberately not run on every
+full-infra PR — it primarily validates teardown/recreation behavior, which
+doesn't change with every Terraform edit, and it costs roughly twice a
+routine full-infra run. Running it on a schedule (or on demand) rather than
+per-PR keeps routine infra review fast without losing that proof entirely.
 
 ---
 
@@ -1422,11 +1632,11 @@ State locking must prevent concurrent infrastructure mutations.
 
 ---
 
-# 34. Local and GitHub Lifecycle Equivalence
+# 34. Workstation-Initiated and GitHub Lifecycle Equivalence
 
-The platform must expose the same high-level lifecycle interface locally and in GitHub Actions.
+The platform must expose the same high-level lifecycle interface whether initiated from a developer's workstation (running `make up`/`make down` against real AWS) or from GitHub Actions. "Workstation-initiated" here means the `aws` target (§10a) run from a laptop — this is distinct from the `local` target (minikube/kind, §10a), which has no AWS equivalence requirement to satisfy.
 
-Local:
+Workstation-initiated:
 
 ```text
 make up
@@ -1449,7 +1659,7 @@ The environment initiating the operation must not affect infrastructure semantic
 
 GitHub authenticates through OIDC.
 
-Local execution may authenticate through AWS IAM Identity Center/SSO or another approved temporary credential mechanism.
+Workstation-initiated execution may authenticate through AWS IAM Identity Center/SSO or another approved temporary credential mechanism.
 
 ---
 
@@ -1525,7 +1735,7 @@ All implementation specifications must preserve the following:
 10. ALB provides AWS ingress; Envoy owns application traffic policy.
 11. Significant platform components expose useful telemetry.
 12. The platform is reconstructable from Git and persistent state.
-13. Local and GitHub lifecycle operations behave equivalently.
+13. Workstation-initiated and GitHub lifecycle operations behave equivalently (§34).
 14. Lifecycle operations are idempotent where practical.
 15. Every PR receives appropriate fast validation.
 16. Infrastructure-critical changes can be proven through a real lifecycle test.
@@ -1534,6 +1744,8 @@ All implementation specifications must preserve the following:
 19. Failed CI runs must make a best effort to clean up their disposable infrastructure.
 20. A successful Terraform destroy does not alone prove successful platform shutdown.
 21. `make up` never creates Persistent resources implicitly; `make down` never destroys Persistent or Bootstrap resources. Removing those is a separate, explicitly-confirmed command (§21a).
+22. Exactly one GitHub OIDC provider exists per account, created once in Bootstrap (§17a); every consumer gets its own role trusting it, never its own provider.
+23. No workflow, module, or spec hardcodes an account ID, role ARN, region, or domain value — forking requires only account bootstrap plus the configuration values in §24a, never a source change.
 
 ---
 

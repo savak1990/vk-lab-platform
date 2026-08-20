@@ -15,6 +15,8 @@ Wires Debezium's PostgreSQL connector into a Kafka Connect deployment, completin
 - Debezium PostgreSQL connector configuration pointing at the Postgres cluster from spec 007's replication slot.
 - Verification that committed transactions produce corresponding Kafka messages.
 
+This pipeline runs unchanged on the `local` target (spec 021) — Debezium itself holds no persistent state, so the `aws`/`local` storage divergence in specs 005/007/008 doesn't affect it directly, though a `local` run inherits those specs' throwaway-data posture (no destroy/recreate proof needed).
+
 Excludes: any application-side consumer of the CDC topics (out of scope — this is a platform capability, not an application), Debezium dashboards (010 covers monitoring, though this spec should expose connector health metrics).
 
 ## Requirements

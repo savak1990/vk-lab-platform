@@ -17,12 +17,16 @@ Deploys Envoy Gateway as the application-layer routing tier, per architecture.md
 
 Excludes: the AWS-side ALB and DNS/TLS termination (012 — this spec is Kubernetes-internal Gateway API routing only), any application routing (no application code in this repo).
 
+Requirements 5 and 6 below apply to the `local` target (spec 021) and are genuine divergences in kind from the `aws`-target hostname-routing/`LoadBalancer`-Service assumptions elsewhere in this spec, not values-only tuning.
+
 ## Requirements
 
-1. Envoy Gateway owns Gateway API routing, rate limiting, retries, timeouts, headers/policies, and gateway telemetry (architecture.md §10) — it does not own AWS ingress or TLS termination at the AWS layer (that's ALB's job, spec 012).
-2. Routing logic MUST NOT be duplicated between ALB and Envoy (constitution §8) — keep host/path routing decisions in Envoy's `HTTPRoute` resources, and let ALB do only what it must (AWS-level ingress, health checks, TLS termination).
-3. Envoy Gateway is Argo-managed (constitution §2).
-4. Gateway telemetry MUST feed into the observability stack from spec 010 (constitution §10's "new major components should provide metrics/logs/health info").
+1. Envoy Gateway owns Gateway API routing, rate limiting, retries, timeouts, headers/policies, and gateway telemetry (architecture.md §10) — it does not own AWS ingress or TLS termination at the AWS layer (that's ALB's job, spec 012). This requirement describes the `aws` target; spec 012 (ALB/TLS) does not apply to `local` at all.
+2. Routing logic MUST NOT be duplicated between ALB and Envoy (constitution §8) — keep host/path routing decisions in Envoy's `HTTPRoute` resources, and let ALB do only what it must (AWS-level ingress, health checks, TLS termination). `aws` target only — `local` has no ALB.
+3. Envoy Gateway is Argo-managed (constitution §2). Applies to both targets.
+4. Gateway telemetry MUST feed into the observability stack from spec 010 (constitution §10's "new major components should provide metrics/logs/health info"). Applies to both targets.
+5. For the `local` target, `values-local.yaml` MUST force Envoy Gateway's Service type to `ClusterIP` (via `EnvoyProxy`/`GatewayClass` parameters) — the upstream default (`LoadBalancer`) hangs `<pending>` indefinitely on kind/minikube (spec 021 Requirement 8).
+6. For the `local` target, `HTTPRoute`s MUST match by path (`/api`, `/grafana`, `/argocd`) rather than by hostname, since `kubectl port-forward` to `localhost` cannot present a matching Host header. The `aws` target MUST keep matching by hostname (the hostname-based implementation hint below is `aws`-only). This is a permanent, accepted divergence in route-matching kind (spec 021 Requirement 9), not a values-only difference.
 
 ## Implementation hints
 
