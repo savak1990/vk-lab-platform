@@ -15,9 +15,9 @@ Deploys Kafka via Strimzi, per architecture.md §14:
 - A `Kafka` CR in KRaft mode (no separate ZooKeeper — simpler, and the current upstream direction; record the choice) with persistent storage on the `Retain` StorageClass from spec 005.
 - Broker sizing appropriate for a single-broker or minimal-multi-broker lab setup (no multi-AZ replication requirement — explicitly a non-goal per architecture.md §4).
 
-This spec's persistence guarantee (Requirement 1, Retain-based storage) is `aws`-target-only. On the `local` target (spec 021), the same Strimzi/Kafka CR runs on the default local StorageClass with `Delete` semantics — data is throwaway, no rebind procedure needed.
+This spec's persistence guarantee (Requirement 1, Retain-based storage) is `aws`-target-only. On the `local` target (spec 020), the same Strimzi/Kafka CR runs on the default local StorageClass with `Delete` semantics — data is throwaway, no rebind procedure needed.
 
-Excludes: Debezium and its Kafka Connect deployment (009), Kafka-specific Grafana dashboards (010 covers this, though this spec should expose the metrics).
+Excludes: Debezium and its Kafka Connect deployment (023), Kafka-specific Grafana dashboards (009 covers this, though this spec should expose the metrics).
 
 ## Requirements
 
@@ -31,7 +31,7 @@ Excludes: Debezium and its Kafka Connect deployment (009), Kafka-specific Grafan
 
 - KRaft mode removes an entire persistence/lifecycle-ordering problem (ZooKeeper's own data and shutdown ordering relative to brokers) — strongly prefer it over ZooKeeper mode for this lab unless there's a specific reason to teach the older architecture.
 - Broker resource sizing again exercises Karpenter (spec 006) — keep it inside the ~2-medium-node budget alongside whatever Postgres already needs, or plan for Postgres and Kafka to time-share capacity rather than both being resident simultaneously if the budget is tight.
-- Topic creation for Debezium's eventual output topics can either be pre-created here or left to Debezium's auto-topic-creation in spec 009 — document whichever choice is made so spec 009 doesn't have to re-derive it.
+- Topic creation for Debezium's eventual output topics can either be pre-created here or left to Debezium's auto-topic-creation in spec 023 — document whichever choice is made so spec 023 doesn't have to re-derive it.
 - Reuse spec 005/007's rebind procedure verbatim, applied to Kafka's broker volume(s).
 
 ## Testing / acceptance criteria

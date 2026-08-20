@@ -1,4 +1,4 @@
-# 020 — Dedicated Persistent VPC
+# 019 — Dedicated Persistent VPC
 
 **Complexity:** Medium
 **Risk:** Medium–High — migrating a running platform off the AWS default VPC requires a full disposable-stack recreation, and any retained EBS volumes (Postgres, Kafka) are AZ-locked, so a careless subnet/AZ layout can strand real data.
@@ -36,7 +36,7 @@ Excludes: any change to Route 53/ACM/Secrets Manager from spec 002 (independent 
 
 ## Testing / acceptance criteria
 
-- Full lifecycle test re-run (constitution §11, using spec 014's sequence) against the new VPC: CREATE → VERIFY → WRITE → DESTROY → VERIFY PERSISTENCE → RECREATE → VERIFY RECOVERY → DESTROY → VERIFY NO LEAKS.
+- Full lifecycle test re-run (constitution §11, using spec 013's sequence) against the new VPC: CREATE → VERIFY → WRITE → DESTROY → VERIFY PERSISTENCE → RECREATE → VERIFY RECOVERY → DESTROY → VERIFY NO LEAKS.
 - All previously-retained EBS volumes (Postgres, Kafka) are confirmed rebound in the new VPC/AZ layout with no data loss — verify actual row/message content, not just that a PVC bound successfully.
 - HTTPS through the platform's `*.lab.<root-domain>` hostnames continues to work after the migration, with no change to the Route 53 zone or ACM certificate from spec 002.
 - Confirm no Terraform resource or data source in the repository still references the AWS default VPC.

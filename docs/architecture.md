@@ -137,13 +137,13 @@ vk-lab-platform/
 ├── .github/
 │   └── workflows/
 │       ├── validate.yml
-│       ├── kind-integration.yml        # spec 023; cheap GitOps test, trusted-context PRs only
-│       ├── platform-integration.yml    # spec 019; full-AWS test; mode=routine|resilience
+│       ├── kind-integration.yml        # spec 022; cheap GitOps test, trusted-context PRs only
+│       ├── platform-integration.yml    # spec 018; full-AWS test; mode=routine|resilience
 │       ├── lab-up.yml
 │       ├── lab-down.yml
 │       └── cleanup-stale-ci.yml
 │
-├── atlantis.yaml                  # spec 017; one project per Terragrunt stack
+├── atlantis.yaml                  # spec 016; one project per Terragrunt stack
 │
 ├── terraform/
 │   ├── modules/
@@ -151,7 +151,7 @@ vk-lab-platform/
 │   │   ├── github-oidc/
 │   │   ├── kms/
 │   │   ├── secrets-manager/
-│   │   ├── vpc/                   # not used until spec 020; default VPC used until then
+│   │   ├── vpc/                   # not used until spec 019; default VPC used until then
 │   │   ├── route53-zone/
 │   │   ├── acm-certificate/
 │   │   ├── rds/
@@ -170,11 +170,11 @@ vk-lab-platform/
 │       │   ├── terragrunt.stack.hcl
 │       │   ├── kms/
 │       │   ├── github-oidc/            # spec 001; one account-level provider, created once (§17a, ADR 0007)
-│       │   └── atlantis/               # spec 017; standalone compute, independent of EKS; own instance/task role, not OIDC
+│       │   └── atlantis/               # spec 016; standalone compute, independent of EKS; own instance/task role, not OIDC
 │       │
 │       ├── persistent/
 │       │   ├── terragrunt.stack.hcl
-│       │   ├── vpc/                   # added by spec 020; not present initially
+│       │   ├── vpc/                   # added by spec 019; not present initially
 │       │   ├── route53/
 │       │   ├── acm/
 │       │   ├── secrets/
@@ -260,24 +260,24 @@ vk-lab-platform/
 │   ├── 006-karpenter/
 │   ├── 007-postgres/
 │   ├── 008-kafka/
-│   ├── 009-debezium/
-│   ├── 010-observability/
-│   ├── 011-envoy-gateway/
-│   ├── 012-public-edge/
-│   ├── 013-secrets/
-│   ├── 014-lifecycle/
-│   ├── 015-github-actions-lifecycle/
-│   ├── 016-branch-protection/
-│   ├── 017-atlantis-terraform-automation/
-│   ├── 018-ci-fast-validation/
-│   ├── 019-ci-full-lifecycle-validation/
-│   ├── 020-vpc/
-│   ├── 021-local-dev-mode/        # local (minikube/kind) target; shapes specs 004, 006-013 from inception (§10a, ADR 0006)
-│   ├── 022-e2e-test-framework/    # Go/Ginkgo/Gomega suite + environment abstraction, reused by 019 and 023
-│   └── 023-ci-kind-integration-test/  # cheap kind-based GitOps CI test consuming 021 and 022
+│   ├── 009-observability/
+│   ├── 010-envoy-gateway/
+│   ├── 011-public-edge/
+│   ├── 012-secrets/
+│   ├── 013-lifecycle/
+│   ├── 014-github-actions-lifecycle/
+│   ├── 015-branch-protection/
+│   ├── 016-atlantis-terraform-automation/
+│   ├── 017-ci-fast-validation/
+│   ├── 018-ci-full-lifecycle-validation/
+│   ├── 019-vpc/
+│   ├── 020-local-dev-mode/        # local (minikube/kind) target; shapes specs 004, 006-012 from inception (§10a, ADR 0006)
+│   ├── 021-e2e-test-framework/    # Go/Ginkgo/Gomega suite + environment abstraction, reused by 018 and 022
+│   ├── 022-ci-kind-integration-test/  # cheap kind-based GitOps CI test consuming 020 and 021
+│   └── 023-debezium/              # deliberately implemented last, after CI/CD and local-dev tooling exist
 │
 ├── tests/
-│   └── e2e/                       # spec 022; suite_test.go, per-service tests, framework/
+│   └── e2e/                       # spec 021; suite_test.go, per-service tests, framework/
 │
 ├── docs/
 │   ├── architecture.md
@@ -549,7 +549,7 @@ Unnecessary permanent network costs, especially NAT Gateway costs, should be avo
 The platform supports two Argo CD execution targets: **`aws`** (real EKS, the
 target described throughout the rest of this document unless stated
 otherwise) and **`local`** (minikube or kind, AWS-free except where noted).
-See ADR 0006 and spec 021 for the full design; this section summarizes the
+See ADR 0006 and spec 020 for the full design; this section summarizes the
 shape of it so later sections can refer to "the `aws` target" and "the
 `local` target" unambiguously.
 
@@ -581,10 +581,10 @@ The two targets diverge in kind, not just in values, on several points:
   present a matching Host header. This is a permanent, accepted divergence.
 - **TLS.** `aws`: ACM certificate, terminated at ALB (§12). `local`: plain
   HTTP, no TLS anywhere in the request path.
-- **Secrets.** `aws`: Secrets Manager + Pod Identity (spec 013). `local`:
+- **Secrets.** `aws`: Secrets Manager + Pod Identity (spec 012). `local`:
   placeholder credentials loaded directly into Kubernetes `Secret` objects by
   default, with an opt-in path to decrypt real values from `secrets/*.enc`
-  via AWS KMS instead (spec 021) — neither local path touches Secrets
+  via AWS KMS instead (spec 020) — neither local path touches Secrets
   Manager, Pod Identity, or External Secrets Operator.
 - **Sync source.** `aws`: the root Application syncs from the GitHub repo.
   `local`: the root Application syncs from the local working directory on
@@ -847,7 +847,7 @@ This behavior must be covered by full lifecycle CI.
 
 # 17. Secrets and Identity
 
-This section describes the `aws` target. The `local` target does not use Secrets Manager, Pod Identity, or External Secrets Operator at all — see §10a and spec 021 for its placeholder-by-default, KMS-decrypt-opt-in secrets mechanism.
+This section describes the `aws` target. The `local` target does not use Secrets Manager, Pod Identity, or External Secrets Operator at all — see §10a and spec 020 for its placeholder-by-default, KMS-decrypt-opt-in secrets mechanism.
 
 No plaintext runtime secret may exist in Git.
 
@@ -901,14 +901,14 @@ the state paths and actions it needs:
 ```text
 one GitHub OIDC provider (spec 001, Bootstrap, created once)
         │
-        ├── personal-lab role (spec 015) — "normal deploy"
+        ├── personal-lab role (spec 014) — "normal deploy"
         │     scoped to the personal lab's persistent/disposable state
         │
-        └── CI role (spec 019) — "privileged full-environment test"
+        └── CI role (spec 018) — "privileged full-environment test"
               scoped to ci/* state paths only
 ```
 
-Atlantis (spec 017) does not use this provider at all — it authenticates via
+Atlantis (spec 016) does not use this provider at all — it authenticates via
 its own compute's instance/task role, never OIDC (ADR 0003).
 
 ---
@@ -959,7 +959,7 @@ Because the domain value is used to create real Route 53 and ACM resources, it w
 
 The KMS-encrypted `secrets/root-domain.enc` mechanism above is for
 workstation/local use (Terraform apply from a laptop, `scripts/secret-decrypt.sh`).
-GitHub Actions workflows that need the root domain value (spec 002, 015, 019)
+GitHub Actions workflows that need the root domain value (spec 002, 014, 018)
 instead read it from a GitHub Actions secret (`ROOT_DOMAIN`, §24a) supplied
 directly by the repository/environment configuration — a separate delivery
 path for the same value, not a replacement for the committed ciphertext file.
@@ -970,7 +970,7 @@ learn a non-secret hostname.
 
 # 19. Observability
 
-This section describes the full `aws`-target stack. The `local` target runs the same components but with a reduced, explicitly-stated sizing/retention posture for laptop scale (§10a); any component omitted for `local` must be stated explicitly, not silently dropped — see spec 021 for specifics.
+This section describes the full `aws`-target stack. The `local` target runs the same components but with a reduced, explicitly-stated sizing/retention posture for laptop scale (§10a); any component omitted for `local` must be stated explicitly, not silently dropped — see spec 020 for specifics.
 
 The platform uses:
 
@@ -1285,7 +1285,7 @@ YAML, Terraform, Helm values, or documentation (constitution §19, ADR 0007).
 
 CI/CD is part of the platform architecture, not an optional afterthought.
 
-All changes reach `main` through a reviewed pull request — direct pushes to `main` are disabled (spec 016). The platform uses four complementary mechanisms on top of that, chosen by what actually changed (change-aware CI, §26):
+All changes reach `main` through a reviewed pull request — direct pushes to `main` are disabled (spec 015). The platform uses four complementary mechanisms on top of that, chosen by what actually changed (change-aware CI, §26):
 
 ```text
 FAST VALIDATION
@@ -1346,7 +1346,7 @@ their own.
 
 # 26a. Terraform Plan/Apply Automation
 
-Every pull request that changes a file under `terraform/**` receives an automatic `terraform plan` comment, and merging the pull request (after review) triggers `terraform apply` for the affected stack — using a PR-driven Terraform automation service (Atlantis; see spec 017), not a person running `terraform apply` from a laptop.
+Every pull request that changes a file under `terraform/**` receives an automatic `terraform plan` comment, and merging the pull request (after review) triggers `terraform apply` for the affected stack — using a PR-driven Terraform automation service (Atlantis; see spec 016), not a person running `terraform apply` from a laptop.
 
 This service must:
 
@@ -1367,11 +1367,11 @@ This mechanism only touches Terraform/Terragrunt-managed AWS state. It never app
 
 Pull requests touching `gitops/**` (or anything in the disposable stack that
 affects what Argo CD reconciles) get a cheap, AWS-free integration test
-(spec 023): create a kind cluster, install Argo CD via the `local` target's
-plain-script install path (§10a, spec 021), apply the repository's normal
+(spec 022): create a kind cluster, install Argo CD via the `local` target's
+plain-script install path (§10a, spec 020), apply the repository's normal
 GitOps bootstrap with the root Application's `targetRevision` pointed at the
 PR's exact commit (not `main`), let Argo reconcile the platform, then run the
-same Go/Ginkgo E2E suite (§27, spec 022) used against real EKS.
+same Go/Ginkgo E2E suite (§27, spec 021) used against real EKS.
 
 Tests never install Postgres/Kafka/Grafana themselves — Argo CD owns
 installation here exactly as it does for the `aws` target; the point is to
@@ -1393,7 +1393,7 @@ Infrastructure-relevant changes should be capable of triggering a complete platf
 Verification against the real platform, here and in the kind-based test
 (§26b), is expressed as a Go test suite (Ginkgo v2/Gomega, `client-go` for
 Kubernetes access, `pgx` for PostgreSQL, `net/http` for HTTP API checks —
-spec 022), not a bash script re-implemented per environment. An
+spec 021), not a bash script re-implemented per environment. An
 `Environment` abstraction lets the same assertions run against a kind
 cluster or real EKS by changing only how a service is reached (port-forward
 vs. real ingress/DSN), not what is asserted.

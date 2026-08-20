@@ -65,7 +65,7 @@ Long-lived and rarely destroyed:
 
 Must survive `make down`:
 
-- VPC/subnets (deferred — spec 020; the AWS account's default VPC/public subnets are used until then)
+- VPC/subnets (deferred — spec 019; the AWS account's default VPC/public subnets are used until then)
 - Route 53 (the delegated `lab.<root-domain>` subdomain zone — never the parent/root zone)
 - ACM (the lab subdomain certificate — never the root domain's existing certificate)
 - Secrets Manager
@@ -391,10 +391,10 @@ CREATE
 The intended end-to-end test is:
 
 1. `make up`
-2. verify EKS/Argo/Karpenter/Kafka/Postgres/Debezium/observability/Envoy
+2. verify EKS/Argo/Karpenter/Kafka/Postgres/Debezium/observability/Envoy (Debezium is deliberately implemented last, spec 023 — until it lands, run this test without it)
 3. write PostgreSQL test data
 4. write Kafka test data
-5. verify CDC
+5. verify CDC (once spec 023 lands; deferred until then)
 6. `make down`
 7. verify disposable infrastructure is absent
 8. verify persistent state remains

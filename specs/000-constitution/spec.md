@@ -227,7 +227,7 @@ CI infrastructure MUST be isolated from the personal lab environment. Full-lifec
 
 Untrusted public pull requests MUST NOT receive privileged AWS deployment access.
 
-Platform verification against a running environment (kind or real EKS) MUST be expressed as a real test suite (spec 022) reused across both targets, not duplicated bash scripts per environment.
+Platform verification against a running environment (kind or real EKS) MUST be expressed as a real test suite (spec 021) reused across both targets, not duplicated bash scripts per environment.
 
 ---
 
@@ -321,15 +321,15 @@ A command that destroys Persistent or Bootstrap resources is a different, explic
 
 ## 18. Local Execution Target Scope
 
-The platform supports a second execution target, `local` (minikube or kind), alongside the `aws` target described everywhere else in this constitution unless stated otherwise. See ADR 0006 and spec 021 for the full design.
+The platform supports a second execution target, `local` (minikube or kind), alongside the `aws` target described everywhere else in this constitution unless stated otherwise. See ADR 0006 and spec 020 for the full design.
 
-The `local` target is AWS-free except for one deliberate, opt-in exception: decrypting real secret values from `secrets/*.enc` via AWS KMS, when explicitly requested instead of the default placeholder credentials (spec 021). No other AWS API call exists anywhere in the `local` path.
+The `local` target is AWS-free except for one deliberate, opt-in exception: decrypting real secret values from `secrets/*.enc` via AWS KMS, when explicitly requested instead of the default placeholder credentials (spec 020). No other AWS API call exists anywhere in the `local` path.
 
 Because the `local` target does not fit the assumptions several sections above make unconditionally, the following sections apply to the `aws` target only, per §13's rule that a conflict with this constitution MUST be recorded and the constitution updated intentionally rather than silently worked around:
 
 - **§3 (Lifecycle Separation)** — the `local` target's cluster and workloads are not State, Bootstrap, Persistent, or Disposable; they are not governed by this taxonomy at all, and are not a fifth class.
 - **§4 (Persistence Safety)** — `local` data (Postgres, Kafka) is fully throwaway. There is no local persistence guarantee, no destructive-reclaim-policy prohibition, and no destroy/recreate proof requirement for `local`. Deleting the local cluster is expected to delete everything in it.
-- **§5 (Security)** — the `local` target MUST NOT use AWS Secrets Manager or EKS Pod Identity. Its secrets mechanism (placeholder-by-default, KMS-decrypt-opt-in, loaded directly into Kubernetes `Secret` objects) is defined in spec 021, not this section.
+- **§5 (Security)** — the `local` target MUST NOT use AWS Secrets Manager or EKS Pod Identity. Its secrets mechanism (placeholder-by-default, KMS-decrypt-opt-in, loaded directly into Kubernetes `Secret` objects) is defined in spec 020, not this section.
 - **§8 (Public Traffic)** — the `local` target has no Route 53, ALB, or ACM. Access is via `kubectl port-forward` directly to Envoy Gateway's Service; there is no TLS termination in the `local` path at all.
 
 The following sections' requirements are vacuously satisfied for `local` and need no separate enforcement there, since the resources they govern simply don't exist on that target:

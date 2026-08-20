@@ -17,7 +17,7 @@ without becoming two different platforms.
 
 This decision is made before `terraform/live/disposable/` and `gitops/` exist
 on disk — spec 004 (Argo CD bootstrap) and everything downstream of it
-(specs 006–013) are design-only. That timing matters: the two-target
+(specs 006–012, and 023) are design-only. That timing matters: the two-target
 structure below is meant to shape those specs from the outset, not be
 retrofitted onto Helm charts and Argo Applications that already assume
 AWS-only.
@@ -82,14 +82,14 @@ fork into separate Kubernetes manifest trees.
   separate opt-in flag/target instead decrypts real values from
   `secrets/*.enc` via the existing `scripts/secret-decrypt.sh` (AWS KMS,
   `alias/${PROJECT_NAME}-secrets`) and loads those. Neither local path uses
-  Secrets Manager, Pod Identity, or External Secrets Operator — spec 013
+  Secrets Manager, Pod Identity, or External Secrets Operator — spec 012
   (Secrets Manager + Pod Identity) is `aws`-target-only and does not apply to
   `local` in either mode.
 - **Local sync source is the working directory.** The `local` target's root
   Application syncs from the local working directory on disk, not GitHub, so
   editing `gitops/` and seeing Argo reconcile it does not require a
   commit/push first. (`aws` keeps syncing from the GitHub repo, unchanged.)
-  The concrete mechanism is recorded as a requirement in spec 021, not left
+  The concrete mechanism is recorded as a requirement in spec 020, not left
   implicit here.
 
 ## Alternatives considered
@@ -128,13 +128,13 @@ choice for this target.
 
 **f. LocalStack to emulate Secrets Manager/other AWS services locally.**
 Rejected: would reintroduce an AWS-shaped dependency (a specific emulator,
-with its own drift-from-real-AWS risk) for the sake of keeping spec 013's
-mechanism nominally in play, when spec 013 simply doesn't apply to a target
+with its own drift-from-real-AWS risk) for the sake of keeping spec 012's
+mechanism nominally in play, when spec 012 simply doesn't apply to a target
 that has no AWS Pod Identity to authenticate with in the first place.
 
 ## Consequences
 
-- Specs 004 and 006–013 must be written (or amended) with the two-target
+- Specs 004 and 006–012, and 023, must be written (or amended) with the two-target
   structure from the start: a values-file split per component, and explicit
   scope notes wherever an existing requirement is `aws`-target-only or
   inverted for `local` (storage reclaim policy, routing kind, TLS, secrets
@@ -148,9 +148,9 @@ that has no AWS Pod Identity to authenticate with in the first place.
   GitHub Lifecycle Equivalence," meaning "you ran `make up` from your own
   workstation against real AWS") is renamed to "workstation-initiated"
   throughout, to free "local" to mean only this new target from here on.
-- Fast validation (spec 018) gains a requirement to `helm template` render
+- Fast validation (spec 017) gains a requirement to `helm template` render
   both `values-aws.yaml` and `values-local.yaml` for every component, using
-  dummy/placeholder secret values — the credential-free rule in spec 018
+  dummy/placeholder secret values — the credential-free rule in spec 017
   holds even though decision above adds an opt-in path elsewhere that does
   use AWS KMS.
 - A local run is never a substitute for the `aws`-target full lifecycle

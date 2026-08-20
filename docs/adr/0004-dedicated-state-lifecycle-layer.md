@@ -78,7 +78,7 @@ Disposable
   mechanism that already derives `bootstrap`/`persistent`/`disposable` —
   no special-casing needed in `root.hcl` itself.
 - `make bootstrap-up`/`make bootstrap-down` now only manage the `kms` unit
-  (Bootstrap's remaining Terraform-owned resource until spec 015 adds
+  (Bootstrap's remaining Terraform-owned resource until spec 014 adds
   `github-oidc/` alongside it — see spec 001's scope amendment).
 
 ## Consequences
@@ -94,11 +94,11 @@ Disposable
   `ci/disposable/`) as before — this ADR only moves *which unit manages
   the bucket resource itself*, not the bucket, its name, or its layout.
 - Spec 001's scope shrinks again (after the earlier OIDC move to spec
-  015): it now covers only the `kms` unit, tagging, and
+  014): it now covers only the `kms` unit, tagging, and
   `make bootstrap-up`/`make bootstrap-down`. Creating the state bucket is
   a new, un-numbered prerequisite step (`make state-up`), documented in
   `terraform/live/state/README.md` and referenced from spec 001 rather
   than owned by it.
 - A second AWS account (e.g. a disposable/throwaway test account for the
-  full lifecycle test — spec 019) runs `make state-up` once as its own
+  full lifecycle test — spec 018) runs `make state-up` once as its own
   first step, exactly like the real personal-lab account did.
