@@ -1,0 +1,5 @@
+apiVersion: v2
+name: platform
+description: Umbrella chart for everything Argo CD manages on the cluster. Child components are added here by later specs, gated by .Values.target.
+type: application
+version: 0.1.0

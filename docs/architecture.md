@@ -759,6 +759,8 @@ EBS
 
 the EBS data must survive EKS destruction.
 
+PostgreSQL storage must support online, grow-only capacity expansion (`StorageClass` with `allowVolumeExpansion: true`, resized declaratively through the operator's CR, not by hand-editing the EBS volume). See spec 007 for the full storage-expansion lifecycle.
+
 PostgreSQL must support logical replication for Debezium.
 
 Monitoring must include relevant database health and CDC-related metrics such as:
@@ -832,6 +834,8 @@ underlying AWS data must remain
 ```
 
 Required persistent volumes must use retention semantics appropriate for EKS destruction.
+
+`StorageClass`es backing persistent workloads (Postgres, Kafka) must also set `allowVolumeExpansion: true`, since EBS/its CSI driver support online expansion — capacity growth must never require volume replacement or data migration. Growth is one-directional: a shrink is not supported and is not a platform requirement.
 
 Before destructive lifecycle operations, the platform must verify that persistent data will not be deleted.
 

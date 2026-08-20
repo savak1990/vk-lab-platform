@@ -1,0 +1,5 @@
+apiVersion: v2
+name: root-application
+description: Renders the single root ("app-of-apps") Argo CD Application, parameterized by target (aws|local).
+type: application
+version: 0.1.0

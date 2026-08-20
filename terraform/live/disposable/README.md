@@ -4,7 +4,7 @@ Creates Disposable-lifecycle resources: destroyed by `make disposable-down`,
 recreated by `make disposable-up`, with zero effect on the Persistent stack
 (Route 53 zone/ACM cert/Secrets Manager) or the AWS account's default VPC.
 
-One unit:
+Two units:
 
 - `eks/` — EKS control plane, one fixed-size system managed node group
   (single `t3.medium`), EKS-managed add-ons (`vpc-cni`, `kube-proxy`,
@@ -12,14 +12,17 @@ One unit:
   group need. Runs in the AWS account's **default VPC**, using its default
   public subnets — no dedicated VPC exists yet. See
   `specs/003-network-and-eks/spec.md`.
+- `argocd-bootstrap/` — installs Argo CD and the single root ("app-of-apps")
+  Application via Helm, pointed at `gitops/` (the aws target's install path).
+  Terraform touches nothing else Kubernetes-native from here on — see
+  `specs/004-argocd-bootstrap/spec.md`.
 
 **Deviation from `docs/architecture.md` §5's illustrative target tree:**
 that diagram shows three separate units (`eks/`, `eks-addons/`,
 `system-node-group/`). This stack uses a single `eks/` unit instead —
 cluster, node group, add-ons, and IAM are created together, since one fixed
 node group doesn't need independent apply/destroy of those pieces yet.
-`karpenter/` and `argocd-bootstrap/` remain separate future units (specs
-006 and 004 respectively).
+`karpenter/` remains a separate future unit (spec 006).
 
 ## Usage
 
