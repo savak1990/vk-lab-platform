@@ -1,26 +1,25 @@
 #!/usr/bin/env bash
 # Destroys Persistent-lifecycle resources: the lab DNS zone (and its
 # parent-zone NS delegation record), the ACM certificate, everything in
-# Secrets Manager, and - only if WIPE_RETAINED_VOLUMES=1 - every retained
-# EBS volume the ebs-retain StorageClass created (spec 005). Those volumes
-# are Persistent-lifecycle data but live outside any Terraform state (no
-# stack creates them, the CSI driver does), so they need their own opt-in
-# rather than inheriting terragrunt's destroy prompt. Guarded: refuses
-# while Disposable state exists, and verifies afterward that every unit's
-# state is actually empty - `dependency`-based destroy ordering applies
-# acm/secrets before route53, and a partial failure there could otherwise
-# leave the zone (and its parent-zone delegation) orphaned while reporting
-# success. Confirmation for the Terraform-tracked resources is terragrunt's
-# own interactive destroy prompt below (typing "yes"), not a separate
-# custom one - same approach as bootstrap-down.sh. The volume wipe has no
-# such prompt to lean on, hence the separate opt-in env var.
+# Secrets Manager, and every retained EBS volume the ebs-retain
+# StorageClass created (spec 005). Those volumes are Persistent-lifecycle
+# data but live outside any Terraform state (no stack creates them, the
+# CSI driver does) - this script is where their deletion is accounted for,
+# since persistent-down is already the guarded, rarely-run path for
+# permanently deleting Persistent data. Guarded: refuses while Disposable
+# state exists, and verifies afterward that every unit's state is actually
+# empty - `dependency`-based destroy ordering applies acm/secrets before
+# route53, and a partial failure there could otherwise leave the zone (and
+# its parent-zone delegation) orphaned while reporting success.
+# Confirmation is terragrunt's own interactive destroy prompt below (typing
+# "yes"), not a separate custom one - same approach as bootstrap-down.sh;
+# the volume list is echoed before that prompt so it covers volumes too.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
 STATE_BUCKET="${PROJECT_NAME}-tf-state"
 REGION="${REGION:-eu-west-1}"
-WIPE_RETAINED_VOLUMES="${WIPE_RETAINED_VOLUMES:-0}"
 
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
@@ -103,13 +102,8 @@ retained_count=$(echo "$retained_volumes" | jq 'length')
 echo "This permanently deletes the lab.<root-domain> DNS zone (and its parent-zone NS"
 echo "delegation record), its ACM certificate, and every secret in Secrets Manager."
 if [ "$retained_count" -gt 0 ]; then
-  if [ "$WIPE_RETAINED_VOLUMES" = "1" ]; then
-    echo "WIPE_RETAINED_VOLUMES=1: will also permanently delete $retained_count retained EBS volume(s):"
-    echo "$retained_volumes" | jq -r '.[] | "  \(.Id)  \(.Size)GiB  \(.AZ)"'
-  else
-    echo "$retained_count retained EBS volume(s) exist and will be LEFT ALONE (set WIPE_RETAINED_VOLUMES=1 to also delete them):"
-    echo "$retained_volumes" | jq -r '.[] | "  \(.Id)  \(.Size)GiB  \(.AZ)"'
-  fi
+  echo "It will also permanently delete $retained_count retained EBS volume(s):"
+  echo "$retained_volumes" | jq -r '.[] | "  \(.Id)  \(.Size)GiB  \(.AZ)"'
 fi
 echo "This is expected to run essentially never."
 
@@ -137,7 +131,7 @@ echo "Persistent-lifecycle resources destroyed."
 # Runs after Terraform destroy is verified clean, not before - a partial
 # terragrunt failure above already exits, so a volume is only ever deleted
 # once nothing state-tracked could still depend on it.
-if [ "$WIPE_RETAINED_VOLUMES" = "1" ] && [ "$retained_count" -gt 0 ]; then
+if [ "$retained_count" -gt 0 ]; then
   echo "$retained_volumes" | jq -r '.[].Id' | while read -r volume_id; do
     aws ec2 delete-volume --region "$REGION" --volume-id "$volume_id"
     echo "Deleted retained volume $volume_id"

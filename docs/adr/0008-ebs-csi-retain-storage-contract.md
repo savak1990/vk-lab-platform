@@ -82,20 +82,19 @@ reclaim policy, not because any Terraform state tracks it. This is a new
 pattern being introduced here, not a lifecycle-class move of an existing
 resource, per CLAUDE.md's rule on documenting such changes.
 
-Accountability for deleting it lives in `scripts/persistent-down.sh`, gated
-behind an explicit `WIPE_RETAINED_VOLUMES=1` opt-in — not a standalone,
-unguarded target. CLAUDE.md lists "retained EBS data volumes" under
-Persistent explicitly, so `persistent-down` (already the guarded, rarely-run
-path for permanently deleting Persistent data) is the right home, not a new
-parallel deletion path. It is opt-in rather than automatic because, unlike
-the Route53/ACM/Secrets Manager destroy above it, there is no Terraform
-state and therefore no terragrunt destroy prompt to lean on for
-confirmation — and because a future CI teardown could invoke this script
-non-interactively, where an unconditional wipe would delete data with no
-human in the loop at all. The volume list is tagged- and status-filtered
-(`Lifecycle=persistent`, `ManagedBy=ebs-csi-driver`, `Project`, plus
-`status=available`) and echoed before terragrunt's own destroy prompt, and
-actually deleted only after Terraform's post-destroy state verification
+Accountability for deleting it lives in `scripts/persistent-down.sh`,
+unconditionally — not a standalone target, and not behind a separate opt-in
+flag. CLAUDE.md lists "retained EBS data volumes" under Persistent
+explicitly, so `persistent-down` (already the guarded, rarely-run,
+"expected to run essentially never" path for permanently deleting
+Persistent data) is the right home, not a new parallel deletion path.
+There is no separate confirmation step for the volumes beyond what already
+guards the rest of the script: the volume list is tagged- and
+status-filtered (`Lifecycle=persistent`, `ManagedBy=ebs-csi-driver`,
+`Project`, plus `status=available`) and echoed before terragrunt's own
+interactive destroy prompt, so anyone confirming the DNS/ACM/secrets
+destroy sees the volumes about to go with it in the same prompt. Deletion
+itself happens only after Terraform's post-destroy state verification
 passes, so a partial destroy failure can never leave a volume deleted with
 its Terraform-tracked dependents still standing.
 
@@ -132,9 +131,11 @@ two should not be conflated later.
   driver wave `-1`, StorageClass wave `0`); 007/008's own Argo manifests
   should follow the same ordering discipline relative to this StorageClass.
 - A retained EBS volume from a completed proof run is deleted via
-  `WIPE_RETAINED_VOLUMES=1 make persistent-down` (or manually by ID) — it is
-  not tracked by any Terraform state and will otherwise keep costing money
-  indefinitely.
+  `make persistent-down` (or manually by ID) — it is not tracked by any
+  Terraform state and will otherwise keep costing money indefinitely. This
+  means `persistent-down` now permanently deletes real data volumes, not
+  just DNS/ACM/secrets — read its destroy-prompt output carefully before
+  confirming once 007/008 have real data on this StorageClass.
 - 007/008 inherit this same accountability: their retained Postgres/Kafka
-  volumes are deleted the same way, through the same opt-in, once their
-  data is genuinely meant to go away — not through a separate mechanism.
+  volumes are deleted the same way, once their data is genuinely meant to
+  go away — not through a separate mechanism.

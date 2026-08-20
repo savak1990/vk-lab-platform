@@ -41,11 +41,11 @@ persistent-up:
 	cd terraform/live/persistent && terragrunt run --all apply --non-interactive
 
 ## Destroys Persistent-lifecycle resources. Guarded, rarely-used - see constitution §17.
-## Retained EBS volumes (spec 005) are Persistent-lifecycle data outside any
-## Terraform state, so they're not touched unless WIPE_RETAINED_VOLUMES=1 is
-## also set - opt in only when you actually want that data gone for good.
+## Also permanently deletes every retained EBS volume the ebs-retain
+## StorageClass created (spec 005) - listed before terragrunt's destroy
+## prompt, since those volumes are Persistent-lifecycle data outside any
+## Terraform state.
 ## Usage: make persistent-down
-##        WIPE_RETAINED_VOLUMES=1 make persistent-down
 persistent-down:
 	./scripts/persistent-down.sh
 
