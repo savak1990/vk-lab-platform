@@ -45,6 +45,11 @@ Also required: `secrets/$PROJECT_NAME/postgres-admin-password.enc`, via:
 make secret-encrypt NAME=postgres-admin-password VALUE=<generated password>
 ```
 
+For a throwaway CI/test `PROJECT_NAME`, `make generate-secrets` creates
+both files in one step (fixed test Postgres password, real root domain
+from an argument) — see `secrets/README.md`. Never use it for the
+personal lab's own `PROJECT_NAME`.
+
 ## Usage
 
 ```

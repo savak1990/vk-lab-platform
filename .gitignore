@@ -21,14 +21,16 @@ override.tf.json
 # Helm
 **/charts/*.tgz
 
-# Secrets: only per-value encrypted ciphertext files (one file per value,
-# never combined - constitution §5/§14), nested under secrets/<project>/,
-# and this directory's own docs are tracked. Any plaintext dropped here
-# locally must never be committed.
+# Secrets: only the personal lab's own per-value encrypted ciphertext
+# files (one file per value, never combined - constitution §5/§14), under
+# secrets/vk-lab-platform/, plus this directory's own docs, are tracked.
+# Every other secrets/<project>/ directory - throwaway CI/test projects,
+# make generate-secrets output - is fully untracked, *.enc included; it's
+# meant to be regenerated, not committed.
 secrets/*
-!secrets/*/
-secrets/*/*
-!secrets/**/*.enc
+!secrets/vk-lab-platform/
+secrets/vk-lab-platform/*
+!secrets/vk-lab-platform/*.enc
 !secrets/README.md
 
 # Editors

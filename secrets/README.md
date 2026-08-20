@@ -7,7 +7,10 @@ independently with the bootstrap KMS key (`alias/<project>-secrets`).
 Files live under a per-project directory, `secrets/<PROJECT_NAME>/<name>.enc`
 (`PROJECT_NAME` defaults to `vk-lab-platform`), so a different `PROJECT_NAME`
 run (e.g. a CI/disposable-account run) gets its own secret set without
-colliding with the personal lab's.
+colliding with the personal lab's. For a throwaway CI/test environment,
+`make generate-secrets` creates this project's secrets automatically
+(root domain from an argument, a fixed test Postgres password) instead of
+requiring `make secret-encrypt` to be run by hand — see below.
 
 Rules (constitution §5/§14, architecture.md §18):
 
@@ -23,6 +26,19 @@ make secret-encrypt NAME=<name> VALUE=<plaintext-value>
 
 Writes `secrets/$PROJECT_NAME/<name>.enc`. Commit that file; never commit
 the plaintext value you passed as `VALUE`.
+
+## Generating throwaway secrets for CI/test environments
+
+```
+PROJECT_NAME=<ci-project-name> ROOT_DOMAIN=<domain> make generate-secrets
+```
+
+Creates `secrets/$PROJECT_NAME/root-domain.enc` (from `ROOT_DOMAIN`) and
+`secrets/$PROJECT_NAME/postgres-admin-password.enc` (a fixed value,
+`test`) — everything `make persistent-up` needs for a disposable
+CI/test project, with no manually pre-committed ciphertext. Never use
+this for the personal lab's own `PROJECT_NAME`; the Postgres password it
+generates is fixed and publicly known.
 
 ## Decrypting a value
 

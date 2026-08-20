@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Encrypts a value into secrets/<name>.enc using the bootstrap KMS key.
-# NAME/VALUE come from the environment (SECRET_NAME/SECRET_VALUE), not
-# argv, so an unusual VALUE never has to survive shell command-line parsing.
+# Encrypts a value into secrets/$PROJECT_NAME/<name>.enc using the
+# bootstrap KMS key. NAME/VALUE come from the environment
+# (SECRET_NAME/SECRET_VALUE), not argv, so an unusual VALUE never has to
+# survive shell command-line parsing.
 # Usage: SECRET_NAME=<name> SECRET_VALUE=<value> scripts/secret-encrypt.sh
 set -euo pipefail
 

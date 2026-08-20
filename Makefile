@@ -1,4 +1,4 @@
-.PHONY: state-up state-down status bootstrap-up bootstrap-down secret-encrypt secret-decrypt persistent-up persistent-down clear-cache
+.PHONY: state-up state-down status bootstrap-up bootstrap-down secret-encrypt secret-decrypt generate-secrets persistent-up persistent-down clear-cache
 
 # Lifecycle: state -> boostrap -> persistence -> disposable
 
@@ -37,6 +37,7 @@ bootstrap-down:
 
 ## Creates Persistent-lifecycle resources (lab DNS zone + delegation, ACM cert, Secrets Manager).
 persistent-up:
+	./scripts/require-persistent-secrets.sh
 	cd terraform/live/persistent && terragrunt run --all apply --non-interactive
 
 ## Destroys Persistent-lifecycle resources. Guarded, rarely-used - see constitution §17.
@@ -63,3 +64,11 @@ secret-encrypt:
 ## Usage: make secret-decrypt NAME=test
 secret-decrypt:
 	@./scripts/secret-decrypt.sh "$(NAME)"
+
+## Generates throwaway secrets/$(PROJECT_NAME)/ files for a CI/test
+## environment: root-domain from ROOT_DOMAIN, and a fixed, publicly-known
+## postgres-admin-password ("test"). Never use this for the personal lab.
+## Usage: PROJECT_NAME=vk-lab-ci ROOT_DOMAIN=<domain> make generate-secrets
+generate-secrets: export ROOT_DOMAIN := $(ROOT_DOMAIN)
+generate-secrets:
+	@./scripts/generate-secrets.sh
