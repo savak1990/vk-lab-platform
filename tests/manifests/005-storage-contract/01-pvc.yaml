@@ -1,0 +1,14 @@
+# Claims a Retain-policy volume so deleting this PVC (not the pod) proves
+# the EBS volume outlives the Kubernetes object that requested it.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: storage-contract-test
+  namespace: default
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: ebs-retain
+  resources:
+    requests:
+      storage: 1Gi

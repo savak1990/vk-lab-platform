@@ -1,0 +1,29 @@
+# Mounts the claimed volume and writes a marker file, giving the proof
+# procedure something concrete to check on the rebound volume later.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: storage-contract-test
+  namespace: default
+spec:
+  serviceName: storage-contract-test
+  replicas: 1
+  selector:
+    matchLabels:
+      app: storage-contract-test
+  template:
+    metadata:
+      labels:
+        app: storage-contract-test
+    spec:
+      containers:
+        - name: writer
+          image: public.ecr.aws/docker/library/busybox:1.36
+          command: ["sh", "-c", "echo storage-contract-proof > /data/marker.txt && sleep infinity"]
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: storage-contract-test

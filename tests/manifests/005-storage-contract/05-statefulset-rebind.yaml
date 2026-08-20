@@ -1,0 +1,29 @@
+# Reads back the marker file through the rebound PVC to prove the original
+# data, not just an empty volume of the same ID, survived the round trip.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: storage-contract-test-rebind
+  namespace: default
+spec:
+  serviceName: storage-contract-test-rebind
+  replicas: 1
+  selector:
+    matchLabels:
+      app: storage-contract-test-rebind
+  template:
+    metadata:
+      labels:
+        app: storage-contract-test-rebind
+    spec:
+      containers:
+        - name: reader
+          image: public.ecr.aws/docker/library/busybox:1.36
+          command: ["sh", "-c", "cat /data/marker.txt && sleep infinity"]
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: storage-contract-test-rebind

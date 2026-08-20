@@ -343,6 +343,16 @@ If requirements are ambiguous, prefer the interpretation most consistent with:
 
 ---
 
+## Exploration and planning tools
+
+When exploring the codebase to understand existing patterns before planning or implementing, prefer dispatching read-only subagents in parallel over ad hoc reading, so each area gets focused context.
+
+When designing an implementation approach for non-trivial work, prefer consulting the advisor tool before committing to a plan, and again before declaring the work complete.
+
+The advisor is expected to run on a strong model for planning-quality work; this is set per-session by the operator, not something these instructions can guarantee on their own.
+
+---
+
 ## Validation
 
 Every change should run the fastest relevant validation.

@@ -1,0 +1,26 @@
+# Manually recreates the PV Kubernetes lost, pointing at a still-existing
+# EBS volume by ID, to prove a retained volume can be rebound after the
+# cluster that created it is gone.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: storage-contract-test-rebind
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ebs-retain
+  csi:
+    driver: ebs.csi.aws.com
+    fsType: ext4
+    volumeHandle: REPLACE_WITH_VOLUME_ID # e.g. vol-0123456789abcdef0
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: topology.kubernetes.io/zone
+              operator: In
+              values:
+                - REPLACE_WITH_AVAILABILITY_ZONE # e.g. eu-west-1a

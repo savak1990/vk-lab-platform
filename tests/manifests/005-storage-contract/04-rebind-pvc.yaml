@@ -1,0 +1,15 @@
+# Binds directly to the rebind PV by name, skipping the normal
+# StorageClass-driven provisioning path, since the volume already exists.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: storage-contract-test-rebind
+  namespace: default
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: ebs-retain
+  volumeName: storage-contract-test-rebind
+  resources:
+    requests:
+      storage: 1Gi
