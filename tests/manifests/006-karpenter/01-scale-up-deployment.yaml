@@ -1,0 +1,24 @@
+# Resource request exceeds the fixed system node's spare capacity, forcing
+# Karpenter to provision a node from the bounded NodePool.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: karpenter-scale-test
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: karpenter-scale-test
+  template:
+    metadata:
+      labels:
+        app: karpenter-scale-test
+    spec:
+      containers:
+        - name: pause
+          image: public.ecr.aws/eks-distro/kubernetes/pause:3.9
+          resources:
+            requests:
+              cpu: "1500m"
+              memory: "1Gi"

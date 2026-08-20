@@ -41,6 +41,10 @@ resource "helm_release" "root_application" {
       value = "aws"
     },
     {
+      name  = "project"
+      value = var.project
+    },
+    {
       name  = "repoURL"
       value = var.repo_url
     },

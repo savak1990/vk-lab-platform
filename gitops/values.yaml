@@ -1,4 +1,5 @@
-# aws | local — set by the root Application's helm parameter (gitops/bootstrap).
-# Later specs gate AWS-only child Applications (Karpenter, AWS LB Controller,
-# external-dns, EBS CSI, RDS) on this value being "aws" (spec 021 Req 3).
+# Set by the root Application's helm parameters (gitops/bootstrap): target
+# gates AWS-only child Applications, project matches the AWS resource names
+# Terraform created under PROJECT_NAME (default vk-lab-platform).
 target: aws
+project: vk-lab-platform

@@ -78,6 +78,7 @@ module "eks" {
       max_size       = 1
       desired_size   = 1
       subnet_ids     = [local.node_subnet_id] # single fixed AZ, not all defaults
+      labels         = { "node-type" = "system" }
     }
   }
 

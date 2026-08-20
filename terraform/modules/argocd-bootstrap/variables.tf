@@ -9,6 +9,11 @@ variable "repo_url" {
   type        = string
 }
 
+variable "project" {
+  description = "Project name (PROJECT_NAME), threaded to the umbrella chart so AWS-resource-name-derived manifests (e.g. Karpenter's cluster name) match a non-default project."
+  type        = string
+}
+
 variable "target_revision" {
   description = "Git ref the root Application syncs from."
   type        = string

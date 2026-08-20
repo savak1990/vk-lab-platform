@@ -2,6 +2,10 @@ include "root" {
   path = find_in_parent_folders("root.hcl")
 }
 
+locals {
+  project = get_env("PROJECT_NAME", "vk-lab-platform")
+}
+
 terraform {
   source = "${get_repo_root()}/terraform/modules/argocd-bootstrap"
 }
@@ -39,7 +43,8 @@ EOF
 }
 
 inputs = {
+  project                         = local.project
   repo_url                        = "https://github.com/savak1990/vk-lab-platform"
   root_application_chart_path     = "${get_repo_root()}/gitops/bootstrap"
-  admin_password_bcrypt_hash_path = "${get_repo_root()}/secrets/vk-lab-platform/argocd-admin-password.bcrypt"
+  admin_password_bcrypt_hash_path = "${get_repo_root()}/secrets/${local.project}/argocd-admin-password.bcrypt"
 }

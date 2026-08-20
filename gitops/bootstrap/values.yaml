@@ -1,5 +1,6 @@
 # Overridden per install: `aws` (Terraform, spec 004) sets repoURL/targetRevision
 # to this GitHub repo; `local` (spec 021's script) sets them to a local source.
 target: aws
+project: vk-lab-platform
 repoURL: https://github.com/savak1990/vk-lab-platform
 targetRevision: main
