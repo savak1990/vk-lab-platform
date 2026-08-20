@@ -126,14 +126,44 @@ for unit_prefix in persistent/route53 persistent/acm persistent/secrets; do
   fi
 done
 
-echo "Persistent-lifecycle resources destroyed."
-
 # Runs after Terraform destroy is verified clean, not before - a partial
 # terragrunt failure above already exits, so a volume is only ever deleted
-# once nothing state-tracked could still depend on it.
-if [ "$retained_count" -gt 0 ]; then
-  echo "$retained_volumes" | jq -r '.[].Id' | while read -r volume_id; do
-    aws ec2 delete-volume --region "$REGION" --volume-id "$volume_id"
-    echo "Deleted retained volume $volume_id"
-  done
+# once nothing state-tracked could still depend on it. Re-lists rather than
+# reusing $retained_volumes, since a volume could become available only
+# during/after the Terraform destroy above and would otherwise be skipped.
+if ! retained_volumes=$(list_retained_volumes); then
+  echo "Failed to list retained EBS volumes before deletion - aborting." >&2
+  exit 1
 fi
+
+failed_volumes=()
+# Process substitution, not a pipe - `while read` on a pipeline runs in a
+# subshell on bash 3.2 (macOS default), so appends to failed_volumes inside
+# the loop wouldn't be visible after it. `mapfile` would dodge this too but
+# is bash-4+ only; no other script here assumes a non-default bash.
+while read -r volume_id; do
+  [ -z "$volume_id" ] && continue
+  if aws ec2 delete-volume --region "$REGION" --volume-id "$volume_id"; then
+    echo "Deleted retained volume $volume_id"
+  else
+    echo "Failed to delete retained volume $volume_id" >&2
+    failed_volumes+=("$volume_id")
+  fi
+done < <(echo "$retained_volumes" | jq -r '.[].Id')
+
+if [ "${#failed_volumes[@]}" -gt 0 ]; then
+  echo "Refusing to report success: failed to delete ${#failed_volumes[@]} retained volume(s): ${failed_volumes[*]}" >&2
+  exit 1
+fi
+
+if ! remaining_volumes=$(list_retained_volumes); then
+  echo "Failed to verify retained volumes were deleted - aborting." >&2
+  exit 1
+fi
+remaining_volume_count=$(echo "$remaining_volumes" | jq 'length')
+if [ "$remaining_volume_count" -gt 0 ]; then
+  echo "Refusing to report success: $remaining_volume_count retained volume(s) still exist after deletion." >&2
+  exit 1
+fi
+
+echo "Persistent-lifecycle resources destroyed."
