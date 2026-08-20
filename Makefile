@@ -1,4 +1,4 @@
-.PHONY: state-up state-down status bootstrap-up bootstrap-down secret-encrypt secret-decrypt generate-secrets persistent-up persistent-down clear-cache
+.PHONY: state-up state-down status bootstrap-up bootstrap-down secret-encrypt secret-decrypt generate-secrets persistent-up persistent-down clear-cache disposable-up disposable-down eks-kubeconfig
 
 # Lifecycle: state -> boostrap -> persistence -> disposable
 
@@ -43,6 +43,19 @@ persistent-up:
 ## Destroys Persistent-lifecycle resources. Guarded, rarely-used - see constitution §17.
 persistent-down:
 	./scripts/persistent-down.sh
+
+## Creates Disposable-lifecycle resources (EKS cluster + system node group + addons).
+disposable-up:
+	cd terraform/live/disposable && terragrunt run --all apply --non-interactive
+
+## Destroys Disposable-lifecycle resources. Routine, unlike bootstrap-down/persistent-down.
+disposable-down:
+	cd terraform/live/disposable && terragrunt run --all destroy --non-interactive
+
+## Points local kubectl context at the disposable EKS cluster.
+## Usage: make eks-kubeconfig
+eks-kubeconfig:
+	aws eks update-kubeconfig --name $(PROJECT_NAME)-eks --region $(REGION) --alias $(PROJECT_NAME)-eks
 
 ## Clears every .terragrunt-cache dir under terraform/live/. Run manually
 ## after switching PROJECT_NAME/REGION/SUBDOMAIN - a cache left over from a
