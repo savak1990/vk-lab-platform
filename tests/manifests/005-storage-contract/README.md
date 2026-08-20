@@ -39,7 +39,10 @@ a same-cluster PVC delete/recreate.
 
 ## Cleanup
 
-After the proof is documented, delete the retained EBS volume by ID
-(`aws ec2 delete-volume --volume-id <volume-id>`). It survives cluster and
-PVC deletion by design and will otherwise keep costing money with nothing
-left in Kubernetes pointing at it.
+After the proof is documented, delete the retained volume with
+`WIPE_RETAINED_VOLUMES=1 make persistent-down` (see ADR 0008) — it survives
+cluster and PVC deletion by design and will otherwise keep costing money
+with nothing left in Kubernetes pointing at it. That target lists every
+retained volume it's about to delete before the destroy proceeds; for a
+one-off volume outside that flow, `aws ec2 delete-volume --volume-id
+<volume-id>` still works directly.

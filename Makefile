@@ -41,6 +41,11 @@ persistent-up:
 	cd terraform/live/persistent && terragrunt run --all apply --non-interactive
 
 ## Destroys Persistent-lifecycle resources. Guarded, rarely-used - see constitution §17.
+## Retained EBS volumes (spec 005) are Persistent-lifecycle data outside any
+## Terraform state, so they're not touched unless WIPE_RETAINED_VOLUMES=1 is
+## also set - opt in only when you actually want that data gone for good.
+## Usage: make persistent-down
+##        WIPE_RETAINED_VOLUMES=1 make persistent-down
 persistent-down:
 	./scripts/persistent-down.sh
 
@@ -56,6 +61,7 @@ disposable-down:
 ## Usage: make eks-kubeconfig
 eks-kubeconfig:
 	aws eks update-kubeconfig --name $(PROJECT_NAME)-eks --region $(REGION) --alias $(PROJECT_NAME)-eks
+	kubectl config set-context --current --namespace=default
 
 ## Clears every .terragrunt-cache dir under terraform/live/. Run manually
 ## after switching PROJECT_NAME/REGION/SUBDOMAIN - a cache left over from a
