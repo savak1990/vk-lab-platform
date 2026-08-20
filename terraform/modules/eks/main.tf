@@ -72,7 +72,8 @@ module "eks" {
 
   eks_managed_node_groups = {
     system = {
-      instance_types = ["t3.medium"]
+      ami_type       = "AL2023_ARM_64_STANDARD"
+      instance_types = ["t4g.medium"]
       capacity_type  = "ON_DEMAND"
       min_size       = 1
       max_size       = 1

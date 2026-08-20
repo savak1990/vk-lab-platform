@@ -40,9 +40,12 @@ spec:
         - key: karpenter.sh/capacity-type
           operator: In
           values: ["spot"]
+        - key: kubernetes.io/arch
+          operator: In
+          values: ["arm64"]
         - key: node.kubernetes.io/instance-type
           operator: In
-          values: ["t3a.medium", "t3.medium", "t2.medium"] # all 2 vCPU, so the cpu limit below is an enforced node count
+          values: ["t4g.medium"] # 2 vCPU, so the cpu limit below is an enforced node count
   limits:
     cpu: "4" # bounds capacity to ~2 nodes at 2 vCPU each
   disruption:
