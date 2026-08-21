@@ -56,7 +56,7 @@ Prints the plaintext to stdout. This works standalone from a laptop or CI —
 it only needs `aws kms decrypt` against the ciphertext file and permission
 to use the KMS key. It has no dependency on Terraform state, outputs, or
 any in-cluster component, so it works from spec 002 onward, long before Pod
-Identity or an in-cluster secrets controller exist (those are spec 013's
+Identity or an in-cluster secrets controller exist (those are spec 014's
 job, for runtime application secrets).
 
 Terraform itself decrypts `secrets/<project>/root-domain.enc` and

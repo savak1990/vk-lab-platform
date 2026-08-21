@@ -15,7 +15,7 @@ Proves, before any real database or message broker exists, that a Kubernetes-bac
 - A `StorageClass` with a non-destructive reclaim policy (`Retain`, not `Delete`) for anything intended to persist.
 - A throwaway test `StatefulSet`/`PVC` used only to prove the reclaim/rebind contract — deleted once the proof is documented, not a long-lived component.
 
-This spec, and its `Retain`-reclaim-policy/EBS-rebind requirements below, apply to the `aws` target only. The `local` target (spec 020) uses the cluster's default local StorageClass (hostpath/local-path) with `Delete` reclaim semantics instead — the deliberate inverse of Requirement 2 below — since local data is fully throwaway and needs no rebind procedure.
+This spec, and its `Retain`-reclaim-policy/EBS-rebind requirements below, apply to the `aws` target only. The `local` target (spec 021) uses the cluster's default local StorageClass (hostpath/local-path) with `Delete` reclaim semantics instead — the deliberate inverse of Requirement 2 below — since local data is fully throwaway and needs no rebind procedure.
 
 Excludes: the actual Postgres (007) and Kafka (008) deployments — this spec only proves the underlying mechanism they'll rely on.
 

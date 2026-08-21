@@ -4,7 +4,7 @@
 **Risk:** High — security-sensitive; the failure mode is either plaintext leakage into Git/state, or over-broad IAM permissions granted to make something "just work."
 **Estimated cost:** ~1.5–2 days · AWS runtime cost: Secrets Manager per-secret monthly cost (small; combine related credentials into one JSON object per the cost trade-off architecture.md §17 explicitly allows).
 **Recommended model:** Opus — narrow IAM permission design and secret-flow correctness deserve the most careful reasoning in the roadmap.
-**Depends on:** 001-bootstrap (KMS key), 002-persistent-foundation (Secrets Manager skeleton), every workload spec that currently uses a placeholder secret mechanism (007, 008). Debezium (spec 023) is implemented after this spec and consumes this mechanism directly — no migration needed for it.
+**Depends on:** 001-bootstrap (KMS key), 002-persistent-foundation (Secrets Manager skeleton), every workload spec that currently uses a placeholder secret mechanism (007, 008). Debezium (spec 024) is implemented after this spec and consumes this mechanism directly — no migration needed for it.
 **Lifecycle class(es) touched:** Persistent (Secrets Manager values) / Disposable (Pod Identity wiring, External Secrets-style sync)
 
 ## Scope
@@ -13,9 +13,9 @@ Completes the full secrets lifecycle described in architecture.md §17–18, rep
 
 - EKS Pod Identity (preferred per constitution §5, ADR 0001) wiring for workloads that need AWS API access (e.g., an External Secrets-style controller syncing from Secrets Manager into Kubernetes Secrets).
 - The deterministic KMS-encrypted bootstrap ciphertext flow for *runtime application secrets*: one dedicated ciphertext file per credential under `secrets/` (e.g. `secrets/postgres-admin-password.enc`, `secrets/kafka-cluster-credentials.enc`) → each decrypted independently via the bootstrap KMS key → written into AWS Secrets Manager (not into Terraform state any more than necessary).
-- Migration of Postgres/Kafka credentials (currently handled minimally per specs 007/008) onto this real mechanism. Debezium (spec 023), implemented after this spec, uses this mechanism directly from the start — no migration needed for it.
+- Migration of Postgres/Kafka credentials (currently handled minimally per specs 007/008) onto this real mechanism. Debezium (spec 024), implemented after this spec, uses this mechanism directly from the start — no migration needed for it.
 
-This entire spec is `aws`-target-only. The `local` target (spec 020) does not use Secrets Manager, Pod Identity, or External Secrets Operator under any circumstance — it either loads generated placeholder credentials directly into Kubernetes `Secret` objects, or, opt-in, decrypts `secrets/*.enc` via the same AWS KMS key this spec's ciphertext files use and loads the result directly, bypassing everything else in this spec entirely. See spec 020 Requirements 11–13.
+This entire spec is `aws`-target-only. The `local` target (spec 021) does not use Secrets Manager, Pod Identity, or External Secrets Operator under any circumstance — it either loads generated placeholder credentials directly into Kubernetes `Secret` objects, or, opt-in, decrypts `secrets/*.enc` via the same AWS KMS key this spec's ciphertext files use and loads the result directly, bypassing everything else in this spec entirely. See spec 021 Requirements 11–13.
 
 Excludes: application-level secrets (no application code in this repo); a full secrets-rotation automation story (not required by architecture.md, though the mechanism should not actively prevent rotation later); the root domain value (`secrets/root-domain.enc`) — that non-secret private config value is already bootstrapped in specs 001/002, since Terraform needs it before EKS or Argo CD exist, well before this spec's in-cluster Pod Identity mechanism is available. This spec extends the same one-file-per-secret pattern to runtime application credentials, it doesn't re-do the domain.
 

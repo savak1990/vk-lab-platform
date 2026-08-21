@@ -34,11 +34,11 @@ cross-referencing this spec.
 
 Excludes: any attempt to make the `local` target's cluster/data survive
 deletion (see Requirement 6 — it's deliberately throwaway); any attempt to
-give `local` a real AWS-equivalent public edge (ALB/Route53/ACM) — see
+give `local` a real AWS-equivalent public edge (NLB/Route53/ACM) — see
 Requirement 8; any CI integration for `local` beyond the fast-validation
 rendering check in Requirement 16 — that CI integration now exists as its
 own spec, **022-ci-kind-integration-test**, which reuses this spec's
-`make kind-up` install path and runs spec 021's Go/Ginkgo E2E suite against
+`make kind-up` install path and runs spec 022's Go/Ginkgo E2E suite against
 it (ADR 0007).
 
 ## Requirements
@@ -118,11 +118,11 @@ it (ADR 0007).
     omitted for `local` MUST be stated explicitly in that values file's
     comments or in this spec's implementation notes — never silently
     dropped.
-17. Fast validation (spec 017) MUST `helm template` render both
+17. Fast validation (spec 018) MUST `helm template` render both
     `values-aws.yaml` and `values-local.yaml` for every `gitops/` component,
     using dummy/placeholder secret values. This rendering check MUST NOT
     request AWS credentials — it validates templating only, and MUST remain
-    compatible with spec 017's existing no-AWS-credentials rule even though
+    compatible with spec 018's existing no-AWS-credentials rule even though
     Requirement 12 above introduces an opt-in AWS-dependent path elsewhere.
 
 ## Implementation hints

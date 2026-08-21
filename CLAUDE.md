@@ -65,7 +65,7 @@ Long-lived and rarely destroyed:
 
 Must survive `make down`:
 
-- VPC/subnets (deferred — spec 019; the AWS account's default VPC/public subnets are used until then)
+- VPC/subnets (deferred — spec 020; the AWS account's default VPC/public subnets are used until then)
 - Route 53 (the delegated `lab.<root-domain>` subdomain zone — never the parent/root zone)
 - ACM (the lab subdomain certificate — never the root domain's existing certificate)
 - Secrets Manager
@@ -81,7 +81,7 @@ Created by `make up` and removed by `make down`:
 - system worker capacity
 - Karpenter workload nodes
 - Argo CD
-- ALB
+- NLB
 - Envoy Gateway
 - Kubernetes workloads
 - observability workloads
@@ -98,11 +98,14 @@ Public traffic:
 
 Client
 → Route 53
-→ ALB
+→ NLB
 → Envoy Gateway
 → Kubernetes workloads
 
-ALB is responsible for AWS ingress and ACM TLS termination.
+The NLB is responsible for AWS ingress and TLS termination (an NLB TLS
+listener using the persistent ACM certificate) — no AWS-side Ingress or
+Gateway resource exists; the NLB forwards plaintext directly to Envoy
+Gateway's own Service.
 
 Envoy Gateway is responsible for:
 
@@ -113,7 +116,8 @@ Envoy Gateway is responsible for:
 - headers/policies
 - gateway telemetry
 
-Do not duplicate routing logic between ALB and Envoy.
+Do not duplicate routing logic between the NLB and Envoy — the NLB performs
+no host/path routing at all.
 
 ---
 
@@ -125,7 +129,7 @@ The platform owns a delegated subdomain, `lab.<root-domain>`, plus an ACM certif
 
 The persistent stack's `route53` unit manages the single NS record delegating `lab.<root-domain>` from the parent zone directly — located by name (`data "aws_route53_zone"`, `private_zone = false`, not an explicit zone-ID input), never by creating/deleting the parent zone or touching any other record inside it. This assumes the parent zone is itself a Route 53 hosted zone reachable with the same credentials; otherwise delegation remains a one-time external/manual bootstrap step. The platform MUST NOT create, delete, or otherwise manage the parent/root hosted zone itself, or any record inside it other than that one delegation record, and MUST NOT reuse the existing root-domain ACM certificate.
 
-Records inside the lab zone (e.g., the ALB's record) are disposable; the zone and certificate are not.
+Records inside the lab zone (e.g., the NLB's record) are disposable; the zone and certificate are not.
 
 Never use a real root domain in code, tfvars, Helm values, or docs — use placeholders like `<root-domain>` or `lab.<root-domain>`. The domain is private configuration, not a secret — keep it out of the public repo for hygiene reasons, not as a security control. See `docs/adr/0002-delegated-lab-subdomain.md` and `specs/000-constitution/spec.md` §14.
 
@@ -206,7 +210,7 @@ Examples:
 
 Kafka CR must be removed before Strimzi is removed.
 
-ALB-triggering Kubernetes resources must be removed while
+NLB-triggering Kubernetes resources must be removed while
 AWS Load Balancer Controller is still running.
 
 `make down` should coordinate only the boundary between:
@@ -391,10 +395,10 @@ CREATE
 The intended end-to-end test is:
 
 1. `make up`
-2. verify EKS/Argo/Karpenter/Kafka/Postgres/Debezium/observability/Envoy (Debezium is deliberately implemented last, spec 023 — until it lands, run this test without it)
+2. verify EKS/Argo/Karpenter/Kafka/Postgres/Debezium/observability/Envoy (Debezium is deliberately implemented last, spec 024 — until it lands, run this test without it)
 3. write PostgreSQL test data
 4. write Kafka test data
-5. verify CDC (once spec 023 lands; deferred until then)
+5. verify CDC (once spec 024 lands; deferred until then)
 6. `make down`
 7. verify disposable infrastructure is absent
 8. verify persistent state remains

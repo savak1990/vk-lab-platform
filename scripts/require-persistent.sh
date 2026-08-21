@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Fails fast if the Persistent layer hasn't been applied yet. Intended for
-# spec 014's `make up` to call before creating any Disposable resource -
+# spec 015's `make up` to call before creating any Disposable resource -
 # not wired into any target yet.
 set -euo pipefail
 

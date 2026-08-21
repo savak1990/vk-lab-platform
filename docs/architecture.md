@@ -19,7 +19,7 @@ The platform is intended to provide a realistic, reproducible, observable, dynam
 - dynamic compute with Karpenter
 - persistent state
 - Envoy Gateway
-- AWS ALB
+- AWS NLB
 - Route 53 and ACM
 - observability
 - AWS IAM and Pod Identity
@@ -95,7 +95,7 @@ The platform must provide:
 8. PostgreSQL CDC through Debezium.
 9. Metrics, logs, and traces through a unified observability stack.
 10. Envoy Gateway as the in-cluster API gateway and reverse proxy.
-11. AWS ALB as the public AWS entry point.
+11. AWS NLB as the public AWS entry point, TLS-terminated with an ACM certificate.
 12. Route 53 DNS.
 13. ACM-managed HTTPS certificates.
 14. Secrets stored in AWS Secrets Manager.
@@ -137,13 +137,13 @@ vk-lab-platform/
 ├── .github/
 │   └── workflows/
 │       ├── validate.yml
-│       ├── kind-integration.yml        # spec 022; cheap GitOps test, trusted-context PRs only
-│       ├── platform-integration.yml    # spec 018; full-AWS test; mode=routine|resilience
+│       ├── kind-integration.yml        # spec 023; cheap GitOps test, trusted-context PRs only
+│       ├── platform-integration.yml    # spec 019; full-AWS test; mode=routine|resilience
 │       ├── lab-up.yml
 │       ├── lab-down.yml
 │       └── cleanup-stale-ci.yml
 │
-├── atlantis.yaml                  # spec 016; one project per Terragrunt stack
+├── atlantis.yaml                  # spec 017; one project per Terragrunt stack
 │
 ├── terraform/
 │   ├── modules/
@@ -151,7 +151,7 @@ vk-lab-platform/
 │   │   ├── github-oidc/
 │   │   ├── kms/
 │   │   ├── secrets-manager/
-│   │   ├── vpc/                   # not used until spec 019; default VPC used until then
+│   │   ├── vpc/                   # not used until spec 020; default VPC used until then
 │   │   ├── route53-zone/
 │   │   ├── acm-certificate/
 │   │   ├── rds/
@@ -170,11 +170,11 @@ vk-lab-platform/
 │       │   ├── terragrunt.stack.hcl
 │       │   ├── kms/
 │       │   ├── github-oidc/            # spec 001; one account-level provider, created once (§17a, ADR 0007)
-│       │   └── atlantis/               # spec 016; standalone compute, independent of EKS; own instance/task role, not OIDC
+│       │   └── atlantis/               # spec 017; standalone compute, independent of EKS; own instance/task role, not OIDC
 │       │
 │       ├── persistent/
 │       │   ├── terragrunt.stack.hcl
-│       │   ├── vpc/                   # added by spec 019; not present initially
+│       │   ├── vpc/                   # added by spec 020; not present initially
 │       │   ├── route53/
 │       │   ├── acm/
 │       │   ├── secrets/
@@ -202,6 +202,7 @@ vk-lab-platform/
 │   │   │
 │   │   ├── aws/                   # values-aws.yaml only; omitted from the local target's app list (§10a)
 │   │   │   ├── aws-load-balancer-controller/
+│   │   │   ├── external-dns/
 │   │   │   └── secrets-store-csi/
 │   │   │
 │   │   ├── autoscaling/
@@ -262,22 +263,23 @@ vk-lab-platform/
 │   ├── 008-kafka/
 │   ├── 009-observability/
 │   ├── 010-envoy-gateway/
-│   ├── 011-public-edge/
-│   ├── 012-secrets/
-│   ├── 013-lifecycle/
-│   ├── 014-github-actions-lifecycle/
-│   ├── 015-branch-protection/
-│   ├── 016-atlantis-terraform-automation/
-│   ├── 017-ci-fast-validation/
-│   ├── 018-ci-full-lifecycle-validation/
-│   ├── 019-vpc/
-│   ├── 020-local-dev-mode/        # local (minikube/kind) target; shapes specs 004, 006-012 from inception (§10a, ADR 0006)
-│   ├── 021-e2e-test-framework/    # Go/Ginkgo/Gomega suite + environment abstraction, reused by 018 and 022
-│   ├── 022-ci-kind-integration-test/  # cheap kind-based GitOps CI test consuming 020 and 021
-│   └── 023-debezium/              # deliberately implemented last, after CI/CD and local-dev tooling exist
+│   ├── 011-nlb-edge/
+│   ├── 012-external-dns/
+│   ├── 013-secrets/
+│   ├── 014-lifecycle/
+│   ├── 015-github-actions-lifecycle/
+│   ├── 016-branch-protection/
+│   ├── 017-atlantis-terraform-automation/
+│   ├── 018-ci-fast-validation/
+│   ├── 019-ci-full-lifecycle-validation/
+│   ├── 020-vpc/
+│   ├── 021-local-dev-mode/        # local (minikube/kind) target; shapes specs 004, 006-013 from inception (§10a, ADR 0006)
+│   ├── 022-e2e-test-framework/    # Go/Ginkgo/Gomega suite + environment abstraction, reused by 019 and 023
+│   ├── 023-ci-kind-integration-test/  # cheap kind-based GitOps CI test consuming 021 and 022
+│   └── 024-debezium/              # deliberately implemented last, after CI/CD and local-dev tooling exist
 │
 ├── tests/
-│   └── e2e/                       # spec 021; suite_test.go, per-service tests, framework/
+│   └── e2e/                       # spec 023; suite_test.go, per-service tests, framework/
 │
 ├── docs/
 │   ├── architecture.md
@@ -373,7 +375,7 @@ Examples:
 - Argo CD installation
 - Kubernetes workloads
 - Envoy
-- ALB
+- NLB
 - Kafka/Postgres pods
 - observability workloads
 
@@ -423,6 +425,7 @@ Kubernetes-native resources including:
 
 - Karpenter controller/configuration
 - AWS Load Balancer Controller
+- ExternalDNS
 - Envoy Gateway
 - Strimzi
 - Kafka
@@ -455,8 +458,9 @@ Terraform and Argo CD must never own the same Kubernetes resource.
                           Route 53
                              │
                              ▼
-                            ALB
+                            NLB
                       TLS using ACM
+                       (443 only, no routing)
                              │
                              ▼
                       Envoy Gateway
@@ -487,6 +491,11 @@ Business application workloads may originate from external repositories.
 # 9. EKS Compute Model
 
 The EKS cluster uses two compute classes.
+
+EKS Auto Mode is deliberately not used: it provisions node capacity through
+AWS's own scheduler, outside Karpenter's ownership, which would collide
+with this platform's explicit "Karpenter owns workload capacity" boundary
+(§2) rather than compose with it.
 
 ## System node
 
@@ -533,7 +542,7 @@ A dedicated VPC (public + private subnets, explicit route tables) is planned as 
 Once introduced, networking should support:
 
 - EKS
-- ALB
+- NLB
 - Karpenter
 - RDS (if used)
 - EBS
@@ -549,7 +558,7 @@ Unnecessary permanent network costs, especially NAT Gateway costs, should be avo
 The platform supports two Argo CD execution targets: **`aws`** (real EKS, the
 target described throughout the rest of this document unless stated
 otherwise) and **`local`** (minikube or kind, AWS-free except where noted).
-See ADR 0006 and spec 020 for the full design; this section summarizes the
+See ADR 0006 and spec 021 for the full design; this section summarizes the
 shape of it so later sections can refer to "the `aws` target" and "the
 `local` target" unambiguously.
 
@@ -572,19 +581,22 @@ The two targets diverge in kind, not just in values, on several points:
   surviving `make down` (§6, spec 005). `local`: fully throwaway — no
   persistent-lifecycle class, default local StorageClass with `Delete`
   reclaim semantics, no destroy/recreate persistence proof.
-- **Public edge.** `aws`: Route53 → ALB → Envoy (§11–12). `local`: no
-  ALB/Route53/ACM; access is via `kubectl port-forward` directly to Envoy
-  Gateway's Service, forced to `ClusterIP` in `values-local.yaml`.
+- **Public edge.** `aws`: Route53 → NLB → Envoy (§11–12); ExternalDNS
+  (spec 012) publishes the Route 53 records, AWS Load Balancer Controller
+  (spec 011) provisions the NLB. `local`: no NLB/Route53/ACM/ExternalDNS;
+  access is via `kubectl port-forward` directly to Envoy Gateway's Service,
+  forced to `ClusterIP` in `values-local.yaml`.
 - **Routing.** `aws`: Gateway API `HTTPRoute`s match by hostname
   (`api.lab.<root-domain>`). `local`: routes match by path (`/api`,
   `/grafana`, `/argocd`), since `kubectl port-forward` to `localhost` can't
   present a matching Host header. This is a permanent, accepted divergence.
-- **TLS.** `aws`: ACM certificate, terminated at ALB (§12). `local`: plain
-  HTTP, no TLS anywhere in the request path.
-- **Secrets.** `aws`: Secrets Manager + Pod Identity (spec 012). `local`:
+- **TLS.** `aws`: ACM certificate, terminated at the NLB's TLS listener
+  (§12) — Envoy never holds a certificate. `local`: plain HTTP, no TLS
+  anywhere in the request path.
+- **Secrets.** `aws`: Secrets Manager + Pod Identity (spec 013). `local`:
   placeholder credentials loaded directly into Kubernetes `Secret` objects by
   default, with an opt-in path to decrypt real values from `secrets/*.enc`
-  via AWS KMS instead (spec 020) — neither local path touches Secrets
+  via AWS KMS instead (spec 021) — neither local path touches Secrets
   Manager, Pod Identity, or External Secrets Operator.
 - **Sync source.** `aws`: the root Application syncs from the GitHub repo.
   `local`: the root Application syncs from the local working directory on
@@ -606,25 +618,37 @@ The public request path is:
 ```text
 client
   ↓
-Route 53
+Route 53 (ExternalDNS-managed record, spec 012)
   ↓
-ALB
+NLB (AWS Load Balancer Controller, spec 011)
   ↓
 Envoy Gateway
   ↓
 Kubernetes service
 ```
 
-## ALB responsibility
+There is no AWS-side `Ingress` or `Gateway` resource in this path — the NLB
+is provisioned directly from Envoy Gateway's own `Service`/`EnvoyProxy`
+object (spec 010/011). Gateway API, via Envoy's `HTTPRoute`s, is the only
+routing definition anywhere in this design.
 
-ALB provides:
+## NLB responsibility
+
+The NLB provides:
 
 - AWS-managed public ingress
-- ACM TLS termination
+- ACM TLS termination (a TLS listener on port 443 using the persistent ACM
+  certificate, §12) — no port 80, no HTTP→HTTPS redirect at this layer
 - target health checks
+- Proxy Protocol v2 to Envoy, so client IP survives the NLB hop
 - forwarding to Envoy
 
-ALB should not duplicate application routing logic.
+The NLB performs no host/path routing at all — not "should not duplicate,"
+literally cannot: an NLB operates at L4. All routing logic lives in Envoy.
+
+(An ALB was the initial design; NLB+ACM was chosen instead — see ADR 0011
+for the comparison against NLB+cert-manager and why ACM/Terraform-owned
+certificates were kept.)
 
 ## Envoy responsibility
 
@@ -638,6 +662,9 @@ Envoy provides:
 - security headers
 - traffic policies
 - gateway telemetry
+
+Envoy's `Gateway` listener is plain HTTP — it never holds a TLS
+certificate; TLS ends at the NLB.
 
 Example DNS names may include:
 
@@ -674,7 +701,7 @@ The Terraform persistent layer creates and owns:
 
 Both are Persistent-lifecycle: they survive `make down` and EKS destruction/recreation.
 
-The ACM certificate must be created in the same AWS region as the ALB that uses it (§11), and should use DNS validation against the delegated `lab.<root-domain>` hosted zone rather than email validation.
+The ACM certificate must be created in the same AWS region as the NLB that uses it (§11), and should use DNS validation against the delegated `lab.<root-domain>` hosted zone rather than email validation.
 
 The existing root-domain certificate is not reused for the platform. The lab subdomain gets its own certificate unless a later ADR explicitly changes this decision.
 
@@ -709,9 +736,9 @@ lab.<root-domain> hosted zone
 
 Disposable runtime:
 
-Route 53 record
+Route 53 record (ExternalDNS-managed, spec 012)
     ↓
-ALB
+NLB (AWS Load Balancer Controller, spec 011)
     ↓
 Envoy Gateway
     ↓
@@ -720,7 +747,20 @@ platform/application workloads
 
 ## Records inside the lab zone
 
-Individual DNS records inside the delegated `lab.<root-domain>` zone (for example, the record pointing at the ALB) are disposable — they are created and removed as part of normal `make up`/`make down` operation. Ownership of these records must be explicit and must not overlap between Terraform and Kubernetes controllers: in practice, a controller such as `external-dns` (Argo-managed) owns record lifecycle tied to Kubernetes/AWS resource lifecycle, while Terraform owns only the hosted zone and certificate themselves.
+Individual DNS records inside the delegated `lab.<root-domain>` zone (for
+example, the record pointing at the NLB) are disposable — they are created
+and removed as part of normal `make up`/`make down` operation. Ownership of
+these records is explicit and does not overlap between Terraform and
+Kubernetes controllers: ExternalDNS (spec 012, Argo-managed) owns
+application-hostname record lifecycle, reading hostnames directly from
+Envoy's `HTTPRoute`s (`--source=gateway-httproute`); Terraform owns only the
+hosted zone, the certificate, and the certificate's own DNS-validation
+record. ExternalDNS runs with a TXT ownership registry
+(`--registry=txt`, a unique `--txt-owner-id`, `--domain-filter` scoped to
+`lab.<root-domain>`) specifically so its sync-mode reconciliation cannot
+touch records it doesn't recognize as its own — including that ACM
+validation record. `--policy=upsert-only` is not used as a substitute for
+this guard, since it would leave orphaned records behind on `make down`.
 
 The hosted zone and certificate are never deleted by `make down` (§23–24).
 
@@ -730,9 +770,13 @@ The real root domain value is private configuration, not a security credential. 
 
 ## TLS termination
 
-Initial TLS termination occurs at ALB.
+TLS termination occurs at the NLB's TLS listener, using the ACM certificate
+above. Envoy Gateway never holds a certificate — its `Gateway` listener is
+plain HTTP (spec 010).
 
-End-to-end TLS between ALB and Envoy is not required for the initial implementation.
+End-to-end TLS between the NLB and Envoy is not implemented — the NLB
+forwards plaintext, and client IP is preserved via Proxy Protocol v2 (spec
+011) rather than by re-establishing TLS to Envoy.
 
 ---
 
@@ -847,7 +891,7 @@ This behavior must be covered by full lifecycle CI.
 
 # 17. Secrets and Identity
 
-This section describes the `aws` target. The `local` target does not use Secrets Manager, Pod Identity, or External Secrets Operator at all — see §10a and spec 020 for its placeholder-by-default, KMS-decrypt-opt-in secrets mechanism.
+This section describes the `aws` target. The `local` target does not use Secrets Manager, Pod Identity, or External Secrets Operator at all — see §10a and spec 021 for its placeholder-by-default, KMS-decrypt-opt-in secrets mechanism.
 
 No plaintext runtime secret may exist in Git.
 
@@ -901,14 +945,14 @@ the state paths and actions it needs:
 ```text
 one GitHub OIDC provider (spec 001, Bootstrap, created once)
         │
-        ├── personal-lab role (spec 014) — "normal deploy"
+        ├── personal-lab role (spec 015) — "normal deploy"
         │     scoped to the personal lab's persistent/disposable state
         │
-        └── CI role (spec 018) — "privileged full-environment test"
+        └── CI role (spec 019) — "privileged full-environment test"
               scoped to ci/* state paths only
 ```
 
-Atlantis (spec 016) does not use this provider at all — it authenticates via
+Atlantis (spec 017) does not use this provider at all — it authenticates via
 its own compute's instance/task role, never OIDC (ADR 0003).
 
 ---
@@ -970,7 +1014,7 @@ learn a non-secret hostname.
 
 # 19. Observability
 
-This section describes the full `aws`-target stack. The `local` target runs the same components but with a reduced, explicitly-stated sizing/retention posture for laptop scale (§10a); any component omitted for `local` must be stated explicitly, not silently dropped — see spec 020 for specifics.
+This section describes the full `aws`-target stack. The `local` target runs the same components but with a reduced, explicitly-stated sizing/retention posture for laptop scale (§10a); any component omitted for `local` must be stated explicitly, not silently dropped — see spec 021 for specifics.
 
 The platform uses:
 
@@ -1094,7 +1138,7 @@ and:
 external exposure object
    ↓ deleted
 AWS Load Balancer Controller
-   ↓ deletes ALB resources
+   ↓ deletes NLB resources
 controller deleted afterward
 ```
 
@@ -1162,7 +1206,7 @@ Kafka/Postgres/observability become healthy
    ↓
 Envoy becomes healthy
    ↓
-AWS Load Balancer Controller provisions ALB
+AWS Load Balancer Controller provisions NLB
    ↓
 public HTTPS endpoint becomes usable
 ```
@@ -1194,7 +1238,7 @@ Argo executes dependency-safe reverse cleanup
    ↓
 public exposure disappears
    ↓
-AWS LB Controller removes ALB
+AWS LB Controller removes NLB
    ↓
 applications stop
    ↓
@@ -1235,11 +1279,11 @@ After successful shutdown, these resources must be absent:
 EKS
 system worker
 Karpenter workload instances
-ALB
+NLB
 Envoy
 Kafka/Postgres pods
 observability pods
-disposable Route 53 records inside the lab hosted zone (e.g., the ALB's DNS record)
+disposable Route 53 records inside the lab hosted zone (e.g., the NLB's DNS record)
 disposable Kubernetes resources
 disposable AWS resources
 ```
@@ -1285,7 +1329,7 @@ YAML, Terraform, Helm values, or documentation (constitution §19, ADR 0007).
 
 CI/CD is part of the platform architecture, not an optional afterthought.
 
-All changes reach `main` through a reviewed pull request — direct pushes to `main` are disabled (spec 015). The platform uses four complementary mechanisms on top of that, chosen by what actually changed (change-aware CI, §26):
+All changes reach `main` through a reviewed pull request — direct pushes to `main` are disabled (spec 016). The platform uses four complementary mechanisms on top of that, chosen by what actually changed (change-aware CI, §26):
 
 ```text
 FAST VALIDATION
@@ -1346,7 +1390,7 @@ their own.
 
 # 26a. Terraform Plan/Apply Automation
 
-Every pull request that changes a file under `terraform/**` receives an automatic `terraform plan` comment, and merging the pull request (after review) triggers `terraform apply` for the affected stack — using a PR-driven Terraform automation service (Atlantis; see spec 016), not a person running `terraform apply` from a laptop.
+Every pull request that changes a file under `terraform/**` receives an automatic `terraform plan` comment, and merging the pull request (after review) triggers `terraform apply` for the affected stack — using a PR-driven Terraform automation service (Atlantis; see spec 017), not a person running `terraform apply` from a laptop.
 
 This service must:
 
@@ -1367,18 +1411,18 @@ This mechanism only touches Terraform/Terragrunt-managed AWS state. It never app
 
 Pull requests touching `gitops/**` (or anything in the disposable stack that
 affects what Argo CD reconciles) get a cheap, AWS-free integration test
-(spec 022): create a kind cluster, install Argo CD via the `local` target's
-plain-script install path (§10a, spec 020), apply the repository's normal
+(spec 023): create a kind cluster, install Argo CD via the `local` target's
+plain-script install path (§10a, spec 021), apply the repository's normal
 GitOps bootstrap with the root Application's `targetRevision` pointed at the
 PR's exact commit (not `main`), let Argo reconcile the platform, then run the
-same Go/Ginkgo E2E suite (§27, spec 021) used against real EKS.
+same Go/Ginkgo E2E suite (§27, spec 022) used against real EKS.
 
 Tests never install Postgres/Kafka/Grafana themselves — Argo CD owns
 installation here exactly as it does for the `aws` target; the point is to
 test the actual GitOps reconciliation path, not to re-implement it in test
 setup code.
 
-This test cannot faithfully exercise AWS-specific integrations: ALB/NLB,
+This test cannot faithfully exercise AWS-specific integrations: NLB,
 Route 53, ACM, EBS/EFS CSI, Pod Identity, or AWS Secrets Manager integration.
 Those remain Full Lifecycle Validation's job (§27–28). It runs only in a
 trusted GitHub context (§30) — even though it touches no AWS resources, it
@@ -1393,7 +1437,7 @@ Infrastructure-relevant changes should be capable of triggering a complete platf
 Verification against the real platform, here and in the kind-based test
 (§26b), is expressed as a Go test suite (Ginkgo v2/Gomega, `client-go` for
 Kubernetes access, `pgx` for PostgreSQL, `net/http` for HTTP API checks —
-spec 021), not a bash script re-implemented per environment. An
+spec 022), not a bash script re-implemented per environment. An
 `Environment` abstraction lets the same assertions run against a kind
 cluster or real EKS by changing only how a service is reached (port-forward
 vs. real ingress/DSN), not what is asserted.
@@ -1452,7 +1496,7 @@ A complete integration run should approximately perform:
    - Debezium healthy
    - observability healthy
    - Envoy healthy
-   - ALB healthy
+   - NLB healthy
    - HTTPS works
 
 4. Write known data to PostgreSQL.
@@ -1466,7 +1510,7 @@ A complete integration run should approximately perform:
 8. Verify:
    - EKS absent
    - compute absent
-   - ALB absent
+   - NLB absent
    - persistent storage remains
 
 9. Recreate platform.
@@ -1736,7 +1780,7 @@ All implementation specifications must preserve the following:
 7. EKS and disposable compute must disappear after successful shutdown.
 8. Controllers remain available until owned resources finish cleanup.
 9. Kubernetes-side deletion ordering is primarily encoded through Argo/Kubernetes.
-10. ALB provides AWS ingress; Envoy owns application traffic policy.
+10. The NLB provides AWS ingress and TLS termination; Envoy owns all application traffic policy and routing.
 11. Significant platform components expose useful telemetry.
 12. The platform is reconstructable from Git and persistent state.
 13. Workstation-initiated and GitHub lifecycle operations behave equivalently (§34).
@@ -1776,7 +1820,7 @@ PostgreSQL healthy
 Debezium healthy
 Prometheus healthy
 Envoy healthy
-ALB healthy
+NLB healthy
 HTTPS reachable
 
         ↓
@@ -1802,7 +1846,7 @@ make down
 VERIFY:
 EKS absent
 EC2 nodes absent
-ALB absent
+NLB absent
 persistent state present
 
         ↓
@@ -1891,4 +1935,4 @@ ManagedBy   = terraform
 
 These defaults should be set once, at the provider level (a `default_tags` block established in the bootstrap stack, §1 of the specs roadmap), so every later stack inherits them automatically rather than relying on each resource remembering to tag itself.
 
-Where Kubernetes controllers create AWS resources on Terraform's behalf (the AWS Load Balancer Controller's ALB, `external-dns`'s Route 53 records, the EBS CSI driver's volumes), the same tags/labels should be applied where the controller supports it, so identification holds consistently across the Terraform/Argo ownership boundary (§7).
+Where Kubernetes controllers create AWS resources on Terraform's behalf (the AWS Load Balancer Controller's NLB, ExternalDNS's Route 53 records, the EBS CSI driver's volumes), the same tags/labels should be applied where the controller supports it, so identification holds consistently across the Terraform/Argo ownership boundary (§7).

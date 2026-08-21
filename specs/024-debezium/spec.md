@@ -15,7 +15,7 @@ Wires Debezium's PostgreSQL connector into a Kafka Connect deployment, completin
 - Debezium PostgreSQL connector configuration pointing at the Postgres cluster from spec 007's replication slot.
 - Verification that committed transactions produce corresponding Kafka messages.
 
-This pipeline runs unchanged on the `local` target (spec 020) — Debezium itself holds no persistent state, so the `aws`/`local` storage divergence in specs 005/007/008 doesn't affect it directly, though a `local` run inherits those specs' throwaway-data posture (no destroy/recreate proof needed).
+This pipeline runs unchanged on the `local` target (spec 021) — Debezium itself holds no persistent state, so the `aws`/`local` storage divergence in specs 005/007/008 doesn't affect it directly, though a `local` run inherits those specs' throwaway-data posture (no destroy/recreate proof needed).
 
 Excludes: any application-side consumer of the CDC topics (out of scope — this is a platform capability, not an application). Debezium dashboards themselves are in scope here (not excluded): spec 009 (observability) was implemented without them, on the understanding that this spec adds them once it lands.
 
@@ -25,8 +25,8 @@ Excludes: any application-side consumer of the CDC topics (out of scope — this
 2. Only committed transactions MUST be represented in the CDC stream; consumers of these topics MUST be able to assume at-least-once delivery (architecture.md §15) — verify this explicitly rather than assuming Debezium's defaults are correct without checking.
 3. Replication-slot health and WAL retention MUST be observable (architecture.md §15) — expose whatever metrics Debezium/Postgres provide for slot lag and WAL disk usage, and add the corresponding dashboards to spec 009's Grafana stack (deferred there, delivered here).
 4. Kafka Connect / the Debezium connector is Argo-managed like everything else at this layer (constitution §2).
-5. Debezium connector configuration (database credentials) MUST NOT contain plaintext secret values in Git — this spec lands after spec 012 (Secrets Manager + Pod Identity), so it MUST use that real mechanism directly from the start; no placeholder-then-migrate step applies here, unlike Postgres (007) and Kafka (008), which predate spec 012.
-6. This spec MUST retroactively amend spec 013 (Lifecycle) and spec 018 (CI Full Lifecycle Validation): both were implemented with CDC verification deliberately deferred, and this spec restores the "write Kafka test data → verify CDC" step to their acceptance-test sequences.
+5. Debezium connector configuration (database credentials) MUST NOT contain plaintext secret values in Git — this spec lands after spec 013 (Secrets Manager + Pod Identity), so it MUST use that real mechanism directly from the start; no placeholder-then-migrate step applies here, unlike Postgres (007) and Kafka (008), which predate spec 013.
+6. This spec MUST retroactively amend spec 014 (Lifecycle) and spec 019 (CI Full Lifecycle Validation): both were implemented with CDC verification deliberately deferred, and this spec restores the "write Kafka test data → verify CDC" step to their acceptance-test sequences.
 
 ## Implementation hints
 
@@ -43,4 +43,4 @@ Excludes: any application-side consumer of the CDC topics (out of scope — this
 - No independent persistence proof needed here (Debezium itself holds no data that must survive EKS destruction — its state is Kafka Connect offsets, which live in Kafka, already covered by spec 008's persistence proof) — but the pipeline should be re-verified end-to-end as part of spec 007/008's destroy/recreate tests once this spec exists.
 - Fast validation (Helm/manifest rendering, k8s schema) on connector configuration changes.
 - Grafana (spec 009) shows live Debezium connector-health and replication-slot-lag dashboards — confirms the retroactive amendment to spec 009 (Requirement 3 above).
-- A full `make up` → write Postgres/Kafka test data → verify CDC → `make down` → `make up` → verify CDC still works run, per spec 013's restored lifecycle-test steps, passes end to end (Requirement 6 above).
+- A full `make up` → write Postgres/Kafka test data → verify CDC → `make down` → `make up` → verify CDC still works run, per spec 014's restored lifecycle-test steps, passes end to end (Requirement 6 above).

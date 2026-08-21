@@ -67,7 +67,7 @@ Created by `make up`, removed by `make down`:
 - worker nodes
 - Karpenter nodes
 - Argo CD
-- ALB
+- NLB
 - Envoy
 - Kubernetes workloads
 - observability workloads
@@ -133,7 +133,7 @@ A controller MUST remain alive until resources it manages have completed cleanup
 Examples:
 - Kafka resources are removed before Strimzi.
 - PostgreSQL CRs are removed before the PostgreSQL operator.
-- ALB-triggering resources are removed before AWS Load Balancer Controller.
+- NLB-triggering resources are removed before AWS Load Balancer Controller.
 - Gateway resources are removed before Envoy Gateway.
 
 EKS MUST NOT be destroyed while required external-resource cleanup is still pending.
@@ -146,15 +146,18 @@ The intended public path is:
 
 Client
 → Route 53
-→ AWS ALB
+→ AWS NLB
 → Envoy Gateway
 → Kubernetes workload
 
-ALB owns AWS ingress and TLS termination.
+The NLB owns AWS ingress and TLS termination (an NLB TLS listener using the
+persistent ACM certificate, §14) — there is no AWS-side Ingress/Gateway
+routing resource; the NLB forwards directly to Envoy Gateway's own Service.
 
 Envoy owns application-layer routing and traffic policy.
 
-Routing logic SHOULD NOT be duplicated between ALB and Envoy.
+Routing logic SHOULD NOT be duplicated between the NLB and Envoy — the NLB
+performs no host/path routing at all.
 
 Route 53 in this path refers to the platform's delegated `lab.<root-domain>` hosted zone, not the external parent/root hosted zone — see §14.
 
@@ -227,7 +230,7 @@ CI infrastructure MUST be isolated from the personal lab environment. Full-lifec
 
 Untrusted public pull requests MUST NOT receive privileged AWS deployment access.
 
-Platform verification against a running environment (kind or real EKS) MUST be expressed as a real test suite (spec 021) reused across both targets, not duplicated bash scripts per environment.
+Platform verification against a running environment (kind or real EKS) MUST be expressed as a real test suite (spec 022) reused across both targets, not duplicated bash scripts per environment.
 
 ---
 
@@ -264,9 +267,9 @@ The platform MUST NOT create or delete the parent/root hosted zone during normal
 
 `make down` MUST NOT delete the delegated `lab.<root-domain>` hosted zone, the ACM certificate, or the parent/root hosted zone.
 
-Disposable DNS records inside the delegated lab hosted zone (for example, a record pointing at the ALB) MAY be created and destroyed as part of normal disposable-lifecycle operation. Ownership of such records MUST be explicit and MUST NOT overlap between Terraform and Kubernetes controllers.
+Disposable DNS records inside the delegated lab hosted zone (for example, a record pointing at the NLB) MAY be created and destroyed as part of normal disposable-lifecycle operation. Ownership of such records MUST be explicit and MUST NOT overlap between Terraform and Kubernetes controllers.
 
-The existing root-domain ACM certificate MUST NOT be reused for the platform, and the ACM certificate MUST be created in the same AWS region as the ALB that uses it, validated via DNS against the delegated `lab.<root-domain>` zone, unless a later ADR changes this decision.
+The existing root-domain ACM certificate MUST NOT be reused for the platform, and the ACM certificate MUST be created in the same AWS region as the NLB that uses it, validated via DNS against the delegated `lab.<root-domain>` zone, unless a later ADR changes this decision.
 
 The real root domain value is private configuration, not a security credential — keeping it out of the public repository is repository hygiene, not a security control. It MUST NOT be committed in plaintext anywhere in this repository. It MUST be sourced through the same KMS-encrypted bootstrap mechanism as other bootstrap configuration (§5) — its own dedicated ciphertext file, `secrets/root-domain.enc`, not combined with any other secret — and supplied to Terraform at apply time rather than hardcoded into Terraform variables, tfvars, YAML, Helm values, or documentation.
 
@@ -297,11 +300,11 @@ At minimum, every Terraform-managed resource MUST carry:
 - `Project = vk-lab-platform` — identifies the resource as belonging to this repository/platform, distinct from any other project or unrelated resource in the same AWS account.
 - `Scope = platform` — marks the resource as platform infrastructure, not a business/application service, reinforcing at the AWS resource level the repository-scope rule in §1 (this repository contains platform code only).
 - `Lifecycle = state | bootstrap | persistent | disposable` — the resource's lifecycle class (§3).
-- `ManagedBy = terraform` — distinguishes Terraform-owned resources from resources created indirectly by Argo CD-managed Kubernetes controllers (e.g., an ALB created by the AWS Load Balancer Controller), reinforcing the ownership boundary in §2.
+- `ManagedBy = terraform` — distinguishes Terraform-owned resources from resources created indirectly by Argo CD-managed Kubernetes controllers (e.g., an NLB created by the AWS Load Balancer Controller), reinforcing the ownership boundary in §2.
 
 Default tags SHOULD be applied at the provider level (e.g., a Terraform `default_tags` block established in the bootstrap stack and inherited by every later stack) rather than repeated per resource, so the rule cannot be silently skipped when a new resource is added.
 
-Resources created indirectly by Kubernetes controllers (ALB, Route 53 records via `external-dns`, EBS volumes via the CSI driver) SHOULD carry equivalent tags or labels where the controller supports it, so the same identification standard holds across the Terraform/Argo ownership boundary, not only for Terraform-created resources.
+Resources created indirectly by Kubernetes controllers (NLB, Route 53 records via `external-dns`, EBS volumes via the CSI driver) SHOULD carry equivalent tags or labels where the controller supports it, so the same identification standard holds across the Terraform/Argo ownership boundary, not only for Terraform-created resources.
 
 ---
 
@@ -321,16 +324,16 @@ A command that destroys Persistent or Bootstrap resources is a different, explic
 
 ## 18. Local Execution Target Scope
 
-The platform supports a second execution target, `local` (minikube or kind), alongside the `aws` target described everywhere else in this constitution unless stated otherwise. See ADR 0006 and spec 020 for the full design.
+The platform supports a second execution target, `local` (minikube or kind), alongside the `aws` target described everywhere else in this constitution unless stated otherwise. See ADR 0006 and spec 021 for the full design.
 
-The `local` target is AWS-free except for one deliberate, opt-in exception: decrypting real secret values from `secrets/*.enc` via AWS KMS, when explicitly requested instead of the default placeholder credentials (spec 020). No other AWS API call exists anywhere in the `local` path.
+The `local` target is AWS-free except for one deliberate, opt-in exception: decrypting real secret values from `secrets/*.enc` via AWS KMS, when explicitly requested instead of the default placeholder credentials (spec 021). No other AWS API call exists anywhere in the `local` path.
 
 Because the `local` target does not fit the assumptions several sections above make unconditionally, the following sections apply to the `aws` target only, per §13's rule that a conflict with this constitution MUST be recorded and the constitution updated intentionally rather than silently worked around:
 
 - **§3 (Lifecycle Separation)** — the `local` target's cluster and workloads are not State, Bootstrap, Persistent, or Disposable; they are not governed by this taxonomy at all, and are not a fifth class.
 - **§4 (Persistence Safety)** — `local` data (Postgres, Kafka) is fully throwaway. There is no local persistence guarantee, no destructive-reclaim-policy prohibition, and no destroy/recreate proof requirement for `local`. Deleting the local cluster is expected to delete everything in it.
-- **§5 (Security)** — the `local` target MUST NOT use AWS Secrets Manager or EKS Pod Identity. Its secrets mechanism (placeholder-by-default, KMS-decrypt-opt-in, loaded directly into Kubernetes `Secret` objects) is defined in spec 020, not this section.
-- **§8 (Public Traffic)** — the `local` target has no Route 53, ALB, or ACM. Access is via `kubectl port-forward` directly to Envoy Gateway's Service; there is no TLS termination in the `local` path at all.
+- **§5 (Security)** — the `local` target MUST NOT use AWS Secrets Manager or EKS Pod Identity. Its secrets mechanism (placeholder-by-default, KMS-decrypt-opt-in, loaded directly into Kubernetes `Secret` objects) is defined in spec 021, not this section.
+- **§8 (Public Traffic)** — the `local` target has no Route 53, NLB, or ACM. Access is via `kubectl port-forward` directly to Envoy Gateway's Service; there is no TLS termination in the `local` path at all.
 
 The following sections' requirements are vacuously satisfied for `local` and need no separate enforcement there, since the resources they govern simply don't exist on that target:
 

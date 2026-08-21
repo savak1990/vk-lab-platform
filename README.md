@@ -18,7 +18,7 @@ for what went wrong and how this platform fixes it.
 
 State (spec 001), Bootstrap (spec 001), and Persistent (spec 002) are
 implemented. Disposable (EKS, Argo CD, workloads — spec 003 onward, wired
-up behind `make up`/`make down` in spec 014) is not yet built.
+up behind `make up`/`make down` in spec 015) is not yet built.
 
 ## Usage
 

@@ -7,8 +7,8 @@ resource "helm_release" "argocd" {
   chart      = "argo-cd"
   version    = var.argocd_chart_version
 
-  # No ingress: reached via port-forward until spec 012 wires up the real
-  # ALB/Envoy edge.
+  # No ingress: reached via port-forward until spec 011 wires up the real
+  # NLB/Envoy edge.
   set = [
     {
       name  = "server.service.type"
@@ -29,7 +29,7 @@ resource "helm_release" "argocd" {
 
 # The root ("app-of-apps") Application, rendered from the gitops/bootstrap
 # chart so the exact same chart (not a Terraform-only template) is what
-# spec 021's local install script uses for the `local` target.
+# spec 022's local install script uses for the `local` target.
 resource "helm_release" "root_application" {
   name      = "root-application"
   namespace = "argocd"

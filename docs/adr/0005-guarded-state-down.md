@@ -45,7 +45,7 @@ Add `make state-down` (`scripts/state-down.sh`), matching the shape of
 - The full teardown-and-recreate test is now just a sequence of `make`
   targets, documented in `terraform/live/state/README.md`.
 - This does **not** introduce a mechanism for tearing down per-environment
-  or per-CI-run state. Ephemeral GitHub Actions environments (spec 014/018)
+  or per-CI-run state. Ephemeral GitHub Actions environments (spec 015/018)
   are expected to use their own key prefixes (`ci/persistent/`,
   `ci/disposable/`) inside the same, still-shared, never-normally-destroyed
   bucket — not spin up or tear down the bucket itself. `state-down` remains

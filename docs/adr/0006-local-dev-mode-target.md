@@ -25,7 +25,7 @@ AWS-only.
 Several existing constitution rules assume a single, AWS-backed target
 unconditionally: §3's "exactly one lifecycle class" taxonomy, §4's
 persistence MUSTs, §5's Secrets-Manager MUST, and §8's mandated
-Route53→ALB→Envoy public path. Per constitution §13, introducing a target
+Route53→NLB→Envoy public path. Per constitution §13, introducing a target
 that doesn't fit those rules requires recording the conflict and updating
 the constitution intentionally, rather than silently working around it —
 this ADR is that record; constitution §18 is the resulting carve-out.
@@ -60,7 +60,7 @@ fork into separate Kubernetes manifest trees.
   `Retain` requirement. There is no local persistent-lifecycle class and no
   destroy/recreate persistence proof for `local`; deleting the local cluster
   is expected to delete everything in it.
-- **No AWS edge locally.** `local` has no ALB, Route53, or ACM. Access is via
+- **No AWS edge locally.** `local` has no NLB, Route53, or ACM. Access is via
   `kubectl port-forward` directly to Envoy Gateway's Service, which the
   `local` values file forces to `ClusterIP` (Envoy Gateway's own default,
   `LoadBalancer`, would hang `<pending>` indefinitely on kind/minikube with no
@@ -82,14 +82,14 @@ fork into separate Kubernetes manifest trees.
   separate opt-in flag/target instead decrypts real values from
   `secrets/*.enc` via the existing `scripts/secret-decrypt.sh` (AWS KMS,
   `alias/${PROJECT_NAME}-secrets`) and loads those. Neither local path uses
-  Secrets Manager, Pod Identity, or External Secrets Operator — spec 012
+  Secrets Manager, Pod Identity, or External Secrets Operator — spec 013
   (Secrets Manager + Pod Identity) is `aws`-target-only and does not apply to
   `local` in either mode.
 - **Local sync source is the working directory.** The `local` target's root
   Application syncs from the local working directory on disk, not GitHub, so
   editing `gitops/` and seeing Argo reconcile it does not require a
   commit/push first. (`aws` keeps syncing from the GitHub repo, unchanged.)
-  The concrete mechanism is recorded as a requirement in spec 020, not left
+  The concrete mechanism is recorded as a requirement in spec 021, not left
   implicit here.
 
 ## Alternatives considered
@@ -128,8 +128,8 @@ choice for this target.
 
 **f. LocalStack to emulate Secrets Manager/other AWS services locally.**
 Rejected: would reintroduce an AWS-shaped dependency (a specific emulator,
-with its own drift-from-real-AWS risk) for the sake of keeping spec 012's
-mechanism nominally in play, when spec 012 simply doesn't apply to a target
+with its own drift-from-real-AWS risk) for the sake of keeping spec 013's
+mechanism nominally in play, when spec 013 simply doesn't apply to a target
 that has no AWS Pod Identity to authenticate with in the first place.
 
 ## Consequences
@@ -148,9 +148,9 @@ that has no AWS Pod Identity to authenticate with in the first place.
   GitHub Lifecycle Equivalence," meaning "you ran `make up` from your own
   workstation against real AWS") is renamed to "workstation-initiated"
   throughout, to free "local" to mean only this new target from here on.
-- Fast validation (spec 017) gains a requirement to `helm template` render
+- Fast validation (spec 018) gains a requirement to `helm template` render
   both `values-aws.yaml` and `values-local.yaml` for every component, using
-  dummy/placeholder secret values — the credential-free rule in spec 017
+  dummy/placeholder secret values — the credential-free rule in spec 018
   holds even though decision above adds an opt-in path elsewhere that does
   use AWS KMS.
 - A local run is never a substitute for the `aws`-target full lifecycle

@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-The platform needs a public DNS name and a matching TLS certificate for its ALB/Envoy Gateway public edge (architecture.md §11–12). The user already owns a root domain with an existing Route 53 hosted zone, managed as external/shared infrastructure outside this repository — it predates this project and may host other, unrelated DNS records.
+The platform needs a public DNS name and a matching TLS certificate for its NLB/Envoy Gateway public edge (architecture.md §11–12). The user already owns a root domain with an existing Route 53 hosted zone, managed as external/shared infrastructure outside this repository — it predates this project and may host other, unrelated DNS records.
 
 The platform is also a public repository (constitution §5, §11). The root domain name is not itself a secret, but it is personal infrastructure detail the user does not want committed in plaintext to a public repository, and the platform must not require standing write access to infrastructure it does not own.
 
@@ -21,9 +21,9 @@ A DNS/TLS design decision was needed that:
 
 The platform uses a **delegated subdomain**: `lab.<root-domain>`.
 
-- The Terraform **persistent** layer creates and owns a Route 53 public hosted zone for `lab.<root-domain>` and an ACM certificate covering `lab.<root-domain>` and `*.lab.<root-domain>`, in the same AWS region as the ALB, validated via DNS against the delegated zone.
+- The Terraform **persistent** layer creates and owns a Route 53 public hosted zone for `lab.<root-domain>` and an ACM certificate covering `lab.<root-domain>` and `*.lab.<root-domain>`, in the same AWS region as the NLB, validated via DNS against the delegated zone.
 - The parent/root hosted zone and the root domain registration remain external infrastructure, entirely outside this repository's Terraform state and outside its lifecycle commands — **except** for the single NS record delegating `lab.<root-domain>`, which the persistent stack's `route53` unit now manages directly (see "Revision" below). The zone itself — its other records, its creation, its deletion — stays fully external.
-- `make down` never deletes the lab hosted zone or its certificate — only disposable records inside the lab zone (e.g., the ALB's record) and the ALB itself are removed.
+- `make down` never deletes the lab hosted zone or its certificate — only disposable records inside the lab zone (e.g., the NLB's record) and the NLB itself are removed.
 - The real root domain value is treated as private configuration (not a secret) and is sourced via the existing KMS-encrypted bootstrap mechanism — its own dedicated ciphertext file, `secrets/<project>/root-domain.enc`, decrypted (by Terraform directly, via `aws_kms_secrets`) and supplied at apply time — never committed in plaintext and never combined with other secrets in one file. Documentation uses `<root-domain>` / `lab.<root-domain>` placeholders throughout. This buys reproducibility, not secrecy: the value still lands in the persistent stack's Terraform state either way, so KMS-encrypting the source file adds no confidentiality the state doesn't already concede — the actual win is that a fresh checkout plus `kms:Decrypt` access is enough to bring up a new laptop or CI runner with no out-of-band handoff of the domain value.
 
 ## Alternatives considered
@@ -55,5 +55,5 @@ This does not change the original objection to keeping the platform able to touc
 - Where it doesn't apply (parent zone at a registrar/other provider): one manual, one-time step is still required outside the normal lifecycle, documented as a bootstrap prerequisite (specs 001/002).
 - The platform's own hosted zone and certificate are fully disposable-lifecycle-safe to build against: any DNS/TLS work in this repository can be developed and torn down repeatedly with zero risk to the parent zone or its other records.
 - The real domain value must flow through Terraform (it ends up in Route 53/ACM resource attributes), so persistent-stack Terraform state necessarily contains it. Remote state for the persistent stack must be treated as a private, access-controlled artifact — this ADR does not claim the domain can be fully hidden from Terraform state.
-- `specs/002-persistent-foundation` and `specs/011-public-edge` must be read together with `specs/000-constitution/spec.md` §14 for the full ownership boundary.
+- `specs/002-persistent-foundation` and `specs/011-nlb-edge` must be read together with `specs/000-constitution/spec.md` §14 for the full ownership boundary.
 - Reusing the parent zone's existing certificate, granting the platform write access to any other parent-zone record, or letting Terraform create/delete the parent zone itself, would all require superseding this ADR further.

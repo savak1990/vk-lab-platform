@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-The platform's CI/CD design (specs 013–020) predates a broader set of
+The platform's CI/CD design (specs 014–020) predates a broader set of
 requirements: the repo must be fully forkable with zero code changes, must
 support cheap kind-based GitOps testing alongside optional full-AWS testing,
 must authenticate GitHub Actions to AWS without long-lived credentials, and
@@ -15,9 +15,9 @@ must run the same E2E assertions locally, in kind, and against real EKS.
 Two problems in the existing design block that:
 
 - The GitHub OIDC **provider** (`token.actions.githubusercontent.com`) is
-  currently created by spec 014, framed as part of the personal lab's
+  currently created by spec 015, framed as part of the personal lab's
   lab-up/lab-down workflows. AWS allows exactly one OIDC provider per
-  provider URL per account — spec 018's text ("mirrors 014's OIDC
+  provider URL per account — spec 019's text ("mirrors 014's OIDC
   provider/role pattern") is ambiguous about whether it creates a second
   provider, which would fail outright. The provider is inherently
   account-level, region-agnostic infra, not something owned by whichever
@@ -28,7 +28,7 @@ Two problems in the existing design block that:
   platform already uses for its own committed secrets.
 
 Separately, there is no test framework of any kind on disk today, no
-GitOps-layer CI test cheaper than a full EKS cluster, and spec 020 (local
+GitOps-layer CI test cheaper than a full EKS cluster, and spec 021 (local
 dev mode) deliberately stopped short of CI integration, flagging it as "a
 separate, explicitly scoped addition" — this ADR is that addition.
 
@@ -56,7 +56,7 @@ inventing a third role: the split already existed by accident of which spec
 needed a role for which purpose; this ADR just makes the provider/role
 boundary explicit and correct.
 
-Atlantis (spec 016) is unaffected — it never used OIDC and continues
+Atlantis (spec 017) is unaffected — it never used OIDC and continues
 authenticating via its own compute's instance/task role.
 
 ### Fork configurability
@@ -102,18 +102,18 @@ so a run never accidentally targets an unrelated cluster.
 ### Kind-based CI GitOps integration test
 
 A new spec (022) adds a cheap CI path that creates a kind cluster, installs
-Argo CD via spec 020's plain-script local install, applies the repository's
+Argo CD via spec 021's plain-script local install, applies the repository's
 normal GitOps bootstrap pointed at the PR's exact commit (not `main`), lets
-Argo reconcile the platform, and runs spec 021's E2E suite against it. Tests
+Argo reconcile the platform, and runs spec 022's E2E suite against it. Tests
 never install Postgres/Kafka/Grafana themselves — Argo CD owns installation,
 exactly as it does for the `aws` target. The same `make kind-up`/`make
 test`/`make kind-delete` targets work identically from a laptop and from the
 GitHub Actions workflow that wraps them.
 
 This test cannot faithfully exercise AWS-specific integrations
-(ALB/NLB, Route 53, ACM, EBS/EFS CSI, Pod Identity, AWS Secrets Manager
-integration) — those remain spec 018's job. It is restricted to
-trusted-context PRs (the same fork-safety posture as spec 018), since it
+(NLB, Route 53, ACM, EBS/EFS CSI, Pod Identity, AWS Secrets Manager
+integration) — those remain spec 019's job. It is restricted to
+trusted-context PRs (the same fork-safety posture as spec 019), since it
 still spends real GitHub-hosted runner compute even though it touches no
 AWS resources.
 
@@ -186,12 +186,12 @@ untrusted fork PRs.** Rejected: even though it touches no AWS resources, it
 still spends real GitHub-hosted runner compute on PR-controlled code,
 matching the same abuse concern (e.g. cryptomining via a malicious kind
 workload) constitution §11/architecture §30 already gate the AWS tests on.
-Trusted-context-only, consistent with spec 018.
+Trusted-context-only, consistent with spec 019.
 
 ## Consequences
 
 - Spec 001 gains a `terraform/live/bootstrap/github-oidc/` unit (provider
-  only); spec 014's "moved to spec 014" scope-amendment note is corrected —
+  only); spec 015's "moved to spec 015" scope-amendment note is corrected —
   it now creates only its own role.
 - Spec 018's OIDC-role dependency text is corrected to reuse spec 001's
   provider. Its own CI-persistent zone/certificate (one level down from
@@ -202,10 +202,10 @@ Trusted-context-only, consistent with spec 018.
   `ROOT_DOMAIN` (CI) from the KMS-ciphertext path (workstation).
 - Spec 017 gains the always-green gate/change-detection requirement.
 - Two new specs (021, 022) exist where previously there was a deliberate
-  gap flagged by spec 020.
+  gap flagged by spec 021.
 - Architecture.md and the constitution each gain a short Fork
   Configurability section and an Account Bootstrap/OIDC section recording
   the provider/role split as a binding rule, not just a Terraform detail.
 - None of this changes the `aws`/`local` execution-target design from ADR
-  0006 — the kind-based CI test (022) is a *consumer* of spec 020's local
+  0006 — the kind-based CI test (022) is a *consumer* of spec 021's local
   install path, not a change to it.
