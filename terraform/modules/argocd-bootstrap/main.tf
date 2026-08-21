@@ -52,6 +52,18 @@ resource "helm_release" "root_application" {
       name  = "targetRevision"
       value = var.target_revision
     },
+    {
+      name  = "postgres.existingVolumeHandle"
+      value = var.postgres_existing_volume_handle
+    },
+    {
+      name  = "postgres.existingVolumeAz"
+      value = var.postgres_existing_volume_az
+    },
+    {
+      name  = "postgres.existingVolumeSize"
+      value = var.postgres_existing_volume_size
+    },
   ]
 
   depends_on = [helm_release.argocd]

@@ -9,6 +9,11 @@ locals {
   project      = get_env("PROJECT_NAME", "vk-lab-platform")
   state_bucket = "${local.project}-tf-state"
 
+  # Shared by the eks unit (node group placement) and the postgres-volume
+  # unit (persistent/postgres-volume), so the node group and the Postgres
+  # EBS volume can never end up pinned to different AZs.
+  postgres_az = "eu-west-1a"
+
   relative_path = path_relative_to_include()
   path_parts    = split("/", local.relative_path)
 

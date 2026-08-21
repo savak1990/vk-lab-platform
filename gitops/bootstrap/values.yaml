@@ -4,3 +4,10 @@ target: aws
 project: vk-lab-platform
 repoURL: https://github.com/savak1990/vk-lab-platform
 targetRevision: main
+
+# Set by terraform/modules/argocd-bootstrap, forwarded to the root
+# Application below so CNPG binds to the Postgres volume automatically.
+postgres:
+  existingVolumeHandle: ""
+  existingVolumeAz: ""
+  existingVolumeSize: "10Gi"

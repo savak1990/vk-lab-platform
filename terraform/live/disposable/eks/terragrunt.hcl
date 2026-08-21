@@ -1,5 +1,6 @@
 include "root" {
-  path = find_in_parent_folders("root.hcl")
+  path   = find_in_parent_folders("root.hcl")
+  expose = true # needed to read include.root.locals.postgres_az below
 }
 
 terraform {
@@ -11,5 +12,6 @@ locals {
 }
 
 inputs = {
-  cluster_name = "${local.project}-eks"
+  cluster_name      = "${local.project}-eks"
+  availability_zone = include.root.locals.postgres_az
 }

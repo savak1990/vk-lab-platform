@@ -30,3 +30,18 @@ variable "admin_password_bcrypt_hash_path" {
   type        = string
 }
 
+variable "postgres_existing_volume_handle" {
+  description = "The Terraform-owned Postgres EBS volume's ID (persistent/postgres-volume's output), threaded through to gitops/values.yaml's postgres.existingVolumeHandle so CNPG binds to it automatically."
+  type        = string
+}
+
+variable "postgres_existing_volume_az" {
+  description = "The Terraform-owned Postgres EBS volume's AZ (persistent/postgres-volume's output), threaded through to gitops/values.yaml's postgres.existingVolumeAz."
+  type        = string
+}
+
+variable "postgres_existing_volume_size" {
+  description = "The Terraform-owned Postgres EBS volume's size, e.g. \"10Gi\" (persistent/postgres-volume's output), threaded through to gitops/values.yaml's postgres.existingVolumeSize."
+  type        = string
+}
+

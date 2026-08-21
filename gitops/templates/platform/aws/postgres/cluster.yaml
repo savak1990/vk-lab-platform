@@ -1,0 +1,36 @@
+{{- if eq .Values.target "aws" }}
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: lab-postgres
+  namespace: cnpg-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  instances: 1
+  bootstrap:
+    initdb:
+      database: vkdb
+      owner: vkdb
+  storage:
+    size: 10Gi
+    storageClass: ebs-retain
+    {{- if .Values.postgres.existingVolumeHandle }}
+    pvcTemplate:
+      accessModes: ["ReadWriteOnce"]
+      storageClassName: ebs-retain
+      volumeName: lab-postgres-recovered
+      resources:
+        requests:
+          # Informational only — storage.size above is authoritative for resize.
+          storage: {{ .Values.postgres.existingVolumeSize | default "10Gi" }}
+    {{- end }}
+  postgresql:
+    parameters:
+      max_wal_senders: "10"
+      max_replication_slots: "10"
+      # wal_level intentionally not set — CNPG defaults it to "logical" already
+      # shared_buffers / max_connections intentionally not set — no resource
+      # requests/limits exist yet to size them against
+{{- end }}

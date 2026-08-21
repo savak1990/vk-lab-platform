@@ -15,6 +15,20 @@ spec:
           value: {{ .Values.target | quote }}
         - name: project
           value: {{ .Values.project | quote }}
+        - name: postgres.existingVolumeHandle
+          value: {{ .Values.postgres.existingVolumeHandle | quote }}
+        - name: postgres.existingVolumeAz
+          value: {{ .Values.postgres.existingVolumeAz | quote }}
+        - name: postgres.existingVolumeSize
+          value: {{ .Values.postgres.existingVolumeSize | quote }}
+  # PV capacity changes once CSI resize completes, after CNPG grows storage.
+  # Without this, selfHeal reverts it back to the size rendered here.
+  ignoreDifferences:
+    - group: ""
+      kind: PersistentVolume
+      name: lab-postgres-recovered
+      jsonPointers:
+        - /spec/capacity/storage
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd

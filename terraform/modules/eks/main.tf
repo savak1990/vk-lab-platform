@@ -16,10 +16,37 @@ data "aws_subnets" "default" {
   }
 }
 
-# Node group pinned to one deterministic subnet/AZ so a future recreate
-# doesn't wander AZs and strand later specs' AZ-locked EBS volumes elsewhere.
+# Separate from data.aws_subnets.default above: that one feeds the control
+# plane, which needs subnets across >= 2 AZs. This one is filtered to a
+# single AZ (var.availability_zone) so the node group's subnet is pinned
+# there deterministically, matching the persistent postgres-volume unit's
+# AZ (root.hcl's shared postgres_az) rather than wandering on recreate.
+data "aws_subnets" "node" {
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.default.id]
+  }
+
+  filter {
+    name   = "default-for-az"
+    values = ["true"]
+  }
+
+  filter {
+    name   = "availability-zone"
+    values = [var.availability_zone]
+  }
+
+  lifecycle {
+    postcondition {
+      condition     = length(self.ids) > 0
+      error_message = "No default-for-az subnet found in ${var.availability_zone}."
+    }
+  }
+}
+
 locals {
-  node_subnet_id = sort(data.aws_subnets.default.ids)[0]
+  node_subnet_id = one(data.aws_subnets.node.ids)
 }
 
 module "eks" {

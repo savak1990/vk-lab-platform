@@ -57,11 +57,11 @@ make disposable-down      # terragrunt destroy, all units in this stack
 make eks-kubeconfig        # points local kubectl at the cluster
 ```
 
-No `make up`/`make down` composite orchestration exists yet (spec 014) —
+No `make up`/`make down` composite orchestration exists yet (spec 015) —
 these targets are applied/destroyed directly for now. No guard script
 verifies the Persistent stack exists first; that check is the future
 composite `make up`'s job (constitution §17), not this stack's own targets.
 
 Cluster access comes from `enable_cluster_creator_admin_permissions`, which
 binds cluster-admin to whichever principal ran `terragrunt apply` — this
-will need re-examination once CI applies this stack (specs 015/018).
+will need re-examination once CI applies this stack (specs 016/018).

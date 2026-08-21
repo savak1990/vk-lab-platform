@@ -3,3 +3,10 @@
 # Terraform created under PROJECT_NAME (default vk-lab-platform).
 target: aws
 project: vk-lab-platform
+
+# Set automatically by terraform/modules/argocd-bootstrap from the
+# persistent postgres-volume unit's outputs — no manual edit required.
+postgres:
+  existingVolumeHandle: ""
+  existingVolumeSize: "10Gi"
+  existingVolumeAz: ""
