@@ -18,7 +18,14 @@ dependency "eks" {
     cluster_endpoint                   = "https://mock.invalid"
     cluster_certificate_authority_data = "bW9jaw=="
   }
-  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+  # Allows "destroy" too: these feed only the helm/kubernetes provider's
+  # connection config below, not a resource identifier - if the real
+  # cluster is already gone there's nothing to connect to anyway, so a mock
+  # endpoint fails no worse than a real, unreachable one would. Without
+  # this, an eks unit left with no real outputs (a prior interrupted
+  # destroy) bricks this unit's destroy even when it has nothing left to
+  # destroy.
+  mock_outputs_allowed_terraform_commands = ["validate", "plan", "destroy"]
 }
 
 # Safe despite crossing lifecycles: the Makefile always runs `persistent-up`

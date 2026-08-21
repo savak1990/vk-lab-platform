@@ -54,8 +54,9 @@ disposable-up:
 	cd terraform/live/disposable && terragrunt run --all apply --non-interactive
 
 ## Destroys Disposable-lifecycle resources. Routine, unlike bootstrap-down/persistent-down.
+## Drains Karpenter's own nodes first - see scripts/disposable-down.sh.
 disposable-down:
-	cd terraform/live/disposable && terragrunt run --all destroy --non-interactive
+	./scripts/disposable-down.sh
 
 ## Points local kubectl context at the disposable EKS cluster.
 ## Usage: make eks-kubeconfig

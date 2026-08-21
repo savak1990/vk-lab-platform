@@ -12,7 +12,12 @@ dependency "eks" {
   mock_outputs = {
     cluster_name = "mock-eks"
   }
-  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+  # Allows "destroy" too: destroy targets resources by their state-recorded
+  # IDs, never recomputed from this mock - safe as long as this module has
+  # no for_each/data lookup keyed on cluster_name (it doesn't). Without this,
+  # an eks unit left with no real outputs (a prior interrupted destroy)
+  # bricks this unit's destroy even when it has nothing left to destroy.
+  mock_outputs_allowed_terraform_commands = ["validate", "plan", "destroy"]
 }
 
 inputs = {
