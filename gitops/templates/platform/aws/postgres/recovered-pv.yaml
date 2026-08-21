@@ -17,12 +17,11 @@ spec:
     volumeHandle: {{ .Values.postgres.existingVolumeHandle }}
   nodeAffinity:
     required:
-      requiredDuringSchedulingIgnoredDuringExecution:
-        nodeSelectorTerms:
-          - matchExpressions:
-              - key: topology.ebs.csi.aws.com/zone
-                operator: In
-                values:
-                  - {{ .Values.postgres.existingVolumeAz | quote }}
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: topology.ebs.csi.aws.com/zone
+              operator: In
+              values:
+                - {{ .Values.postgres.existingVolumeAz | quote }}
 {{- end }}
 {{- end }}
