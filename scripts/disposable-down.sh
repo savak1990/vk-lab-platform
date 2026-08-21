@@ -47,11 +47,28 @@ sweep_orphaned_karpenter_instances() {
   if [ -n "$ids" ] && [ "$ids" != "None" ]; then
     echo "Terminating orphaned Karpenter instance(s): $ids" >&2
     aws ec2 terminate-instances --region "$REGION" --instance-ids $ids >/dev/null
+    echo "$ids"
   fi
+}
+
+wait_for_instances_terminated() {
+  local ids="$*"
+  [ -z "$ids" ] && return 0
+  echo "Waiting for terminated instance(s) to release their ENIs: $ids" >&2
+  aws ec2 wait instance-terminated --region "$REGION" --instance-ids $ids || true
 }
 
 drain_karpenter_nodes
 
-cd "$REPO_ROOT/terraform/live/disposable" && terragrunt run --all destroy --non-interactive
-
-sweep_orphaned_karpenter_instances
+# terragrunt destroy can fail here precisely because of the orphaned
+# instances the sweep below exists to clean up - so the sweep must run
+# even when destroy fails, not only on success, or it never fires in the
+# one case it's for. Retry once after sweeping.
+if ! (cd "$REPO_ROOT/terraform/live/disposable" && terragrunt run --all destroy --non-interactive); then
+  echo "terragrunt destroy failed - sweeping orphaned Karpenter instances and retrying once..." >&2
+  ids="$(sweep_orphaned_karpenter_instances)"
+  wait_for_instances_terminated "$ids"
+  cd "$REPO_ROOT/terraform/live/disposable" && terragrunt run --all destroy --non-interactive
+else
+  sweep_orphaned_karpenter_instances >/dev/null
+fi
