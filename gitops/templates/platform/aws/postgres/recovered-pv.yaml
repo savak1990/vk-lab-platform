@@ -22,6 +22,7 @@ spec:
           - matchExpressions:
               - key: topology.ebs.csi.aws.com/zone
                 operator: In
-                values: [{{ .Values.postgres.existingVolumeAz }}]
+                values:
+                  - {{ .Values.postgres.existingVolumeAz | quote }}
 {{- end }}
 {{- end }}
