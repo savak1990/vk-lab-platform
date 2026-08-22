@@ -15,6 +15,7 @@ if ! aws s3api head-bucket --bucket "$BUCKET" --region "$REGION" >/dev/null 2>&1
   echo "bootstrap:    unknown  (state layer missing)"
   echo "persistent:   unknown  (state layer missing)"
   echo "disposable:   unknown  (state layer missing)"
+  echo "argo:         unknown  (state layer missing)"
   exit 0
 fi
 
@@ -48,3 +49,23 @@ for prefix in bootstrap persistent disposable; do
     printf '%-13s absent   (destroyed)\n' "$prefix:"
   fi
 done
+
+# Argo CD isn't Terraform-managed (ADR 0012), so its state can't be read
+# from Terraform state like the layers above - this checks the live
+# cluster instead, and only attempts to if the disposable EKS cluster
+# actually has Terraform state to read a cluster_name from.
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CLUSTER_NAME="$(terragrunt --working-dir "$REPO_ROOT/terraform/live/disposable/eks" output -raw cluster_name 2>/dev/null || true)"
+
+if [ -z "$CLUSTER_NAME" ]; then
+  printf '%-13s unknown  (disposable EKS cluster not up)\n' "argo:"
+elif ! aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$REGION" --alias "$CLUSTER_NAME" >/dev/null 2>&1 \
+  || ! kubectl cluster-info --request-timeout=5s >/dev/null 2>&1; then
+  printf '%-13s unknown  (cluster unreachable)\n' "argo:"
+elif ! kubectl get application root -n argocd >/dev/null 2>&1; then
+  printf '%-13s absent   (not installed, or torn down by argo-down)\n' "argo:"
+else
+  SYNC_HEALTH="$(kubectl get application root -n argocd -o jsonpath='{.status.sync.status}/{.status.health.status}' 2>/dev/null)"
+  APP_COUNT="$(kubectl get applications -n argocd --no-headers 2>/dev/null | wc -l | tr -d ' ')"
+  printf '%-13s present  (root %s, %s Application(s) managed)\n' "argo:" "${SYNC_HEALTH:-unknown}" "$APP_COUNT"
+fi
