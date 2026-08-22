@@ -2,6 +2,7 @@
 # to this GitHub repo; `local` (spec 021's script) sets them to a local source.
 target: aws
 project: vk-lab-platform
+region: eu-west-1
 repoURL: https://github.com/savak1990/vk-lab-platform
 targetRevision: main
 

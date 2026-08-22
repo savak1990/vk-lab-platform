@@ -14,5 +14,6 @@ inputs = {
   name = "${local.project}-secrets"
   secrets = {
     postgres_admin_password = "${get_repo_root()}/secrets/${local.project}/postgres-admin-password.enc"
+    postgres_app_password   = "${get_repo_root()}/secrets/${local.project}/postgres-app-password.enc"
   }
 }

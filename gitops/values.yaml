@@ -3,6 +3,7 @@
 # Terraform created under PROJECT_NAME (default vk-lab-platform).
 target: aws
 project: vk-lab-platform
+region: eu-west-1
 
 # Set automatically by scripts/argo-up.sh, which discovers the latest
 # retained EBS snapshot (if any) via the AWS API — no manual edit

@@ -17,6 +17,8 @@ spec:
           value: {{ .Values.target | quote }}
         - name: project
           value: {{ .Values.project | quote }}
+        - name: region
+          value: {{ .Values.region | quote }}
         - name: postgres.recoverySnapshotHandle
           value: {{ .Values.postgres.recoverySnapshotHandle | quote }}
   destination:

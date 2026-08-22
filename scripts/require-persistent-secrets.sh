@@ -11,7 +11,7 @@ PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
 SECRETS_DIR="$REPO_ROOT/secrets/$PROJECT_NAME"
 
 missing=()
-for name in root-domain postgres-admin-password; do
+for name in root-domain postgres-admin-password postgres-app-password; do
   test -f "$SECRETS_DIR/$name.enc" || missing+=("$name")
 done
 
