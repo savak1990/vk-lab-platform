@@ -51,7 +51,7 @@ if ! SNAPSHOTS_JSON="$(aws ec2 describe-snapshots --region "$REGION" --owner-ids
   echo "ARGO-UP: failed to query AWS for existing Postgres snapshots - aborting rather than risking a false 'fresh start'." >&2
   exit 1
 fi
-RECOVERY_SNAPSHOT_HANDLE="$(echo "$SNAPSHOTS_JSON" | jq -r 'last(.[]) // "" | .SnapshotId // ""')"
+RECOVERY_SNAPSHOT_HANDLE="$(echo "$SNAPSHOTS_JSON" | jq -r '.[-1].SnapshotId // ""')"
 if [ -n "$RECOVERY_SNAPSHOT_HANDLE" ]; then
   echo "ARGO-UP: found latest Postgres snapshot $RECOVERY_SNAPSHOT_HANDLE - will recover from it."
 else

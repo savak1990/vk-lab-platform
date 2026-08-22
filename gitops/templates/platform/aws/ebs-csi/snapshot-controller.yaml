@@ -30,8 +30,7 @@ spec:
     repoURL: https://github.com/kubernetes-csi/external-snapshotter
     targetRevision: v8.6.0
     path: client/config/crd
-    directory:
-      recurse: true
+    kustomize: {}
   destination:
     server: https://kubernetes.default.svc
     namespace: kube-system
@@ -57,8 +56,7 @@ spec:
     repoURL: https://github.com/kubernetes-csi/external-snapshotter
     targetRevision: v8.6.0
     path: deploy/kubernetes/snapshot-controller
-    directory:
-      recurse: true
+    kustomize: {}
   destination:
     server: https://kubernetes.default.svc
     namespace: kube-system
