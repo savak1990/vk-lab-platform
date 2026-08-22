@@ -31,4 +31,7 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
+      # ESO's SecretStore CRDs exceed the 262144-byte last-applied-config
+      # annotation limit under client-side apply; SSA needs no such annotation.
+      - ServerSideApply=true
 {{- end }}
