@@ -12,6 +12,10 @@
 # cnpg-operator, ...) and because CRDs must exist before the controller can
 # start.
 #
+# No explicit source type: both paths have a kustomization.yaml, so Argo
+# auto-detects and builds Kustomize - an explicit directory.recurse forces
+# a raw apply that fails on that file; an explicit kustomize:{} gets stripped on write-back and drifts forever.
+#
 # Verify the exact subpaths below against the v8.6.0 tag before relying on
 # this in a real cluster - they have moved between major external-snapshotter
 # releases in the past.
@@ -30,7 +34,6 @@ spec:
     repoURL: https://github.com/kubernetes-csi/external-snapshotter
     targetRevision: v8.6.0
     path: client/config/crd
-    kustomize: {}
   destination:
     server: https://kubernetes.default.svc
     namespace: kube-system
@@ -56,7 +59,6 @@ spec:
     repoURL: https://github.com/kubernetes-csi/external-snapshotter
     targetRevision: v8.6.0
     path: deploy/kubernetes/snapshot-controller
-    kustomize: {}
   destination:
     server: https://kubernetes.default.svc
     namespace: kube-system
