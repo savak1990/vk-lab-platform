@@ -49,23 +49,29 @@ spec:
   method: volumeSnapshot
 EOF
 
-  # Fails fast on an explicit "failed" phase rather than burning the full
-  # timeout waiting for a phase that will never arrive.
-  if ! kubectl wait backup "$BACKUP_NAME" -n cnpg-system \
-    --for=jsonpath='{.status.phase}'=failed --timeout=1s >/dev/null 2>&1; then
-    :  # not failed yet (expected on the fast path) - fall through to the real wait
-  else
-    echo "ARGO-DOWN: pre-teardown backup reported phase 'failed' - refusing to proceed." >&2
-    echo "ARGO-DOWN: check 'kubectl describe backup $BACKUP_NAME -n cnpg-system'." >&2
-    exit 1
-  fi
-  if ! kubectl wait backup "$BACKUP_NAME" -n cnpg-system \
-    --for=jsonpath='{.status.phase}'=completed --timeout="$BACKUP_TIMEOUT"; then
-    echo "ARGO-DOWN: pre-teardown backup did not complete within $BACKUP_TIMEOUT - refusing to proceed." >&2
-    echo "ARGO-DOWN: check 'kubectl describe backup $BACKUP_NAME -n cnpg-system' before retrying." >&2
-    exit 1
-  fi
-  echo "ARGO-DOWN: pre-teardown backup completed."
+  # No streamed byte-progress exists for a cold volumeSnapshot backup, but
+  # CNPG does report discrete phases - poll and print those every
+  # POLL_INTERVAL rather than blocking silently for the full timeout.
+  backup_elapsed=0
+  backup_timeout_secs="${BACKUP_TIMEOUT%s}"
+  while true; do
+    phase="$(kubectl get backup "$BACKUP_NAME" -n cnpg-system -o jsonpath='{.status.phase}' 2>/dev/null || true)"
+    echo "ARGO-DOWN: backup phase: ${phase:-pending} (${backup_elapsed}s/${BACKUP_TIMEOUT})"
+    if [ "$phase" = "completed" ]; then
+      echo "ARGO-DOWN: pre-teardown backup completed."
+      break
+    elif [ "$phase" = "failed" ]; then
+      echo "ARGO-DOWN: pre-teardown backup reported phase 'failed' - refusing to proceed." >&2
+      echo "ARGO-DOWN: check 'kubectl describe backup $BACKUP_NAME -n cnpg-system'." >&2
+      exit 1
+    elif [ "$backup_elapsed" -ge "$backup_timeout_secs" ]; then
+      echo "ARGO-DOWN: pre-teardown backup did not complete within $BACKUP_TIMEOUT - refusing to proceed." >&2
+      echo "ARGO-DOWN: check 'kubectl describe backup $BACKUP_NAME -n cnpg-system' before retrying." >&2
+      exit 1
+    fi
+    sleep "$POLL_INTERVAL"
+    backup_elapsed=$((backup_elapsed + POLL_INTERVAL))
+  done
 
   # No status=completed filter here (unlike argo-up.sh's discovery query):
   # the AWS-side snapshot is still asynchronously "pending" for a while
