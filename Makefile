@@ -72,8 +72,9 @@ argo-up:
 	./scripts/argo-up.sh
 
 ## Cascades away everything Argo CD manages (Karpenter, CNPG, EBS CSI,
-## Postgres CRs, ...) before `make disposable-down` touches the EKS
-## cluster. Run before `make disposable-down`, always.
+## Postgres CRs, ...), then removes Argo CD itself - before
+## `make disposable-down` touches the EKS cluster. Run before
+## `make disposable-down`, always.
 argo-down:
 	./scripts/argo-down.sh
 

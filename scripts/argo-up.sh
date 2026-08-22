@@ -54,3 +54,20 @@ helm upgrade --install root-application "$REPO_ROOT/gitops/bootstrap" \
   --set postgres.existingVolumeHandle="$VOLUME_ID" \
   --set postgres.existingVolumeAz="$VOLUME_AZ" \
   --set postgres.existingVolumeSize="${VOLUME_SIZE_GB}Gi"
+
+# Bounded progress window, not a full wait - shows which components Argo
+# is still bringing up without blocking this script on full platform
+# health (that's spec 014's job). Exits early once Synced/Healthy.
+WATCH_SECONDS="${ARGO_UP_WATCH_SECONDS:-60}"
+POLL_INTERVAL="${ARGO_UP_POLL_INTERVAL:-5}"
+elapsed=0
+while [ "$elapsed" -lt "$WATCH_SECONDS" ]; do
+  overall="$(kubectl get application root -n argocd \
+    -o jsonpath='{.status.sync.status}/{.status.health.status}' 2>/dev/null || true)"
+  pending="$(kubectl get application root -n argocd \
+    -o jsonpath='{range .status.resources[?(@.health.status!="Healthy")]}{.kind}/{.name}={.status}({.health.status}) {end}' 2>/dev/null || true)"
+  echo "ARGO-UP: root ${overall:-pending} - still reconciling: ${pending:-none}"
+  [ "$overall" = "Synced/Healthy" ] && break
+  sleep "$POLL_INTERVAL"
+  elapsed=$((elapsed + POLL_INTERVAL))
+done
