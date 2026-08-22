@@ -15,9 +15,11 @@ This spec covers:
 
 - Making Argo CD's app-of-apps cascade deletion actually cascade (it currently doesn't — see Problem below).
 - A general drain-before-destroy mechanism, expressed once via Argo sync-wave ordering and cascade finalizers, not a one-off script for Karpenter specifically.
-- An EC2-tag-scoped sweep as a backstop for when the graceful path cannot run at all (cluster unreachable, expired credentials, an interrupted prior teardown).
+- A hard precondition guard on `disposable-down` that refuses to proceed while the graceful drain hasn't run, rather than a cleanup pass after the fact.
 
-Out of scope: moving Argo CD's own installation out of Terraform (see ADR 0012, which this spec's mechanism depends on and which supersedes spec 004 Requirement 1); any change to Karpenter's NodePool sizing/instance-type bounds (spec 006 already sets those).
+**Adopted prerequisite, not out of scope:** this spec's Requirement 3 only works because Argo CD's own installation moves out of Terraform, onto `scripts/argo-up.sh`/`scripts/argo-down.sh` — that decision is recorded in ADR 0012 (accepted) and supersedes spec 004 Requirement 1. This spec assumes that mechanism exists; it does not re-describe why it was chosen.
+
+Out of scope: any change to Karpenter's NodePool sizing/instance-type bounds (spec 006 already sets those).
 
 ## Problem
 
@@ -31,10 +33,10 @@ This is not Karpenter-specific. Any future controller that provisions AWS resour
 
 ## Requirements
 
-1. Every Argo Application that owns AWS-resource-creating Kubernetes objects (today: `root`, `karpenter`, `postgres`, `ebs-csi`, `cnpg-operator`) MUST carry `metadata.finalizers: [resources-finalizer.argocd.argoproj.io]`, so deleting the Application actually removes what it manages rather than orphaning it.
+1. Every Argo Application that owns AWS-resource-creating Kubernetes objects (today: `root`, `karpenter`, `cnpg-operator`, `ebs-csi-driver`) MUST carry `metadata.finalizers: [resources-finalizer.argocd.argoproj.io]`, so deleting the Application actually removes what it manages rather than orphaning it.
 2. Resources whose deletion must trigger AWS-side cleanup before their owning controller disappears (e.g. `NodePool`/`EC2NodeClass`) MUST be assigned a higher `argocd.argoproj.io/sync-wave` than the Application installing that controller, so Argo's wave-reversed prune order deletes them first — the same mechanism already used for creation ordering, not a new one.
 3. Teardown MUST perform, before any Terraform/Terragrunt destroy of disposable AWS infrastructure: `kubectl delete application root -n argocd --cascade=foreground --wait --timeout=<n>` (or equivalent), and MUST treat a skip of this step (cluster unreachable, controller unavailable) as a loud, visible condition — not a silently-swallowed log line — since a silent skip is indistinguishable from a successful drain until the destroy fails downstream.
-4. A tag-scoped EC2 sweep (matching this project's Karpenter-managed instances specifically, never all Karpenter instances account-wide) MUST run as a backstop after every teardown attempt, including failed ones — a sweep that only runs on the success path does not run in the one case it exists for.
+4. `disposable-down` MUST refuse to proceed to any Terraform/Terragrunt destroy if the cluster is reachable and the Argo `root` Application still exists — that condition means the graceful drain (Requirement 3) has not completed, and proceeding anyway is exactly what causes the `DependencyViolation` failure this spec fixes. `disposable-down` MUST proceed if the cluster is unreachable — there is nothing to verify against in that state, and destroy must stay resumable after a prior partial/interrupted run rather than being permanently blocked by a guard it can no longer satisfy.
 5. This mechanism MUST generalize without new code per component: a future ALB-via-`Ingress` or cert-manager `Certificate` uses the same finalizer + sync-wave pattern, not a bespoke drain script.
 6. The design MUST hold in the future `local` target (spec 021, minikube/kind) with no cloud-specific logic — `kubectl delete application root --cascade=foreground` is the same command regardless of where the cluster runs.
 
@@ -42,11 +44,12 @@ This is not Karpenter-specific. Any future controller that provisions AWS resour
 
 - Verify the load-bearing assumption empirically before relying on it: does Argo's wave-reversed prune *block* until each wave's resources are actually gone (finalizer cleared), or does it just issue the delete calls in order? Test by deleting `root` and watching `kubectl get nodepool -w` / `kubectl get application karpenter -n argocd -w` — the `karpenter` Application must not start disappearing until `NodePool` is fully gone. If it doesn't block, this spec's Requirement 3 needs an explicit wait loop around each wave instead of relying on cascade delete alone.
 - See ADR 0012 for why this mechanism is implemented as `scripts/argo-up.sh`/`scripts/argo-down.sh` rather than folded into the existing Terraform-driven `disposable-up`/`disposable-down` — the ordering guarantee this spec needs is not one `terraform-provider-helm` can reliably give (see that ADR's Context for the specific upstream issues found).
-- Keep the EC2 sweep narrowly tag-scoped (`Project`, `ManagedBy=karpenter`) — this is a backstop for a specific known failure mode, not a general-purpose orphan-resource cleaner.
+- No EC2 sweep — the guard (Requirement 4) plus a genuinely completing cascade (verified per the first bullet above) means there should be nothing left to sweep by the time `disposable-down` runs. Don't reintroduce one silently if the empirical verification above ever fails; surface that instead.
 
 ## Testing / acceptance criteria
 
 - With a Postgres workload scheduled on a Karpenter-provisioned node, running `argo-down` then `disposable-down` (or the future `make down`) leaves zero Karpenter-tagged EC2 instances running, and the disposable stack's `terragrunt destroy` completes without a `DependencyViolation` retry loop.
-- Interrupting the graceful drain (e.g. simulating an unreachable cluster) still results in zero leaked instances after the run, via the sweep backstop — verified by checking the sweep actually executes on a forced-failure path, not just the happy path.
+- Running `disposable-down` directly, skipping `argo-down`, while the cluster is reachable and `root` still exists: it refuses with a clear, actionable message rather than proceeding.
+- Running `disposable-down` after an interrupted prior destroy (cluster already unreachable, some AWS resources still present): it proceeds rather than getting stuck on the guard.
 - The skip condition (cluster/controller unreachable) is visible in the run's primary output, not only in a log line easy to miss inside `terragrunt run --all destroy` noise.
 - Repeating the full sequence twice back-to-back (per spec 014's idempotency expectation) produces the same clean result both times.

@@ -417,7 +417,7 @@ AWS infrastructure including:
 - GitHub OIDC
 - AWS-side Karpenter infrastructure
 
-Terraform also performs the initial Argo CD bootstrap.
+Argo CD's own installation is bootstrapped by `make argo-up` (a script), run after the disposable EKS cluster exists — not by Terraform (ADR 0012).
 
 ## Argo CD owns
 
@@ -573,10 +573,12 @@ app list entirely when `target=local`.
 
 The two targets diverge in kind, not just in values, on several points:
 
-- **Install path.** `aws`: Terraform installs Argo CD (spec 004). `local`: a
-  plain script/Makefile target installs Argo CD — no Terraform involved.
-  Entry points are `make minikube-up` and `make kind-up`; there is no unified
-  `make local-up` wrapper.
+- **Install path.** Both targets: `make argo-up`/`make argo-down` (scripts)
+  install/remove Argo CD and the root Application — no Terraform involved
+  for either target (ADR 0012, spec 004 Requirement 1). `aws` additionally
+  requires the disposable EKS cluster to exist first (`make disposable-up`);
+  `local` entry points are `make minikube-up` and `make kind-up`; there is
+  no unified `make local-up` wrapper.
 - **Persistence.** `aws`: Postgres/Kafka data is Persistent-lifecycle,
   surviving `make down` (§6, spec 005). `local`: fully throwaway — no
   persistent-lifecycle class, default local StorageClass with `Delete`
@@ -1058,16 +1060,16 @@ Important platform behavior should be diagnosable through metrics and logs.
 
 # 20. GitOps
 
-Terraform bootstraps:
-
 ```text
-EKS
+Terraform: EKS
  ↓
-Argo CD
+make argo-up (script): Argo CD
  ↓
 root Application
 ```
 
+Terraform bootstraps EKS; `make argo-up` (not Terraform — ADR 0012) then
+installs Argo CD and creates the root Application once the cluster exists.
 After that, Argo CD reconciles Kubernetes desired state from Git.
 
 Argo is responsible for both deployment and dependency-aware Kubernetes cleanup.
@@ -1158,9 +1160,11 @@ make bootstrap-down    destroys them — guarded, expected to run essentially ne
 make persistent-up     creates Persistent-lifecycle resources (lab DNS zone, ACM cert, Secrets Manager, retained EBS)
 make persistent-down   destroys them — guarded, deliberate, rarely used, real and permanent data loss
 
-make up                creates Disposable-lifecycle resources (EKS, Argo, workloads)
-make down              destroys them — the routine, frequently-used command
+make up                creates Disposable-lifecycle resources (EKS, then argo-up: Argo, workloads)
+make down              destroys them — argo-down (Argo cascade) then Terragrunt destroy — the routine, frequently-used command
 ```
+
+`make up`/`make down` compose `disposable-up`/`argo-up` and `argo-down`/`disposable-down` respectively (ADR 0012, spec 006-1) — `argo-down`'s Argo-driven cascade must complete before `disposable-down` touches the EKS cluster, since only Argo/Karpenter's own controllers can clean up the AWS resources they provisioned outside Terraform.
 
 `make minikube-up` and `make kind-up` (the `local` target, §10a) are separate commands outside this lifecycle-class command surface entirely — they don't create or destroy any State/Bootstrap/Persistent/Disposable resource, so they aren't governed by the "one command per class" rule below.
 

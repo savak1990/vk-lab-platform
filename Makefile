@@ -1,6 +1,6 @@
-.PHONY: state-up state-down status bootstrap-up bootstrap-down secret-encrypt secret-decrypt generate-secrets persistent-up persistent-down clear-cache disposable-up disposable-down eks-kubeconfig
+.PHONY: state-up state-down status bootstrap-up bootstrap-down secret-encrypt secret-decrypt generate-secrets persistent-up persistent-down clear-cache disposable-up disposable-down eks-kubeconfig argo-up argo-down
 
-# Lifecycle: state -> boostrap -> persistence -> disposable
+# Lifecycle: state -> bootstrap -> persistence -> disposable -> argo
 
 # Overridable so CI/integration runs can use a disposable, randomly
 # generated name instead of the personal lab's, e.g.
@@ -50,11 +50,13 @@ persistent-down:
 	./scripts/persistent-down.sh
 
 ## Creates Disposable-lifecycle resources (EKS cluster + system node group + addons).
+## Run `make argo-up` after this to install Argo CD and the platform.
 disposable-up:
 	cd terraform/live/disposable && terragrunt run --all apply --non-interactive
 
 ## Destroys Disposable-lifecycle resources. Routine, unlike bootstrap-down/persistent-down.
-## Drains Karpenter's own nodes first - see scripts/disposable-down.sh.
+## Requires `make argo-down` to have already cascaded away Argo/Karpenter's
+## resources - refuses to run otherwise (see scripts/disposable-down.sh, ADR 0012).
 disposable-down:
 	./scripts/disposable-down.sh
 
@@ -63,6 +65,17 @@ disposable-down:
 eks-kubeconfig:
 	aws eks update-kubeconfig --name $(PROJECT_NAME)-eks --region $(REGION) --alias $(PROJECT_NAME)-eks
 	kubectl config set-context --current --namespace=default
+
+## Installs Argo CD and the root Application onto the disposable EKS
+## cluster (ADR 0012 - a script, not Terraform). Run after `make disposable-up`.
+argo-up:
+	./scripts/argo-up.sh
+
+## Cascades away everything Argo CD manages (Karpenter, CNPG, EBS CSI,
+## Postgres CRs, ...) before `make disposable-down` touches the EKS
+## cluster. Run before `make disposable-down`, always.
+argo-down:
+	./scripts/argo-down.sh
 
 ## Clears every .terragrunt-cache dir under terraform/live/. Run manually
 ## after switching PROJECT_NAME/REGION/SUBDOMAIN - a cache left over from a
