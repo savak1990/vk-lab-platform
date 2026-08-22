@@ -140,3 +140,13 @@ reasoning stands unchanged as the record of what was true at the time.
   uniquely identifies the Postgres volume with no extra configuration
   needed. Confirm the exact PVC name against a live cluster before relying
   on it in a real recovery.
+
+**Update, 2026-08-22:** the empirical verification this ADR called for
+above happened, and the answer is the failure mode it warned about — CNPG
+does not adopt the existing PGDATA on the static `PersistentVolume`; it
+quarantines it (renames aside with a timestamp suffix) and runs `initdb`
+fresh on every `disposable-down`/`disposable-up` cycle. See spec 007-1 for
+the confirmed root cause and the candidate replacement design
+(`bootstrap.recovery.volumeSnapshots`). This ADR's static-PV/`pvcTemplate`
+decision is superseded there, not rewritten here — it was reasonable given
+what was known at the time.
