@@ -14,11 +14,11 @@ TARGET_REVISION="${TARGET_REVISION:-main}"
 REPO_URL="${REPO_URL:-https://github.com/savak1990/vk-lab-platform}"
 
 eks_output() {
-  terragrunt output -raw "$1" --terragrunt-working-dir "$REPO_ROOT/terraform/live/disposable/eks"
+  terragrunt --working-dir "$REPO_ROOT/terraform/live/disposable/eks" output -raw "$1"
 }
 
 volume_output() {
-  terragrunt output -raw "$1" --terragrunt-working-dir "$REPO_ROOT/terraform/live/persistent/postgres-volume"
+  terragrunt --working-dir "$REPO_ROOT/terraform/live/persistent/postgres-volume" output -raw "$1"
 }
 
 CLUSTER_NAME="$(eks_output cluster_name)"
