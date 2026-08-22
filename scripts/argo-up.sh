@@ -25,6 +25,20 @@ CLUSTER_NAME="$(eks_output cluster_name)"
 aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$REGION" --alias "$CLUSTER_NAME" >/dev/null
 kubectl config set-context --current --namespace=default >/dev/null
 
+# Idempotency guard: if the root Application is already Synced/Healthy,
+# there's nothing to do. Beyond avoiding pointless work, this sidesteps a
+# real Helm bug on re-run: Argo's own controller takes server-side-apply
+# ownership of some Application spec fields (e.g. normalized
+# .spec.ignoreDifferences) once it's reconciled the object, and a second
+# `helm upgrade --install` on an already-synced root can then fail with
+# "Apply failed with 1 conflict" against that field manager.
+EXISTING_STATUS="$(kubectl get application root -n argocd \
+  -o jsonpath='{.status.sync.status}/{.status.health.status}' 2>/dev/null || true)"
+if [ "$EXISTING_STATUS" = "Synced/Healthy" ]; then
+  echo "ARGO-UP: root Application already Synced/Healthy - nothing to do."
+  exit 0
+fi
+
 VOLUME_ID="$(volume_output volume_id)"
 VOLUME_AZ="$(volume_output availability_zone)"
 VOLUME_SIZE_GB="$(volume_output size_gb)"
