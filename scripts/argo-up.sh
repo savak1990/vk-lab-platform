@@ -12,13 +12,12 @@ REGION="${REGION:-eu-west-1}"
 ARGOCD_CHART_VERSION="${ARGOCD_CHART_VERSION:-10.4.0}"
 TARGET_REVISION="${TARGET_REVISION:-main}"
 REPO_URL="${REPO_URL:-https://github.com/savak1990/vk-lab-platform}"
+# Project-scoped so two environments with different PROJECT_NAME values in
+# the same region/account never collide on each other's snapshots.
+SNAPSHOT_TAG_FILTERS=("Name=tag:Project,Values=$PROJECT_NAME" "Name=tag:Component,Values=postgres")
 
 eks_output() {
   terragrunt --working-dir "$REPO_ROOT/terraform/live/disposable/eks" output -raw "$1"
-}
-
-volume_output() {
-  terragrunt --working-dir "$REPO_ROOT/terraform/live/persistent/postgres-volume" output -raw "$1"
 }
 
 CLUSTER_NAME="$(eks_output cluster_name)"
@@ -39,9 +38,44 @@ if [ "$EXISTING_STATUS" = "Synced/Healthy" ]; then
   exit 0
 fi
 
-VOLUME_ID="$(volume_output volume_id)"
-VOLUME_AZ="$(volume_output availability_zone)"
-VOLUME_SIZE_GB="$(volume_output size_gb)"
+# Discovers the latest Postgres EBS snapshot (if any) before pruning -
+# deletion below is async, so discovering after pruning would open a race
+# window against a snapshot mid-delete. Terraform has no role here: the
+# snapshot is created by the running cluster at teardown time, not at
+# apply time, so there's nothing for Terraform state to track (ADR 0013).
+# A probe error (creds/network) aborts loudly rather than silently
+# falling through to a fresh initdb over a good snapshot.
+if ! SNAPSHOTS_JSON="$(aws ec2 describe-snapshots --region "$REGION" --owner-ids self \
+  --filters "${SNAPSHOT_TAG_FILTERS[@]}" "Name=status,Values=completed" \
+  --query 'sort_by(Snapshots,&StartTime)' --output json)"; then
+  echo "ARGO-UP: failed to query AWS for existing Postgres snapshots - aborting rather than risking a false 'fresh start'." >&2
+  exit 1
+fi
+RECOVERY_SNAPSHOT_HANDLE="$(echo "$SNAPSHOTS_JSON" | jq -r 'last(.[]) // "" | .SnapshotId // ""')"
+if [ -n "$RECOVERY_SNAPSHOT_HANDLE" ]; then
+  echo "ARGO-UP: found latest Postgres snapshot $RECOVERY_SNAPSHOT_HANDLE - will recover from it."
+else
+  echo "ARGO-UP: no existing Postgres snapshot found - will bootstrap fresh (initdb)."
+fi
+
+# Safety net for an interrupted prior argo-down (the primary enforcement
+# point for "keep newest 2" is argo-down.sh itself, right after it creates
+# a new snapshot). Re-queried without the status=completed filter, unlike
+# the discovery query above - a still-pending snapshot must still count
+# toward "newest 2" or this miscounts and prunes the wrong one.
+if ! ALL_SNAPSHOTS_JSON="$(aws ec2 describe-snapshots --region "$REGION" --owner-ids self \
+  --filters "${SNAPSHOT_TAG_FILTERS[@]}" \
+  --query 'sort_by(Snapshots,&StartTime)' --output json)"; then
+  echo "ARGO-UP: failed to query AWS for Postgres snapshots to prune - aborting." >&2
+  exit 1
+fi
+OLD_SNAPSHOTS="$(echo "$ALL_SNAPSHOTS_JSON" | jq -r '.[:-2][].SnapshotId')"
+if [ -n "$OLD_SNAPSHOTS" ]; then
+  for snapshot_id in $OLD_SNAPSHOTS; do
+    aws ec2 delete-snapshot --region "$REGION" --snapshot-id "$snapshot_id"
+    echo "ARGO-UP: pruned old snapshot $snapshot_id"
+  done
+fi
 
 ADMIN_PASSWORD_BCRYPT_HASH_PATH="$REPO_ROOT/secrets/${PROJECT_NAME}/argocd-admin-password.bcrypt"
 ADMIN_PASSWORD_BCRYPT_HASH="$(tr -d '[:space:]' < "$ADMIN_PASSWORD_BCRYPT_HASH_PATH")"
@@ -65,9 +99,7 @@ helm upgrade --install root-application "$REPO_ROOT/gitops/bootstrap" \
   --set project="$PROJECT_NAME" \
   --set repoURL="$REPO_URL" \
   --set targetRevision="$TARGET_REVISION" \
-  --set postgres.existingVolumeHandle="$VOLUME_ID" \
-  --set postgres.existingVolumeAz="$VOLUME_AZ" \
-  --set postgres.existingVolumeSize="${VOLUME_SIZE_GB}Gi"
+  --set postgres.recoverySnapshotHandle="$RECOVERY_SNAPSHOT_HANDLE"
 
 # Bounded progress window, not a full wait - shows which components Argo
 # is still bringing up without blocking this script on full platform

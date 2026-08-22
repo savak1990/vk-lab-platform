@@ -36,15 +36,18 @@ bootstrap-down:
 	./scripts/bootstrap-down.sh
 
 ## Creates Persistent-lifecycle resources (lab DNS zone + delegation, ACM cert, Secrets Manager).
+## require-unique-subdomain guards against two PROJECT_NAME environments
+## sharing SUBDOMAIN.<root-domain> - see that script for why.
 persistent-up:
 	./scripts/require-persistent-secrets.sh
+	./scripts/require-unique-subdomain.sh
 	cd terraform/live/persistent && terragrunt run --all apply --non-interactive
 
 ## Destroys Persistent-lifecycle resources. Guarded, rarely-used - see constitution §17.
 ## Also permanently deletes every retained EBS volume the ebs-retain
-## StorageClass created (spec 005) - listed before terragrunt's destroy
-## prompt, since those volumes are Persistent-lifecycle data outside any
-## Terraform state.
+## StorageClass created (spec 005) and every retained Postgres EBS
+## snapshot (ADR 0013) - both listed before terragrunt's destroy prompt,
+## since they're Persistent-lifecycle data outside any Terraform state.
 ## Usage: make persistent-down
 persistent-down:
 	./scripts/persistent-down.sh

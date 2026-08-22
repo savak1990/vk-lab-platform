@@ -1,0 +1,41 @@
+{{- if eq .Values.target "aws" }}
+{{- if .Values.postgres.recoverySnapshotHandle }}
+# Pre-provisioned import of the AWS EBS snapshot argo-up.sh discovered.
+# The VolumeSnapshot/VolumeSnapshotContent objects from the cycle that
+# created this snapshot are gone (they died with the EKS cluster) - only
+# the AWS-side snapshot survived (VolumeSnapshotClass deletionPolicy:
+# Retain). This recreates the K8s-side pointer to it, same shape
+# recovered-pv.yaml used for a raw volume handle. See ADR 0013.
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshotContent
+metadata:
+  name: lab-postgres-recovered-content
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  volumeSnapshotClassName: ebs-postgres-snapshot
+  driver: ebs.csi.aws.com
+  # Must be set explicitly here - NOT inherited from VolumeSnapshotClass.
+  # If this lands as Delete, the next argo-down cascade-deletes this
+  # content and with it the AWS snapshot just recovered from.
+  deletionPolicy: Retain
+  source:
+    snapshotHandle: {{ .Values.postgres.recoverySnapshotHandle | quote }}
+  volumeSnapshotRef:
+    name: lab-postgres-recovered
+    namespace: cnpg-system
+---
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshot
+metadata:
+  name: lab-postgres-recovered
+  namespace: cnpg-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  source:
+    volumeSnapshotContentName: lab-postgres-recovered-content
+{{- end }}
+{{- end }}

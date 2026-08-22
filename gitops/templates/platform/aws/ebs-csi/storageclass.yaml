@@ -8,11 +8,28 @@ metadata:
 provisioner: ebs.csi.aws.com
 parameters:
   type: gp3
-  tagSpecification_1: "Project=vk-lab-platform"
+  tagSpecification_1: "Project={{ .Values.project }}"
   tagSpecification_2: "Scope=platform"
   tagSpecification_3: "Lifecycle=persistent"
   tagSpecification_4: "ManagedBy=ebs-csi-driver"
 reclaimPolicy: Retain
+allowVolumeExpansion: true
+volumeBindingMode: WaitForFirstConsumer
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: ebs-delete
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+provisioner: ebs.csi.aws.com
+parameters:
+  type: gp3
+  tagSpecification_1: "Project={{ .Values.project }}"
+  tagSpecification_2: "Scope=platform"
+  tagSpecification_3: "Lifecycle=disposable"
+  tagSpecification_4: "ManagedBy=ebs-csi-driver"
+reclaimPolicy: Delete
 allowVolumeExpansion: true
 volumeBindingMode: WaitForFirstConsumer
 {{- end }}

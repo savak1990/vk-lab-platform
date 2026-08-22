@@ -72,3 +72,7 @@ Whichever design is chosen, it supersedes ADR 0009's static-PV/`pvcTemplate` rec
 - Confirm storage growth (spec 007 Requirement 7, `spec.storage.size` resize) still works after switching bootstrap mechanisms — the recovery path must not silently drop the grow-only resize guarantee.
 - Confirm a genuinely fresh environment (new `persistent-up`, no prior snapshot) still bootstraps cleanly via `initdb` — Requirement 6 above.
 - Update `tests/manual/007-postgres.md`'s destroy/recreate steps once the mechanism is implemented, since its current step 9/10 assumes the static-PV mechanism that this spec replaces.
+
+## Resolution
+
+Implemented as CNPG native `VolumeSnapshot` recovery (this spec's option 3), not Barman Cloud/object-store — see **ADR 0013**, which supersedes ADR 0009's static-PV/`pvcTemplate` decision and ADR 0010's Terraform-owned-volume decision. The Postgres EBS volume moves off Terraform entirely and becomes Disposable-lifecycle; the retained EBS snapshot (not the volume) is the new Persistent-lifecycle artifact. `tests/manual/007-postgres.md` is updated accordingly, including a third repeat cycle in its testing steps (not just two) per review feedback that a wrong snapshot-handle discovery or retention-count bug tends to surface on the third cycle.

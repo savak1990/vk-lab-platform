@@ -17,7 +17,7 @@ spec:
     - tags:
         karpenter.sh/discovery: {{ .Values.project }}-eks
   tags:
-    Project: vk-lab-platform
+    Project: {{ .Values.project }}
     Scope: platform
     Lifecycle: disposable
     ManagedBy: karpenter

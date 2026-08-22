@@ -5,9 +5,8 @@ project: vk-lab-platform
 repoURL: https://github.com/savak1990/vk-lab-platform
 targetRevision: main
 
-# Set by terraform/modules/argocd-bootstrap, forwarded to the root
-# Application below so CNPG binds to the Postgres volume automatically.
+# Set automatically by scripts/argo-up.sh, which discovers the latest
+# retained EBS snapshot (if any) via the AWS API - no manual edit
+# required. Empty means "no snapshot found, bootstrap fresh". See ADR 0013.
 postgres:
-  existingVolumeHandle: ""
-  existingVolumeAz: ""
-  existingVolumeSize: "10Gi"
+  recoverySnapshotHandle: ""

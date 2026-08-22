@@ -10,22 +10,34 @@ metadata:
 spec:
   instances: 1
   bootstrap:
+    {{- if .Values.postgres.recoverySnapshotHandle }}
+    # Recovery bootstrap: rebuild from the VolumeSnapshot imported by
+    # recovered-snapshot.yaml (name fixed as lab-postgres-recovered). No
+    # fallback to initdb if this fails - see ADR 0013: a loud failure here
+    # beats silently wiping a recoverable database.
+    recovery:
+      volumeSnapshots:
+        storage:
+          apiGroup: snapshot.storage.k8s.io
+          kind: VolumeSnapshot
+          name: lab-postgres-recovered
+    {{- else }}
     initdb:
       database: vkdb
       owner: vkdb
+    {{- end }}
   storage:
     size: 10Gi
-    storageClass: ebs-retain
-    {{- if .Values.postgres.existingVolumeHandle }}
-    pvcTemplate:
-      accessModes: ["ReadWriteOnce"]
-      storageClassName: ebs-retain
-      volumeName: lab-postgres-recovered
-      resources:
-        requests:
-          # Informational only — storage.size above is authoritative for resize.
-          storage: {{ .Values.postgres.existingVolumeSize | default "10Gi" }}
-    {{- end }}
+    storageClass: ebs-delete
+  # Cold (online: false) volume-snapshot backup - confirmed via CNPG docs
+  # to need neither an object store nor WAL archiving, just a CSI driver
+  # that supports snapshots. instances: 1 means this briefly fences the
+  # primary; acceptable since argo-down.sh triggers it immediately before
+  # tearing the cluster down anyway. See ADR 0013.
+  backup:
+    volumeSnapshot:
+      className: ebs-postgres-snapshot
+      online: false
   postgresql:
     parameters:
       max_wal_senders: "10"

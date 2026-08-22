@@ -1,0 +1,26 @@
+{{- if eq .Values.target "aws" }}
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshotClass
+metadata:
+  name: ebs-postgres-snapshot
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+    # Argo's Application health check can report the external-snapshotter
+    # Applications Healthy before their CRDs are actually registered in
+    # the API server - same risk class as the Karpenter CRs, which carry
+    # this same annotation. See ADR 0013.
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+driver: ebs.csi.aws.com
+deletionPolicy: Retain
+parameters:
+  # Static, not the driver's {{ "{{ .VolumeSnapshotName }}" }}-style
+  # interpolation - the VolumeSnapshot object is recreated with a
+  # different name every disposable cycle, but the tags the scripts
+  # filter on (argo-down.sh/argo-up.sh/persistent-down.sh) must stay
+  # constant. Project is templated (not hardcoded) so two environments
+  # with different PROJECT_NAME values in the same region/account never
+  # collide on each other's snapshots - same reasoning as the Project tag
+  # on the ebs-retain/ebs-delete StorageClasses. See ADR 0013.
+  tagSpecification_1: "Project={{ .Values.project }}"
+  tagSpecification_2: "Component=postgres"
+{{- end }}

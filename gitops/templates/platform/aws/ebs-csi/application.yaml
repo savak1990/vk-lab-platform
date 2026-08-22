@@ -20,6 +20,15 @@ spec:
           serviceAccount:
             create: true
             name: ebs-csi-controller-sa
+        # Forced on rather than left to the chart's live-CRD auto-detection
+        # (sidecars.snapshotter.forceEnable defaults to false and only
+        # activates once it sees the snapshot CRDs already present at
+        # render time) - those CRDs are installed by a separate Application
+        # in this same rollout, and relying on Argo's sync ordering to win
+        # that detection race is fragile. See ADR 0013.
+        sidecars:
+          snapshotter:
+            forceEnable: true
   destination:
     server: https://kubernetes.default.svc
     namespace: kube-system

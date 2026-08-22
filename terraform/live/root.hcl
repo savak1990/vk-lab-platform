@@ -9,9 +9,11 @@ locals {
   project      = get_env("PROJECT_NAME", "vk-lab-platform")
   state_bucket = "${local.project}-tf-state"
 
-  # Shared by the eks unit (node group placement) and the postgres-volume
-  # unit (persistent/postgres-volume), so the node group and the Postgres
-  # EBS volume can never end up pinned to different AZs.
+  # Used by the eks unit for node group placement. Was also shared with a
+  # Terraform-owned Postgres EBS volume (persistent/postgres-volume); that
+  # unit is gone (Postgres storage moved to CNPG VolumeSnapshot recovery,
+  # see ADR 0013) but the name is kept as-is rather than renamed for a
+  # single remaining caller.
   postgres_az = "eu-west-1a"
 
   relative_path = path_relative_to_include()

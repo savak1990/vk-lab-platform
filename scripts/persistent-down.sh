@@ -1,19 +1,21 @@
 #!/usr/bin/env bash
 # Destroys Persistent-lifecycle resources: the lab DNS zone (and its
 # parent-zone NS delegation record), the ACM certificate, everything in
-# Secrets Manager, and every retained EBS volume the ebs-retain
-# StorageClass created (spec 005). Those volumes are Persistent-lifecycle
-# data but live outside any Terraform state (no stack creates them, the
-# CSI driver does) - this script is where their deletion is accounted for,
-# since persistent-down is already the guarded, rarely-run path for
-# permanently deleting Persistent data. Guarded: refuses while Disposable
-# state exists, and verifies afterward that every unit's state is actually
-# empty - `dependency`-based destroy ordering applies acm/secrets before
-# route53, and a partial failure there could otherwise leave the zone (and
-# its parent-zone delegation) orphaned while reporting success.
+# Secrets Manager, every retained EBS volume the ebs-retain StorageClass
+# created (spec 005), and every retained Postgres EBS snapshot (ADR 0013).
+# Those volumes/snapshots are Persistent-lifecycle data but live outside
+# any Terraform state (no stack creates them, the CSI driver does) - this
+# script is where their deletion is accounted for, since persistent-down
+# is already the guarded, rarely-run path for permanently deleting
+# Persistent data. Guarded: refuses while Disposable state exists, and
+# verifies afterward that every unit's state is actually empty -
+# `dependency`-based destroy ordering applies acm/secrets before route53,
+# and a partial failure there could otherwise leave the zone (and its
+# parent-zone delegation) orphaned while reporting success.
 # Confirmation is terragrunt's own interactive destroy prompt below (typing
 # "yes"), not a separate custom one - same approach as bootstrap-down.sh;
-# the volume list is echoed before that prompt so it covers volumes too.
+# the volume/snapshot lists are echoed before that prompt so it covers
+# them too.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -66,11 +68,10 @@ count_resources() {
 # Note: matched by Lifecycle=persistent, not just ManagedBy=ebs-csi-driver -
 # a future Delete-reclaim scratch StorageClass could set ManagedBy the same
 # way, and only Lifecycle=persistent actually means "this is retained data".
-# The Project tag is hardcoded "vk-lab-platform" in the StorageClass today
-# (gitops/templates/platform/aws/ebs-csi/storageclass.yaml), not templated
-# through PROJECT_NAME - a CI run with a different PROJECT_NAME would find
-# zero volumes here and silently leak them. Known limitation; fix by
-# threading PROJECT_NAME into the gitops Helm values before CI relies on this.
+# The Project tag is templated through .Values.project in the StorageClass
+# (gitops/templates/platform/aws/ebs-csi/storageclass.yaml, fixed
+# alongside ADR 0013's snapshot tagging), so two environments with
+# different PROJECT_NAME values never match each other's volumes here.
 list_retained_volumes() {
   aws ec2 describe-volumes \
     --region "$REGION" \
@@ -80,6 +81,21 @@ list_retained_volumes() {
       "Name=tag:Project,Values=$PROJECT_NAME" \
       "Name=status,Values=available" \
     --query "Volumes[].{Id:VolumeId,Size:Size,AZ:AvailabilityZone}" \
+    --output json
+}
+
+# Postgres's EBS volume itself is Disposable now (ADR 0013) - the
+# Persistent-lifecycle artifact is the retained VolumeSnapshot instead,
+# tagged by the VolumeSnapshotClass at snapshot-creation time (the EBS CSI
+# driver sets this tag, not Terraform, so it's identified by AWS tag here
+# rather than any Terraform state). A full wipe of the persistent tier is
+# expected to delete all of them, not just prune to N.
+list_postgres_snapshots() {
+  aws ec2 describe-snapshots \
+    --region "$REGION" \
+    --owner-ids self \
+    --filters "Name=tag:Project,Values=$PROJECT_NAME" "Name=tag:Component,Values=postgres" \
+    --query "Snapshots[].{Id:SnapshotId,StartTime:StartTime}" \
     --output json
 }
 
@@ -104,6 +120,16 @@ echo "delegation record), its ACM certificate, and every secret in Secrets Manag
 if [ "$retained_count" -gt 0 ]; then
   echo "It will also permanently delete $retained_count retained EBS volume(s):"
   echo "$retained_volumes" | jq -r '.[] | "  \(.Id)  \(.Size)GiB  \(.AZ)"'
+fi
+
+if ! postgres_snapshots=$(list_postgres_snapshots); then
+  echo "Failed to list Postgres EBS snapshots - aborting." >&2
+  exit 1
+fi
+postgres_snapshot_count=$(echo "$postgres_snapshots" | jq 'length')
+if [ "$postgres_snapshot_count" -gt 0 ]; then
+  echo "It will also permanently delete $postgres_snapshot_count Postgres EBS snapshot(s):"
+  echo "$postgres_snapshots" | jq -r '.[] | "  \(.Id)  \(.StartTime)"'
 fi
 echo "This is expected to run essentially never."
 
@@ -163,6 +189,40 @@ fi
 remaining_volume_count=$(echo "$remaining_volumes" | jq 'length')
 if [ "$remaining_volume_count" -gt 0 ]; then
   echo "Refusing to report success: $remaining_volume_count retained volume(s) still exist after deletion." >&2
+  exit 1
+fi
+
+# Same re-list-before-delete reasoning as the volume loop above: a
+# snapshot could complete only during/after the Terraform destroy and
+# would otherwise be skipped.
+if ! postgres_snapshots=$(list_postgres_snapshots); then
+  echo "Failed to list Postgres EBS snapshots before deletion - aborting." >&2
+  exit 1
+fi
+
+failed_snapshots=()
+while read -r snapshot_id; do
+  [ -z "$snapshot_id" ] && continue
+  if aws ec2 delete-snapshot --region "$REGION" --snapshot-id "$snapshot_id"; then
+    echo "Deleted Postgres snapshot $snapshot_id"
+  else
+    echo "Failed to delete Postgres snapshot $snapshot_id" >&2
+    failed_snapshots+=("$snapshot_id")
+  fi
+done < <(echo "$postgres_snapshots" | jq -r '.[].Id')
+
+if [ "${#failed_snapshots[@]}" -gt 0 ]; then
+  echo "Refusing to report success: failed to delete ${#failed_snapshots[@]} Postgres snapshot(s): ${failed_snapshots[*]}" >&2
+  exit 1
+fi
+
+if ! remaining_snapshots=$(list_postgres_snapshots); then
+  echo "Failed to verify Postgres snapshots were deleted - aborting." >&2
+  exit 1
+fi
+remaining_snapshot_count=$(echo "$remaining_snapshots" | jq 'length')
+if [ "$remaining_snapshot_count" -gt 0 ]; then
+  echo "Refusing to report success: $remaining_snapshot_count Postgres snapshot(s) still exist after deletion." >&2
   exit 1
 fi
 

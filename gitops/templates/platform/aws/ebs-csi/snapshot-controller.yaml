@@ -1,0 +1,69 @@
+{{- if eq .Values.target "aws" }}
+# EKS ships neither the external-snapshotter CRDs nor the snapshot-controller
+# by default, and the aws-ebs-csi-driver chart only carries the per-driver
+# csi-snapshotter sidecar (sidecars.snapshotter), not this cluster-wide
+# controller - confirmed by reading that chart's values.yaml. No maintained
+# Helm chart exists for this component, so these two Applications point
+# directly at the upstream kubernetes-csi/external-snapshotter project's own
+# release manifests (its documented install method), pinned to v8.6.0 to
+# match the csi-snapshotter sidecar image tag already pinned in the
+# ebs-csi-driver chart. Two Applications, not one, matching this repo's
+# existing one-Application-per-concern convention (ebs-csi-driver,
+# cnpg-operator, ...) and because CRDs must exist before the controller can
+# start.
+#
+# Verify the exact subpaths below against the v8.6.0 tag before relying on
+# this in a real cluster - they have moved between major external-snapshotter
+# releases in the past.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: external-snapshotter-crds
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/kubernetes-csi/external-snapshotter
+    targetRevision: v8.6.0
+    path: client/config/crd
+    directory:
+      recurse: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: external-snapshotter
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/kubernetes-csi/external-snapshotter
+    targetRevision: v8.6.0
+    path: deploy/kubernetes/snapshot-controller
+    directory:
+      recurse: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+{{- end }}

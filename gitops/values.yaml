@@ -4,9 +4,8 @@
 target: aws
 project: vk-lab-platform
 
-# Set automatically by terraform/modules/argocd-bootstrap from the
-# persistent postgres-volume unit's outputs — no manual edit required.
+# Set automatically by scripts/argo-up.sh, which discovers the latest
+# retained EBS snapshot (if any) via the AWS API — no manual edit
+# required. Empty means "no snapshot found, bootstrap fresh". See ADR 0013.
 postgres:
-  existingVolumeHandle: ""
-  existingVolumeSize: "10Gi"
-  existingVolumeAz: ""
+  recoverySnapshotHandle: ""

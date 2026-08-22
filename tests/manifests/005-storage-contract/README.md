@@ -32,10 +32,17 @@ Prerequisite: the `ebs-csi-driver` Argo Application is `Healthy` and the
 Repeat steps 1–3 of the same-cluster proof, then instead of step 4, run a
 real `disposable-down` / `disposable-up` cycle. The old PV object is now
 gone entirely (not just `Released`), so steps 6–9 above are the only rebind
-path — this is the exact procedure 007-postgres and 008-kafka must follow
-for real data, since a full cluster destroy is the actual EKS-recreation
-scenario the constitution's persistence-safety requirement is checking, not
-a same-cluster PVC delete/recreate.
+path — a full cluster destroy is the actual EKS-recreation scenario the
+constitution's persistence-safety requirement is checking, not a
+same-cluster PVC delete/recreate.
+
+Postgres no longer follows this procedure: spec 007-1/ADR 0013 found that
+CNPG doesn't adopt existing PGDATA on a rebound PV (it quarantines it and
+runs `initdb` fresh), and replaced it with CNPG's native VolumeSnapshot
+recovery instead. This rebind procedure remains the model for 008-kafka
+(not yet implemented, still planned per its spec as of this writing) —
+revisit whether that's still the right choice for Kafka/Strimzi when that
+spec is implemented, rather than assuming it transfers unchanged.
 
 ## Cleanup
 
