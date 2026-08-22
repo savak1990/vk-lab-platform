@@ -1,0 +1,40 @@
+# ADR 0012: Argo CD bootstrap moves from Terraform to a script; teardown uses Argo's own cascade
+
+## Status
+
+Accepted
+
+## Context
+
+Spec 004 (Requirement 1) mandated that Terraform install Argo CD and the root Application for the `aws` target, while spec 021 already required a plain script/Makefile target for the `local` target (minikube/kind) — two divergent mechanisms for the same job, justified at the time by "Terraform bootstraps Argo because Argo cannot bootstrap itself into a nonexistent cluster."
+
+A recurring, repeatedly-reproduced failure exposed a problem neither mechanism solved: Karpenter provisions EC2 instances directly via the AWS API, outside any Terraform state. Only Karpenter's own controller — via a Kubernetes finalizer on the `NodeClaim`/`NodePool` it owns — can drain and terminate those instances. `terragrunt destroy` on the disposable stack has no awareness of this and tears down the EKS cluster (and Karpenter's controller pod with it) at Terraform's own pace. When the controller dies mid-drain or before starting, its EC2 instances are orphaned; their ENIs keep referencing the shared node security group, and `aws_security_group.node`'s destroy fails with `DependencyViolation`, wedging the entire disposable teardown. This happened multiple times in the same session, including after a first fix (an explicit pre-destroy drain script with an EC2 sweep backstop) — the sweep itself had a `set -e` bug that skipped it in exactly the failure case it existed for, and a separate run showed the drain guard's skip path could fail silently with no clear signal.
+
+The first proposed fix — "delete the Argo CD root Application; cascading delete drains everything, including Karpenter, before anything is destroyed" — turned out to require a mechanism the repo didn't yet have: **no Application in `gitops/` carries `metadata.finalizers: [resources-finalizer.argocd.argoproj.io]`**. Without it, deleting an Application deletes only that Kubernetes object; every Helm release and CR it owns is orphaned, which is the exact failure this was meant to prevent, one layer up.
+
+Once that finalizer is added, Argo's own pruning mechanism handles the ordering for free: **prune order reverses sync-wave order** (highest wave pruned first), and the existing wave numbers in `gitops/` (`NodePool`/`EC2NodeClass` at wave `0`, the `karpenter` Application at wave `-1`) already express "drain nodes, then remove the controller" — because that's also the correct *creation* order, already written for a different reason.
+
+That raised the deciding question: could `terragrunt destroy` on the Terraform-managed Argo CD `helm_release` be trusted to wait for this cascade to finish before reporting success? Checked directly against `terraform-provider-helm`'s own issue tracker:
+
+- No support for Kubernetes' `DeletionPropagation: Foreground` on uninstall (open feature request, hashicorp/terraform-provider-helm#1363) — the provider has no way to make its delete call block until finalizer-gated child resources are actually gone.
+- A separately reported bug where `helm_release` destroy reports complete ~7–8 seconds in, before even simple child resources (pods/services) are confirmed gone.
+
+Trusting Terraform to wait through a multi-minute, finalizer-gated cascade would reintroduce the same race one layer up, with less visibility into how far the cascade actually got.
+
+## Decision
+
+**Argo CD's own installation moves out of Terraform, for both targets.** `terraform/modules/argocd-bootstrap` and `terraform/live/disposable/argocd-bootstrap` are deleted — that module was only ever the two `helm_release` resources (Argo CD chart, root Application chart); no IAM or other AWS resource lived there. `scripts/argo-up.sh` and `scripts/argo-down.sh` (new `make argo-up`/`make argo-down` targets) become the single mechanism for both `aws` and `local` — the split spec 004 previously required between the two targets no longer exists. `argo-up.sh` reads the values Terraform's `dependency` blocks previously supplied (EKS cluster connection info, the Postgres volume's ID/AZ/size) via `terragrunt output -raw` against the relevant units, then `helm upgrade --install`s both charts. `argo-down.sh` runs `kubectl delete application root -n argocd --cascade=foreground --wait --timeout=<n>` — loudly logging (not silently skipping) if the cluster or Argo is unreachable — followed by the pre-existing EC2 sweep as a backstop, now run unconditionally (fixing the `set -e`-skips-the-backstop-on-failure bug found in the same investigation).
+
+**Ordering, explicit at the Makefile level**: `disposable-up` → `argo-up` to bring the platform up; `argo-down` → `disposable-down` to tear it down. `argo-down`'s cascade is what makes `disposable-down` safe — by the time Terraform touches the EKS cluster, Argo (and everything it owned, including Karpenter's nodes) is already gone.
+
+**The finalizer is the general mechanism, not a Karpenter-specific patch.** `root` and every child Application that owns AWS-resource-creating objects (`karpenter`, `postgres`, `ebs-csi`, `cnpg-operator`) get `metadata.finalizers: [resources-finalizer.argocd.argoproj.io]`. Combined with sync-wave ordering already used for creation, this generalizes to any future case with the same shape — an AWS Load Balancer Controller-owned `Ingress`, a cert-manager `Certificate` — by assigning the right wave number, not by writing a new drain script per component. See spec 006-1 for the full requirements and the empirical verification this decision depends on (that Argo's wave-reversed pruning genuinely blocks on finalizer completion, not just on issuing the delete call).
+
+**This supersedes spec 004 Requirement 1** ("For the `aws` target, Terraform MUST install Argo CD") and spec 004's `aws`/`local` mechanism split. Spec 004 is updated to point here rather than rewritten wholesale — the ownership boundary it was protecting (Terraform doesn't manage Kubernetes resources beyond bootstrap) is unchanged; only *what bootstraps Argo* changes, from Terraform to a script, for both targets uniformly.
+
+## Consequences
+
+- Terraform's disposable stack no longer has any dependency on Argo CD's Helm state; `argocd-bootstrap`'s Terragrunt unit and its `dependency "eks"`/`dependency "postgres_volume"` blocks are deleted along with the module, not merely reconfigured.
+- The values `argocd-bootstrap` used to receive via Terragrunt `dependency` blocks (EKS connection info, Postgres volume ID/AZ/size, the admin password bcrypt hash path, repo URL/target revision) must all be re-enumerated as explicit `terragrunt output`/file reads inside `argo-up.sh` — a missed value fails silently as an empty Helm parameter, the same class of bug that cost real time earlier in spec 007's volume-wiring work. Enumerated against the deleted module's `variables.tf` before writing the script, not reconstructed from memory.
+- `docs/architecture.md`'s lifecycle description and CLAUDE.md's "Terraform may bootstrap Argo CD because Argo cannot bootstrap itself into a nonexistent cluster" line both need a pointer to this ADR — the *reason* (a script still only runs after EKS exists) is unchanged; the *mechanism* naming Terraform specifically is now wrong and needs updating, not silently left stale.
+- CI/fast-validation coverage for what used to be `terraform validate` on `argocd-bootstrap` is gone; `argo-up.sh`/`argo-down.sh` need their own lint/shellcheck coverage instead, same as every other script in `scripts/`.
+- If a future component's owning controller does *not* die with the disposable cluster (e.g. something that should outlive `disposable-down`), the finalizer + sync-wave pattern still applies, but the wave numbers must be chosen relative to that controller's own Application, not assumed to follow Karpenter's numbers verbatim.

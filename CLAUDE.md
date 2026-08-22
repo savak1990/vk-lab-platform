@@ -32,7 +32,7 @@ Terraform/Terragrunt owns AWS infrastructure.
 
 Argo CD owns Kubernetes resources.
 
-Terraform may bootstrap Argo CD because Argo cannot bootstrap itself into a nonexistent cluster.
+Argo CD is bootstrapped by `make argo-up` (a script), run after the disposable EKS cluster exists — not by Terraform. See ADR 0012 for why Terraform, once used for this, was moved off it.
 
 Terraform and Argo CD MUST NOT manage the same Kubernetes resource.
 
