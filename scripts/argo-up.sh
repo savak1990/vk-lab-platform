@@ -107,7 +107,7 @@ helm upgrade --install root-application "$REPO_ROOT/gitops/bootstrap" \
 # Blocks until root is Synced/Healthy, so a 0 exit means the whole platform
 # (including Postgres) is really ready. Only prints a line when the pending
 # set changes, to stay readable over a long recovery-from-snapshot bootstrap.
-WATCH_SECONDS="${ARGO_UP_WATCH_SECONDS:-600}"
+WATCH_SECONDS="${ARGO_UP_WATCH_SECONDS:-900}"
 POLL_INTERVAL="${ARGO_UP_POLL_INTERVAL:-5}"
 elapsed=0
 last_pending=""
