@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Destroys Disposable-lifecycle resources. Refuses to run if Argo CD's
+# Implements `make cluster-down`: destroys Disposable-lifecycle resources.
+# Refuses to run if Argo CD's
 # root Application still exists on a reachable cluster - that means
 # `make argo-down` hasn't completed, and proceeding anyway is what causes
 # Karpenter's orphaned EC2 instances to block the node security group's

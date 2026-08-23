@@ -1,7 +1,7 @@
 # Disposable stack
 
-Creates Disposable-lifecycle resources: destroyed by `make disposable-down`,
-recreated by `make disposable-up`, with zero effect on the Persistent stack
+Creates Disposable-lifecycle resources: destroyed by `make cluster-down`,
+recreated by `make cluster-up`, with zero effect on the Persistent stack
 (Route 53 zone/ACM cert/Secrets Manager) or the AWS account's default VPC.
 
 Three units:
@@ -52,8 +52,8 @@ the pending pod that triggered the scale-up never gets a node.
 ## Usage
 
 ```
-make disposable-up        # terragrunt apply, all units in this stack
-make disposable-down      # terragrunt destroy, all units in this stack
+make cluster-up        # terragrunt apply, all units in this stack
+make cluster-down      # terragrunt destroy, all units in this stack
 make eks-kubeconfig        # points local kubectl at the cluster
 ```
 

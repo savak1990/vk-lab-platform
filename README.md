@@ -49,7 +49,7 @@ make state-down         # essentially never: destroys remote state itself
   often than bootstrap/state, but still far less often than `up`/`down` —
   see [`terraform/live/persistent/README.md`](terraform/live/persistent/README.md)
   for required configuration (`PROJECT_NAME`/`REGION`/`SUBDOMAIN` env vars,
-  plus the `root-domain`/`postgres-admin-password` secrets).
+  plus the `root-domain`/`postgres-app-password` secrets).
 - **Disposable** — EKS, Karpenter, Argo CD, and everything it manages.
   Created by `make up`, destroyed by `make down`. This is the layer meant
   to be torn down and recreated routinely to control cost.

@@ -12,7 +12,7 @@
 Completes the full secrets lifecycle described in architecture.md §17–18, replacing the placeholder/minimal secret handling used ad hoc in specs 007 and 008:
 
 - EKS Pod Identity (preferred per constitution §5, ADR 0001) wiring for workloads that need AWS API access (e.g., an External Secrets-style controller syncing from Secrets Manager into Kubernetes Secrets).
-- The deterministic KMS-encrypted bootstrap ciphertext flow for *runtime application secrets*: one dedicated ciphertext file per credential under `secrets/` (e.g. `secrets/postgres-admin-password.enc`, `secrets/kafka-cluster-credentials.enc`) → each decrypted independently via the bootstrap KMS key → written into AWS Secrets Manager (not into Terraform state any more than necessary).
+- The deterministic KMS-encrypted bootstrap ciphertext flow for *runtime application secrets*: one dedicated ciphertext file per credential under `secrets/` (e.g. `secrets/postgres-app-password.enc`, `secrets/kafka-cluster-credentials.enc`) → each decrypted independently via the bootstrap KMS key → written into AWS Secrets Manager (not into Terraform state any more than necessary).
 - Migration of Postgres/Kafka credentials (currently handled minimally per specs 007/008) onto this real mechanism. Debezium (spec 024), implemented after this spec, uses this mechanism directly from the start — no migration needed for it.
 
 This entire spec is `aws`-target-only. The `local` target (spec 021) does not use Secrets Manager, Pod Identity, or External Secrets Operator under any circumstance — it either loads generated placeholder credentials directly into Kubernetes `Secret` objects, or, opt-in, decrypts `secrets/*.enc` via the same AWS KMS key this spec's ciphertext files use and loads the result directly, bypassing everything else in this spec entirely. See spec 021 Requirements 11–13.
@@ -32,7 +32,7 @@ Excludes: application-level secrets (no application code in this repo); a full s
 ## Implementation hints
 
 - A minimal External Secrets Operator-style controller (Argo-managed, using Pod Identity to read Secrets Manager) is the standard way to bridge AWS-managed secrets into Kubernetes Secrets without ever putting plaintext in Git or GitOps manifests.
-- Per-credential flow: encrypt each credential locally/in CI with the bootstrap KMS key → commit as its own file (e.g. `secrets/postgres-admin-password.enc`) → a one-time (or idempotent) bootstrap step decrypts each file independently and writes it into Secrets Manager, run manually or via a scoped CI job, not as a routine part of every `terraform apply`.
+- Per-credential flow: encrypt each credential locally/in CI with the bootstrap KMS key → commit as its own file (e.g. `secrets/postgres-app-password.enc`) → a one-time (or idempotent) bootstrap step decrypts each file independently and writes it into Secrets Manager, run manually or via a scoped CI job, not as a routine part of every `terraform apply`.
 - Revisit Postgres/Kafka credential handling from specs 007/008 now: replace whatever operator-generated or ad hoc Secret was used with one sourced from Secrets Manager via this new mechanism, and confirm nothing broke in the process (a re-run of each spec's lifecycle test is warranted after this migration).
 - Keep IAM policies attached to each Pod Identity role scoped to exactly the Secrets Manager ARNs that workload needs — no wildcard `secretsmanager:*` grants.
 

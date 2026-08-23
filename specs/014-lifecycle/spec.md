@@ -9,7 +9,7 @@
 
 ## Scope
 
-Implements `make up` and `make down` as the coordinated entry points for the full lifecycle described in architecture.md §20–24:
+Implements `make up` and `make down` as the coordinated entry points for the full lifecycle described in architecture.md §20–24. Concretely, in terms of the Makefile targets already built by prior specs: `make up` = `make persistent-up` (precondition check, per Requirement 8) → `make cluster-up` → `make argo-up` (which itself now blocks until the platform is genuinely healthy); `make down` = `make argo-down` → `make cluster-down` (`make persistent-down` is a separate, explicitly-confirmed command per Requirement 9, not part of `make down`).
 
 - `make up`: verify the Persistent stack (spec 002) already exists → Terragrunt apply disposable → EKS ready → system capacity available → `make argo-up` (Argo CD bootstrapped and root Application created via script, per ADR 0012 — no longer Terraform) → Argo reconciles the full platform in creation order (operators/controllers → platform components → stateful workloads → dependent workloads → public exposure) → verify healthy.
 - `make down`: `make argo-down` (cascading Argo-driven deletion in reverse order — public exposure → dependent workloads → stateful workloads → platform services/operators, gated on the `resources-finalizer.argocd.argoproj.io` finalizer and sync-wave-reversed pruning per spec 006-1) → verify Argo-managed platform is empty → Terragrunt destroy disposable → verify AWS-side disposable resources are gone → verify persistent resources remain untouched. (Once spec 024 (Debezium) lands, its deletion step slots in between "dependent workloads" and "stateful workloads," per the constitution's deletion-ordering rule — added at that point, not here.)

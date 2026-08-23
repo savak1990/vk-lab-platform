@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Cascades away everything Argo CD owns, then removes Argo CD itself -
-# before disposable-down touches the EKS cluster. The cascade is what lets
+# before cluster-down touches the EKS cluster. The cascade is what lets
 # Karpenter's controller drain and terminate its own nodes before it
 # disappears (ADR 0012, spec 006-1); it relies on the
 # resources-finalizer.argocd.argoproj.io finalizer on the root Application
@@ -29,7 +29,7 @@ fi
 
 # Forces a cold VolumeSnapshot backup of Postgres before the cluster (and
 # with it, the live EBS volume) gets torn down below - this is the only
-# thing that survives a disposable-down/disposable-up cycle now that the
+# thing that survives a cluster-down/cluster-up cycle now that the
 # volume itself is Delete-reclaim (ADR 0013). Must run and complete before
 # the cascade delete starts: the Cluster/pod need to still be alive.
 # Aborts loudly on failure rather than proceeding - proceeding would

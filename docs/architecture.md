@@ -247,7 +247,7 @@ vk-lab-platform/
 │
 ├── secrets/
 │   ├── root-domain.enc
-│   ├── postgres-admin-password.enc
+│   ├── postgres-app-password.enc
 │   ├── kafka-cluster-credentials.enc
 │   └── ...                        # one KMS-encrypted file per secret/config value
 │
@@ -576,7 +576,7 @@ The two targets diverge in kind, not just in values, on several points:
 - **Install path.** Both targets: `make argo-up`/`make argo-down` (scripts)
   install/remove Argo CD and the root Application — no Terraform involved
   for either target (ADR 0012, spec 004 Requirement 1). `aws` additionally
-  requires the disposable EKS cluster to exist first (`make disposable-up`);
+  requires the disposable EKS cluster to exist first (`make cluster-up`);
   `local` entry points are `make minikube-up` and `make kind-up`; there is
   no unified `make local-up` wrapper.
 - **Persistence.** `aws`: Postgres/Kafka data is Persistent-lifecycle,
@@ -980,7 +980,7 @@ The repository therefore contains one committed ciphertext file per value, for e
 ```text
 secrets/
 ├── root-domain.enc
-├── postgres-admin-password.enc
+├── postgres-app-password.enc
 ├── kafka-cluster-credentials.enc
 └── ...
 ```
@@ -1164,7 +1164,7 @@ make up                creates Disposable-lifecycle resources (EKS, then argo-up
 make down              destroys them — argo-down (Argo cascade) then Terragrunt destroy — the routine, frequently-used command
 ```
 
-`make up`/`make down` compose `disposable-up`/`argo-up` and `argo-down`/`disposable-down` respectively (ADR 0012, spec 006-1) — `argo-down`'s Argo-driven cascade must complete before `disposable-down` touches the EKS cluster, since only Argo/Karpenter's own controllers can clean up the AWS resources they provisioned outside Terraform.
+`make up`/`make down` compose `cluster-up`/`argo-up` and `argo-down`/`cluster-down` respectively (ADR 0012, spec 006-1) — `argo-down`'s Argo-driven cascade must complete before `cluster-down` touches the EKS cluster, since only Argo/Karpenter's own controllers can clean up the AWS resources they provisioned outside Terraform.
 
 `make minikube-up` and `make kind-up` (the `local` target, §10a) are separate commands outside this lifecycle-class command surface entirely — they don't create or destroy any State/Bootstrap/Persistent/Disposable resource, so they aren't governed by the "one command per class" rule below.
 

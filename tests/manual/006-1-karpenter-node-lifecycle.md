@@ -10,7 +10,7 @@ controller — not just issuing the delete calls in order.
 
 ```bash
 make persistent-up   # if not already up
-make disposable-up
+make cluster-up
 ```
 
 ## 1. Bring up Argo CD
@@ -97,12 +97,12 @@ aws ec2 describe-instances --region eu-west-1 \
 # Expect: empty or all terminated
 ```
 
-## 6. Guard test — disposable-down without argo-down
+## 6. Guard test — cluster-down without argo-down
 
 Bring Argo back up (`make argo-up`), then try skipping the drain:
 
 ```bash
-make disposable-down
+make cluster-down
 ```
 
 Expect it to refuse immediately with `Argo CD's root Application still
@@ -113,7 +113,7 @@ touching Terraform.
 
 ```bash
 make argo-down
-make disposable-down
+make cluster-down
 ```
 
 Expect `terragrunt destroy` to complete with no `DependencyViolation` retry
@@ -123,7 +123,7 @@ loop on `aws_security_group.node`.
 
 Hard to simulate deliberately without risk — skip unless you want to
 intentionally interrupt a destroy mid-way. If you do: confirm a second
-`make disposable-down` run proceeds (doesn't hang on the guard) once the
+`make cluster-down` run proceeds (doesn't hang on the guard) once the
 cluster's already unreachable.
 
 ## 9. Idempotency

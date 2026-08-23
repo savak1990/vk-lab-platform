@@ -7,7 +7,7 @@ Accepted
 ## Context
 
 Live testing of ADR 0013's VolumeSnapshot recovery found a real bug: after a
-`disposable-down`/`disposable-up` → `argo-up` cycle that recovered Postgres
+`cluster-down`/`cluster-up` → `argo-up` cycle that recovered Postgres
 from a snapshot, `psql` login as `vkdb` failed with `password authentication
 failed`.
 
@@ -45,8 +45,7 @@ credential, as spec `007-2-secrets-for-postgres`:
 
 - `secrets/<project>/postgres-app-password.enc` (existing KMS-encrypt
   tooling) → `terraform/live/persistent/secrets` (existing module, one new
-  map entry) → the `${project}-secrets` AWS Secrets Manager object,
-  alongside `postgres_admin_password`.
+  map entry) → the `${project}-secrets` AWS Secrets Manager object.
 - A new `terraform/modules/external-secrets-pod-identity` module (identical
   shape to `ebs-csi-pod-identity`/`karpenter-pod-identity`) creates an IAM
   role trusted by `pods.eks.amazonaws.com`, scoped to

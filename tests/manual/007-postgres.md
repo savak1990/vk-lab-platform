@@ -8,7 +8,7 @@ min, needs `aws`/`kubectl`/`psql`/`terragrunt` CLIs.
 
 ```bash
 make persistent-up
-make disposable-up
+make cluster-up
 make eks-kubeconfig
 ```
 
@@ -74,7 +74,7 @@ Kill the port-forward (`fg` then Ctrl-C, or `kill %1`).
 
 ```bash
 make argo-down    # forces the pre-teardown VolumeSnapshot backup (ADR 0013)
-make disposable-down
+make cluster-down
 ```
 
 ## 8. Verify the snapshot survived, and the volume did not (ADR 0013)
@@ -95,7 +95,7 @@ disposable now, not the snapshot.
 ## 9. Recreate — no manual values edit anywhere
 
 ```bash
-make disposable-up
+make cluster-up
 make eks-kubeconfig
 kubectl -n argocd get applications
 kubectl -n cnpg-system get cluster lab-postgres
@@ -131,8 +131,8 @@ source of truth, with no second owner to drift against.
 
 ## 12. Repeat steps 6–10 at least twice more
 
-Per ADR 0013, run the full write → `argo-down` → `disposable-down` →
-`disposable-up` → `argo-up` → read-back cycle a third time (not just a
+Per ADR 0013, run the full write → `argo-down` → `cluster-down` →
+`cluster-up` → `argo-up` → read-back cycle a third time (not just a
 second) before trusting this with real data — a wrong snapshot-handle
 discovery or retention-count bug tends to surface on the third cycle, not
 the first or second. Each pass: write a new, distinguishable row and
@@ -144,7 +144,7 @@ never exceeds 2.
 ```bash
 kill %1  # port-forward, if still running
 make argo-down
-make disposable-down
+make cluster-down
 make persistent-down   # only if you're fully done — deletes all retained
                         # volumes AND all Postgres snapshots for real (ADR 0013)
 ```

@@ -12,7 +12,7 @@ Three units, applied/destroyed together via `make persistent-up`/
   from the parent zone (looked up by name, not by an explicit zone ID —
   see `docs/adr/0002-delegated-lab-subdomain.md`).
 - `acm/` — the DNS-validated certificate for that zone, depends on `route53`.
-- `secrets/` — one Secrets Manager secret, `${PROJECT_NAME}-secrets`, holding every runtime secret as a JSON key (currently just `postgres_admin_password`) — one secret, not one per value, since Secrets Manager bills per secret (~$0.40/month each) rather than per key.
+- `secrets/` — one Secrets Manager secret, `${PROJECT_NAME}-secrets`, holding every runtime secret as a JSON key (currently just `postgres_app_password`) — one secret, not one per value, since Secrets Manager bills per secret (~$0.40/month each) rather than per key.
 
 ## Configuration
 
@@ -39,10 +39,10 @@ supplied two different ways:
   public zone shares that name, `make persistent-up` fails at that lookup
   with a clear Terraform data-source error, not a silent fallback.
 
-Also required: `secrets/$PROJECT_NAME/postgres-admin-password.enc`, via:
+Also required: `secrets/$PROJECT_NAME/postgres-app-password.enc`, via:
 
 ```
-make secret-encrypt NAME=postgres-admin-password VALUE=<generated password>
+make secret-encrypt NAME=postgres-app-password VALUE=<generated password>
 ```
 
 For a throwaway CI/test `PROJECT_NAME`, `make generate-secrets` creates

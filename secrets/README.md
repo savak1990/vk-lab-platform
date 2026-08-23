@@ -40,7 +40,7 @@ PROJECT_NAME=<ci-project-name> ROOT_DOMAIN=<domain> make generate-secrets
 ```
 
 Creates `secrets/$PROJECT_NAME/root-domain.enc` (from `ROOT_DOMAIN`) and
-`secrets/$PROJECT_NAME/postgres-admin-password.enc` (a fixed value,
+`secrets/$PROJECT_NAME/postgres-app-password.enc` (a fixed value,
 `test`) — everything `make persistent-up` needs for a disposable
 CI/test project, with no manually pre-committed ciphertext. Never use
 this for the personal lab's own `PROJECT_NAME`; the Postgres password it
@@ -60,7 +60,7 @@ Identity or an in-cluster secrets controller exist (those are spec 014's
 job, for runtime application secrets).
 
 Terraform itself decrypts `secrets/<project>/root-domain.enc` and
-`secrets/<project>/postgres-admin-password.enc` directly, via the AWS
+`secrets/<project>/postgres-app-password.enc` directly, via the AWS
 provider's `aws_kms_secrets` data source — `make secret-decrypt` is for
 manual inspection of a value, not something spec 002's Terraform code
 calls. A future spec's Terraform can still take the `TF_VAR_*` route
@@ -81,9 +81,9 @@ before `make persistent-up` can succeed:
   `make secret-encrypt NAME=root-domain VALUE=<your real root domain>`,
   and make sure a public Route 53 hosted zone for that exact domain
   already exists in the target AWS account (spec 002 looks it up by name).
-- `vk-lab-platform/postgres-admin-password.enc` — the initial in-cluster
-  Postgres admin password, consumed by spec 002's `secrets` unit. Create
-  it via `make secret-encrypt NAME=postgres-admin-password VALUE=<generated password>`.
+- `vk-lab-platform/postgres-app-password.enc` — the in-cluster Postgres
+  `vkdb` role's password, consumed by spec 002's `secrets` unit. Create
+  it via `make secret-encrypt NAME=postgres-app-password VALUE=<generated password>`.
 
 ## What happens to this directory on `make bootstrap-down`
 

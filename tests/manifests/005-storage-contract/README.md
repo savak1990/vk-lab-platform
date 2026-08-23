@@ -30,7 +30,7 @@ Prerequisite: the `ebs-csi-driver` Argo Application is `Healthy` and the
 ## Full destroy/recreate proof
 
 Repeat steps 1–3 of the same-cluster proof, then instead of step 4, run a
-real `disposable-down` / `disposable-up` cycle. The old PV object is now
+real `cluster-down` / `cluster-up` cycle. The old PV object is now
 gone entirely (not just `Released`), so steps 6–9 above are the only rebind
 path — a full cluster destroy is the actual EKS-recreation scenario the
 constitution's persistence-safety requirement is checking, not a

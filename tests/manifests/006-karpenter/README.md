@@ -38,7 +38,7 @@ Prerequisite: the `karpenter` Argo Application is `Healthy`, and the
 
 1. `kubectl apply -f 01-scale-up-deployment.yaml` and wait for the spot
    node to join.
-2. Run the disposable teardown (`make disposable-down` or equivalent)
+2. Run the disposable teardown (`make cluster-down` or equivalent)
    while the node is still up.
 3. In AWS (not `kubectl`, the cluster is gone), confirm zero leftover EC2
    instances: `aws ec2 describe-instances --filters "Name=tag:karpenter.sh/nodepool,Values=default" "Name=instance-state-name,Values=running,pending"`.

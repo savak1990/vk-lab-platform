@@ -16,8 +16,8 @@ holding live data.
 
 That decision was correct for the goal it was evaluated against:
 persistence itself. A different problem surfaced afterward that dynamic
-provisioning doesn't solve — after every `disposable-down` →
-`disposable-up` cycle, recovering the retained volume required manually
+provisioning doesn't solve — after every `cluster-down` →
+`cluster-up` cycle, recovering the retained volume required manually
 running `aws ec2 describe-volumes` to find its ID and AZ, then
 hand-editing `gitops/values.yaml`. This ADR revisits the rejected
 alternative under that new goal: deterministic automation of a step that
@@ -71,7 +71,7 @@ addendum, ambiguous once other components share that class).
 `persistent → disposable` Terragrunt `dependency` (the first of its kind in
 this repo — every prior example is disposable-to-disposable, but this one
 is directionally safe because `make persistent-up` always runs before
-`make disposable-up`), into `terraform/modules/argocd-bootstrap`'s
+`make cluster-up`), into `terraform/modules/argocd-bootstrap`'s
 `helm_release.root_application`, through `gitops/bootstrap/templates/root-application.yaml`'s
 explicit `helm.parameters` list (verified: this template does **not**
 forward arbitrary values, only what's explicitly listed there), landing in

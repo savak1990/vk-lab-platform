@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-Spec 007-1 confirmed, empirically, that ADR 0009's static-PV/`pvcTemplate` recovery mechanism does not work: CNPG's pre-flight check doesn't adopt the pre-existing PGDATA on the reattached, Terraform-owned (ADR 0010) EBS volume — it quarantines it (renames aside with a timestamp suffix) and runs a fresh `initdb` on every `disposable-down`/`disposable-up` cycle. Every prior cycle's data was silently discarded.
+Spec 007-1 confirmed, empirically, that ADR 0009's static-PV/`pvcTemplate` recovery mechanism does not work: CNPG's pre-flight check doesn't adopt the pre-existing PGDATA on the reattached, Terraform-owned (ADR 0010) EBS volume — it quarantines it (renames aside with a timestamp suffix) and runs a fresh `initdb` on every `cluster-down`/`cluster-up` cycle. Every prior cycle's data was silently discarded.
 
 Two replacement designs were evaluated:
 
@@ -19,7 +19,7 @@ Two replacement designs were evaluated:
 
 **Lifecycle-class move, stated explicitly (CLAUDE.md requires this be justified, not left implicit):**
 - The EBS **volume** moves **Persistent → Disposable**.
-- The EBS **snapshot** becomes a new **Persistent**-class resource: it survives `disposable-down`, and is deleted only by `persistent-down.sh`.
+- The EBS **snapshot** becomes a new **Persistent**-class resource: it survives `cluster-down`, and is deleted only by `persistent-down.sh`.
 
 **Recovery mechanism:**
 - `scripts/argo-down.sh`, before the existing cascade delete, forces a CNPG `Backup` (`method: volumeSnapshot`, `online: false`) against the live cluster, waits for `Completed`, then prunes old snapshots to the newest 2. If the backup doesn't complete, `argo-down.sh` aborts loudly rather than proceeding — proceeding would destroy the only copy.
@@ -42,4 +42,4 @@ Two replacement designs were evaluated:
 - Fixed in passing: `ebs-retain`'s, the new `ebs-delete`'s, and `karpenter/nodepool.yaml`'s `EC2NodeClass` `Project` tags were all hardcoded `"vk-lab-platform"`, not templated through `.Values.project` — a documented known limitation (`persistent-down.sh`) that would have caused two environments with different `PROJECT_NAME` values to leak (or, worse, cross-match) each other's tagged AWS resources. All now read `Project={{ .Values.project }}`, matching the new `VolumeSnapshotClass`'s tagging scheme.
 - No `architecture.md` non-goal amendment is needed — that was only required for the rejected Barman/S3 path. VolumeSnapshot recovery-on-teardown doesn't read as "enterprise disaster recovery."
 - The `Cluster`/PVC/PV deletion chain on teardown depends on the same load-bearing assumption spec 006-1 relies on for Karpenter's `NodeClaim`: that Argo's wave-reversed cascade `--wait` genuinely blocks until each wave's finalizers clear, not just issues deletes in order. `cluster.yaml` already sits at sync-wave `1`, above the `ebs-csi-driver` Application's wave `-1`, mirroring that pattern. Verify empirically (`kubectl get pvc -w` while deleting `root`) alongside whatever spec 006-1's own implementation verifies for Karpenter — this is the same mechanism, one more resource chain to watch, not new work.
-- Verification requires **three** full `disposable-down`/`disposable-up` cycles, not two — the third is where a wrong snapshot-handle discovery or retention-count bug tends to surface. See spec 007-1's testing section and `tests/manual/007-postgres.md`, both updated alongside this ADR.
+- Verification requires **three** full `cluster-down`/`cluster-up` cycles, not two — the third is where a wrong snapshot-handle discovery or retention-count bug tends to surface. See spec 007-1's testing section and `tests/manual/007-postgres.md`, both updated alongside this ADR.

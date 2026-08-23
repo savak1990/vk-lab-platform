@@ -74,7 +74,7 @@ module "eks" {
   # already encrypted at rest by AWS regardless, and real secrets live in
   # Secrets Manager (spec 002), not Kubernetes Secrets. Skips the key's
   # ongoing cost and the 7-30 day pending-deletion window it would leave
-  # behind after every `disposable-down`.
+  # behind after every `cluster-down`.
   create_kms_key    = false
   encryption_config = null
 

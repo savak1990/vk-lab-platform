@@ -91,16 +91,16 @@ waiting for that Secret to exist with a non-empty `password` key.
 - `terragrunt validate` on the two new/changed Terraform units;
   `helm template gitops` renders cleanly on both the `initdb` and `recovery`
   branches.
-- After `persistent-up`, `${project}-secrets` in Secrets Manager has both
-  `postgres_admin_password` and `postgres_app_password` keys.
-- After `disposable-up`, the Pod Identity association for
+- After `persistent-up`, `${project}-secrets` in Secrets Manager has a
+  `postgres_app_password` key.
+- After `cluster-up`, the Pod Identity association for
   `external-secrets`/`external-secrets` exists.
 - Fresh `argo-up` (no snapshot): `external-secrets` and `lab-postgres-app`'s
   `ExternalSecret` reach `Synced`, `lab-postgres-app` has the
   Secrets-Manager-sourced password *before* `Cluster` leaves "Setting up
   primary," and `psql` login succeeds.
-- The real regression test: `argo-down` → `disposable-down` →
-  `disposable-up` → `argo-up`, three cycles total (per ADR 0013's own
+- The real regression test: `argo-down` → `cluster-down` →
+  `cluster-up` → `argo-up`, three cycles total (per ADR 0013's own
   testing note), confirming `recovery` bootstrap and the same pinned
   password keep working — not just the first cycle.
 - Explicit check of the open ordering risk on at least one cycle: watch

@@ -31,6 +31,9 @@ kubectl config set-context --current --namespace=default >/dev/null
 # .spec.ignoreDifferences) once it's reconciled the object, and a second
 # `helm upgrade --install` on an already-synced root can then fail with
 # "Apply failed with 1 conflict" against that field manager.
+#
+# Safe under the stricter wait below: Argo's health rollup for the CNPG
+# Cluster resource already reflects Postgres readiness, not just sync state.
 EXISTING_STATUS="$(kubectl get application root -n argocd \
   -o jsonpath='{.status.sync.status}/{.status.health.status}' 2>/dev/null || true)"
 if [ "$EXISTING_STATUS" = "Synced/Healthy" ]; then
@@ -90,9 +93,8 @@ helm upgrade --install argocd argo-cd \
   --wait
 
 # No --wait here: the root Application's own health depends on everything
-# beneath it in gitops/ reconciling, which can take much longer than a
-# helm install timeout is meant to bound. `make up`'s later health check
-# (spec 014) is what actually waits for the platform to become healthy.
+# beneath it in gitops/ reconciling, which can take much longer than a helm
+# install timeout is meant to bound. The wait loop below handles that.
 helm upgrade --install root-application "$REPO_ROOT/gitops/bootstrap" \
   --namespace argocd \
   --set target=aws \
@@ -102,19 +104,30 @@ helm upgrade --install root-application "$REPO_ROOT/gitops/bootstrap" \
   --set targetRevision="$TARGET_REVISION" \
   --set postgres.recoverySnapshotHandle="$RECOVERY_SNAPSHOT_HANDLE"
 
-# Bounded progress window, not a full wait - shows which components Argo
-# is still bringing up without blocking this script on full platform
-# health (that's spec 014's job). Exits early once Synced/Healthy.
-WATCH_SECONDS="${ARGO_UP_WATCH_SECONDS:-60}"
+# Blocks until root is Synced/Healthy, so a 0 exit means the whole platform
+# (including Postgres) is really ready. Only prints a line when the pending
+# set changes, to stay readable over a long recovery-from-snapshot bootstrap.
+WATCH_SECONDS="${ARGO_UP_WATCH_SECONDS:-600}"
 POLL_INTERVAL="${ARGO_UP_POLL_INTERVAL:-5}"
 elapsed=0
+last_pending=""
+overall=""
 while [ "$elapsed" -lt "$WATCH_SECONDS" ]; do
   overall="$(kubectl get application root -n argocd \
     -o jsonpath='{.status.sync.status}/{.status.health.status}' 2>/dev/null || true)"
   pending="$(kubectl get application root -n argocd \
     -o jsonpath='{range .status.resources[?(@.health.status!="Healthy")]}{.kind}/{.name}={.status}({.health.status}) {end}' 2>/dev/null || true)"
-  echo "ARGO-UP: root ${overall:-pending} - still reconciling: ${pending:-none}"
+  if [ "$pending" != "$last_pending" ]; then
+    echo "ARGO-UP: root ${overall:-pending} - still reconciling: ${pending:-none}"
+    last_pending="$pending"
+  fi
   [ "$overall" = "Synced/Healthy" ] && break
   sleep "$POLL_INTERVAL"
   elapsed=$((elapsed + POLL_INTERVAL))
 done
+
+if [ "$overall" != "Synced/Healthy" ]; then
+  echo "ARGO-UP: timed out after ${WATCH_SECONDS}s waiting for root to become Synced/Healthy - still reconciling: ${last_pending:-none}" >&2
+  exit 1
+fi
+echo "ARGO-UP: root Synced/Healthy - platform ready."

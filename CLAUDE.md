@@ -263,7 +263,7 @@ Each secret or private config value gets its own committed ciphertext file
 under `secrets/<project>/`, named after its contents, for example:
 
 `secrets/vk-lab-platform/root-domain.enc`
-`secrets/vk-lab-platform/postgres-admin-password.enc`
+`secrets/vk-lab-platform/postgres-app-password.enc`
 
 Never commit the plaintext equivalent, and never combine multiple secrets
 or config values into one committed ciphertext file.

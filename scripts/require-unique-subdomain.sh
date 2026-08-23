@@ -48,7 +48,10 @@ if ! aws s3api get-object --bucket "$STATE_BUCKET" --key "$STATE_KEY" --region "
   exit 1
 fi
 
-TRACKED_ZONE_ID="$(jq -r '.resources[] | select(.type=="aws_route53_zone") | .instances[0].attributes.zone_id // ""' "$TMP_STATE")"
+# mode=="managed" matters: the module also holds a data "aws_route53_zone"
+# lookup of the PARENT zone, and without this filter both zone ids come
+# back and the comparison below can never match.
+TRACKED_ZONE_ID="$(jq -r '.resources[] | select(.mode=="managed" and .type=="aws_route53_zone") | .instances[0].attributes.zone_id // ""' "$TMP_STATE")"
 if [ "$TRACKED_ZONE_ID" != "${EXISTING_ZONE_ID#/hostedzone/}" ]; then
   echo "REQUIRE-UNIQUE-SUBDOMAIN: refusing - a Route53 zone for $FQDN already exists ($EXISTING_ZONE_ID)," >&2
   echo "but it doesn't match what PROJECT_NAME=$PROJECT_NAME's own state tracks (${TRACKED_ZONE_ID:-none})." >&2
