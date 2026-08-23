@@ -95,14 +95,32 @@ else
   echo "ARGO-DOWN: no lab-postgres Cluster found - skipping pre-teardown backup."
 fi
 
-# Argo updates status.resources wave by wave as it prunes, so polling it
-# while the blocking delete below runs shows which components are still
-# going away - not just that we're waiting.
+# Argo deletes one sync wave at a time and refuses to start the next while
+# any object it manages still has a deletionTimestamp - so a single object
+# whose finalizer never clears freezes the whole cascade silently. Report
+# live objects stuck Terminating and the finalizer holding each one: the
+# finalizer names the controller that owes the cleanup. Reading Argo's own
+# .status.resources instead would lie here, since that is its tracked
+# desired-state view and keeps listing resources already deleted.
+TERMINATING_KINDS="application.argoproj.io cluster.postgresql.cnpg.io \
+nodepool.karpenter.sh ec2nodeclass.karpenter.k8s.aws \
+volumesnapshot.snapshot.storage.k8s.io volumesnapshotcontent.snapshot.storage.k8s.io \
+volumesnapshotclass.snapshot.storage.k8s.io storageclass.storage.k8s.io \
+clustersecretstore.external-secrets.io externalsecret.external-secrets.io"
+
 report_remaining() {
-  local remaining
-  remaining="$(kubectl get application root -n argocd \
-    -o jsonpath='{range .status.resources[?(@.status!="")]}{.kind}/{.name}={.status} {end}' 2>/dev/null || true)"
-  echo "ARGO-DOWN: still waiting on: ${remaining:-root Application finalizer}"
+  local stuck=""
+  for kind in $TERMINATING_KINDS; do
+    stuck+="$(kubectl get "$kind" -A --ignore-not-found -o json 2>/dev/null \
+      | jq -r --arg k "${kind%%.*}" '.items[]? | select(.metadata.deletionTimestamp)
+          | "\($k)/\(.metadata.name)[\(.metadata.finalizers // ["none"] | join(","))]"' 2>/dev/null || true) "
+  done
+  stuck="$(echo "$stuck" | tr -s '[:space:]' ' ' | sed 's/^ *//;s/ *$//')"
+  if [ -n "$stuck" ]; then
+    echo "ARGO-DOWN: still terminating: $stuck"
+  else
+    echo "ARGO-DOWN: nothing stuck terminating - waiting on root's own finalizer."
+  fi
 }
 
 if kubectl get application root -n argocd >/dev/null 2>&1; then

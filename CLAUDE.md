@@ -223,6 +223,27 @@ Do not reimplement the entire Kubernetes deletion graph in shell scripts.
 
 ---
 
+## Argo CD Application conventions
+
+Prefer `ServerSideApply=true` in every Argo `Application`'s `syncOptions`
+where possible, rather than relying on client-side apply. Client-side apply
+writes the entire desired manifest into the
+`kubectl.kubernetes.io/last-applied-configuration` annotation, which is
+capped at 262144 bytes — large CRDs (e.g. an operator that embeds every
+provider's schema) exceed this and fail to sync. Server-side apply needs no
+such annotation.
+
+Argo sync-wave numbers only order when the `root` Application *creates* each
+child Application object. They do not reliably gate one Application's
+controller readiness on a sibling Application's health (e.g. a CRD from one
+Application being `Established` before a controller in another Application
+that depends on it starts). Do not assume wave ordering alone is sufficient
+for a cross-Application CRD/Secret dependency — verify it by test, and use a
+`PreSync` hook waiting on the concrete dependency (a CRD's `Established`
+condition, a Secret's key) when the ordering must be guaranteed.
+
+---
+
 ## Secrets and authentication
 
 No plaintext secrets may be committed to Git.
