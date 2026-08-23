@@ -97,6 +97,7 @@ helm upgrade --install root-application "$REPO_ROOT/gitops/bootstrap" \
   --namespace argocd \
   --set target=aws \
   --set project="$PROJECT_NAME" \
+  --set region="$REGION" \
   --set repoURL="$REPO_URL" \
   --set targetRevision="$TARGET_REVISION" \
   --set postgres.recoverySnapshotHandle="$RECOVERY_SNAPSHOT_HANDLE"

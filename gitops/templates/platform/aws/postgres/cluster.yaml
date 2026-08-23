@@ -15,7 +15,12 @@ spec:
     # recovered-snapshot.yaml (name fixed as lab-postgres-recovered). No
     # fallback to initdb if this fails - see ADR 0013: a loud failure here
     # beats silently wiping a recoverable database.
+    # database/owner are what enable CNPG's app-user password reconciler on
+    # this path; without them it never re-applies the pinned password to the
+    # restored role. Both are no-ops against already-populated PGDATA.
     recovery:
+      database: vkdb
+      owner: vkdb
       volumeSnapshots:
         storage:
           apiGroup: snapshot.storage.k8s.io
