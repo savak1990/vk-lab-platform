@@ -90,10 +90,11 @@ gating on a Secret instead of a CRD's `Established` condition.
 **Deliberately not pre-populated:** the `lab-postgres-app` Secret's
 convenience keys CNPG itself normally generates (`host`, `port`, `dbname`,
 `uri`, `jdbc-uri`, `pgpass`) — only `username`/`password` are templated.
-Whether CNPG backfills those into a pre-existing Secret is unverified against
-this exact operator version; nothing in this repo consumes them today. If a
-future consumer needs them and CNPG doesn't backfill, extend the
-`ExternalSecret`'s template rather than guessing the exact format now.
+CNPG will **never** backfill them: `createOrPatchClusterCredentialSecret`
+returns early on any Secret the `Cluster` does not own, which is precisely
+the mechanism that protects the pinned password. Nothing in this repo
+consumes those keys today; a future consumer (Debezium, spec 024) must get
+them by extending the `ExternalSecret`'s template.
 
 ## Consequences
 
@@ -101,10 +102,23 @@ future consumer needs them and CNPG doesn't backfill, extend the
   needed" claim didn't survive contact with the recovery path.
 - Full spec 013 (Kafka credential migration, broader rotation story) remains
   future work — this ADR only implements the Postgres slice.
-- One-time transition: the EKS cluster was already torn down before this
-  landed, so the newest surviving snapshot has the old, now-unknown, random
-  password baked in. The next `argo-up` recovering from it will still fail
-  login with the newly-pinned password — expected, not a regression. Given
-  this is a disposable learning platform with no real data at stake, the
-  simplest resolution is deleting the existing Postgres snapshot(s) once so
-  the next `argo-up` does a fresh `initdb` instead.
+- No one-time transition is needed, and existing snapshots must **not** be
+  deleted to work around this. An earlier revision of this ADR said the
+  opposite, on the assumption that a snapshot carrying the old random
+  password was unrecoverable. It isn't: `bootstrap.recovery` now sets
+  `owner`/`database`, which enables CNPG's app-user reconciler on the
+  recovery path, so every recovery re-applies the ESO-sourced password to
+  the restored role. Recovery is self-healing — from any snapshot, whatever
+  password its PGDATA carries.
+- That same property is what makes rotating `postgres_app_password` in
+  Secrets Manager actually take effect. Without `owner`/`database` on the
+  recovery path, a rotation would apply on `initdb` and then silently
+  desync on the next recovery.
+- The ESO `ExternalSecret` must create `lab-postgres-app` before CNPG's
+  `Cluster` reconciles (waves 0 and 1 respectively). This ordering is a
+  correctness condition, not an optimization: ESO calls
+  `SetControllerReference`, which fails permanently with `AlreadyOwnedError`
+  against a Secret CNPG already controller-owns. Confirm on the first cycle
+  of each direction with
+  `kubectl get secret lab-postgres-app -n cnpg-system -o jsonpath='{.metadata.ownerReferences[*].kind}'`
+  — it must report `ExternalSecret`.

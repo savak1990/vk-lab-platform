@@ -11,13 +11,9 @@ spec:
   instances: 1
   bootstrap:
     {{- if .Values.postgres.recoverySnapshotHandle }}
-    # Recovery bootstrap: rebuild from the VolumeSnapshot imported by
-    # recovered-snapshot.yaml (name fixed as lab-postgres-recovered). No
-    # fallback to initdb if this fails - see ADR 0013: a loud failure here
-    # beats silently wiping a recoverable database.
-    # database/owner are what enable CNPG's app-user password reconciler on
-    # this path; without them it never re-applies the pinned password to the
-    # restored role. Both are no-ops against already-populated PGDATA.
+    # No initdb fallback: a loud failure beats silently wiping a recoverable
+    # database. database/owner enable CNPG's app-user password reconciler on
+    # this path - without them the pinned password is never re-applied.
     recovery:
       database: vkdb
       owner: vkdb
