@@ -5,7 +5,12 @@ metadata:
   name: ebs-csi-driver
   namespace: argocd
   annotations:
-    argocd.argoproj.io/sync-wave: "-1"
+    # Deleted after Karpenter, because draining a node cannot finish until the
+    # external-attacher here clears the VolumeAttachment finalizer, and the
+    # provisioner here is what deletes the released EBS volume. Its dependents
+    # (PV/PVC/VolumeAttachment) are controller-created, so no wave orders them
+    # against it - only being last does.
+    argocd.argoproj.io/sync-wave: "-5"
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:

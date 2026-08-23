@@ -25,7 +25,10 @@ metadata:
   name: external-snapshotter-crds
   namespace: argocd
   annotations:
-    argocd.argoproj.io/sync-wave: "-2"
+    # One wave below ebs-csi-driver, whose csi-snapshotter sidecar watches
+    # these CRDs - the driver moved late in the deletion order, and this has
+    # to stay ahead of it on the creation order.
+    argocd.argoproj.io/sync-wave: "-6"
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
