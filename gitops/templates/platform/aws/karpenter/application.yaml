@@ -5,7 +5,10 @@ metadata:
   name: karpenter
   namespace: argocd
   annotations:
-    argocd.argoproj.io/sync-wave: "-1"
+    # Lowest wave of anything root manages, so on teardown (reverse-wave)
+    # this controller is destroyed last - after the NodePool it must drain,
+    # and after every workload whose deletion needs a node to still exist.
+    argocd.argoproj.io/sync-wave: "-4"
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:

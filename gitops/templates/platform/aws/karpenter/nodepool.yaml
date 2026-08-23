@@ -4,7 +4,10 @@ kind: EC2NodeClass
 metadata:
   name: default
   annotations:
-    argocd.argoproj.io/sync-wave: "0"
+    # Deleting this is what drains the nodes, so it must outlive every other
+    # root-managed object - a workload sharing its wave gets its pods evicted
+    # mid-deletion, and controllers whose finalizers it needs die with them.
+    argocd.argoproj.io/sync-wave: "-3"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
   role: {{ .Values.project }}-eks-karpenter-node
@@ -27,7 +30,7 @@ kind: NodePool
 metadata:
   name: default
   annotations:
-    argocd.argoproj.io/sync-wave: "0"
+    argocd.argoproj.io/sync-wave: "-3"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
   template:
