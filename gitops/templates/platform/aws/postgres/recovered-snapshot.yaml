@@ -12,7 +12,10 @@ metadata:
   name: lab-postgres-recovered-content
   annotations:
     argocd.argoproj.io/sync-wave: "0"
-    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    # Client-side apply merges, so it leaves the uid snapshot-controller
+    # patches into volumeSnapshotRef alone. Server-side apply replaces that
+    # field wholesale - it is atomic - and the CSI provisioner then refuses.
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true,ServerSideApply=false
 spec:
   volumeSnapshotClassName: ebs-postgres-snapshot
   driver: ebs.csi.aws.com
