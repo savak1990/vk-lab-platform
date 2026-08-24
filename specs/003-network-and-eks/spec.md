@@ -33,7 +33,7 @@ Excludes: any dedicated/custom VPC (spec 020), Karpenter itself (006 — Karpent
 - `terraform/live/disposable/` is its own Terragrunt stack/state, separate from bootstrap and persistent, so `make down` can destroy this without touching the Route 53 zone/ACM certificate from spec 002.
 - Use a well-maintained community EKS Terraform module rather than hand-rolling control-plane/node-group resources — reduces surface area for IAM/security-group mistakes. Most such modules accept an existing VPC/subnet ID list, so pointing them at the default VPC's subnets (via a data source, not a hardcoded ID) is a small, well-supported configuration, not a workaround.
 - Keep the system node group small (e.g., 1–2 small/medium instances) — it only needs to run controllers, not application or data workloads.
-- Note for spec 020: record which AZs the default VPC's subnets used here, since any EBS volumes created later (specs 005/007/008) will be locked to those AZs — this matters when planning the eventual move to a dedicated VPC.
+- Note for spec 020: record which AZs the default VPC's subnets used here, since any EBS volumes created later (specs 005/007/024) will be locked to those AZs — this matters when planning the eventual move to a dedicated VPC.
 - This is the first spec where a full `make up` produces a real, billable AWS resource that must be cleanly destroyed — get comfortable with `terraform destroy` on this stack before building anything on top.
 
 ## Testing / acceptance criteria

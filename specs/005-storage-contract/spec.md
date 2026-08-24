@@ -17,14 +17,14 @@ Proves, before any real database or message broker exists, that a Kubernetes-bac
 
 This spec, and its `Retain`-reclaim-policy/EBS-rebind requirements below, apply to the `aws` target only. The `local` target (spec 021) uses the cluster's default local StorageClass (hostpath/local-path) with `Delete` reclaim semantics instead — the deliberate inverse of Requirement 2 below — since local data is fully throwaway and needs no rebind procedure.
 
-Excludes: the actual Postgres (007) and Kafka (008) deployments — this spec only proves the underlying mechanism they'll rely on.
+Excludes: the actual Postgres (007) and Kafka (024) deployments — this spec only proves the underlying mechanism they'll rely on.
 
 ## Requirements
 
 1. Kubernetes resources may disappear, but the underlying AWS EBS data MUST remain — architecture.md §16's "Persistent Storage Contract" in full.
 2. Destructive reclaim policies (`Delete`) MUST NOT be used for any storage class backing data intended to persist (constitution §4).
 3. The PV/PVC lifecycle (what happens to the EBS volume when the PVC is deleted, when the node is replaced, when the whole cluster is destroyed and recreated) MUST be explicitly tested here, not assumed from Kubernetes semantics alone — constitution §4 explicitly warns "persistence assumptions MUST be verified against actual AWS resources, not only Kubernetes objects."
-4. The process for recreating a cluster and rebinding/restoring a retained EBS volume to a new PVC MUST be documented as part of this spec's output, since spec 007 and 008 will follow this exact procedure for real data.
+4. The process for recreating a cluster and rebinding/restoring a retained EBS volume to a new PVC MUST be documented as part of this spec's output, since spec 007 and 024 will follow this exact procedure for real data.
 5. The EBS CSI driver is a controller and MUST be installed via Argo CD, not Terraform (constitution §2, §7).
 6. Every `StorageClass` backing a persistent workload MUST set `allowVolumeExpansion: true` — EBS/its CSI driver support online (in-place) volume growth, and capacity increases MUST NOT require volume replacement, a new PVC, or data migration. This is grow-only: shrinking a volume is not supported and is out of scope. The consumer-facing resize procedure (e.g., the Postgres operator CR field that triggers it) is documented per-workload in spec 007.
 
@@ -33,7 +33,7 @@ Excludes: the actual Postgres (007) and Kafka (008) deployments — this spec on
 - Two storage classes may be worth defining: one `Retain`-based for anything meant to survive (Postgres, Kafka data), and — only if genuinely needed — a `Delete`-based one for throwaway/scratch storage, so the distinction is explicit in code rather than implicit in developer memory. Both should use the `gp3` EBS volume type and set `allowVolumeExpansion: true`.
 - The proof procedure: create PVC via the `Retain` StorageClass → write test data → delete the PVC (not just the pod) → confirm the EBS volume still exists in AWS (not just "Released" in Kubernetes) → manually create a new PV pointing at the same `volumeHandle` → bind a new PVC to it → confirm the data reads back correctly.
 - Repeat the same proof across a full `terraform destroy`/`apply` of the disposable EKS cluster, not just a PVC delete/recreate within the same cluster — a surviving PVC inside a running cluster does not prove the EBS volume survives EKS being destroyed and rebuilt (this is exactly the constitution §4 distinction between Kubernetes objects and actual AWS resources).
-- Document the rebind procedure (manual PV recreation with the retained volume's ID, or a controller-assisted approach) clearly enough that spec 007/008 can follow it verbatim for real Postgres/Kafka volumes.
+- Document the rebind procedure (manual PV recreation with the retained volume's ID, or a controller-assisted approach) clearly enough that spec 007/024 can follow it verbatim for real Postgres/Kafka volumes.
 
 ## Testing / acceptance criteria
 
