@@ -1,5 +1,5 @@
 {{- if eq .Values.target "aws" }}
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaNodePool
 metadata:
   name: broker
@@ -45,7 +45,7 @@ spec:
                     operator: In
                     values: ["stateful"]
 ---
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: Kafka
 metadata:
   name: lab-kafka
