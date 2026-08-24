@@ -21,6 +21,16 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: kafka
+  ignoreDifferences:
+    # The API server drops this empty schema node (status.clusterSecurity,
+    # object type with only x-kubernetes-preserve-unknown-fields: true) on
+    # write, so the chart's declared `properties: {}` never round-trips -
+    # this is stripped by the API server, not by Argo's diff engine.
+    - group: apiextensions.k8s.io
+      kind: CustomResourceDefinition
+      name: kafkas.kafka.strimzi.io
+      jqPathExpressions:
+        - '.spec.versions[].schema.openAPIV3Schema.properties.status.properties.clusterSecurity.properties'
   syncPolicy:
     automated:
       prune: true
