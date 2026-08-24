@@ -9,10 +9,6 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "1"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
-    # Held paused until the cluster-id-patch Job pins status.clusterId and
-    # unpauses both resources - otherwise Strimzi can format a fresh volume
-    # with a random cluster ID before the committed one is in place.
-    strimzi.io/pause-reconciliation: "true"
 spec:
   replicas: {{ len .Values.kafka.volumes }}
   roles: [controller, broker]
@@ -55,8 +51,6 @@ metadata:
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
     strimzi.io/node-pools: enabled
     strimzi.io/kraft: enabled
-    # Paused in lockstep with the broker KafkaNodePool - see its comment.
-    strimzi.io/pause-reconciliation: "true"
 spec:
   kafka:
     version: 4.3.1
