@@ -53,6 +53,17 @@ spec:
       kind: VolumeSnapshotContent
       jsonPointers:
         - /spec/volumeSnapshotRef
+    # The cluster-id-patch Job flips this to "false" after pinning
+    # clusterId - without this, selfHeal reverts it to "true" and the
+    # cluster stays paused forever.
+    - group: kafka.strimzi.io
+      kind: Kafka
+      jsonPointers:
+        - /metadata/annotations/strimzi.io~1pause-reconciliation
+    - group: kafka.strimzi.io
+      kind: KafkaNodePool
+      jsonPointers:
+        - /metadata/annotations/strimzi.io~1pause-reconciliation
   syncPolicy:
     automated:
       prune: true

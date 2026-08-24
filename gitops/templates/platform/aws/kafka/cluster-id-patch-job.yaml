@@ -15,6 +15,9 @@ rules:
   - apiGroups: ["kafka.strimzi.io"]
     resources: ["kafkas/status"]
     verbs: ["patch"]
+  - apiGroups: ["kafka.strimzi.io"]
+    resources: ["kafkas", "kafkanodepools"]
+    verbs: ["patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -47,8 +50,11 @@ spec:
     spec:
       serviceAccountName: kafka-cluster-id-patcher
       restartPolicy: Never
-      containers:
-        - name: patch
+      # Both resources are created paused (see their pause-reconciliation
+      # annotation) so Strimzi can't act on either until clusterId is
+      # pinned - these three steps run in order, then unpause last.
+      initContainers:
+        - name: patch-cluster-id
           image: registry.k8s.io/kubectl:v1.31.0
           args:
             - patch
@@ -62,5 +68,30 @@ spec:
             - merge
             - -p
             - '{"status":{"clusterId":"{{ .Values.kafka.clusterId }}"}}'
+        - name: unpause-nodepool
+          image: registry.k8s.io/kubectl:v1.31.0
+          args:
+            - patch
+            - kafkanodepool
+            - broker
+            - -n
+            - kafka
+            - --type
+            - merge
+            - -p
+            - '{"metadata":{"annotations":{"strimzi.io/pause-reconciliation":"false"}}}'
+      containers:
+        - name: unpause-kafka
+          image: registry.k8s.io/kubectl:v1.31.0
+          args:
+            - patch
+            - kafka
+            - lab-kafka
+            - -n
+            - kafka
+            - --type
+            - merge
+            - -p
+            - '{"metadata":{"annotations":{"strimzi.io/pause-reconciliation":"false"}}}'
 {{- end }}
 {{- end }}
