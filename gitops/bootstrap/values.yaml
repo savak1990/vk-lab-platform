@@ -21,6 +21,7 @@ karpenter:
       ["t4g.medium", "t4g.large", "m6g.medium", "m6g.large", "m7g.medium", "m7g.large"]
     cpuLimit: "4"
   onDemand:
-    instanceTypes: ["t4g.medium"]
+    instanceTypes:
+      ["t4g.medium", "t4g.large", "m6g.medium", "m6g.large", "m7g.medium", "m7g.large"]
     cpuLimit: "4"
     az: ""

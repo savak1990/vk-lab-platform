@@ -20,19 +20,22 @@ postgres:
 # scripts/argo-up.sh. cpuLimit must be kept in sync with instanceTypes'
 # vCPU count and the desired max node count — it is not derived
 # automatically. onDemand nodes are tainted dedicated=stateful:NoSchedule
-# and reserved for Postgres/Kafka — spot is everything else. spot lists
-# several arm64 families/sizes (not just one) so Karpenter's
-# capacity-optimized fleet request has somewhere to fall back to when a
-# single instance type/AZ combination has no Spot capacity. az is set
-# automatically by scripts/argo-up.sh from Kafka's Terraform-owned EBS
-# volume AZ — an EBS volume only attaches within its own AZ.
+# and reserved for Postgres/Kafka — spot is everything else. Both pools
+# list several arm64 families/sizes (not just one) so Karpenter has a
+# fallback when a single instance type/AZ combination has no capacity —
+# Karpenter still prefers the cheapest instance type that fits a pod's
+# actual requests, so listing more options doesn't mean pricier nodes.
+# az is set automatically by scripts/argo-up.sh from Kafka's
+# Terraform-owned EBS volume AZ — an EBS volume only attaches within its
+# own AZ.
 karpenter:
   spot:
     instanceTypes:
       ["t4g.medium", "t4g.large", "m6g.medium", "m6g.large", "m7g.medium", "m7g.large"]
     cpuLimit: "4"
   onDemand:
-    instanceTypes: ["t4g.medium"]
+    instanceTypes:
+      ["t4g.medium", "t4g.large", "m6g.medium", "m6g.large", "m7g.medium", "m7g.large"]
     cpuLimit: "4"
     az: ""
 

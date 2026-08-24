@@ -23,7 +23,7 @@ REPO_URL="${REPO_URL:-https://github.com/savak1990/vk-lab-platform}"
 # AZ-pinned below to match Kafka's EBS volume(s).
 SPOT_KARPENTER_INSTANCE_TYPES="${SPOT_KARPENTER_INSTANCE_TYPES:-t4g.medium,t4g.large,m6g.medium,m6g.large,m7g.medium,m7g.large}"
 SPOT_KARPENTER_CPU_LIMIT="${SPOT_KARPENTER_CPU_LIMIT:-4}"
-ON_DEMAND_KARPENTER_INSTANCE_TYPES="${ON_DEMAND_KARPENTER_INSTANCE_TYPES:-t4g.medium}"
+ON_DEMAND_KARPENTER_INSTANCE_TYPES="${ON_DEMAND_KARPENTER_INSTANCE_TYPES:-t4g.medium,t4g.large,m6g.medium,m6g.large,m7g.medium,m7g.large}"
 ON_DEMAND_KARPENTER_CPU_LIMIT="${ON_DEMAND_KARPENTER_CPU_LIMIT:-4}"
 # Increase-only: Kubernetes rejects a PVC shrink, and shrinking below a
 # retained snapshot's restore size leaves the recovered PVC unable to bind.
