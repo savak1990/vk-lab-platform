@@ -5,7 +5,9 @@ metadata:
   name: lab-postgres
   namespace: cnpg-system
   annotations:
-    argocd.argoproj.io/sync-wave: "1"
+    # Kafka syncs first (wave 1) - Postgres is the eventual CDC source of
+    # truth and should come up only once the streaming target is ready.
+    argocd.argoproj.io/sync-wave: "2"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
   instances: 1
