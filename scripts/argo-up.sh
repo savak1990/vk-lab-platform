@@ -43,12 +43,14 @@ aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$REGION" --alias "$CL
 kubectl config set-context --current --namespace=default >/dev/null
 
 # Idempotency guard: if the root Application is already Synced/Healthy,
-# there's nothing to do. Beyond avoiding pointless work, this sidesteps a
-# real Helm bug on re-run: Argo's own controller takes server-side-apply
-# ownership of some Application spec fields (e.g. normalized
-# .spec.ignoreDifferences) once it's reconciled the object, and a second
-# `helm upgrade --install` on an already-synced root can then fail with
-# "Apply failed with 1 conflict" against that field manager.
+# there's nothing to do. Just an optimization to avoid pointless work -
+# the helm upgrade below uses --server-side/--force-conflicts specifically
+# so a second run doesn't need this guard for correctness: Argo's own
+# controller takes server-side-apply ownership of some Application spec
+# fields (e.g. normalized .spec.ignoreDifferences) once it's reconciled the
+# object, and a plain client-side `helm upgrade --install` on an
+# already-synced root fails with "Apply failed with 1 conflict" against
+# that field manager otherwise.
 #
 # Safe under the stricter wait below: Argo's health rollup for the CNPG
 # Cluster resource already reflects Postgres readiness, not just sync state.
@@ -132,6 +134,7 @@ helm upgrade --install argocd argo-cd \
 # install timeout is meant to bound. The wait loop below handles that.
 helm upgrade --install root-application "$REPO_ROOT/gitops/bootstrap" \
   --namespace argocd \
+  --server-side --force-conflicts \
   --set target=aws \
   --set project="$PROJECT_NAME" \
   --set region="$REGION" \
