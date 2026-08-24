@@ -15,7 +15,7 @@
 # to actually remove Argo CD and keep Helm's release records honest.
 set -euo pipefail
 
-TIMEOUT="${ARGO_DOWN_TIMEOUT:-300s}"
+TIMEOUT="${ARGO_DOWN_TIMEOUT:-900s}"
 POLL_INTERVAL="${ARGO_DOWN_POLL_INTERVAL:-5}"
 REGION="${REGION:-eu-west-1}"
 PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
