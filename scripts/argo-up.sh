@@ -150,22 +150,46 @@ helm upgrade --install root-application "$REPO_ROOT/gitops/bootstrap" \
   --set-json karpenter.spot.instanceTypes="$SPOT_KARPENTER_INSTANCE_TYPES_JSON" \
   --set-json karpenter.onDemand.instanceTypes="$ON_DEMAND_KARPENTER_INSTANCE_TYPES_JSON"
 
+# Every child Application (cnpg-operator, strimzi-operator, karpenter, ...)
+# with its own sync/health, so a single stuck one is visible by name instead
+# of only root's aggregate rollup.
+print_app_status() {
+  kubectl get applications -n argocd -o json 2>/dev/null \
+    | jq -r '.items[] | "  \(.metadata.name): sync=\(.status.sync.status // "Unknown") health=\(.status.health.status // "Unknown")"'
+}
+
+# root's own directly-templated resources (Kafka, Cluster, NodePools, ...)
+# not yet Healthy. Excludes kinds with no health concept at all (ServiceAccount,
+# Role, RoleBinding, ...) unless they're also not Synced - jsonpath's
+# @.health.status!="Healthy" matches a null health equally, which made every
+# such resource show as permanently "pending" regardless of actual state.
+pending_resources() {
+  kubectl get application root -n argocd -o json 2>/dev/null | jq -r '
+    [.status.resources[]?
+      | select((.health.status // "") != "Healthy")
+      | select((.health.status // "") != "" or .status != "Synced")
+      | "\(.kind)/\(.name)=\(.status)(\(.health.status // "n/a"))"]
+    | join(" ")'
+}
+
 # Blocks until root is Synced/Healthy, so a 0 exit means the whole platform
-# (including Postgres) is really ready. Only prints a line when the pending
-# set changes, to stay readable over a long recovery-from-snapshot bootstrap.
+# (including Postgres) is really ready. Only prints when something changes,
+# to stay readable over a long recovery-from-snapshot bootstrap.
 WATCH_SECONDS="${ARGO_UP_WATCH_SECONDS:-900}"
 POLL_INTERVAL="${ARGO_UP_POLL_INTERVAL:-5}"
 elapsed=0
-last_pending=""
+last_state=""
 overall=""
 while [ "$elapsed" -lt "$WATCH_SECONDS" ]; do
   overall="$(kubectl get application root -n argocd \
     -o jsonpath='{.status.sync.status}/{.status.health.status}' 2>/dev/null || true)"
-  pending="$(kubectl get application root -n argocd \
-    -o jsonpath='{range .status.resources[?(@.health.status!="Healthy")]}{.kind}/{.name}={.status}({.health.status}) {end}' 2>/dev/null || true)"
-  if [ "$pending" != "$last_pending" ]; then
+  pending="$(pending_resources)"
+  state="$overall|$pending"
+  if [ "$state" != "$last_state" ]; then
     echo "ARGO-UP: root ${overall:-pending} - still reconciling: ${pending:-none}"
-    last_pending="$pending"
+    echo "ARGO-UP: applications:"
+    print_app_status
+    last_state="$state"
   fi
   [ "$overall" = "Synced/Healthy" ] && break
   sleep "$POLL_INTERVAL"
@@ -173,7 +197,9 @@ while [ "$elapsed" -lt "$WATCH_SECONDS" ]; do
 done
 
 if [ "$overall" != "Synced/Healthy" ]; then
-  echo "ARGO-UP: timed out after ${WATCH_SECONDS}s waiting for root to become Synced/Healthy - still reconciling: ${last_pending:-none}" >&2
+  echo "ARGO-UP: timed out after ${WATCH_SECONDS}s waiting for root to become Synced/Healthy - still reconciling: ${pending:-none}" >&2
+  echo "ARGO-UP: applications:" >&2
+  print_app_status >&2
   exit 1
 fi
 echo "ARGO-UP: root Synced/Healthy - platform ready."

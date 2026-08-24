@@ -123,6 +123,13 @@ report_remaining() {
   else
     echo "ARGO-DOWN: nothing stuck terminating - waiting on root's own finalizer."
   fi
+  # Which child Application(s) - cnpg-operator, strimzi-operator, karpenter,
+  # ... - are still around, so a single one stuck deleting is visible by
+  # name instead of only root's own aggregate status.
+  local remaining
+  remaining="$(kubectl get applications -n argocd -o json 2>/dev/null \
+    | jq -r '[.items[].metadata.name] | join(", ")')"
+  echo "ARGO-DOWN: applications remaining: ${remaining:-none}"
 }
 
 if kubectl get application root -n argocd >/dev/null 2>&1; then
