@@ -9,12 +9,16 @@ locals {
   project      = get_env("PROJECT_NAME", "vk-lab-platform")
   state_bucket = "${local.project}-tf-state"
 
-  # Used by the eks unit for node group placement. Was also shared with a
-  # Terraform-owned Postgres EBS volume (persistent/postgres-volume); that
-  # unit is gone (Postgres storage moved to CNPG VolumeSnapshot recovery,
-  # see ADR 0013) but the name is kept as-is rather than renamed for a
-  # single remaining caller.
-  postgres_az = "eu-west-1a"
+  # Used by the eks unit for node group placement and by
+  # persistent/kafka-volumes (ADR 0016) - the platform pins all stateful
+  # workloads and the node group to one shared AZ. Derived from REGION
+  # (not hardcoded) so switching REGION doesn't pin every AZ-consuming unit
+  # to a zone that doesn't exist in the new region - "a" is present in
+  # every AWS region's standard zone-letter set. Name kept as "postgres_az"
+  # despite having no Postgres-specific caller anymore (ADR 0013 moved
+  # Postgres off Terraform-owned storage) - not renamed for a single
+  # remaining caller, and now serves two.
+  postgres_az = "${local.aws_region}a"
 
   relative_path = path_relative_to_include()
   path_parts    = split("/", local.relative_path)

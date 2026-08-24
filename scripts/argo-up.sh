@@ -5,6 +5,8 @@
 # can't reliably wait through Argo's finalizer-gated cascade on the way
 # down, so both directions use the same non-Terraform mechanism.
 set -euo pipefail
+# kafka.volumes below is passed via `helm upgrade --set-json`, which needs
+# Helm >=3.10.
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
@@ -12,6 +14,19 @@ REGION="${REGION:-eu-west-1}"
 ARGOCD_CHART_VERSION="${ARGOCD_CHART_VERSION:-10.4.0}"
 TARGET_REVISION="${TARGET_REVISION:-main}"
 REPO_URL="${REPO_URL:-https://github.com/savak1990/vk-lab-platform}"
+# Comma-separated; cpu limit is a node-count cap, not a vCPU budget - keep
+# it in sync with the instance types' vCPU count when overriding either.
+# spot is general workload capacity; onDemand is tainted and reserved for
+# Postgres/Kafka, which tolerate it explicitly.
+SPOT_KARPENTER_INSTANCE_TYPES="${SPOT_KARPENTER_INSTANCE_TYPES:-t4g.medium}"
+SPOT_KARPENTER_CPU_LIMIT="${SPOT_KARPENTER_CPU_LIMIT:-4}"
+ON_DEMAND_KARPENTER_INSTANCE_TYPES="${ON_DEMAND_KARPENTER_INSTANCE_TYPES:-t4g.medium}"
+ON_DEMAND_KARPENTER_CPU_LIMIT="${ON_DEMAND_KARPENTER_CPU_LIMIT:-4}"
+# Increase-only: Kubernetes rejects a PVC shrink, and shrinking below a
+# retained snapshot's restore size leaves the recovered PVC unable to bind.
+POSTGRES_STORAGE_SIZE="${POSTGRES_STORAGE_SIZE:-10Gi}"
+SPOT_KARPENTER_INSTANCE_TYPES_JSON="$(jq -Rc 'split(",")' <<< "$SPOT_KARPENTER_INSTANCE_TYPES")"
+ON_DEMAND_KARPENTER_INSTANCE_TYPES_JSON="$(jq -Rc 'split(",")' <<< "$ON_DEMAND_KARPENTER_INSTANCE_TYPES")"
 # Project-scoped so two environments with different PROJECT_NAME values in
 # the same region/account never collide on each other's snapshots.
 SNAPSHOT_TAG_FILTERS=("Name=tag:Project,Values=$PROJECT_NAME" "Name=tag:Component,Values=postgres")
@@ -80,6 +95,19 @@ if [ -n "$OLD_SNAPSHOTS" ]; then
   done
 fi
 
+# Kafka's broker volume(s), unlike Postgres's snapshot, are Terraform-owned
+# (terraform/live/persistent/kafka-volumes, ADR 0015) - always created by
+# persistent-up, so this list is never empty by the time argo-up runs (no
+# "fresh vs recovery" branch needed, unlike Postgres).
+kafka_volumes_output() {
+  terragrunt --working-dir "$REPO_ROOT/terraform/live/persistent/kafka-volumes" output -json "$1"
+}
+KAFKA_VOLUME_IDS_JSON="$(kafka_volumes_output volume_ids)"
+KAFKA_VOLUME_AZS_JSON="$(kafka_volumes_output azs)"
+KAFKA_VOLUMES_JSON="$(jq -n --argjson ids "$KAFKA_VOLUME_IDS_JSON" --argjson azs "$KAFKA_VOLUME_AZS_JSON" \
+  '[range(0; $ids | length) as $i | {handle: $ids[$i], az: $azs[$i], size: "10Gi"}]')"
+KAFKA_CLUSTER_ID="$(tr -d '[:space:]' < "$REPO_ROOT/secrets/${PROJECT_NAME}/kafka-cluster-id.txt")"
+
 ADMIN_PASSWORD_BCRYPT_HASH_PATH="$REPO_ROOT/secrets/${PROJECT_NAME}/argocd-admin-password.bcrypt"
 ADMIN_PASSWORD_BCRYPT_HASH="$(tr -d '[:space:]' < "$ADMIN_PASSWORD_BCRYPT_HASH_PATH")"
 
@@ -102,7 +130,14 @@ helm upgrade --install root-application "$REPO_ROOT/gitops/bootstrap" \
   --set region="$REGION" \
   --set repoURL="$REPO_URL" \
   --set targetRevision="$TARGET_REVISION" \
-  --set postgres.recoverySnapshotHandle="$RECOVERY_SNAPSHOT_HANDLE"
+  --set postgres.recoverySnapshotHandle="$RECOVERY_SNAPSHOT_HANDLE" \
+  --set postgres.storageSize="$POSTGRES_STORAGE_SIZE" \
+  --set karpenter.spot.cpuLimit="$SPOT_KARPENTER_CPU_LIMIT" \
+  --set karpenter.onDemand.cpuLimit="$ON_DEMAND_KARPENTER_CPU_LIMIT" \
+  --set kafka.clusterId="$KAFKA_CLUSTER_ID" \
+  --set-json kafka.volumes="$KAFKA_VOLUMES_JSON" \
+  --set-json karpenter.spot.instanceTypes="$SPOT_KARPENTER_INSTANCE_TYPES_JSON" \
+  --set-json karpenter.onDemand.instanceTypes="$ON_DEMAND_KARPENTER_INSTANCE_TYPES_JSON"
 
 # Blocks until root is Synced/Healthy, so a 0 exit means the whole platform
 # (including Postgres) is really ready. Only prints a line when the pending

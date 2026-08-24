@@ -21,6 +21,27 @@ spec:
           value: {{ .Values.region | quote }}
         - name: postgres.recoverySnapshotHandle
           value: {{ .Values.postgres.recoverySnapshotHandle | quote }}
+        - name: postgres.storageSize
+          value: {{ .Values.postgres.storageSize | quote }}
+        - name: karpenter.spot.cpuLimit
+          value: {{ .Values.karpenter.spot.cpuLimit | quote }}
+        - name: karpenter.onDemand.cpuLimit
+          value: {{ .Values.karpenter.onDemand.cpuLimit | quote }}
+        - name: kafka.clusterId
+          value: {{ .Values.kafka.clusterId | quote }}
+      # kafka.volumes and karpenter.{spot,onDemand}.instanceTypes are lists -
+      # `parameters` only carries scalar string overrides (Argo CD's own
+      # documented limitation), so these go through valuesObject instead,
+      # which Argo merges as a real Helm values override, not a stringified
+      # `--set`.
+      valuesObject:
+        kafka:
+          volumes: {{ .Values.kafka.volumes | toYaml | nindent 12 }}
+        karpenter:
+          spot:
+            instanceTypes: {{ .Values.karpenter.spot.instanceTypes | toYaml | nindent 14 }}
+          onDemand:
+            instanceTypes: {{ .Values.karpenter.onDemand.instanceTypes | toYaml | nindent 14 }}
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd

@@ -6,8 +6,19 @@ region: eu-west-1
 repoURL: https://github.com/savak1990/vk-lab-platform
 targetRevision: main
 
-# Set automatically by scripts/argo-up.sh, which discovers the latest
-# retained EBS snapshot (if any) via the AWS API - no manual edit
-# required. Empty means "no snapshot found, bootstrap fresh". See ADR 0013.
+# recoverySnapshotHandle is set automatically by scripts/argo-up.sh, which
+# discovers the latest retained EBS snapshot (if any) via the AWS API - no
+# manual edit required. Empty means "no snapshot found, bootstrap fresh".
+# See ADR 0013. storageSize/karpenter below are operator-configurable via
+# env vars on scripts/argo-up.sh - defaults here match gitops/values.yaml.
 postgres:
   recoverySnapshotHandle: ""
+  storageSize: 10Gi
+
+karpenter:
+  spot:
+    instanceTypes: ["t4g.medium"]
+    cpuLimit: "4"
+  onDemand:
+    instanceTypes: ["t4g.medium"]
+    cpuLimit: "4"

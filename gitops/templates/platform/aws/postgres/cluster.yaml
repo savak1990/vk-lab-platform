@@ -9,6 +9,14 @@ metadata:
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
   instances: 1
+  affinity:
+    nodeSelector:
+      workload-type: stateful
+    tolerations:
+      - key: dedicated
+        operator: Equal
+        value: stateful
+        effect: NoSchedule
   bootstrap:
     {{- if .Values.postgres.recoverySnapshotHandle }}
     # No initdb fallback: a loud failure beats silently wiping a recoverable
@@ -28,7 +36,10 @@ spec:
       owner: vkdb
     {{- end }}
   storage:
-    size: 10Gi
+    # Increase-only: shrinking a PVC is rejected by Kubernetes, and on the
+    # snapshot-recovery path (above) the new PVC must be >= the snapshot's
+    # restore size or it never binds.
+    size: {{ .Values.postgres.storageSize | quote }}
     storageClass: ebs-delete
   # Cold (online: false) volume-snapshot backup - confirmed via CNPG docs
   # to need neither an object store nor WAL archiving, just a CSI driver

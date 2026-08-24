@@ -5,8 +5,36 @@ target: aws
 project: vk-lab-platform
 region: eu-west-1
 
-# Set automatically by scripts/argo-up.sh, which discovers the latest
-# retained EBS snapshot (if any) via the AWS API — no manual edit
-# required. Empty means "no snapshot found, bootstrap fresh". See ADR 0013.
+# recoverySnapshotHandle is set automatically by scripts/argo-up.sh, which
+# discovers the latest retained EBS snapshot (if any) via the AWS API — no
+# manual edit required. Empty means "no snapshot found, bootstrap fresh".
+# See ADR 0013. storageSize is operator-configurable (KARPENTER_INSTANCE_TYPES
+# sibling: POSTGRES_STORAGE_SIZE env var on argo-up.sh) — increase-only, see
+# scripts/argo-up.sh usage comment for why.
 postgres:
   recoverySnapshotHandle: ""
+  storageSize: 10Gi
+
+# Operator-configurable via {SPOT,ON_DEMAND}_KARPENTER_INSTANCE_TYPES
+# (comma-separated) and {SPOT,ON_DEMAND}_KARPENTER_CPU_LIMIT env vars on
+# scripts/argo-up.sh. cpuLimit must be kept in sync with instanceTypes'
+# vCPU count and the desired max node count — it is not derived
+# automatically. onDemand nodes are tainted dedicated=stateful:NoSchedule
+# and reserved for Postgres/Kafka — spot is everything else.
+karpenter:
+  spot:
+    instanceTypes: ["t4g.medium"]
+    cpuLimit: "4"
+  onDemand:
+    instanceTypes: ["t4g.medium"]
+    cpuLimit: "4"
+
+# Set automatically by scripts/argo-up.sh from
+# terraform/live/persistent/kafka-volumes' outputs — no manual edit
+# required. volumes is always non-empty once persistent-up has run (the
+# Terraform unit creates it upfront, unlike Postgres's snapshot-discovery
+# path). clusterId is the committed constant from
+# secrets/<project>/kafka-cluster-id.txt. See ADR 0015.
+kafka:
+  volumes: []
+  clusterId: ""

@@ -1,0 +1,49 @@
+{{- if eq .Values.target "aws" }}
+{{- range $i, $v := .Values.kafka.volumes }}
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: lab-kafka-broker-{{ $i }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  capacity:
+    storage: {{ $v.size | default "10Gi" }}
+  accessModes: ["ReadWriteOnce"]
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ebs-retain
+  csi:
+    driver: ebs.csi.aws.com
+    volumeHandle: {{ $v.handle }}
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: topology.ebs.csi.aws.com/zone
+              operator: In
+              values:
+                - {{ $v.az | quote }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  # Strimzi's documented naming convention for a KafkaNodePool-managed
+  # broker PVC: data-<cluster>-<pool>-<nodeId>. VERIFY against a live
+  # cluster before trusting this - see specs/008-kafka's Task B0 (not yet
+  # run against this repo's actual cluster as of this commit). Only index
+  # 0 is exercised today (replicas: 1); the pattern at index >0 is
+  # unverified until the replica count is actually raised.
+  name: data-lab-kafka-broker-{{ $i }}
+  namespace: kafka
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: ebs-retain
+  volumeName: lab-kafka-broker-{{ $i }}
+  resources:
+    requests:
+      storage: {{ $v.size | default "10Gi" }}
+---
+{{- end }}
+{{- end }}

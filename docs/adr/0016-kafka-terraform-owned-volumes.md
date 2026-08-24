@@ -1,0 +1,43 @@
+# ADR 0016: Kafka broker storage uses Terraform-owned volumes, statically bound
+
+## Status
+
+Accepted
+
+## Context
+
+Spec 008 needed a persistence mechanism for Strimzi-managed KRaft Kafka broker storage, surviving full `disposable-down`/`disposable-up` cycles the same way Postgres's data does. Three mechanisms were evaluated during this design:
+
+1. **AWS-tag-based discovery + rebind** — dynamically provision the first volume via the CSI driver on `ebs-retain`, then discover the retained volume by AWS tag query in `argo-up.sh` on every subsequent cycle (mirroring how Postgres's snapshot handle used to be discovered before this ADR's final decision). Rejected: tag-based "assume exactly one match" discovery doesn't generalize to a future multi-broker cluster without per-broker tagging and matching logic in bash.
+2. **CSI VolumeSnapshot, mirroring Postgres (ADR 0013)** — scale the broker to zero, snapshot the PVC, prune old snapshots, restore via `dataSource: VolumeSnapshot` on recreate. Rejected: Strimzi has no CNPG-equivalent `Backup` CR to coordinate this, so the entire snapshot lifecycle (trigger, wait, prune, restore) would need hand-built scripting in `argo-down.sh`/`argo-up.sh` — strictly more code than a volume that simply persists.
+3. **Velero** — evaluated on explicit request as the industry-standard backup/restore tool. Rejected for this platform's two stateful workloads specifically: CNPG's own community/docs warn against Velero-driven raw-volume Postgres restores (real GitHub issues — cloudnative-pg/cloudnative-pg#5912, vmware-tanzu/velero#8750 — CNPG expects to control its own bootstrap, which is exactly what ADR 0013's CNPG-native `Backup` CR already does better). For Kafka, Velero has the identical documented KRaft cluster-ID race Strimzi's own rebind procedure has (strimzi/strimzi-kafka-operator#3743, strimzi discussions #9109/#5894), with no built-in fix. Velero would add a new component (S3 bucket, IAM role, controller) without removing either workload's hardest problem.
+4. **Terraform-owned volume list + static PV/PVC rebind (chosen)** — see Decision.
+
+This is, deliberately, the same shape as ADR 0009/0010's original Postgres design (Terraform-owned volume + static `PersistentVolume`), which was abandoned **for Postgres specifically**: CNPG's pre-flight check quarantines (renames aside) PGDATA it doesn't recognize as its own, an application-layer behavior with no equivalent in Strimzi. Confirmed via Strimzi's own source (`NodePoolUtils.getOrGenerateKRaftClusterId`, `getClusterIdIfSet`) and upstream Kafka's `kafka-storage.sh format -g` (a documented no-op on an already-formatted log directory) that Strimzi does the opposite: it adopts pre-existing, correctly-named PVCs rather than erroring, and its own "cluster recovery from persistent volumes" procedure documents exactly this scenario as supported.
+
+ADR 0010's motivating problem for moving Postgres's volume *out* of Terraform — a Terraform-declared `size` fighting CNPG's grow-only CSI resize — does not recur here: Kafka's `KafkaNodePool.spec.storage.size` is fixed in this spec (no in-place resize planned), so there is no drift for `lifecycle { ignore_changes = [size] }` to paper over versus actually prevent.
+
+## Decision
+
+**Kafka's broker volume(s) are Terraform-owned, as a list, from day one.**
+
+- `terraform/modules/ebs-volume` (recreated for this ADR — it was deleted when ADR 0013 moved Postgres off Terraform) takes `volume_count` (default `1`) and creates that many `aws_ebs_volume` resources via `count`, all pinned to `local.postgres_az` in `terraform/live/root.hcl` (the platform's one shared AZ across the node group and any stateful volume, despite the local's name). Outputs `volume_ids`/`azs` as lists.
+- `terraform/live/persistent/kafka-volumes` instantiates it with `volume_count = 1` today. Raising broker count later means raising this value and `KafkaNodePool.spec.replicas` together — no template redesign.
+- `scripts/argo-up.sh` reads the lists via `terragrunt output -json` and passes them to the `root-application` Helm release as a JSON array (`--set-json kafka.volumes=...`, Helm ≥3.10).
+- Because Argo `Application.spec.source.helm.parameters` only carries scalar string values (a documented Argo CD limitation — a JSON array assigned there does not survive the hop to the child `root` Application the way a scalar string does), the array is threaded through `gitops/bootstrap/templates/root-application.yaml`'s `spec.source.helm.valuesObject` instead — a real structured Helm values override, not a stringified `--set`. Verified by rendering the bootstrap chart with a real JSON array and confirming `valuesObject.kafka.volumes` renders as an actual YAML list, not an escaped string.
+- `gitops/templates/platform/aws/kafka/volumes.yaml` renders one hand-written `PersistentVolume` (`persistentVolumeReclaimPolicy: Retain`, `storageClassName: ebs-retain`) and one pre-created `PersistentVolumeClaim` (`volumeName` pointing at that PV) per entry in `.Values.kafka.volumes`, **unconditionally** — there is no "fresh vs. recovery" branch the way Postgres's dual-path (`initdb`/`recovery`) needs, because Terraform always creates the volume(s) during `persistent-up`, before Argo ever syncs. A first-ever run simply gets empty volumes that Kafka formats normally.
+- PVC names follow Strimzi's documented `data-<cluster>-<pool>-<nodeId>` convention, index-parameterized (`data-lab-kafka-broker-{{ $i }}`). **This is verified only at index 0** (today's `replicas: 1`) — confirm the pattern still holds before ever raising `volume_count`/`replicas` above 1.
+- `KafkaNodePool.spec.replicas` is `len .Values.kafka.volumes` — broker count is always derived from the volume list, never set independently.
+- `Kafka.status.clusterId` is a committed constant (`secrets/vk-lab-platform/kafka-cluster-id.txt`, generated once via `kafka-storage.sh random-uuid`), patched via a `PostSync` Job on every `argo-up`, honored because `getOrGenerateKRaftClusterId` only mints a random ID when `status.clusterId` is unset everywhere it looks (verified from Strimzi source, not assumed).
+- **No credential-reconciliation issue exists for Kafka today** (unlike Postgres, ADR 0014) — the internal listener is plain/unauthenticated. A future SCRAM/TLS addition (spec 013 territory) must re-check this class of problem rather than assume it doesn't apply, since Postgres's own experience shows it's easy to miss.
+
+**Sync-wave placement**, reusing the platform's existing map rather than inventing new numbers: Strimzi operator Application joins wave `-1` (with `cnpg-operator`/`external-snapshotter`); the volume list's PV/PVC pairs join wave `0` (with Postgres's recovered-snapshot/`ExternalSecret`); `Kafka`/`KafkaNodePool` join wave `1` (with the CNPG `Cluster` CR).
+
+**AZ note:** every volume in the list is pinned to the single shared AZ today — this is a list of broker *volumes*, not a list of *AZs*. A genuinely multi-AZ Kafka deployment would need the Karpenter node group's own single-AZ story revisited too, not just this list; spec 008 Requirement 4 explicitly excludes multi-AZ as a non-goal for now.
+
+## Consequences
+
+- `tests/manifests/005-storage-contract/` (the raw PV/PVC rebind proof) and `ebs-retain` (spec 005/ADR 0008) gain their first real production consumer — Kafka. Their "revisit for Kafka" open question is closed: yes, with Terraform owning the volume side rather than a hand-run procedure.
+- Postgres and Kafka now use genuinely different persistence mechanisms (VolumeSnapshot vs. Terraform-owned static volume). This is intentional and specific to each workload's application-layer recovery behavior, not an inconsistency to reconcile later.
+- `scripts/persistent-down.sh`'s post-destroy verification loop gains `persistent/kafka-volumes` — a partial destroy failure on this unit must not silently report success, the same class of gap that existed (moot at the time) for `postgres-volume` before ADR 0013 removed it.
+- The PVC-naming-pattern risk (verified only at `replicas: 1`) is the single largest unverified assumption this ADR carries forward — any change to broker count must re-verify it against a live cluster before trusting the rendered template.
