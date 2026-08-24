@@ -8,6 +8,7 @@ metadata:
     strimzi.io/cluster: lab-kafka
   annotations:
     argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
   replicas: {{ len .Values.kafka.volumes }}
   roles: [controller, broker]
@@ -47,6 +48,7 @@ metadata:
   namespace: kafka
   annotations:
     argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
     strimzi.io/node-pools: enabled
     strimzi.io/kraft: enabled
 spec:

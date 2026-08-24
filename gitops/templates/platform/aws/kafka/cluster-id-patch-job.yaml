@@ -49,12 +49,18 @@ spec:
       restartPolicy: Never
       containers:
         - name: patch
-          image: bitnami/kubectl:latest
-          command:
-            - /bin/sh
-            - -c
-            - |
-              kubectl patch kafka lab-kafka -n kafka --subresource status \
-                --type merge -p '{"status":{"clusterId":"{{ .Values.kafka.clusterId }}"}}'
+          image: registry.k8s.io/kubectl:v1.31.0
+          args:
+            - patch
+            - kafka
+            - lab-kafka
+            - -n
+            - kafka
+            - --subresource
+            - status
+            - --type
+            - merge
+            - -p
+            - '{"status":{"clusterId":"{{ .Values.kafka.clusterId }}"}}'
 {{- end }}
 {{- end }}
