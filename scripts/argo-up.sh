@@ -16,9 +16,12 @@ TARGET_REVISION="${TARGET_REVISION:-main}"
 REPO_URL="${REPO_URL:-https://github.com/savak1990/vk-lab-platform}"
 # Comma-separated; cpu limit is a node-count cap, not a vCPU budget - keep
 # it in sync with the instance types' vCPU count when overriding either.
-# spot is general workload capacity; onDemand is tainted and reserved for
-# Postgres/Kafka, which tolerate it explicitly.
-SPOT_KARPENTER_INSTANCE_TYPES="${SPOT_KARPENTER_INSTANCE_TYPES:-t4g.medium}"
+# spot is general workload capacity (several arm64 families/sizes, so a
+# capacity-optimized fleet request has a fallback when one instance
+# type/AZ combination has no Spot capacity); onDemand is tainted and
+# reserved for Postgres/Kafka, which tolerate it explicitly, and is
+# AZ-pinned below to match Kafka's EBS volume(s).
+SPOT_KARPENTER_INSTANCE_TYPES="${SPOT_KARPENTER_INSTANCE_TYPES:-t4g.medium,t4g.large,m6g.medium,m6g.large,m7g.medium,m7g.large}"
 SPOT_KARPENTER_CPU_LIMIT="${SPOT_KARPENTER_CPU_LIMIT:-4}"
 ON_DEMAND_KARPENTER_INSTANCE_TYPES="${ON_DEMAND_KARPENTER_INSTANCE_TYPES:-t4g.medium}"
 ON_DEMAND_KARPENTER_CPU_LIMIT="${ON_DEMAND_KARPENTER_CPU_LIMIT:-4}"
@@ -106,6 +109,10 @@ KAFKA_VOLUME_IDS_JSON="$(kafka_volumes_output volume_ids)"
 KAFKA_VOLUME_AZS_JSON="$(kafka_volumes_output azs)"
 KAFKA_VOLUMES_JSON="$(jq -n --argjson ids "$KAFKA_VOLUME_IDS_JSON" --argjson azs "$KAFKA_VOLUME_AZS_JSON" \
   '[range(0; $ids | length) as $i | {handle: $ids[$i], az: $azs[$i], size: "10Gi"}]')"
+# The on-demand NodePool (Postgres/Kafka) is pinned to this same AZ - an EBS
+# volume only attaches within its own AZ, and it's the platform's one shared
+# stateful AZ (ADR 0016).
+ON_DEMAND_KARPENTER_AZ="$(echo "$KAFKA_VOLUME_AZS_JSON" | jq -r '.[0]')"
 KAFKA_CLUSTER_ID="$(tr -d '[:space:]' < "$REPO_ROOT/secrets/${PROJECT_NAME}/kafka-cluster-id.txt")"
 
 ADMIN_PASSWORD_BCRYPT_HASH_PATH="$REPO_ROOT/secrets/${PROJECT_NAME}/argocd-admin-password.bcrypt"
@@ -134,6 +141,7 @@ helm upgrade --install root-application "$REPO_ROOT/gitops/bootstrap" \
   --set postgres.storageSize="$POSTGRES_STORAGE_SIZE" \
   --set karpenter.spot.cpuLimit="$SPOT_KARPENTER_CPU_LIMIT" \
   --set karpenter.onDemand.cpuLimit="$ON_DEMAND_KARPENTER_CPU_LIMIT" \
+  --set karpenter.onDemand.az="$ON_DEMAND_KARPENTER_AZ" \
   --set kafka.clusterId="$KAFKA_CLUSTER_ID" \
   --set-json kafka.volumes="$KAFKA_VOLUMES_JSON" \
   --set-json karpenter.spot.instanceTypes="$SPOT_KARPENTER_INSTANCE_TYPES_JSON" \

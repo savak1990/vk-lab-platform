@@ -27,6 +27,8 @@ spec:
           value: {{ .Values.karpenter.spot.cpuLimit | quote }}
         - name: karpenter.onDemand.cpuLimit
           value: {{ .Values.karpenter.onDemand.cpuLimit | quote }}
+        - name: karpenter.onDemand.az
+          value: {{ .Values.karpenter.onDemand.az | quote }}
         - name: kafka.clusterId
           value: {{ .Values.kafka.clusterId | quote }}
       # kafka.volumes and karpenter.{spot,onDemand}.instanceTypes are lists -

@@ -84,6 +84,12 @@ spec:
         - key: node.kubernetes.io/instance-type
           operator: In
           values: {{ .Values.karpenter.onDemand.instanceTypes | toYaml | nindent 12 }}
+        # Pinned to the same AZ as Kafka's Terraform-owned EBS volume(s) -
+        # an EBS volume only attaches within its own AZ, and Postgres shares
+        # this pool/AZ too since both are the platform's one stateful zone.
+        - key: topology.kubernetes.io/zone
+          operator: In
+          values: [{{ .Values.karpenter.onDemand.az | quote }}]
       # Only Postgres/Kafka tolerate this - keeps everything else off
       # dedicated, more expensive on-demand capacity by default.
       taints:
