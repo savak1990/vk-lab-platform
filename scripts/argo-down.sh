@@ -103,7 +103,6 @@ fi
 # .status.resources instead would lie here, since that is its tracked
 # desired-state view and keeps listing resources already deleted.
 TERMINATING_KINDS="application.argoproj.io cluster.postgresql.cnpg.io \
-kafka.kafka.strimzi.io kafkanodepool.kafka.strimzi.io \
 nodepool.karpenter.sh ec2nodeclass.karpenter.k8s.aws \
 volumesnapshot.snapshot.storage.k8s.io volumesnapshotcontent.snapshot.storage.k8s.io \
 volumesnapshotclass.snapshot.storage.k8s.io storageclass.storage.k8s.io \
@@ -123,9 +122,9 @@ report_remaining() {
   else
     echo "ARGO-DOWN: nothing stuck terminating - waiting on root's own finalizer."
   fi
-  # Which child Application(s) - cnpg-operator, strimzi-operator, karpenter,
-  # ... - are still around, so a single one stuck deleting is visible by
-  # name instead of only root's own aggregate status.
+  # Which child Application(s) - cnpg-operator, karpenter, ... - are still
+  # around, so a single one stuck deleting is visible by name instead of
+  # only root's own aggregate status.
   local remaining
   remaining="$(kubectl get applications -n argocd -o json 2>/dev/null \
     | jq -r '[.items[].metadata.name] | join(", ")')"

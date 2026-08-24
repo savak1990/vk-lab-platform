@@ -4,7 +4,7 @@
 **Risk:** Medium–High — migrating a running platform off the AWS default VPC requires a full disposable-stack recreation, and any retained EBS volumes (Postgres, Kafka) are AZ-locked, so a careless subnet/AZ layout can strand real data.
 **Estimated cost:** ~1–2 days · AWS runtime cost: $0 if the new VPC keeps everything in public subnets (no NAT Gateway); modest NAT Gateway cost only if private subnets are adopted and explicitly justified.
 **Recommended model:** Opus — the migration path carries real data-loss risk via AZ-locked EBS volumes and requires careful sequencing; not a routine "add a VPC module" task.
-**Depends on:** 002-persistent-foundation (this spec extends the persistent Terraform stack), 003-network-and-eks (the default-VPC EKS setup being replaced), and implicitly 005-storage-contract/007-postgres/008-kafka (retained data whose AZ placement constrains the new VPC's design)
+**Depends on:** 002-persistent-foundation (this spec extends the persistent Terraform stack), 003-network-and-eks (the default-VPC EKS setup being replaced), and implicitly 005-storage-contract/007-postgres/024-kafka (retained data whose AZ placement constrains the new VPC's design)
 **Lifecycle class(es) touched:** Persistent (new VPC/subnets) / Disposable (EKS and everything on it must be recreated inside the new VPC)
 
 ## Scope

@@ -7,7 +7,7 @@ Accepted
 ## Context
 
 Spec 005 (storage contract) is the linchpin persistence-safety spec: every
-later stateful workload (007-postgres, 008-kafka) trusts that a
+later stateful workload (007-postgres, 024-kafka) trusts that a
 Kubernetes-backed persistent volume genuinely survives EKS destruction and
 recreation. Nothing storage-related existed in the repo before this spec —
 no EBS CSI driver, StorageClass, sync wave, or IAM/pod-identity association.

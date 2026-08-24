@@ -24,7 +24,7 @@ constitution §13.
   `4279365`), so first-class arm64 support is a hard requirement here, not a
   nice-to-have.
 - CNPG defaults `wal_level` to `logical` (not `replica`), which satisfies
-  Requirement 4's Debezium (spec 024) prerequisite with no override needed.
+  Requirement 4's Debezium (spec 025) prerequisite with no override needed.
 - CNPG's single-CRD (`Cluster`) model is simpler than Patroni/Spilo's extra
   moving parts, which matters more, not less, on a resource-constrained
   shared node.
@@ -125,7 +125,7 @@ reasoning stands unchanged as the record of what was true at the time.
   `make persistent-down`, not a separate mechanism, once this data is
   genuinely meant to go away.
 - **Identifying which retained volume is Postgres's, once other components
-  (Kafka, spec 008) share the same `ebs-retain` StorageClass**: the
+  (Kafka, spec 024) share the same `ebs-retain` StorageClass**: the
   StorageClass's own tags (`Project`, `Scope`, `Lifecycle`, `ManagedBy`) are
   identical for every volume it provisions and cannot distinguish
   Postgres's volume from any other retained volume on the same class. Adding

@@ -1,7 +1,7 @@
 # Storage contract proof
 
 Plain `kubectl` manifests, not Argo-managed, so this proof can be re-run on
-demand (e.g. after a driver chart bump, or before 007-postgres/008-kafka
+demand (e.g. after a driver chart bump, or before 007-postgres/024-kafka
 build on the same contract) without Argo tracking or pruning throwaway test
 resources.
 
@@ -40,7 +40,7 @@ Postgres no longer follows this procedure: spec 007-1/ADR 0013 found that
 CNPG doesn't adopt existing PGDATA on a rebound PV (it quarantines it and
 runs `initdb` fresh), and replaced it with CNPG's native VolumeSnapshot
 recovery instead. The "revisit for Kafka" question this note used to raise
-is answered: Kafka (spec 008/ADR 0016) is this procedure's first real
+is answered: Kafka (spec 024/ADR 0016) is this procedure's first real
 production consumer — Strimzi has no equivalent quarantine behavior
 (`kafka-storage.sh format -g` is a documented no-op on an already-formatted
 log directory), so the storage-layer mechanism proved out here transfers

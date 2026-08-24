@@ -5,8 +5,6 @@
 # can't reliably wait through Argo's finalizer-gated cascade on the way
 # down, so both directions use the same non-Terraform mechanism.
 set -euo pipefail
-# kafka.volumes below is passed via `helm upgrade --set-json`, which needs
-# Helm >=3.10.
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
@@ -19,8 +17,7 @@ REPO_URL="${REPO_URL:-https://github.com/savak1990/vk-lab-platform}"
 # spot is general workload capacity (several arm64 families/sizes, so a
 # capacity-optimized fleet request has a fallback when one instance
 # type/AZ combination has no Spot capacity); onDemand is tainted and
-# reserved for Postgres/Kafka, which tolerate it explicitly, and is
-# AZ-pinned below to match Kafka's EBS volume(s).
+# reserved for Postgres, which tolerates it explicitly.
 SPOT_KARPENTER_INSTANCE_TYPES="${SPOT_KARPENTER_INSTANCE_TYPES:-t4g.medium,t4g.large,m6g.medium,m6g.large,m7g.medium,m7g.large}"
 SPOT_KARPENTER_CPU_LIMIT="${SPOT_KARPENTER_CPU_LIMIT:-4}"
 ON_DEMAND_KARPENTER_INSTANCE_TYPES="${ON_DEMAND_KARPENTER_INSTANCE_TYPES:-t4g.medium,t4g.large,m6g.medium,m6g.large,m7g.medium,m7g.large}"
@@ -100,23 +97,6 @@ if [ -n "$OLD_SNAPSHOTS" ]; then
   done
 fi
 
-# Kafka's broker volume(s), unlike Postgres's snapshot, are Terraform-owned
-# (terraform/live/persistent/kafka-volumes, ADR 0015) - always created by
-# persistent-up, so this list is never empty by the time argo-up runs (no
-# "fresh vs recovery" branch needed, unlike Postgres).
-kafka_volumes_output() {
-  terragrunt --working-dir "$REPO_ROOT/terraform/live/persistent/kafka-volumes" output -json "$1"
-}
-KAFKA_VOLUME_IDS_JSON="$(kafka_volumes_output volume_ids)"
-KAFKA_VOLUME_AZS_JSON="$(kafka_volumes_output azs)"
-KAFKA_VOLUMES_JSON="$(jq -n --argjson ids "$KAFKA_VOLUME_IDS_JSON" --argjson azs "$KAFKA_VOLUME_AZS_JSON" \
-  '[range(0; $ids | length) as $i | {handle: $ids[$i], az: $azs[$i], size: "10Gi"}]')"
-# The on-demand NodePool (Postgres/Kafka) is pinned to this same AZ - an EBS
-# volume only attaches within its own AZ, and it's the platform's one shared
-# stateful AZ (ADR 0016).
-ON_DEMAND_KARPENTER_AZ="$(echo "$KAFKA_VOLUME_AZS_JSON" | jq -r '.[0]')"
-KAFKA_CLUSTER_ID="$(tr -d '[:space:]' < "$REPO_ROOT/secrets/${PROJECT_NAME}/kafka-cluster-id.txt")"
-
 ADMIN_PASSWORD_BCRYPT_HASH_PATH="$REPO_ROOT/secrets/${PROJECT_NAME}/argocd-admin-password.bcrypt"
 ADMIN_PASSWORD_BCRYPT_HASH="$(tr -d '[:space:]' < "$ADMIN_PASSWORD_BCRYPT_HASH_PATH")"
 
@@ -144,21 +124,18 @@ helm upgrade --install root-application "$REPO_ROOT/gitops/bootstrap" \
   --set postgres.storageSize="$POSTGRES_STORAGE_SIZE" \
   --set karpenter.spot.cpuLimit="$SPOT_KARPENTER_CPU_LIMIT" \
   --set karpenter.onDemand.cpuLimit="$ON_DEMAND_KARPENTER_CPU_LIMIT" \
-  --set karpenter.onDemand.az="$ON_DEMAND_KARPENTER_AZ" \
-  --set kafka.clusterId="$KAFKA_CLUSTER_ID" \
-  --set-json kafka.volumes="$KAFKA_VOLUMES_JSON" \
   --set-json karpenter.spot.instanceTypes="$SPOT_KARPENTER_INSTANCE_TYPES_JSON" \
   --set-json karpenter.onDemand.instanceTypes="$ON_DEMAND_KARPENTER_INSTANCE_TYPES_JSON"
 
-# Every child Application (cnpg-operator, strimzi-operator, karpenter, ...)
-# with its own sync/health, so a single stuck one is visible by name instead
-# of only root's aggregate rollup.
+# Every child Application (cnpg-operator, karpenter, ...) with its own
+# sync/health, so a single stuck one is visible by name instead of only
+# root's aggregate rollup.
 print_app_status() {
   kubectl get applications -n argocd -o json 2>/dev/null \
     | jq -r '.items[] | "  \(.metadata.name): sync=\(.status.sync.status // "Unknown") health=\(.status.health.status // "Unknown")"'
 }
 
-# root's own directly-templated resources (Kafka, Cluster, NodePools, ...)
+# root's own directly-templated resources (Cluster, NodePools, ...)
 # not yet Healthy. Excludes kinds with no health concept at all (ServiceAccount,
 # Role, RoleBinding, ...) unless they're also not Synced - jsonpath's
 # @.health.status!="Healthy" matches a null health equally, which made every

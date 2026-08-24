@@ -1,10 +1,14 @@
-# 008 — Kafka manual test plan
+# 024 — Kafka manual test plan
+
+> **Status: Deferred (2026-08-24).** Kafka/Strimzi was removed from the
+> running platform — see ADR 0017. This walkthrough applies again once
+> `specs/024-kafka` is re-implemented.
 
 CLI walkthrough proving the destroy/recreate persistence guarantee (spec
-008, Requirement 1) and the deletion-ordering guarantee (Requirement 2).
+024, Requirement 1) and the deletion-ordering guarantee (Requirement 2).
 ~45–60 min, needs `aws`/`kubectl`/`terragrunt` CLIs. **Run Task B0 (a
-throwaway-volume verification, see `docs/adr/0015-kafka-terraform-owned-volumes.md`
-and `specs/008-kafka/spec.md`) before trusting this against real data** —
+throwaway-volume verification, see `docs/adr/0016-kafka-terraform-owned-volumes.md`
+and `specs/024-kafka/spec.md`) before trusting this against real data** —
 the PVC naming pattern (`data-lab-kafka-broker-<i>`) baked into
 `gitops/templates/platform/aws/kafka/volumes.yaml` is Strimzi's documented
 convention, not yet confirmed against a live cluster in this repo.
@@ -72,7 +76,7 @@ bin/kafka-console-consumer.sh --bootstrap-server lab-kafka-kafka-bootstrap:9092 
 exit
 ```
 
-## 6. Deletion-ordering check (spec 008 Requirement 2)
+## 6. Deletion-ordering check (spec 024 Requirement 2)
 
 ```bash
 kubectl delete kafka lab-kafka -n kafka
@@ -92,7 +96,7 @@ make cluster-down
 ```
 
 No Kafka-specific behavior runs in `argo-down.sh` — this is the whole
-point of the rebind mechanism (ADR 0015): `Retain` reclaim persists the
+point of the rebind mechanism (ADR 0016): `Retain` reclaim persists the
 volume automatically through the normal cascade delete.
 
 ## 8. Verify the volume survived
@@ -146,5 +150,5 @@ make argo-down
 make cluster-down
 make persistent-down   # only if you're fully done — deletes the retained
                         # Kafka volume(s) for real (Terraform-tracked,
-                        # terraform/live/persistent/kafka-volumes, ADR 0015)
+                        # terraform/live/persistent/kafka-volumes, ADR 0016)
 ```

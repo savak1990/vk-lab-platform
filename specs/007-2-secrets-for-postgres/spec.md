@@ -25,7 +25,7 @@ Postgres-relevant slice of spec 013 (External Secrets Operator, Secrets
 Manager, EKS Pod Identity) — the user's explicit choice, prioritizing the
 architecturally-correct mechanism over the smaller patch, given the
 underlying fix (a stable password) is identical either way. Out of scope:
-migrating Kafka/spec 008 credentials (spec 013's job when that spec lands),
+migrating Kafka/spec 024 credentials (spec 013's job when that spec lands),
 secret rotation automation beyond ESO's default polling, and any change to
 `argo-up.sh`/`argo-down.sh` — the password now flows entirely in-cluster.
 

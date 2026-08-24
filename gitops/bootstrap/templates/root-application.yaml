@@ -27,18 +27,11 @@ spec:
           value: {{ .Values.karpenter.spot.cpuLimit | quote }}
         - name: karpenter.onDemand.cpuLimit
           value: {{ .Values.karpenter.onDemand.cpuLimit | quote }}
-        - name: karpenter.onDemand.az
-          value: {{ .Values.karpenter.onDemand.az | quote }}
-        - name: kafka.clusterId
-          value: {{ .Values.kafka.clusterId | quote }}
-      # kafka.volumes and karpenter.{spot,onDemand}.instanceTypes are lists -
-      # `parameters` only carries scalar string overrides (Argo CD's own
-      # documented limitation), so these go through valuesObject instead,
-      # which Argo merges as a real Helm values override, not a stringified
-      # `--set`.
+      # karpenter.{spot,onDemand}.instanceTypes are lists - `parameters`
+      # only carries scalar string overrides (Argo CD's own documented
+      # limitation), so these go through valuesObject instead, which Argo
+      # merges as a real Helm values override, not a stringified `--set`.
       valuesObject:
-        kafka:
-          volumes: {{ .Values.kafka.volumes | toYaml | nindent 12 }}
         karpenter:
           spot:
             instanceTypes: {{ .Values.karpenter.spot.instanceTypes | toYaml | nindent 14 }}

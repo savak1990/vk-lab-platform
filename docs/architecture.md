@@ -260,7 +260,6 @@ vk-lab-platform/
 │   ├── 005-storage-contract/
 │   ├── 006-karpenter/
 │   ├── 007-postgres/
-│   ├── 008-kafka/
 │   ├── 009-observability/
 │   ├── 010-envoy-gateway/
 │   ├── 011-nlb-edge/
@@ -276,7 +275,8 @@ vk-lab-platform/
 │   ├── 021-local-dev-mode/        # local (minikube/kind) target; shapes specs 004, 006-013 from inception (§10a, ADR 0006)
 │   ├── 022-e2e-test-framework/    # Go/Ginkgo/Gomega suite + environment abstraction, reused by 019 and 023
 │   ├── 023-ci-kind-integration-test/  # cheap kind-based GitOps CI test consuming 021 and 022
-│   └── 024-debezium/              # deliberately implemented last, after CI/CD and local-dev tooling exist
+│   ├── 024-kafka/                 # deferred (ADR 0017) - re-implement before 025-debezium
+│   └── 025-debezium/              # deliberately implemented last, after CI/CD and local-dev tooling exist
 │
 ├── tests/
 │   └── e2e/                       # spec 023; suite_test.go, per-service tests, framework/

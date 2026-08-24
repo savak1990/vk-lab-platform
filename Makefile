@@ -104,10 +104,8 @@ secret-decrypt:
 	@./scripts/secret-decrypt.sh "$(NAME)"
 
 ## Generates throwaway secrets/$(PROJECT_NAME)/ files for a CI/test
-## environment: root-domain from ROOT_DOMAIN, a fixed, publicly-known
-## postgres-app-password ("test"), and a freshly generated kafka-cluster-id.txt
-## (not a secret, see ADR 0016 - just needs to exist per PROJECT_NAME).
-## Never use this for the personal lab.
+## environment: root-domain from ROOT_DOMAIN and a fixed, publicly-known
+## postgres-app-password ("test"). Never use this for the personal lab.
 ## Usage: PROJECT_NAME=vk-lab-ci ROOT_DOMAIN=<domain> make generate-secrets
 generate-secrets: export ROOT_DOMAIN := $(ROOT_DOMAIN)
 generate-secrets:

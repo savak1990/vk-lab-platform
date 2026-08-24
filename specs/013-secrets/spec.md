@@ -4,16 +4,16 @@
 **Risk:** High — security-sensitive; the failure mode is either plaintext leakage into Git/state, or over-broad IAM permissions granted to make something "just work."
 **Estimated cost:** ~1.5–2 days · AWS runtime cost: Secrets Manager per-secret monthly cost (small; combine related credentials into one JSON object per the cost trade-off architecture.md §17 explicitly allows).
 **Recommended model:** Opus — narrow IAM permission design and secret-flow correctness deserve the most careful reasoning in the roadmap.
-**Depends on:** 001-bootstrap (KMS key), 002-persistent-foundation (Secrets Manager skeleton), every workload spec that currently uses a placeholder secret mechanism (007, 008). Debezium (spec 024) is implemented after this spec and consumes this mechanism directly — no migration needed for it.
+**Depends on:** 001-bootstrap (KMS key), 002-persistent-foundation (Secrets Manager skeleton), every workload spec that currently uses a placeholder secret mechanism (007, 024). Debezium (spec 025) is implemented after this spec and consumes this mechanism directly — no migration needed for it.
 **Lifecycle class(es) touched:** Persistent (Secrets Manager values) / Disposable (Pod Identity wiring, External Secrets-style sync)
 
 ## Scope
 
-Completes the full secrets lifecycle described in architecture.md §17–18, replacing the placeholder/minimal secret handling used ad hoc in specs 007 and 008:
+Completes the full secrets lifecycle described in architecture.md §17–18, replacing the placeholder/minimal secret handling used ad hoc in specs 007 and 024:
 
 - EKS Pod Identity (preferred per constitution §5, ADR 0001) wiring for workloads that need AWS API access (e.g., an External Secrets-style controller syncing from Secrets Manager into Kubernetes Secrets).
 - The deterministic KMS-encrypted bootstrap ciphertext flow for *runtime application secrets*: one dedicated ciphertext file per credential under `secrets/` (e.g. `secrets/postgres-app-password.enc`, `secrets/kafka-cluster-credentials.enc`) → each decrypted independently via the bootstrap KMS key → written into AWS Secrets Manager (not into Terraform state any more than necessary).
-- Migration of Postgres/Kafka credentials (currently handled minimally per specs 007/008) onto this real mechanism. Debezium (spec 024), implemented after this spec, uses this mechanism directly from the start — no migration needed for it.
+- Migration of Postgres/Kafka credentials (currently handled minimally per specs 007/024) onto this real mechanism. Debezium (spec 025), implemented after this spec, uses this mechanism directly from the start — no migration needed for it.
 
 This entire spec is `aws`-target-only. The `local` target (spec 021) does not use Secrets Manager, Pod Identity, or External Secrets Operator under any circumstance — it either loads generated placeholder credentials directly into Kubernetes `Secret` objects, or, opt-in, decrypts `secrets/*.enc` via the same AWS KMS key this spec's ciphertext files use and loads the result directly, bypassing everything else in this spec entirely. See spec 021 Requirements 11–13.
 
@@ -27,13 +27,13 @@ Excludes: application-level secrets (no application code in this repo); a full s
 4. Avoid unnecessarily persisting decrypted secret values in Terraform state (architecture.md §17) — prefer a flow where decryption and Secrets Manager population happen outside of `terraform apply`'s normal state-tracking path where practical (e.g., a bootstrap script/CI step using the KMS key directly, or a Terraform provisioner that writes but doesn't need to read back the plaintext into state).
 5. Combining multiple related credentials into a single Secrets Manager JSON object is an accepted, intentional lab-specific cost trade-off (architecture.md §17) — don't over-engineer per-credential secret isolation here.
 6. Every Secrets Manager secret created here MUST carry the platform's standard tags (constitution §16), with `Lifecycle=persistent`, so they're identifiable as platform (not service) resources alongside everything else this repository creates.
-7. Every workload from specs 007 and 008 currently using a placeholder secret mechanism MUST be migrated to this real mechanism as part of this spec, not left on the placeholder indefinitely. Spec 023 (Debezium), implemented after this spec, uses this mechanism directly from the start.
+7. Every workload from specs 007 and 024 currently using a placeholder secret mechanism MUST be migrated to this real mechanism as part of this spec, not left on the placeholder indefinitely. Spec 025 (Debezium), implemented after this spec, uses this mechanism directly from the start.
 
 ## Implementation hints
 
 - A minimal External Secrets Operator-style controller (Argo-managed, using Pod Identity to read Secrets Manager) is the standard way to bridge AWS-managed secrets into Kubernetes Secrets without ever putting plaintext in Git or GitOps manifests.
 - Per-credential flow: encrypt each credential locally/in CI with the bootstrap KMS key → commit as its own file (e.g. `secrets/postgres-app-password.enc`) → a one-time (or idempotent) bootstrap step decrypts each file independently and writes it into Secrets Manager, run manually or via a scoped CI job, not as a routine part of every `terraform apply`.
-- Revisit Postgres/Kafka credential handling from specs 007/008 now: replace whatever operator-generated or ad hoc Secret was used with one sourced from Secrets Manager via this new mechanism, and confirm nothing broke in the process (a re-run of each spec's lifecycle test is warranted after this migration).
+- Revisit Postgres/Kafka credential handling from specs 007/024 now: replace whatever operator-generated or ad hoc Secret was used with one sourced from Secrets Manager via this new mechanism, and confirm nothing broke in the process (a re-run of each spec's lifecycle test is warranted after this migration).
 - Keep IAM policies attached to each Pod Identity role scoped to exactly the Secrets Manager ARNs that workload needs — no wildcard `secretsmanager:*` grants.
 
 ## Testing / acceptance criteria
@@ -41,6 +41,6 @@ Excludes: application-level secrets (no application code in this repo); a full s
 - A workload using Pod Identity can read its designated secret from Secrets Manager and nothing else (verify a deliberately wrong secret ARN request is denied by IAM, not silently allowed).
 - Each `secrets/*.enc` file can be decrypted only by the authorized AWS identity/KMS key — attempting decryption without the right IAM permissions fails.
 - `git log -p` / a secret-scanning tool over the full repo history finds zero plaintext secret values.
-- Re-run the lifecycle tests for Postgres (007) and Kafka (008) after migrating their credentials to this mechanism — confirm nothing regressed in the destroy/recreate persistence proofs.
+- Re-run the lifecycle tests for Postgres (007) and Kafka (024) after migrating their credentials to this mechanism — confirm nothing regressed in the destroy/recreate persistence proofs.
 - Fast validation includes a security-scanning step (already required by constitution §11) specifically checking for committed plaintext secrets on every PR going forward.
 - As part of spec 002's deliberate, once-only `make persistent-down` teardown scenario: confirm every secret this spec created in Secrets Manager is actually deleted (not just scheduled for deletion with a recovery window, unless that window is an explicit, intentional choice) — this is the real test that "runtime secrets survive `make down` but not `make persistent-down`" holds in practice, not only in the spec text.

@@ -92,7 +92,7 @@ convenience keys CNPG itself normally generates (`host`, `port`, `dbname`,
 CNPG will **never** backfill them: `createOrPatchClusterCredentialSecret`
 returns early on any Secret the `Cluster` does not own, which is precisely
 the mechanism that protects the pinned password. Nothing in this repo
-consumes those keys today; a future consumer (Debezium, spec 024) must get
+consumes those keys today; a future consumer (Debezium, spec 025) must get
 them by extending the `ExternalSecret`'s template.
 
 ## Consequences

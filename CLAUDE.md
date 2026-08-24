@@ -416,10 +416,10 @@ CREATE
 The intended end-to-end test is:
 
 1. `make up`
-2. verify EKS/Argo/Karpenter/Kafka/Postgres/Debezium/observability/Envoy (Debezium is deliberately implemented last, spec 024 — until it lands, run this test without it)
+2. verify EKS/Argo/Karpenter/Kafka/Postgres/Debezium/observability/Envoy (Kafka is deferred, spec 024 — see ADR 0017 — and Debezium is deliberately implemented last, spec 025 — until they land, run this test without them)
 3. write PostgreSQL test data
 4. write Kafka test data
-5. verify CDC (once spec 024 lands; deferred until then)
+5. verify CDC (once spec 025 lands; deferred until then)
 6. `make down`
 7. verify disposable infrastructure is absent
 8. verify persistent state remains
