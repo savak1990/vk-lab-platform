@@ -1,0 +1,57 @@
+{{- if eq .Values.target "aws" }}
+# `observability` namespace is guaranteed to exist by this wave (created by
+# kube-prometheus-stack.yaml's Application at wave 1).
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: observability-alerts
+  namespace: observability
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  groups:
+    - name: observability
+      rules:
+        # Standing cost-guard (constitution §9) - not the acceptance-test
+        # trigger. Deliberately filling a live PVC to 90% risks wedging
+        # Prometheus's own TSDB, so PodCrashLooping below is used instead
+        # for that purpose. See ADR 0018.
+        - alert: PersistentVolumeNearlyFull
+          expr: |
+            kubelet_volume_stats_available_bytes / kubelet_volume_stats_capacity_bytes < 0.10
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            summary: "PVC {{`{{ $labels.persistentvolumeclaim }}`}} in {{`{{ $labels.namespace }}`}} has less than 10% free space"
+
+        # Spec 009's acceptance-test trigger. Substituted for the spec's
+        # suggested replication-slot-lag example (CNPG runs instances: 1
+        # today, no replica/Debezium slot to threaten) - see ADR 0018.
+        # Trigger with a throwaway imperative pod, never by editing an
+        # Argo-managed resource (selfHeal reverts it before this fires):
+        #   kubectl run crashloop --image=busybox --restart=Always -- /bin/false
+        - alert: PodCrashLooping
+          expr: |
+            increase(kube_pod_container_status_restarts_total[5m]) > 2
+          for: 1m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Pod {{`{{ $labels.pod }}`}} in {{`{{ $labels.namespace }}`}} is crash-looping"
+
+        # Cost/capacity guard for the constitution's "~2 medium nodes max"
+        # Karpenter rule. Both NodePools (spot, on-demand) set spec.limits.cpu
+        # - metric name/labels confirmed against Karpenter's own source
+        # (pkg/metrics/constants.go: NodePoolLabel="nodepool",
+        # ResourceTypeLabel="resource_type").
+        - alert: KarpenterNodePoolNearCapacityLimit
+          expr: |
+            karpenter_nodepools_usage{resource_type="cpu"} / karpenter_nodepools_limit{resource_type="cpu"} > 0.8
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "NodePool {{`{{ $labels.nodepool }}`}} is above 80% of its CPU limit"
+{{- end }}

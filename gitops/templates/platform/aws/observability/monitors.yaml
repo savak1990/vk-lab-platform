@@ -1,0 +1,62 @@
+{{- if eq .Values.target "aws" }}
+# ServiceMonitor/PodMonitor objects for components whose own Applications
+# sync at an earlier wave than kube-prometheus-stack's CRD install
+# (karpenter -4, cnpg-operator -1, external-secrets -2) - defined here
+# instead of inside those Applications' helm.values to avoid referencing a
+# CRD that doesn't exist yet at their sync time. Follows the same
+# SkipDryRunOnMissingResource precedent as karpenter/nodepool.yaml.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: karpenter
+  namespace: kube-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: karpenter
+  endpoints:
+    - port: http-metrics
+      interval: 30s
+---
+# CNPG exposes its Postgres exporter directly on the pod (port 9187, named
+# "metrics") - no Service needed, a PodMonitor selects the pod directly.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: cnpg-postgres
+  namespace: cnpg-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  selector:
+    matchLabels:
+      cnpg.io/cluster: lab-postgres
+  podMetricsEndpoints:
+    - port: metrics
+      interval: 30s
+---
+# One ServiceMonitor covers all 5 Argo CD metrics Services (controller,
+# server, repo-server, applicationset, notifications) - they all share
+# these two labels and the http-metrics port name. Requires
+# scripts/argo-up.sh's *.metrics.enabled=true flags to exist at all.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: argocd
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/part-of: argocd
+      app.kubernetes.io/instance: argocd
+  endpoints:
+    - port: http-metrics
+      interval: 30s
+{{- end }}

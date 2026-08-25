@@ -1,0 +1,39 @@
+{{- if eq .Values.target "aws" }}
+# Serves metrics.k8s.io (kubectl top / HPA) - not bundled in kube-prometheus-
+# stack, which only brings kube-state-metrics + node-exporter. Argo-managed
+# rather than a Terraform EKS addon, matching the ebs-csi-driver precedent.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: metrics-server
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://kubernetes-sigs.github.io/metrics-server
+    chart: metrics-server
+    targetRevision: 3.14.0
+    helm:
+      values: |
+        nodeSelector:
+          node-type: system
+        # EKS kubelet serving certs are self-signed (no serverTLSBootstrap
+        # configured) - without this, `kubectl top` fails with an x509
+        # error. Accepted lab-scale trade-off, not a security regression
+        # worth blocking on for a disposable learning platform.
+        args:
+          - --kubelet-insecure-tls
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+{{- end }}

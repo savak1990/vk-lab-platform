@@ -107,6 +107,11 @@ helm upgrade --install argocd argo-cd \
   --set server.service.type=ClusterIP \
   --set configs.secret.argocdServerAdminPassword="$ADMIN_PASSWORD_BCRYPT_HASH" \
   --set configs.secret.argocdServerAdminPasswordMtime="2026-08-20T00:00:00Z" \
+  --set controller.metrics.enabled=true \
+  --set server.metrics.enabled=true \
+  --set repoServer.metrics.enabled=true \
+  --set applicationSet.metrics.enabled=true \
+  --set notifications.metrics.enabled=true \
   --wait
 
 # No --wait here: the root Application's own health depends on everything
