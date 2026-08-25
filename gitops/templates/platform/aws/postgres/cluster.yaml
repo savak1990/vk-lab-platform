@@ -9,14 +9,14 @@ metadata:
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
   instances: 1
+  priorityClassName: postgres-critical
   affinity:
     nodeSelector:
       workload-type: stateful
-    tolerations:
-      - key: dedicated
-        operator: Equal
-        value: stateful
-        effect: NoSchedule
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
   bootstrap:
     {{- if .Values.postgres.recoverySnapshotHandle }}
     # No initdb fallback: a loud failure beats silently wiping a recoverable
@@ -55,6 +55,6 @@ spec:
       max_wal_senders: "10"
       max_replication_slots: "10"
       # wal_level intentionally not set — CNPG defaults it to "logical" already
-      # shared_buffers / max_connections intentionally not set — no resource
-      # requests/limits exist yet to size them against
+      # shared_buffers / max_connections intentionally not set — sized only by
+      # the requests above, not by explicit limits
 {{- end }}
