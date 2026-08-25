@@ -68,7 +68,7 @@ spec:
   template:
     metadata:
       labels:
-        workload-type: stateful
+        workload-type: on-demand
     spec:
       nodeClassRef:
         group: karpenter.k8s.aws

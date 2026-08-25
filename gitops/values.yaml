@@ -19,8 +19,10 @@ postgres:
 # (comma-separated) and {SPOT,ON_DEMAND}_KARPENTER_CPU_LIMIT env vars on
 # scripts/argo-up.sh. cpuLimit must be kept in sync with instanceTypes'
 # vCPU count and the desired max node count — it is not derived
-# automatically. onDemand nodes are tainted dedicated=stateful:NoSchedule
-# and reserved for Postgres — spot is everything else. Both pools
+# automatically. onDemand nodes carry workload-type: on-demand (matched by
+# Postgres's nodeSelector) — not exclusive to Postgres, just steadier
+# capacity than spot; other components avoid spot via anti-affinity instead
+# of being excluded from on-demand by a taint. Both pools
 # list several arm64 families/sizes (not just one) so Karpenter has a
 # fallback when a single instance type/AZ combination has no capacity —
 # Karpenter still prefers the cheapest instance type that fits a pod's

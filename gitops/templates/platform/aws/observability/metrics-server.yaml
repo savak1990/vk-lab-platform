@@ -19,8 +19,17 @@ spec:
     targetRevision: 3.14.0
     helm:
       values: |
-        nodeSelector:
-          node-type: system
+        # Avoids spot for consistency with the rest of the observability
+        # stack's placement policy, though metrics-server itself holds no
+        # state and wouldn't be harmed by a spot interruption.
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+                - matchExpressions:
+                    - key: karpenter.sh/capacity-type
+                      operator: NotIn
+                      values: ["spot"]
         # EKS kubelet serving certs are self-signed (no serverTLSBootstrap
         # configured) - without this, `kubectl top` fails with an x509
         # error. Accepted lab-scale trade-off, not a security regression

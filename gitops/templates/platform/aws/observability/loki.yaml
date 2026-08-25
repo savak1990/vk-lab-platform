@@ -46,8 +46,16 @@ spec:
             reject_old_samples_max_age: 168h
         singleBinary:
           replicas: 1
-          nodeSelector:
-            node-type: system
+          # Avoids spot only (AZ-pinned PVC + spot interruption risk) - not
+          # hard-pinned to the system node.
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - key: karpenter.sh/capacity-type
+                        operator: NotIn
+                        values: ["spot"]
           persistence:
             enabled: true
             storageClass: ebs-delete

@@ -20,9 +20,10 @@ spec:
       values: |
         controller:
           type: daemonset
-          # Must reach the on-demand NodePool's dedicated=stateful-tainted
-          # node, where CNPG's Postgres pod runs - otherwise Postgres logs
-          # are silently missing.
+          # No taint currently keeps anything off the on-demand pool, but a
+          # cluster-wide log collector should tolerate everything on
+          # principle - if a taint is ever added to any pool, this DaemonSet
+          # must still reach every node or logs go silently missing.
           tolerations:
             - operator: Exists
         alloy:

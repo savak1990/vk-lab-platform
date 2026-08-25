@@ -112,6 +112,8 @@ helm upgrade --install argocd argo-cd \
   --set repoServer.metrics.enabled=true \
   --set applicationSet.metrics.enabled=true \
   --set notifications.metrics.enabled=true \
+  --set global.affinity.nodeAffinity.type=hard \
+  --set-json 'global.affinity.nodeAffinity.matchExpressions=[{"key":"karpenter.sh/capacity-type","operator":"NotIn","values":["spot"]}]' \
   --wait
 
 # No --wait here: the root Application's own health depends on everything

@@ -12,7 +12,7 @@ spec:
   priorityClassName: postgres-critical
   affinity:
     nodeSelector:
-      workload-type: stateful
+      workload-type: on-demand
   resources:
     requests:
       cpu: 250m
