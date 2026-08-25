@@ -1,8 +1,7 @@
 {{- if eq .Values.target "aws" }}
-# SingleBinary + filesystem storage (spec 009 / ADR 0018) - not S3-backed
-# "simple scalable" mode, so this needs zero new Terraform/IAM. Data is lost
-# on `make down` (ebs-delete); acceptable since this stack's data is
-# disposable per spec 009.
+# SingleBinary + filesystem storage - not S3-backed "simple scalable" mode,
+# so this needs zero new Terraform/IAM. Data is lost on `make down`
+# (ebs-delete); acceptable since this stack's own data is disposable.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -76,7 +75,7 @@ spec:
           serviceMonitor:
             # Added separately by monitors.yaml instead, after this chart's
             # own Application creates the ServiceMonitor CRD (kube-prometheus-
-            # stack, same wave) - optional for spec 009's acceptance bar.
+            # stack, same wave) - not required for log visibility, optional.
             enabled: false
           selfMonitoring:
             enabled: false

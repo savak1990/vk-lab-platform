@@ -13,6 +13,9 @@ metadata:
     grafana_dashboard: "1"
   annotations:
     argocd.argoproj.io/sync-wave: "2"
+# The first panel's PromQL expression matches alerts.yaml's
+# KarpenterNodePoolNearCapacityLimit rule - keep both in sync if the metric
+# name/labels ever change.
 data:
   karpenter-capacity.json: |
     {

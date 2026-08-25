@@ -16,7 +16,7 @@ spec:
         # Standing cost-guard (constitution §9) - not the acceptance-test
         # trigger. Deliberately filling a live PVC to 90% risks wedging
         # Prometheus's own TSDB, so PodCrashLooping below is used instead
-        # for that purpose. See ADR 0018.
+        # for that purpose.
         - alert: PersistentVolumeNearlyFull
           expr: |
             kubelet_volume_stats_available_bytes / kubelet_volume_stats_capacity_bytes < 0.10
@@ -26,9 +26,9 @@ spec:
           annotations:
             summary: "PVC {{`{{ $labels.persistentvolumeclaim }}`}} in {{`{{ $labels.namespace }}`}} has less than 10% free space"
 
-        # Spec 009's acceptance-test trigger. Substituted for the spec's
-        # suggested replication-slot-lag example (CNPG runs instances: 1
-        # today, no replica/Debezium slot to threaten) - see ADR 0018.
+        # The deliberately-triggerable acceptance alert - substituted for a
+        # Postgres replication-slot-lag alert, since CNPG runs instances: 1
+        # today with no replica/Debezium slot to threaten.
         # Trigger with a throwaway imperative pod, never by editing an
         # Argo-managed resource (selfHeal reverts it before this fires):
         #   kubectl run crashloop --image=busybox --restart=Always -- /bin/false
@@ -45,7 +45,9 @@ spec:
         # Karpenter rule. Both NodePools (spot, on-demand) set spec.limits.cpu
         # - metric name/labels confirmed against Karpenter's own source
         # (pkg/metrics/constants.go: NodePoolLabel="nodepool",
-        # ResourceTypeLabel="resource_type").
+        # ResourceTypeLabel="resource_type"). The same expression is
+        # visualized in dashboards.yaml's Karpenter panel - keep both in
+        # sync if the metric name/labels ever change.
         - alert: KarpenterNodePoolNearCapacityLimit
           expr: |
             karpenter_nodepools_usage{resource_type="cpu"} / karpenter_nodepools_limit{resource_type="cpu"} > 0.8

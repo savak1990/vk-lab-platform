@@ -1,6 +1,6 @@
 {{- if eq .Values.target "aws" }}
-# Metrics backbone (spec 009). Tracing (Tempo/OTel Collector) is deferred -
-# no trace producer exists yet, see ADR 0018.
+# Metrics backbone. Tracing (Tempo/OTel Collector) is deliberately not
+# deployed - no trace producer exists in this platform-only repo yet.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
