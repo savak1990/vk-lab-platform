@@ -27,6 +27,14 @@ spec:
           tolerations:
             - operator: Exists
         alloy:
+          # Requests sized from measured usage (~61Mi over 45m) - DaemonSet,
+          # so every Mi here is multiplied by node count.
+          resources:
+            requests:
+              cpu: 15m
+              memory: 80Mi
+            limits:
+              memory: 128Mi
           configMap:
             content: |
               discovery.kubernetes "pods" {
@@ -64,6 +72,13 @@ spec:
                   url = "http://loki.observability.svc.cluster.local:3100/loki/api/v1/push"
                 }
               }
+        configReloader:
+          resources:
+            requests:
+              cpu: 5m
+              memory: 16Mi
+            limits:
+              memory: 32Mi
   destination:
     server: https://kubernetes.default.svc
     namespace: observability

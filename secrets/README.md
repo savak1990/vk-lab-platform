@@ -39,12 +39,13 @@ the plaintext value you passed as `VALUE`.
 PROJECT_NAME=<ci-project-name> ROOT_DOMAIN=<domain> make generate-secrets
 ```
 
-Creates `secrets/$PROJECT_NAME/root-domain.enc` (from `ROOT_DOMAIN`) and
-`secrets/$PROJECT_NAME/postgres-app-password.enc` (a fixed value,
+Creates `secrets/$PROJECT_NAME/root-domain.enc` (from `ROOT_DOMAIN`),
+`secrets/$PROJECT_NAME/postgres-app-password.enc`, and
+`secrets/$PROJECT_NAME/grafana-admin-password.enc` (each a fixed value,
 `test`) — everything `make persistent-up` needs for a disposable
 CI/test project, with no manually pre-committed ciphertext. Never use
-this for the personal lab's own `PROJECT_NAME`; the Postgres password it
-generates is fixed and publicly known.
+this for the personal lab's own `PROJECT_NAME`; these values are fixed
+and publicly known.
 
 ## Decrypting a value
 

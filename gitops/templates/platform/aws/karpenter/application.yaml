@@ -26,6 +26,15 @@ spec:
           name: karpenter
         nodeSelector:
           node-type: system
+        controller:
+          # Sized from measured usage (~170Mi over 45m); generous headroom
+          # since this reconciles constantly and a crash here stalls scaling.
+          resources:
+            requests:
+              cpu: 50m
+              memory: 192Mi
+            limits:
+              memory: 384Mi
   destination:
     server: https://kubernetes.default.svc
     namespace: kube-system

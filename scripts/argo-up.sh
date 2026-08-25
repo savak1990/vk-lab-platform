@@ -112,6 +112,13 @@ helm upgrade --install argocd argo-cd \
   --set repoServer.metrics.enabled=true \
   --set applicationSet.metrics.enabled=true \
   --set notifications.metrics.enabled=true \
+  --set-json 'controller.resources={"requests":{"cpu":"20m","memory":"512Mi"},"limits":{"memory":"768Mi"}}' \
+  --set-json 'repoServer.resources={"requests":{"cpu":"10m","memory":"192Mi"},"limits":{"memory":"320Mi"}}' \
+  --set-json 'server.resources={"requests":{"cpu":"10m","memory":"64Mi"},"limits":{"memory":"128Mi"}}' \
+  --set-json 'applicationSet.resources={"requests":{"cpu":"5m","memory":"48Mi"},"limits":{"memory":"96Mi"}}' \
+  --set-json 'dex.resources={"requests":{"cpu":"5m","memory":"48Mi"},"limits":{"memory":"96Mi"}}' \
+  --set-json 'notifications.resources={"requests":{"cpu":"5m","memory":"48Mi"},"limits":{"memory":"96Mi"}}' \
+  --set-json 'redis.resources={"requests":{"cpu":"5m","memory":"32Mi"},"limits":{"memory":"64Mi"}}' \
   --set global.affinity.nodeAffinity.type=hard \
   --set-json 'global.affinity.nodeAffinity.matchExpressions=[{"key":"karpenter.sh/capacity-type","operator":"NotIn","values":["spot"]}]' \
   --wait

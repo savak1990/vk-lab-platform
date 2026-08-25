@@ -17,6 +17,12 @@ spec:
     helm:
       values: |
         replicaCount: 1
+        resources:
+          requests:
+            cpu: 10m
+            memory: 48Mi
+          limits:
+            memory: 96Mi
   destination:
     server: https://kubernetes.default.svc
     namespace: cnpg-system

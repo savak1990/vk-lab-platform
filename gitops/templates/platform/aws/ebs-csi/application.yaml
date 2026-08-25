@@ -25,6 +25,22 @@ spec:
           serviceAccount:
             create: true
             name: ebs-csi-controller-sa
+          # Sized from measured usage (ebs-plugin container, ~14Mi over 45m).
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 64Mi
+        node:
+          # DaemonSet - sized tightly since every Mi is multiplied by node
+          # count (ebs-plugin container, ~13Mi over 45m).
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 64Mi
         # Forced on rather than left to the chart's live-CRD auto-detection
         # (sidecars.snapshotter.forceEnable defaults to false and only
         # activates once it sees the snapshot CRDs already present at
@@ -34,6 +50,47 @@ spec:
         sidecars:
           snapshotter:
             forceEnable: true
+            resources:
+              requests:
+                cpu: 5m
+                memory: 24Mi
+              limits:
+                memory: 48Mi
+          provisioner:
+            resources:
+              requests:
+                cpu: 5m
+                memory: 24Mi
+              limits:
+                memory: 48Mi
+          attacher:
+            resources:
+              requests:
+                cpu: 5m
+                memory: 24Mi
+              limits:
+                memory: 48Mi
+          resizer:
+            resources:
+              requests:
+                cpu: 5m
+                memory: 24Mi
+              limits:
+                memory: 48Mi
+          livenessProbe:
+            resources:
+              requests:
+                cpu: 5m
+                memory: 24Mi
+              limits:
+                memory: 48Mi
+          nodeDriverRegistrar:
+            resources:
+              requests:
+                cpu: 5m
+                memory: 16Mi
+              limits:
+                memory: 32Mi
   destination:
     server: https://kubernetes.default.svc
     namespace: kube-system

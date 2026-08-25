@@ -46,6 +46,14 @@ spec:
             reject_old_samples_max_age: 168h
         singleBinary:
           replicas: 1
+          # Requests sized from measured usage (~81Mi over 45m); limit
+          # leaves headroom for log-volume growth toward the 7d retention.
+          resources:
+            requests:
+              cpu: 20m
+              memory: 96Mi
+            limits:
+              memory: 256Mi
           # Avoids spot only (AZ-pinned PVC + spot interruption risk) - not
           # hard-pinned to the system node.
           affinity:
@@ -79,6 +87,14 @@ spec:
           enabled: false
         gateway:
           enabled: false
+        # Rules sidecar (loki-sc-rules), sized from measured usage (~72Mi).
+        sidecar:
+          resources:
+            requests:
+              cpu: 5m
+              memory: 80Mi
+            limits:
+              memory: 128Mi
         monitoring:
           serviceMonitor:
             # Added separately by monitors.yaml instead, after this chart's

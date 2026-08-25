@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Generates secrets/$PROJECT_NAME/{root-domain,postgres-app-password}.enc
-# for a throwaway CI/test project - the fixed Postgres password is a known
-# value, never meant for the personal lab's own PROJECT_NAME. Requires
-# bootstrap (the KMS key) to already exist for PROJECT_NAME. Leaves any
-# secret that already exists untouched, rather than overwriting it.
+# Generates secrets/$PROJECT_NAME/{root-domain,postgres-app-password,grafana-admin-password}.enc
+# for a throwaway CI/test project - the fixed passwords are known values,
+# never meant for the personal lab's own PROJECT_NAME. Requires bootstrap
+# (the KMS key) to already exist for PROJECT_NAME. Leaves any secret that
+# already exists untouched, rather than overwriting it.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -25,3 +25,4 @@ generate_if_missing() {
 
 generate_if_missing root-domain "$ROOT_DOMAIN"
 generate_if_missing postgres-app-password test
+generate_if_missing grafana-admin-password test
