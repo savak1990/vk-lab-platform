@@ -13,6 +13,11 @@ spec:
   role: {{ .Values.project }}-eks-karpenter-node
   amiSelectorTerms:
     - alias: al2023@latest
+  # Matches the vpc-cni prefix-delegation override in terraform/modules/eks -
+  # without this, nodeadm calculates max-pods from the pre-prefix-delegation
+  # ENI/IP table and the ceiling stays at the old, lower value.
+  kubelet:
+    maxPods: 110
   subnetSelectorTerms:
     - tags:
         karpenter.sh/discovery: {{ .Values.project }}-eks

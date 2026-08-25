@@ -78,6 +78,14 @@ module "eks" {
   create_kms_key    = false
   encryption_config = null
 
+  # karpenter-pod-identity also tags this same SG via a standalone
+  # aws_ec2_tag (Karpenter's own discovery mechanism) - declaring it here
+  # too keeps this module's own plan from treating that tag as drift to
+  # remove, since the module owns the SG's full tags map.
+  node_security_group_tags = {
+    "karpenter.sh/discovery" = var.cluster_name
+  }
+
   # No control-plane log types shipped to CloudWatch Logs by default (the
   # module defaults to audit/api/authenticator). Ongoing CloudWatch
   # ingestion/storage cost this spec doesn't ask for; revisit alongside the
@@ -87,6 +95,17 @@ module "eks" {
   addons = {
     vpc-cni = {
       before_compute = true
+      # Prefix delegation reserves IPs in /28 blocks per ENI slot instead of
+      # one at a time - free on AWS (ENIs/IPs aren't billed), it just raises
+      # the pod-per-node ceiling on the same instance. maxPods overrides
+      # below are required too - kubelet's own bootstrap-time ceiling
+      # calculation doesn't know about prefix delegation unless told.
+      configuration_values = jsonencode({
+        env = {
+          ENABLE_PREFIX_DELEGATION = "true"
+          WARM_PREFIX_TARGET       = "1"
+        }
+      })
     }
     kube-proxy = {}
     coredns    = {}
@@ -107,6 +126,24 @@ module "eks" {
       desired_size   = 1
       subnet_ids     = [local.node_subnet_id] # single fixed AZ, not all defaults
       labels         = { "node-type" = "system" }
+
+      # Matches the vpc-cni prefix-delegation override above - without this,
+      # nodeadm still calculates max-pods from the pre-prefix-delegation
+      # ENI/IP table and the ceiling stays 17 regardless of the addon change.
+      cloudinit_pre_nodeadm = [
+        {
+          content_type = "application/node.eks.aws"
+          content      = <<-EOT
+            ---
+            apiVersion: node.eks.aws/v1alpha1
+            kind: NodeConfig
+            spec:
+              kubelet:
+                config:
+                  maxPods: 110
+          EOT
+        }
+      ]
     }
   }
 
