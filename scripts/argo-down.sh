@@ -131,6 +131,16 @@ report_remaining() {
   echo "ARGO-DOWN: applications remaining: ${remaining:-none}"
 }
 
+# A child stuck retrying a doomed sync (selfHeal) never finishes an
+# operation, and Argo won't prune a child mid-operation - wedging the
+# cascade below. Disarming automated sync stops new ones; clearing any
+# in-flight operation (e.g. waiting on a DaemonSet health check that will
+# never pass once nodes start draining) aborts the one already stuck.
+for app in $(kubectl get applications -n argocd -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
+  kubectl patch application "$app" -n argocd --type=merge -p '{"spec":{"syncPolicy":{"automated":null}}}' >/dev/null
+  kubectl patch application "$app" -n argocd --type=merge -p '{"operation":null}' >/dev/null 2>&1
+done
+
 if kubectl get application root -n argocd >/dev/null 2>&1; then
   echo "ARGO-DOWN: deleting root Application (cascade=foreground, waits for Karpenter/CNPG/etc. to fully drain)..."
   kubectl delete application root -n argocd --cascade=foreground --wait --timeout="$TIMEOUT" &
