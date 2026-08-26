@@ -203,17 +203,25 @@ Rising drop counters mean Loki is rejecting or unreachable — cross-check again
 
 **6.4 — the real end-to-end proof: trace one specific line through the whole pipeline**
 
-```
-kubectl exec -n cnpg-system <postgres-pod> -c postgres -- sh -c 'echo "OBSERVABILITY-PROBE-$(date +%s)"'
-```
-(Any pod's stdout works — Postgres's is used here since you already have its name from step 4.) Within roughly
-10–30 seconds (Alloy tails files near-real-time; Loki's own ingestion is fast), query it back:
+`kubectl exec ... -- echo "..."` does **not** work here: a `kubectl exec` command's stdout streams back to your
+own terminal over the API server, not into the container's log stream, so Alloy (which tails the container's log
+file) never sees it. The marker has to come from the pod's own process. For Postgres specifically, force the
+*server* to log something by making it raise an error against a uniquely-named object — Postgres always logs
+`ERROR` regardless of `log_min_messages`, and that log line is what CNPG's logging_collector writes to the
+container's stdout:
 
-In Grafana Explore (Loki datasource): `{namespace="cnpg-system"} |= "OBSERVABILITY-PROBE"`
+```
+kubectl exec -n cnpg-system <postgres-pod> -c postgres -- psql -U postgres -c \
+  "SELECT * FROM obs_probe_$(date +%s);"
+```
+Within roughly 10–30 seconds (Alloy tails files near-real-time; Loki's own ingestion is fast), query it back:
 
-Pass: the exact line you echoed appears. This is a stronger check than a generic `{namespace="cnpg-system"}`
-query — it proves a specific write reached Loki within a bounded time window, not just that *some* old logs are
-sitting there from before Alloy was even involved.
+In Grafana Explore (Loki datasource): `{namespace="cnpg-system"} |= "obs_probe_"`
+
+Pass: an `ERROR: relation "obs_probe_<timestamp>" does not exist` line with your exact timestamp appears. This
+is a stronger check than a generic `{namespace="cnpg-system"}` query — it proves a specific write reached Loki
+within a bounded time window, not just that *some* old logs are sitting there from before Alloy was even
+involved.
 
 **6.5 — Alloy's own pod logs, for anything the UI doesn't surface**
 
