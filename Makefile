@@ -1,4 +1,4 @@
-.PHONY: state-up state-down status bootstrap-up bootstrap-down secret-encrypt secret-decrypt generate-secrets persistent-up persistent-down clear-cache cluster-up cluster-down eks-kubeconfig argo-up argo-down
+.PHONY: up down state-up state-down status bootstrap-up bootstrap-down secret-encrypt secret-decrypt generate-secrets persistent-up persistent-down clear-cache cluster-up cluster-down eks-kubeconfig argo-up argo-down
 
 # Lifecycle: state -> bootstrap -> persistence -> disposable -> argo
 
@@ -13,6 +13,15 @@ export REGION ?= eu-west-1
 
 # Overridable subdomain delegated from the root domain, e.g. lab.<root-domain>.
 export SUBDOMAIN ?= lab
+
+## Brings up the full personal lab: Persistent -> Disposable -> Argo CD.
+## Shortcut for persistent-up + cluster-up + argo-up, in order.
+up: persistent-up cluster-up argo-up
+
+## Tears down the disposable lab only: Argo CD -> Disposable.
+## Shortcut for argo-down + cluster-down, in order. Does NOT touch the
+## Persistent layer (DNS/ACM/Secrets Manager) - use persistent-down for that.
+down: argo-down cluster-down
 
 ## Reports which lifecycle layers currently have state in the shared bucket.
 status:
