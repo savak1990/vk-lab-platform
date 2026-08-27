@@ -141,50 +141,13 @@ for app in $(kubectl get applications -n argocd -o jsonpath='{.items[*].metadata
   kubectl patch application "$app" -n argocd --type=merge -p '{"operation":null}' >/dev/null 2>&1
 done
 
-# The HTTPRoutes' Route 53 records are an ExternalDNS side effect, not an
-# Argo-applied resource - the cascade below gives no ordering guarantee
-# between the external-dns Application and the HTTPRoutes it watches
-# (sync-wave numbers don't gate cross-Application ordering). Delete the
-# HTTPRoutes and wait for their records to disappear here, while
-# external-dns is still definitely running, before anything else is torn down.
-if kubectl get httproute -A >/dev/null 2>&1 && [ -n "$(kubectl get httproute -A -o name 2>/dev/null)" ]; then
-  zone_id="$(terragrunt --working-dir "$REPO_ROOT/terraform/live/persistent/route53" output -raw zone_id 2>/dev/null || true)"
-  hostnames="$(kubectl get httproute -A -o jsonpath='{range .items[*]}{range .spec.hostnames[*]}{@}{"\n"}{end}{end}' 2>/dev/null || true)"
-  echo "ARGO-DOWN: deleting HTTPRoutes to trigger ExternalDNS record cleanup..."
-  kubectl delete httproute -A --all >/dev/null 2>&1 || true
-
-  if [ -n "$zone_id" ] && [ -n "$hostnames" ]; then
-    DNS_WAIT_TIMEOUT="${ARGO_DOWN_DNS_TIMEOUT:-300}"
-    dns_elapsed=0
-    while true; do
-      remaining_records="$(aws route53 list-resource-record-sets --hosted-zone-id "$zone_id" --region "$REGION" \
-        --query "ResourceRecordSets[?Type=='A' || Type=='CNAME'].Name" --output text 2>/dev/null || true)"
-      still_present=""
-      while IFS= read -r h; do
-        [ -z "$h" ] && continue
-        case "$remaining_records" in
-        *"$h"*) still_present="$still_present $h" ;;
-        esac
-      done <<EOF
-$hostnames
-EOF
-      if [ -z "$still_present" ]; then
-        echo "ARGO-DOWN: ExternalDNS-managed records confirmed gone."
-        break
-      fi
-      if [ "$dns_elapsed" -ge "$DNS_WAIT_TIMEOUT" ]; then
-        echo "ARGO-DOWN: records ($still_present) still present after ${DNS_WAIT_TIMEOUT}s - refusing to proceed." >&2
-        echo "ARGO-DOWN: check 'kubectl get pods -n kube-system -l app.kubernetes.io/name=external-dns' before retrying." >&2
-        exit 1
-      fi
-      echo "ARGO-DOWN: waiting on ExternalDNS to remove records ($still_present)... (${dns_elapsed}s/${DNS_WAIT_TIMEOUT}s)"
-      sleep "$POLL_INTERVAL"
-      dns_elapsed=$((dns_elapsed + POLL_INTERVAL))
-    done
-  fi
-else
-  echo "ARGO-DOWN: no HTTPRoutes present - nothing to wait on for DNS cleanup."
-fi
+# Deleted early (not waited-on) so ExternalDNS - still running, same
+# "outlives everything above it" wave as aws-load-balancer-controller - has
+# the whole remaining cascade to reconcile the Route 53 records away. If a
+# real `make down` ever leaves records behind, add a wait here then, sized
+# against that actual failure instead of a guess.
+echo "ARGO-DOWN: deleting HTTPRoutes to trigger ExternalDNS record cleanup..."
+kubectl delete httproute -A --all >/dev/null 2>&1 || true
 
 # The Service behind the NLB is a controller side effect, not an
 # Argo-applied resource - the cascade below doesn't wait on it before
