@@ -16,6 +16,11 @@ spec:
         annotations:
           service.beta.kubernetes.io/aws-load-balancer-type: "external"
           service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "ip"
+          # Explicit for now, though the platform VPC's subnets already
+          # carry kubernetes.io/role/elb (spec 020) - drop this once the
+          # pinned controller's tag-based discovery is verified against a
+          # real NLB, so it doesn't also expect a cluster-scoped tag here.
+          service.beta.kubernetes.io/aws-load-balancer-subnets: {{ .Values.envoyGateway.nlbSubnetIds | quote }}
           service.beta.kubernetes.io/aws-load-balancer-ssl-cert: {{ .Values.envoyGateway.acmCertificateArn | quote }}
           service.beta.kubernetes.io/aws-load-balancer-ssl-ports: "443"
           # Without this, every request appears to come from the NLB's own
