@@ -10,6 +10,11 @@ variable "cluster_version" {
 variable "availability_zone" {
   description = "AZ the system/Karpenter node group's subnet is pinned to. Shared with the persistent postgres-volume unit so the node group and the Postgres EBS volume are never in different AZs."
   type        = string
+
+  validation {
+    condition     = contains(keys(var.public_subnet_ids_by_az), var.availability_zone)
+    error_message = "No subnet for this AZ in public_subnet_ids_by_az - does the persistent vpc unit cover it?"
+  }
 }
 
 variable "vpc_id" {

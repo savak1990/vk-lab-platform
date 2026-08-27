@@ -1,16 +1,5 @@
 locals {
-  node_subnet_id = lookup(var.public_subnet_ids_by_az, var.availability_zone, "")
-}
-
-resource "terraform_data" "node_subnet_check" {
-  input = var.availability_zone
-
-  lifecycle {
-    precondition {
-      condition     = local.node_subnet_id != ""
-      error_message = "No subnet for AZ ${var.availability_zone} in public_subnet_ids_by_az - does the persistent vpc unit cover this AZ?"
-    }
-  }
+  node_subnet_id = var.public_subnet_ids_by_az[var.availability_zone]
 }
 
 module "eks" {
