@@ -24,3 +24,8 @@ karpenter:
     instanceTypes:
       ["t4g.medium", "t4g.large", "m6g.medium", "m6g.large", "m7g.medium", "m7g.large"]
     cpuLimit: "4"
+
+# Set automatically by scripts/argo-up.sh via `terragrunt output -raw
+# certificate_arn` against terraform/live/persistent/acm - no manual edit.
+envoyGateway:
+  acmCertificateArn: ""

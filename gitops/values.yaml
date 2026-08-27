@@ -36,3 +36,9 @@ karpenter:
     instanceTypes:
       ["t4g.medium", "t4g.large", "m6g.medium", "m6g.large", "m7g.medium", "m7g.large"]
     cpuLimit: "4"
+
+# Set by scripts/argo-up.sh from `terraform/live/persistent/acm`'s
+# certificate_arn output (ADR 0010's Terraform-output -> Helm-parameter ->
+# gitops-value pattern) - never hardcoded here.
+envoyGateway:
+  acmCertificateArn: ""

@@ -1,0 +1,48 @@
+{{- if eq .Values.target "aws" }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: envoy-gateway
+  namespace: argocd
+  annotations:
+    # Must outlive every Gateway API resource it manages (constitution §7 -
+    # "Gateway resources are removed before Envoy Gateway") - this
+    # Application's own chart also installs the gateway.networking.k8s.io
+    # CRDs that GatewayClass/Gateway/EnvoyProxy/HTTPRoute below depend on, so
+    # it must sync before them too. -1 mirrors cnpg-operator's
+    # controller-before-CR split, not karpenter's node-drain-driven -4/-3
+    # pairing - nothing here has draining urgency.
+    argocd.argoproj.io/sync-wave: "-1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    # OCI chart - first one in this repo (every other Application uses an
+    # https:// Helm repo index). repoURL is the registry path minus the
+    # chart name, mirroring how karpenter's public.ecr.aws/karpenter +
+    # chart: karpenter already works in this Argo CD.
+    repoURL: docker.io/envoyproxy
+    chart: gateway-helm
+    targetRevision: v1.2.1
+    helm:
+      values: |
+        deployment:
+          envoyGateway:
+            resources:
+              requests:
+                cpu: 20m
+                memory: 64Mi
+              limits:
+                memory: 128Mi
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: envoy
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+{{- end }}

@@ -1,0 +1,65 @@
+{{- if eq .Values.target "aws" }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: aws-load-balancer-controller
+  namespace: argocd
+  annotations:
+    # Same "must outlive everything above it" bucket as ebs-csi-driver: this
+    # controller owns the NLB behind Envoy's Service and must still be
+    # running to actually delete it (constitution §7 - "NLB-triggering
+    # resources are removed before AWS Load Balancer Controller"). No drain
+    # dependency between the two, so sharing a wave (parallel sync) is fine.
+    argocd.argoproj.io/sync-wave: "-5"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://aws.github.io/eks-charts
+    chart: aws-load-balancer-controller
+    targetRevision: 1.13.0
+    helm:
+      values: |
+        clusterName: {{ .Values.project }}-eks
+        region: {{ .Values.region }}
+        serviceAccount:
+          create: true
+          name: aws-load-balancer-controller
+        # Pod Identity, not IRSA (terraform/modules/aws-lb-controller-pod-identity) -
+        # no OIDC annotation needed on the ServiceAccount.
+        replicaCount: 1
+        resources:
+          requests:
+            cpu: 20m
+            memory: 128Mi
+          limits:
+            memory: 256Mi
+        # Chart-native metrics wiring - it already creates a correctly
+        # labeled ServiceMonitor/metrics Service, no need to hand-write one
+        # and guess selectors (unlike Envoy Gateway's, which has no such
+        # chart flag).
+        serviceMonitor:
+          enabled: true
+  destination:
+    server: https://kubernetes.default.svc
+    # kube-system, matching karpenter/ebs-csi-driver's existing convention -
+    # not `envoy`, which envoy-gateway's own Application already owns via
+    # CreateNamespace=true. Two Applications both claiming CreateNamespace
+    # on the same namespace is a shared-resource conflict in Argo.
+    namespace: kube-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+      # This Application syncs at wave -5, well before kube-prometheus-stack
+      # (wave 1) installs the monitoring.coreos.com CRDs the bundled
+      # ServiceMonitor needs - same class of issue the observability
+      # monitors.yaml file documents for karpenter/cnpg/external-secrets,
+      # but the ServiceMonitor here comes from the chart itself, not a
+      # root-templated resource, so it's set at the Application level
+      # instead of via a per-resource annotation.
+      - SkipDryRunOnMissingResource=true
+{{- end }}

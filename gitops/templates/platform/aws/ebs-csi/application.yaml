@@ -32,6 +32,13 @@ spec:
               memory: 32Mi
             limits:
               memory: 64Mi
+          # forceEnable, not just enableMetrics: this Application syncs at
+          # wave -5, before kube-prometheus-stack (wave 1) installs the
+          # monitoring.coreos.com CRDs - same live-CRD-detection race as
+          # sidecars.snapshotter.forceEnable below, same fix.
+          enableMetrics: true
+          serviceMonitor:
+            forceEnable: true
         node:
           # DaemonSet - sized tightly since every Mi is multiplied by node
           # count (ebs-plugin container, ~13Mi over 45m).
@@ -41,6 +48,9 @@ spec:
               memory: 32Mi
             limits:
               memory: 64Mi
+          enableMetrics: true
+          serviceMonitor:
+            forceEnable: true
         # Forced on rather than left to the chart's live-CRD auto-detection
         # (sidecars.snapshotter.forceEnable defaults to false and only
         # activates once it sees the snapshot CRDs already present at
@@ -100,4 +110,5 @@ spec:
       selfHeal: true
     syncOptions:
       - ServerSideApply=true
+      - SkipDryRunOnMissingResource=true
 {{- end }}

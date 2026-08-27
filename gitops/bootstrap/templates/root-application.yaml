@@ -27,6 +27,8 @@ spec:
           value: {{ .Values.karpenter.spot.cpuLimit | quote }}
         - name: karpenter.onDemand.cpuLimit
           value: {{ .Values.karpenter.onDemand.cpuLimit | quote }}
+        - name: envoyGateway.acmCertificateArn
+          value: {{ .Values.envoyGateway.acmCertificateArn | quote }}
       # karpenter.{spot,onDemand}.instanceTypes are lists - `parameters`
       # only carries scalar string overrides (Argo CD's own documented
       # limitation), so these go through valuesObject instead, which Argo

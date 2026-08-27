@@ -673,7 +673,7 @@ Example DNS names may include:
 ```text
 api.lab.<root-domain>
 grafana.lab.<root-domain>
-argocd.lab.<root-domain>
+argo.lab.<root-domain>
 ```
 
 See §12 for how the `lab.<root-domain>` zone these names live in is owned and delegated.
@@ -733,7 +733,7 @@ lab.<root-domain> hosted zone
 │
 ├── api.lab.<root-domain>
 ├── grafana.lab.<root-domain>
-├── argocd.lab.<root-domain>
+├── argo.lab.<root-domain>
 └── other platform DNS records
 
 Disposable runtime:

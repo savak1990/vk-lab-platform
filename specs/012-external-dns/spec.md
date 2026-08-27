@@ -11,7 +11,7 @@
 
 ExternalDNS (Argo-managed), publishing Route 53 records inside the
 delegated `lab.<root-domain>` hosted zone (spec 002/ADR 0002) for hostnames
-such as `grafana.lab.<root-domain>` and `argocd.lab.<root-domain>`, so they
+such as `grafana.lab.<root-domain>` and `argo.lab.<root-domain>`, so they
 resolve to the NLB from spec 011.
 
 Excludes: the hosted zone and ACM certificate themselves (persistent,
@@ -38,7 +38,7 @@ itself, TLS — spec 011).
 
 ## Testing / acceptance criteria
 
-- After `make up`, `grafana.lab.<root-domain>` and `argocd.lab.<root-domain>` resolve to the NLB's address via Route 53, confirmed via `dig`/`nslookup` against the real zone.
+- After `make up`, `grafana.lab.<root-domain>` and `argo.lab.<root-domain>` resolve to the NLB's address via Route 53, confirmed via `dig`/`nslookup` against the real zone.
 - `make down` removes every record ExternalDNS created inside `lab.<root-domain>`, confirmed via the AWS console/API — no orphaned records remain.
 - The ACM DNS-validation record created by spec 002's Terraform is present, unchanged, and untouched by ExternalDNS across a full `make up` → `make down` → `make up` cycle.
 - `make up` (after a prior `make down`) recreates the same hostnames' records without any Terraform plan showing drift, and without ExternalDNS reporting ownership conflicts (TXT registry records match the new run's `--txt-owner-id` or are correctly re-adopted).

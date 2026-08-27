@@ -1,0 +1,37 @@
+{{- if eq .Values.target "aws" }}
+# Kept off the argocd HTTPRoute deliberately - testing traffic policy here
+# shouldn't risk destabilizing the UI used to watch Argo's own sync status.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: grafana-traffic-policy
+  namespace: observability
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: grafana
+  # Defensive, not tight: high enough that normal dashboard use never hits
+  # it, low enough that a quick curl burst demonstrably 429s.
+  rateLimit:
+    local:
+      rules:
+        - limit:
+            requests: 20
+            unit: Second
+  # A slow/dead backend fails within a few seconds rather than hanging;
+  # two retries give a transient blip a chance without masking a real outage.
+  timeout:
+    http:
+      requestTimeout: 15s
+  retry:
+    numRetries: 2
+    perRetry:
+      timeout: 3s
+      backOff:
+        baseInterval: 100ms
+        maxInterval: 2s
+{{- end }}

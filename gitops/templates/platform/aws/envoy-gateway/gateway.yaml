@@ -1,0 +1,95 @@
+{{- if eq .Values.target "aws" }}
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: envoy-proxy-config
+  namespace: envoy
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyService:
+        type: LoadBalancer
+        annotations:
+          service.beta.kubernetes.io/aws-load-balancer-type: "external"
+          service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "ip"
+          service.beta.kubernetes.io/aws-load-balancer-ssl-cert: {{ .Values.envoyGateway.acmCertificateArn | quote }}
+          service.beta.kubernetes.io/aws-load-balancer-ssl-ports: "443"
+          # Load-bearing, not decoration (ADR 0011): without this, every
+          # request reaching Envoy appears to come from the NLB's own IP,
+          # and Envoy's per-client rate limiting silently collapses into one
+          # global limit. Must be paired with the listener-side PROXY
+          # protocol setting below - either alone is a client-IP mismatch.
+          service.beta.kubernetes.io/aws-load-balancer-proxy-protocol: "*"
+      envoyDeployment:
+        replicas: 1
+        container:
+          resources:
+            requests:
+              cpu: 20m
+              memory: 64Mi
+            limits:
+              memory: 128Mi
+  telemetry:
+    metrics:
+      prometheus: {}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: envoy-gateway
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+  parametersRef:
+    group: gateway.envoyproxy.io
+    kind: EnvoyProxy
+    name: envoy-proxy-config
+    namespace: envoy
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: platform-gateway
+  namespace: envoy
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  gatewayClassName: envoy-gateway
+  listeners:
+    # protocol: HTTP, no tls block - TLS terminates at the NLB, Envoy never
+    # holds a certificate (spec 010 Requirement 7).
+    - name: http
+      protocol: HTTP
+      port: 80
+      allowedRoutes:
+        namespaces:
+          from: All
+---
+# Listener-side half of Proxy Protocol v2 - the EnvoyProxy annotation above
+# tells the NLB to prepend a PROXY v2 header; without this, Envoy doesn't
+# expect one and fails to parse every request (a hard failure of the whole
+# path, not a degraded rate limit). Verify the exact field name against the
+# pinned chart's ClientTrafficPolicy CRD schema - it is version-dependent.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: ClientTrafficPolicy
+metadata:
+  name: platform-gateway-proxy-protocol
+  namespace: envoy
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: Gateway
+    name: platform-gateway
+  connection:
+    enableProxyProtocol: true
+{{- end }}

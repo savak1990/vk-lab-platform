@@ -23,7 +23,7 @@ Completes the public traffic path from architecture.md §8/§10–12:
   second certificate.
 - Disposable Route 53 records inside the delegated `lab.<root-domain>`
   hosted zone (spec 002/ADR 0002) pointing hostnames such as
-  `grafana.lab.<root-domain>` and `argocd.lab.<root-domain>` at the NLB —
+  `grafana.lab.<root-domain>` and `argo.lab.<root-domain>` at the NLB —
   owned by ExternalDNS, specified separately in spec 012.
 
 This entire spec is `aws`-target-only. The `local` target (spec 021) has no

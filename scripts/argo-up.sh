@@ -35,7 +35,12 @@ eks_output() {
   terragrunt --working-dir "$REPO_ROOT/terraform/live/disposable/eks" output -raw "$1"
 }
 
+acm_output() {
+  terragrunt --working-dir "$REPO_ROOT/terraform/live/persistent/acm" output -raw "$1"
+}
+
 CLUSTER_NAME="$(eks_output cluster_name)"
+ACM_CERTIFICATE_ARN="$(acm_output certificate_arn)"
 aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$REGION" --alias "$CLUSTER_NAME" >/dev/null
 kubectl config set-context --current --namespace=default >/dev/null
 
@@ -105,6 +110,7 @@ helm upgrade --install argocd argo-cd \
   --version "$ARGOCD_CHART_VERSION" \
   --namespace argocd --create-namespace \
   --set server.service.type=ClusterIP \
+  --set configs.params."server\.insecure"=true \
   --set configs.secret.argocdServerAdminPassword="$ADMIN_PASSWORD_BCRYPT_HASH" \
   --set configs.secret.argocdServerAdminPasswordMtime="2026-08-20T00:00:00Z" \
   --set controller.metrics.enabled=true \
@@ -139,7 +145,8 @@ helm upgrade --install root-application "$REPO_ROOT/gitops/bootstrap" \
   --set karpenter.spot.cpuLimit="$SPOT_KARPENTER_CPU_LIMIT" \
   --set karpenter.onDemand.cpuLimit="$ON_DEMAND_KARPENTER_CPU_LIMIT" \
   --set-json karpenter.spot.instanceTypes="$SPOT_KARPENTER_INSTANCE_TYPES_JSON" \
-  --set-json karpenter.onDemand.instanceTypes="$ON_DEMAND_KARPENTER_INSTANCE_TYPES_JSON"
+  --set-json karpenter.onDemand.instanceTypes="$ON_DEMAND_KARPENTER_INSTANCE_TYPES_JSON" \
+  --set envoyGateway.acmCertificateArn="$ACM_CERTIFICATE_ARN"
 
 # Every child Application (cnpg-operator, karpenter, ...) with its own
 # sync/health, so a single stuck one is visible by name instead of only

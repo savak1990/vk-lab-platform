@@ -33,7 +33,7 @@ Requirements 5 and 6 below apply to the `local` target (spec 021) and are genuin
 ## Implementation hints
 
 - Route Grafana and Argo CD's own web UI through Envoy now — this gives the Gateway API config something real to route to before the NLB (spec 011) exists, and doubles as an early integration test of the whole `client → Envoy → service` path (minus the AWS-level NLB fronting it, added next).
-- `HTTPRoute` hostnames should match the delegated subdomain from spec 002/ADR 0002 — e.g. `grafana.lab.<root-domain>` and `argocd.lab.<root-domain>` — even though the NLB/DNS record making them publicly resolvable doesn't exist until spec 011/012; internal/port-forwarded testing can use these same hostnames via `Host` headers ahead of that.
+- `HTTPRoute` hostnames should match the delegated subdomain from spec 002/ADR 0002 — e.g. `grafana.lab.<root-domain>` and `argo.lab.<root-domain>` — even though the NLB/DNS record making them publicly resolvable doesn't exist until spec 011/012; internal/port-forwarded testing can use these same hostnames via `Host` headers ahead of that.
 - Keep rate-limit/retry/timeout policies conservative and documented — this is a lab, not a production system, but the policies still need to exist to exercise the feature per architecture.md's goals.
 - Structure `HTTPRoute` resources per-service under `gitops/platform` or `gitops/workloads` (per the repo layout) so adding a route for a future integration test workload doesn't require touching unrelated routes.
 

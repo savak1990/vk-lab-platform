@@ -107,7 +107,7 @@ nodepool.karpenter.sh ec2nodeclass.karpenter.k8s.aws \
 volumesnapshot.snapshot.storage.k8s.io volumesnapshotcontent.snapshot.storage.k8s.io \
 volumesnapshotclass.snapshot.storage.k8s.io storageclass.storage.k8s.io \
 clustersecretstore.external-secrets.io externalsecret.external-secrets.io \
-volumeattachment.storage.k8s.io persistentvolume"
+volumeattachment.storage.k8s.io persistentvolume service"
 
 report_remaining() {
   local stuck=""
@@ -156,6 +156,34 @@ if kubectl get application root -n argocd >/dev/null 2>&1; then
 else
   echo "ARGO-DOWN: root Application already gone - skipping cascade."
 fi
+
+# The root Application's cascade above only waits on objects Argo itself
+# applied (tracked in .status.resources). The LoadBalancer Service that
+# Envoy Gateway's controller creates as a side effect of the EnvoyProxy CR
+# is not one of those - it's created by a controller, not by Argo directly -
+# so the cascade can report "complete" while AWS Load Balancer Controller
+# is still deleting the real NLB behind it (it holds the Service open with
+# a service.k8s.aws/resources finalizer until that's done). Disposable
+# Terraform must not touch EKS/VPC networking until this Service is
+# actually gone, or the NLB/its ENIs leak past `make down`.
+NLB_WAIT_TIMEOUT="${ARGO_DOWN_NLB_TIMEOUT:-300}"
+nlb_elapsed=0
+while true; do
+  remaining_svc="$(kubectl get svc -n envoy -l gateway.envoyproxy.io/owning-gateway-name=platform-gateway \
+    -o jsonpath='{.items[*].metadata.name}' 2>/dev/null || true)"
+  if [ -z "$remaining_svc" ]; then
+    echo "ARGO-DOWN: Envoy-managed NLB Service confirmed gone."
+    break
+  fi
+  if [ "$nlb_elapsed" -ge "$NLB_WAIT_TIMEOUT" ]; then
+    echo "ARGO-DOWN: Envoy-managed NLB Service ($remaining_svc) still present after ${NLB_WAIT_TIMEOUT}s - refusing to proceed." >&2
+    echo "ARGO-DOWN: the real AWS NLB is likely still being torn down by aws-load-balancer-controller; check 'kubectl get svc -n envoy -o yaml' before retrying." >&2
+    exit 1
+  fi
+  echo "ARGO-DOWN: waiting on Envoy-managed NLB Service ($remaining_svc) to finish deleting... (${nlb_elapsed}s/${NLB_WAIT_TIMEOUT}s)"
+  sleep "$POLL_INTERVAL"
+  nlb_elapsed=$((nlb_elapsed + POLL_INTERVAL))
+done
 
 # Final step: remove Argo CD itself. By now everything it managed is
 # already gone, so this just tears down Argo CD's own Deployments/RBAC -
