@@ -36,10 +36,6 @@ spec:
             memory: 128Mi
           limits:
             memory: 256Mi
-        # Chart-native metrics wiring - avoids hand-writing a ServiceMonitor
-        # and guessing selectors.
-        serviceMonitor:
-          enabled: true
   destination:
     server: https://kubernetes.default.svc
     # kube-system, matching karpenter/ebs-csi-driver - not `envoy`, which
@@ -51,8 +47,5 @@ spec:
       selfHeal: true
     syncOptions:
       - ServerSideApply=true
-      # This Application syncs (wave -5) before the monitoring CRDs its
-      # bundled ServiceMonitor needs exist - set at the Application level
-      # since that ServiceMonitor comes from the chart, not a root template.
       - SkipDryRunOnMissingResource=true
 {{- end }}
