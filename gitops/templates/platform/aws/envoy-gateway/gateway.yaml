@@ -16,6 +16,9 @@ spec:
         annotations:
           service.beta.kubernetes.io/aws-load-balancer-type: "external"
           service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "ip"
+          # Public internet access to argo.lab.<root-domain>/grafana.lab.<root-domain>
+          # requires this - default is "internal" (VPC-private only).
+          service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
           # Explicit for now, though the platform VPC's subnets already
           # carry kubernetes.io/role/elb (spec 020) - drop this once the
           # pinned controller's tag-based discovery is verified against a
