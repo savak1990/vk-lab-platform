@@ -141,11 +141,9 @@ for app in $(kubectl get applications -n argocd -o jsonpath='{.items[*].metadata
   kubectl patch application "$app" -n argocd --type=merge -p '{"operation":null}' >/dev/null 2>&1
 done
 
-# Deleted early (not waited-on) so ExternalDNS - still running, same
-# "outlives everything above it" wave as aws-load-balancer-controller - has
-# the whole remaining cascade to reconcile the Route 53 records away. If a
-# real `make down` ever leaves records behind, add a wait here then, sized
-# against that actual failure instead of a guess.
+# Deleted early, not waited-on: external-dns is still running and has the
+# whole remaining cascade to reconcile the Route 53 records away. Add a
+# wait here only if a real `make down` ever leaves records behind.
 echo "ARGO-DOWN: deleting HTTPRoutes to trigger ExternalDNS record cleanup..."
 kubectl delete httproute -A --all >/dev/null 2>&1 || true
 

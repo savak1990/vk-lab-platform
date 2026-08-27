@@ -5,10 +5,10 @@ metadata:
   name: external-dns
   namespace: argocd
   annotations:
-    # Same "must outlive everything above it" bucket as aws-load-balancer-controller -
-    # it deletes the HTTPRoutes' Route 53 records on the way out, so it must still be
-    # running when those HTTPRoutes disappear (see argo-down.sh's ordering step).
-    argocd.argoproj.io/sync-wave: "-5"
+    # After envoy-gateway (wave -1), whose chart installs the Gateway API CRDs
+    # this controller's gateway-httproute source needs; before the HTTPRoutes
+    # (wave 2), so it outlives them on the reverse-order teardown.
+    argocd.argoproj.io/sync-wave: "0"
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
@@ -21,8 +21,8 @@ spec:
       values: |
         provider:
           name: aws
-        # Reads hostnames straight from the HTTPRoutes spec 010 already authors -
-        # no annotation needed on any generated Service, no second source of truth.
+        # Reads hostnames straight from the existing HTTPRoutes - no annotation
+        # needed on any generated Service, no second source of truth.
         sources:
           - gateway-httproute
         # Scoped to lab.<root-domain> only - never the parent/root zone.

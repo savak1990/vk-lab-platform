@@ -14,9 +14,8 @@ resource "aws_iam_role" "controller" {
   assume_role_policy = data.aws_iam_policy_document.trust.json
 }
 
-# No AWS-managed policy exists for ExternalDNS (unlike EBS CSI) - scoped to
-# the single hosted zone this spec is allowed to touch (constitution §14,
-# spec 012 Requirement 4). ListHostedZones has no resource-level permission
+# No AWS-managed policy exists for ExternalDNS - scoped to the single hosted
+# zone it's allowed to touch. ListHostedZones has no resource-level permission
 # support in AWS IAM, so it stays "*" - not a scoping gap this module can close.
 data "aws_iam_policy_document" "controller" {
   statement {
