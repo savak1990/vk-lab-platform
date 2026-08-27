@@ -1,0 +1,59 @@
+{{- if eq .Values.target "aws" }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: external-dns
+  namespace: argocd
+  annotations:
+    # Same "must outlive everything above it" bucket as aws-load-balancer-controller -
+    # it deletes the HTTPRoutes' Route 53 records on the way out, so it must still be
+    # running when those HTTPRoutes disappear (see argo-down.sh's ordering step).
+    argocd.argoproj.io/sync-wave: "-5"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://kubernetes-sigs.github.io/external-dns/
+    chart: external-dns
+    targetRevision: 1.21.1
+    helm:
+      values: |
+        provider:
+          name: aws
+        # Reads hostnames straight from the HTTPRoutes spec 010 already authors -
+        # no annotation needed on any generated Service, no second source of truth.
+        sources:
+          - gateway-httproute
+        # Scoped to lab.<root-domain> only - never the parent/root zone.
+        domainFilters:
+          - {{ .Values.envoyGateway.fqdn | quote }}
+        registry: txt
+        # Stable across make down/up cycles - must never be a regenerated
+        # cluster UID, or every TXT record orphans on the first cycle.
+        txtOwnerId: {{ .Values.project | quote }}
+        # sync (not upsert-only) - upsert-only leaves orphaned records behind
+        # on make down, breaking this spec's own cleanup requirement.
+        policy: sync
+        serviceAccount:
+          create: true
+          name: external-dns
+        # Pod Identity, not IRSA (terraform/modules/external-dns-pod-identity) -
+        # no OIDC annotation needed on the ServiceAccount.
+        resources:
+          requests:
+            cpu: 10m
+            memory: 64Mi
+          limits:
+            memory: 128Mi
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+      - SkipDryRunOnMissingResource=true
+{{- end }}
