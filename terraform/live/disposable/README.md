@@ -2,16 +2,15 @@
 
 Creates Disposable-lifecycle resources: destroyed by `make cluster-down`,
 recreated by `make cluster-up`, with zero effect on the Persistent stack
-(Route 53 zone/ACM cert/Secrets Manager) or the AWS account's default VPC.
+(Route 53 zone/ACM cert/Secrets Manager/VPC).
 
 Three units:
 
 - `eks/` — EKS control plane, one fixed-size system managed node group
   (single `t3.medium`), EKS-managed add-ons (`vpc-cni`, `kube-proxy`,
   `coredns`, `eks-pod-identity-agent`), and the IAM roles the cluster/node
-  group need. Runs in the AWS account's **default VPC**, using its default
-  public subnets — no dedicated VPC exists yet. See
-  `specs/003-network-and-eks/spec.md`.
+  group need. Runs in the platform-owned VPC (`terraform/live/persistent/vpc`,
+  spec 020), using its public subnets. See `specs/003-network-and-eks/spec.md`.
 - `argocd-bootstrap/` — installs Argo CD and the single root ("app-of-apps")
   Application via Helm, pointed at `gitops/` (the aws target's install path).
   Terraform touches nothing else Kubernetes-native from here on — see

@@ -31,9 +31,9 @@ output "node_subnet_id" {
 }
 
 output "control_plane_subnet_ids" {
-  value = data.aws_subnets.default.ids
+  value = var.control_plane_subnet_ids
 }
 
 output "vpc_id" {
-  value = data.aws_vpc.default.id
+  value = var.vpc_id
 }

@@ -327,8 +327,8 @@ resource "aws_eks_access_entry" "node" {
 }
 
 # Tag only the one subnet/security group the system node group already
-# uses, not the whole default VPC: keeps Karpenter nodes in the same AZ as
-# existing AZ-locked EBS volumes and avoids broadly tagging a shared resource.
+# uses, not every subnet in the VPC: keeps Karpenter nodes in the same AZ as
+# existing AZ-locked EBS volumes and avoids broadly tagging shared resources.
 
 resource "aws_ec2_tag" "node_subnet_discovery" {
   resource_id = var.node_subnet_id

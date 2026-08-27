@@ -142,7 +142,7 @@ cd "$REPO_ROOT/terraform/live/persistent"
 # (type "yes") is the confirmation step, not a custom one.
 terragrunt run --all destroy
 
-for unit_prefix in persistent/route53 persistent/acm persistent/secrets; do
+for unit_prefix in persistent/vpc persistent/route53 persistent/acm persistent/secrets; do
   if ! remaining=$(count_resources "$unit_prefix"); then
     exit 1
   fi

@@ -1,13 +1,16 @@
 # Persistent stack
 
 Creates Persistent-lifecycle resources that must survive `make down`: the
-delegated `${SUBDOMAIN}.<root-domain>` Route 53 hosted zone (plus its NS
-delegation record in the parent zone), an ACM certificate for that zone,
-and Secrets Manager.
+platform-owned VPC, the delegated `${SUBDOMAIN}.<root-domain>` Route 53
+hosted zone (plus its NS delegation record in the parent zone), an ACM
+certificate for that zone, and Secrets Manager.
 
-Three units, applied/destroyed together via `make persistent-up`/
+Four units, applied/destroyed together via `make persistent-up`/
 `make persistent-down`:
 
+- `vpc/` — the platform-owned VPC: public subnets across two AZs, no NAT
+  Gateway (spec 020, ADR 0020). No dependency on the other three units, so
+  it applies/destroys in parallel with them.
 - `route53/` — the delegated hosted zone, and the NS record delegating it
   from the parent zone (looked up by name, not by an explicit zone ID —
   see `docs/adr/0002-delegated-lab-subdomain.md`).

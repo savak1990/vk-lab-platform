@@ -151,7 +151,7 @@ vk-lab-platform/
 │   │   ├── github-oidc/
 │   │   ├── kms/
 │   │   ├── secrets-manager/
-│   │   ├── vpc/                   # not used until spec 020; default VPC used until then
+│   │   ├── vpc/                   # spec 020; platform-owned, public subnets, no NAT
 │   │   ├── route53-zone/
 │   │   ├── acm-certificate/
 │   │   ├── rds/
@@ -174,7 +174,7 @@ vk-lab-platform/
 │       │
 │       ├── persistent/
 │       │   ├── terragrunt.stack.hcl
-│       │   ├── vpc/                   # added by spec 020; not present initially
+│       │   ├── vpc/                   # spec 020; platform-owned, public subnets, no NAT
 │       │   ├── route53/
 │       │   ├── acm/
 │       │   ├── secrets/
@@ -341,15 +341,13 @@ Persistent resources survive normal platform shutdown.
 
 Examples:
 
-- VPC/subnets (deferred — see note below; the AWS account's default VPC is used initially)
+- VPC/subnets (platform-owned, `terraform/live/persistent/vpc`, spec 020 — see §10)
 - Route 53 hosted zone
 - ACM certificate
 - Secrets Manager
 - RDS
 - retained EBS volumes
 - persistent S3 resources
-
-A dedicated, platform-owned VPC is not part of the initial scope. Early specs run EKS in the AWS account's default VPC and default public subnets, prioritizing simplicity over network isolation (§4's "cost, simplicity ... take priority" principle). A dedicated persistent VPC is introduced later by its own spec once the rest of the platform is proven out; until then, "VPC" does not appear as a resource this repository's Terraform creates or destroys.
 
 Lifecycle:
 
@@ -527,19 +525,23 @@ When workloads disappear, Karpenter should consolidate and remove unnecessary wo
 
 # 10. Networking
 
-## Initial state: AWS default VPC
+## Dedicated persistent VPC (spec 020)
 
-A dedicated platform-owned VPC is intentionally out of scope for the initial set of specs. EKS, its system node group, and everything built on top of it run in the AWS account's **default VPC**, using its default public subnets.
+The platform owns a dedicated VPC (`terraform/live/persistent/vpc`), replacing the AWS
+account's default VPC used by earlier specs (003+). It belongs to the persistent
+infrastructure layer, so that RDS (if ever used) and other persistent infrastructure can
+survive EKS destruction independent of the VPC lifecycle.
 
-This is a deliberate simplicity/cost trade-off, not an oversight: it avoids VPC/subnet/route-table design and NAT Gateway cost entirely while the rest of the platform (Argo CD, storage contract, Postgres, Kafka, observability, public edge) is built out and proven. The accepted consequence is that EKS nodes get public IPs; security groups are scoped tightly to compensate (see spec 003).
+Public subnets only, across two AZs, no NAT Gateway, no VPC interface endpoints (ADR 0020)
+— EKS nodes keep public IPs, same as before; security groups are scoped tightly to
+compensate (see spec 003). Subnets carry `kubernetes.io/role/elb` so
+`aws-load-balancer-controller` can auto-discover them for the NLB, without an explicit
+subnet-ID annotation.
 
-The default VPC is not created or destroyed by this platform — it always exists at the AWS account level, independent of any lifecycle class this repository manages.
+The AWS account's default VPC is no longer used by this platform and is never created or
+destroyed by it.
 
-## Future state: dedicated persistent VPC
-
-A dedicated VPC (public + private subnets, explicit route tables) is planned as a later addition, once the rest of the platform is working. When introduced, it will belong to the persistent infrastructure layer, so that RDS (if ever used) and other persistent infrastructure can survive EKS destruction independent of the VPC lifecycle. Migrating from the default VPC to a dedicated one requires a full disposable-stack recreation and careful handling of AZ-locked EBS volumes (see the VPC spec for the concrete migration plan).
-
-Once introduced, networking should support:
+Networking supports:
 
 - EKS
 - NLB
@@ -549,7 +551,9 @@ Once introduced, networking should support:
 - Pod Identity
 - AWS controllers
 
-Unnecessary permanent network costs, especially NAT Gateway costs, should be avoided where practical for the educational environment — this applies both to the current no-VPC state (trivially true, there is no NAT Gateway) and to the future dedicated VPC (a NAT Gateway must be explicitly justified, not added by default).
+Unnecessary permanent network costs, especially NAT Gateway costs, are avoided — a NAT
+Gateway (or private subnets requiring one) must be explicitly justified, not added by
+default (constitution §9).
 
 ---
 

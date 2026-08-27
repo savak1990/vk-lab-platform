@@ -53,7 +53,7 @@ Rarely destroyed:
 
 ### Persistent
 Must survive normal `make down`:
-- VPC (deferred — see §15; the AWS account's default VPC is used until a dedicated VPC spec is implemented)
+- VPC (platform-owned, public subnets only, no NAT — see §15)
 - Route 53 (the delegated `lab.<root-domain>` hosted zone — see §14; NOT the parent/root hosted zone, which is external)
 - ACM (the lab subdomain certificate — see §14)
 - Secrets Manager
@@ -279,15 +279,15 @@ Because the domain value is used to create real Route 53 and ACM resources, it w
 
 ---
 
-## 15. VPC Deferral
+## 15. VPC Ownership
 
-A dedicated, platform-owned VPC is intentionally out of scope for the initial specs. EKS and everything built on it run in the AWS account's default VPC and default public subnets until a dedicated VPC spec is implemented.
+The platform owns a dedicated, Persistent-lifecycle VPC (`terraform/live/persistent/vpc`, spec 020), replacing the AWS account's default VPC used by earlier specs. Public subnets only, no NAT Gateway, no VPC interface endpoints — see ADR 0020 for the cost rationale.
 
-This is a deliberate simplicity/cost trade-off (§9), not an oversight. The accepted consequence is that EKS nodes have public IPs; security groups MUST be scoped tightly to compensate in the meantime.
+This keeps the same public-IP/tight-security-group trade-off as before (§9); EKS nodes still have public IPs, and security groups MUST be scoped tightly to compensate. What changed is ownership and tagging, not network isolation.
 
-The default VPC is not created or destroyed by this platform — it is not itself a resource in any lifecycle class this repository manages.
+The AWS account's default VPC is no longer used by this platform and is never created or destroyed by it — it is not a resource in any lifecycle class this repository manages.
 
-When a dedicated VPC is introduced, it MUST be Persistent-lifecycle (§3). Migrating from the default VPC to a dedicated one requires a full disposable-stack recreation (EKS cannot move VPCs in place) and MUST account for AZ-locked EBS volumes holding retained data (§4) — either by matching the new VPC's subnets to the AZs already in use, or by a documented volume-migration procedure.
+A future migration to private subnets, if ever cost-justified, is a separate change, not a reopening of this one.
 
 ---
 

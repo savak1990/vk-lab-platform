@@ -1,52 +1,16 @@
-data "aws_vpc" "default" {
-  default = true
+locals {
+  node_subnet_id = lookup(var.public_subnet_ids_by_az, var.availability_zone, "")
 }
 
-data "aws_subnets" "default" {
-  filter {
-    name   = "vpc-id"
-    values = [data.aws_vpc.default.id]
-  }
-
-  # Excludes Local Zone / Wavelength subnets some accounts' default VPCs
-  # include but that EKS control planes can't use.
-  filter {
-    name   = "default-for-az"
-    values = ["true"]
-  }
-}
-
-# Separate from data.aws_subnets.default above: that one feeds the control
-# plane, which needs subnets across >= 2 AZs. This one is filtered to a
-# single AZ (var.availability_zone) so the node group's subnet is pinned
-# there deterministically, matching the persistent postgres-volume unit's
-# AZ (root.hcl's shared postgres_az) rather than wandering on recreate.
-data "aws_subnets" "node" {
-  filter {
-    name   = "vpc-id"
-    values = [data.aws_vpc.default.id]
-  }
-
-  filter {
-    name   = "default-for-az"
-    values = ["true"]
-  }
-
-  filter {
-    name   = "availability-zone"
-    values = [var.availability_zone]
-  }
+resource "terraform_data" "node_subnet_check" {
+  input = var.availability_zone
 
   lifecycle {
-    postcondition {
-      condition     = length(self.ids) > 0
-      error_message = "No default-for-az subnet found in ${var.availability_zone}."
+    precondition {
+      condition     = local.node_subnet_id != ""
+      error_message = "No subnet for AZ ${var.availability_zone} in public_subnet_ids_by_az - does the persistent vpc unit cover this AZ?"
     }
   }
-}
-
-locals {
-  node_subnet_id = one(data.aws_subnets.node.ids)
 }
 
 module "eks" {
@@ -56,11 +20,11 @@ module "eks" {
   name               = var.cluster_name
   kubernetes_version = var.cluster_version
 
-  vpc_id     = data.aws_vpc.default.id
-  subnet_ids = data.aws_subnets.default.ids # control plane: all AZs (EKS requires >= 2)
+  vpc_id     = var.vpc_id
+  subnet_ids = var.control_plane_subnet_ids # control plane: all AZs (EKS requires >= 2)
 
   endpoint_public_access  = true
-  endpoint_private_access = false # default VPC has no private connectivity path
+  endpoint_private_access = false # the persistent vpc unit has no private connectivity path
 
   authentication_mode                      = "API"
   enable_cluster_creator_admin_permissions = true
