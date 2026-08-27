@@ -7,11 +7,9 @@ terraform {
   source = "${get_repo_root()}/terraform/modules/eks"
 }
 
-# Cross-lifecycle dependency (disposable -> persistent), same shape as
-# disposable/external-secrets-pod-identity's dependency on persistent/secrets.
-# Safe for `make down`: cluster-down.sh runs `terragrunt run --all destroy`
-# scoped to terraform/live/disposable, and run --all only discovers units
-# under the cwd - this dependency doesn't pull persistent/vpc into that scope.
+# Crosses into persistent/ like external-secrets-pod-identity already does.
+# `make down`'s `run --all destroy` only discovers units under its own cwd
+# (terraform/live/disposable), so this doesn't pull persistent/vpc into that scope.
 dependency "vpc" {
   config_path = "${get_repo_root()}/terraform/live/persistent/vpc"
 

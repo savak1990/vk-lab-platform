@@ -17,7 +17,7 @@ resource "aws_subnet" "public" {
   availability_zone = each.key
   cidr_block        = cidrsubnet(var.cidr_block, 8, each.value)
 
-  # No NAT Gateway (constitution §9 cost rule) - nodes need a public IP
+  # No NAT Gateway, to avoid its hourly/per-GB cost - nodes need a public IP
   # to reach the EKS API/ECR/pull images without one.
   map_public_ip_on_launch = true
 
