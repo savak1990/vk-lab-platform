@@ -33,7 +33,11 @@ spec:
         # Applies to every AWS resource this controller creates (NLB, target
         # groups, security groups) - not Terraform-managed, so ManagedBy names
         # the controller instead of claiming constitution §16's terraform value.
-        defaultTags: "Project={{ .Values.project }},Scope=platform,Lifecycle=disposable,ManagedBy=aws-load-balancer-controller"
+        defaultTags:
+          Project: {{ .Values.project }}
+          Scope: platform
+          Lifecycle: disposable
+          ManagedBy: aws-load-balancer-controller
         resources:
           requests:
             cpu: 20m
