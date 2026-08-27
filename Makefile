@@ -1,6 +1,8 @@
-.PHONY: up down state-up state-down status bootstrap-up bootstrap-down secret-encrypt secret-decrypt generate-secrets persistent-up persistent-down clear-cache cluster-up cluster-down eks-kubeconfig argo-up argo-down
+.PHONY: up down full-up full-down state-up state-down status bootstrap-up bootstrap-down secret-encrypt secret-decrypt generate-secrets persistent-up persistent-down clear-cache cluster-up cluster-down eks-kubeconfig argo-up argo-down
 
-# Lifecycle: state -> bootstrap -> persistence -> disposable -> argo
+.NOTPARALLEL:
+
+# Lifecycle: state -> bootstrap -> persistence -> cluster -> argo
 
 # Overridable so CI/integration runs can use a disposable, randomly
 # generated name instead of the personal lab's, e.g.
@@ -14,14 +16,27 @@ export REGION ?= eu-west-1
 # Overridable subdomain delegated from the root domain, e.g. lab.<root-domain>.
 export SUBDOMAIN ?= lab
 
-## Brings up the full personal lab: Persistent -> Disposable -> Argo CD.
-## Shortcut for persistent-up + cluster-up + argo-up, in order.
-up: persistent-up cluster-up argo-up
+## Brings up the cluster + Argo CD onto an existing Persistent layer.
+## Fails fast (naming `make persistent-up`) if Persistent doesn't exist yet -
+## never creates it (constitution §17). For a from-scratch environment use
+## `make full-up`.
+up: clear-cache cluster-up argo-up
 
-## Tears down the disposable lab only: Argo CD -> Disposable.
-## Shortcut for argo-down + cluster-down, in order. Does NOT touch the
-## Persistent layer (DNS/ACM/Secrets Manager) - use persistent-down for that.
-down: argo-down cluster-down
+## Tears down Argo CD then the cluster. Does NOT touch Persistent or
+## Bootstrap - use `make persistent-down`/`make bootstrap-down` for those.
+down: clear-cache argo-down cluster-down
+
+## Brings up the entire platform from nothing: State -> Bootstrap ->
+## Persistent -> cluster -> Argo CD. Persistent-lifecycle passwords are
+## generated only if missing (see persistent-up); root-domain.enc is
+## generated from $ROOT_DOMAIN if set and missing, otherwise it must
+## already exist - it's a real domain, never randomly generated.
+full-up: clear-cache state-up bootstrap-up persistent-up cluster-up argo-up
+
+## Tears down the entire platform: Argo CD -> cluster -> Persistent ->
+## Bootstrap -> State. Rarely used - persistent-down/bootstrap-down/
+## state-down each keep their own explicit confirmation prompts.
+full-down: clear-cache argo-down cluster-down persistent-down bootstrap-down state-down
 
 ## Reports which lifecycle layers currently have state in the shared bucket.
 status:
@@ -44,10 +59,15 @@ bootstrap-up:
 bootstrap-down:
 	./scripts/bootstrap-down.sh
 
-## Creates Persistent-lifecycle resources (lab DNS zone + delegation, ACM cert, Secrets Manager).
-## require-unique-subdomain guards against two PROJECT_NAME environments
-## sharing SUBDOMAIN.<root-domain> - see that script for why.
+## Creates Persistent-lifecycle resources (lab DNS zone + delegation, ACM
+## cert, Secrets Manager). Auto-generates postgres-app-password.enc /
+## grafana-admin-password.enc / argocd-admin-password.bcrypt if missing
+## (never overwrites an existing one - see ADR 0014). root-domain.enc is
+## generated from $ROOT_DOMAIN if set and missing, otherwise it must
+## already exist. require-unique-subdomain guards against two PROJECT_NAME
+## environments sharing SUBDOMAIN.<root-domain> - see that script for why.
 persistent-up:
+	./scripts/generate-secrets.sh
 	./scripts/require-persistent-secrets.sh
 	./scripts/require-unique-subdomain.sh
 	cd terraform/live/persistent && terragrunt run --all apply --non-interactive
@@ -61,12 +81,15 @@ persistent-up:
 persistent-down:
 	./scripts/persistent-down.sh
 
-## Creates Disposable-lifecycle resources (EKS cluster + system node group + addons).
-## Run `make argo-up` after this to install Argo CD and the platform.
+## Creates the disposable EKS cluster (system node group + addons). Fails
+## fast (naming `make persistent-up`) if the Persistent layer doesn't exist
+## yet - never creates it (constitution §17). Run `make argo-up` after
+## this to install Argo CD and the platform.
 cluster-up:
+	./scripts/require-persistent.sh
 	cd terraform/live/disposable && terragrunt run --all apply --non-interactive
 
-## Destroys Disposable-lifecycle resources. Routine, unlike bootstrap-down/persistent-down.
+## Destroys the disposable EKS cluster. Routine, unlike bootstrap-down/persistent-down.
 ## Requires `make argo-down` to have already cascaded away Argo/Karpenter's
 ## resources - refuses to run otherwise (see scripts/cluster-down.sh, ADR 0012).
 cluster-down:
@@ -113,9 +136,12 @@ secret-decrypt:
 	@./scripts/secret-decrypt.sh "$(NAME)"
 
 ## Generates throwaway secrets/$(PROJECT_NAME)/ files for a CI/test
-## environment: root-domain from ROOT_DOMAIN and a fixed, publicly-known
-## postgres-app-password ("test"). Never use this for the personal lab.
+## environment: root-domain from ROOT_DOMAIN and fixed, publicly-known
+## passwords ("test"). Never use this for the personal lab - persistent-up
+## calls the same script directly (without FIXED_TEST_PASSWORDS) to
+## auto-generate real random passwords instead.
 ## Usage: PROJECT_NAME=vk-lab-ci ROOT_DOMAIN=<domain> make generate-secrets
 generate-secrets: export ROOT_DOMAIN := $(ROOT_DOMAIN)
+generate-secrets: export FIXED_TEST_PASSWORDS := true
 generate-secrets:
 	@./scripts/generate-secrets.sh

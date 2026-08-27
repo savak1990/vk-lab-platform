@@ -41,6 +41,7 @@ acm_output() {
 
 CLUSTER_NAME="$(eks_output cluster_name)"
 ACM_CERTIFICATE_ARN="$(acm_output certificate_arn)"
+VPC_ID="$(eks_output vpc_id)"
 aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$REGION" --alias "$CLUSTER_NAME" >/dev/null
 kubectl config set-context --current --namespace=default >/dev/null
 
@@ -138,6 +139,7 @@ helm upgrade --install root-application "$REPO_ROOT/gitops/bootstrap" \
   --set target=aws \
   --set project="$PROJECT_NAME" \
   --set region="$REGION" \
+  --set vpcId="$VPC_ID" \
   --set repoURL="$REPO_URL" \
   --set targetRevision="$TARGET_REVISION" \
   --set postgres.recoverySnapshotHandle="$RECOVERY_SNAPSHOT_HANDLE" \

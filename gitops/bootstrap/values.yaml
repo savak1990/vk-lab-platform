@@ -3,6 +3,7 @@
 target: aws
 project: vk-lab-platform
 region: eu-west-1
+vpcId: ""
 repoURL: https://github.com/savak1990/vk-lab-platform
 targetRevision: main
 

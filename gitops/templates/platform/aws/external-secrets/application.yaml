@@ -29,6 +29,7 @@ spec:
           limits:
             memory: 96Mi
         webhook:
+          failurePolicy: Ignore
           resources:
             requests:
               cpu: 5m

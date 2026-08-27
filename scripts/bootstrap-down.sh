@@ -52,3 +52,16 @@ cd "$REPO_ROOT/terraform/live/bootstrap"
 # was last built against, terraform will refuse with "Backend configuration
 # has changed" - run `make clear-cache` first in that case.
 terragrunt run --all destroy
+
+# Only after the KMS key is actually gone: its secrets/$PROJECT_NAME/*.enc
+# files are now permanently undecryptable ciphertext, so delete them from
+# the working tree. Scoped to this PROJECT_NAME only - never a
+# secrets/**/*.enc glob, since a different PROJECT_NAME's secrets are
+# encrypted under a different KMS key and must survive. This is not
+# history scrubbing (old ciphertext remains in git history); it just
+# tidies the working tree to match the key's destruction. Never commits on
+# its own - the operator commits the deletion themselves.
+if [ -d "$REPO_ROOT/secrets/$PROJECT_NAME" ]; then
+  find "$REPO_ROOT/secrets/$PROJECT_NAME" -maxdepth 1 -name '*.enc' -print -delete
+  echo "Deleted secrets/$PROJECT_NAME/*.enc (KMS key alias/${PROJECT_NAME}-secrets destroyed - commit this deletion)."
+fi

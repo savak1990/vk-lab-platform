@@ -79,7 +79,7 @@ it (ADR 0007).
    no cloud LB implementation present, and no MetalLB/cloud-provider-kind
    substitute is used (see ADR 0006, alternative d).
 9. The `local` target's Gateway API `HTTPRoute`s MUST match by **path**
-   (e.g. `/api`, `/grafana`, `/argocd`) rather than by hostname. The `aws`
+   (e.g. `/api`, `/grafana`, `/argo`) rather than by hostname. The `aws`
    target MUST continue matching by hostname (`api.lab.<root-domain>`,
    etc.). This is a permanent, accepted divergence in route-matching *kind*
    between the two targets — a requirement to be implemented in spec 010,
@@ -143,8 +143,8 @@ it (ADR 0007).
   --real` vs. no flag), so `make minikube-up`/`make kind-up` don't duplicate
   the secret-loading logic per tool.
 - For Requirement 9, HTTPRoute path prefixes for `local` should mirror the
-  `aws` target's per-component hostnames one-to-one (`argocd.lab...` →
-  `/argocd`, `grafana.lab...` → `/grafana`) so the mapping is predictable
+  `aws` target's per-component hostnames one-to-one (`argo.lab...` →
+  `/argo`, `grafana.lab...` → `/grafana`) so the mapping is predictable
   without needing a separate lookup table.
 
 ## Testing / acceptance criteria
@@ -153,7 +153,7 @@ it (ADR 0007).
   installs Argo CD, and reaches `Synced`/`Healthy` on the root Application
   with `target=local` and zero AWS credentials present in the environment.
 - `kubectl port-forward` to Envoy Gateway's Service, followed by requests to
-  `localhost:PORT/argocd`, `/grafana`, etc., succeeds over plain HTTP.
+  `localhost:PORT/argo`, `/grafana`, etc., succeeds over plain HTTP.
 - Editing a manifest under `gitops/` and re-syncing (without a git
   commit/push) is reflected by Argo CD — proves Requirement 15.
 - Running the opt-in real-secrets flag decrypts and loads real values from

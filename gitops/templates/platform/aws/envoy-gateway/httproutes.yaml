@@ -11,9 +11,8 @@ spec:
   parentRefs:
     - name: platform-gateway
       namespace: envoy
-  # aws target matches by hostname (spec 010 Req 6). Ahead of ExternalDNS
-  # (spec 012, out of scope), reach this via an /etc/hosts entry pointing at
-  # the NLB's address for grafana.lab.<root-domain> / argo.lab.<root-domain>.
+  # Matches by hostname. Ahead of automated DNS publishing, reach this via
+  # an /etc/hosts entry pointing the hostname at the NLB's address.
   hostnames:
     - "argo.lab.<root-domain>"
   rules:

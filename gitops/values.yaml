@@ -4,6 +4,9 @@
 target: aws
 project: vk-lab-platform
 region: eu-west-1
+# Set by scripts/argo-up.sh from the eks Terraform unit's vpc_id output -
+# lets aws-load-balancer-controller skip IMDS-based VPC discovery.
+vpcId: ""
 
 # recoverySnapshotHandle is set automatically by scripts/argo-up.sh, which
 # discovers the latest retained EBS snapshot (if any) via the AWS API — no
@@ -38,7 +41,6 @@ karpenter:
     cpuLimit: "4"
 
 # Set by scripts/argo-up.sh from `terraform/live/persistent/acm`'s
-# certificate_arn output (ADR 0010's Terraform-output -> Helm-parameter ->
-# gitops-value pattern) - never hardcoded here.
+# certificate_arn output - never hardcoded here.
 envoyGateway:
   acmCertificateArn: ""

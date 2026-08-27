@@ -14,7 +14,7 @@ if ! aws s3api head-bucket --bucket "$BUCKET" --region "$REGION" >/dev/null 2>&1
   echo "state:        absent   (run: make state-up)"
   echo "bootstrap:    unknown  (state layer missing)"
   echo "persistent:   unknown  (state layer missing)"
-  echo "disposable:   unknown  (state layer missing)"
+  echo "cluster:      unknown  (state layer missing)"
   echo "argo:         unknown  (state layer missing)"
   exit 0
 fi
@@ -25,6 +25,9 @@ TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
 for prefix in bootstrap persistent disposable; do
+  label="$prefix"
+  [ "$prefix" = "disposable" ] && label="cluster"
+
   # An empty prefix makes list-objects-v2's JMESPath filter evaluate
   # against null, which --output text renders as the literal string
   # "None" - not empty - so this must be checked explicitly.
@@ -32,7 +35,7 @@ for prefix in bootstrap persistent disposable; do
     --query "Contents[?ends_with(Key, 'terraform.tfstate')].Key" --output text)
 
   if [ -z "$keys" ] || [ "$keys" = "None" ]; then
-    printf '%-13s no data  (never applied)\n' "$prefix:"
+    printf '%-13s no data  (never applied)\n' "$label:"
     continue
   fi
 
@@ -44,9 +47,9 @@ for prefix in bootstrap persistent disposable; do
   done
 
   if [ "$total" -gt 0 ]; then
-    printf '%-13s present  (%s resource(s) under %s/)\n' "$prefix:" "$total" "$prefix"
+    printf '%-13s present  (%s resource(s) under %s/)\n' "$label:" "$total" "$prefix"
   else
-    printf '%-13s absent   (destroyed)\n' "$prefix:"
+    printf '%-13s absent   (destroyed)\n' "$label:"
   fi
 done
 
@@ -58,7 +61,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CLUSTER_NAME="$(terragrunt --working-dir "$REPO_ROOT/terraform/live/disposable/eks" output -raw cluster_name 2>/dev/null || true)"
 
 if [ -z "$CLUSTER_NAME" ]; then
-  printf '%-13s unknown  (disposable EKS cluster not up)\n' "argo:"
+  printf '%-13s unknown  (cluster not up)\n' "argo:"
 elif ! aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$REGION" --alias "$CLUSTER_NAME" >/dev/null 2>&1 \
   || ! kubectl cluster-info --request-timeout=5s >/dev/null 2>&1; then
   printf '%-13s unknown  (cluster unreachable)\n' "argo:"

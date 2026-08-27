@@ -590,7 +590,7 @@ The two targets diverge in kind, not just in values, on several points:
   forced to `ClusterIP` in `values-local.yaml`.
 - **Routing.** `aws`: Gateway API `HTTPRoute`s match by hostname
   (`api.lab.<root-domain>`). `local`: routes match by path (`/api`,
-  `/grafana`, `/argocd`), since `kubectl port-forward` to `localhost` can't
+  `/grafana`, `/argo`), since `kubectl port-forward` to `localhost` can't
   present a matching Host header. This is a permanent, accepted divergence.
 - **TLS.** `aws`: ACM certificate, terminated at the NLB's TLS listener
   (§12) — Envoy never holds a certificate. `local`: plain HTTP, no TLS
@@ -1162,13 +1162,18 @@ make persistent-down   destroys them — guarded, deliberate, rarely used, real 
 
 make up                creates Disposable-lifecycle resources (EKS, then argo-up: Argo, workloads)
 make down              destroys them — argo-down (Argo cascade) then Terragrunt destroy — the routine, frequently-used command
+
+make full-up           state-up -> bootstrap-up -> persistent-up -> up, in order — brings up the entire platform from nothing
+make full-down         the exact reverse of full-up — tears down the entire platform, including Persistent/Bootstrap
 ```
 
 `make up`/`make down` compose `cluster-up`/`argo-up` and `argo-down`/`cluster-down` respectively (ADR 0012, spec 006-1) — `argo-down`'s Argo-driven cascade must complete before `cluster-down` touches the EKS cluster, since only Argo/Karpenter's own controllers can clean up the AWS resources they provisioned outside Terraform.
 
+`make full-up`/`make full-down` are convenience compositions of the commands above, for the from-scratch case. They add no new guard logic and change no individual command's own contract — each step still enforces its own precondition/confirmation exactly as if invoked standalone, so `full-down` still pauses on `persistent-down`'s and `state-down`'s own confirmation prompts rather than smoothing them over.
+
 `make minikube-up` and `make kind-up` (the `local` target, §10a) are separate commands outside this lifecycle-class command surface entirely — they don't create or destroy any State/Bootstrap/Persistent/Disposable resource, so they aren't governed by the "one command per class" rule below.
 
-`make up` verifies that Persistent-lifecycle resources already exist before doing anything else. If they do not, it fails with an actionable error telling the operator to run `make persistent-up` first — it never creates Persistent resources on the caller's behalf. This keeps the "what survives `make down`" boundary (§6) visible at the command layer, not just in Terraform state layout.
+`make up` verifies that Persistent-lifecycle resources already exist before doing anything else, via `scripts/require-persistent.sh` (wired into `cluster-up`, the target `up` composes). If they do not, it fails with an actionable error telling the operator to run `make persistent-up` first — it never creates Persistent resources on the caller's behalf. This keeps the "what survives `make down`" boundary (§6) visible at the command layer, not just in Terraform state layout.
 
 `make persistent-down` and `make bootstrap-down` are destructive, rarely-used escape hatches, not part of the routine up/down cycle:
 

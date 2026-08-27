@@ -18,11 +18,9 @@ spec:
           service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "ip"
           service.beta.kubernetes.io/aws-load-balancer-ssl-cert: {{ .Values.envoyGateway.acmCertificateArn | quote }}
           service.beta.kubernetes.io/aws-load-balancer-ssl-ports: "443"
-          # Load-bearing, not decoration (ADR 0011): without this, every
-          # request reaching Envoy appears to come from the NLB's own IP,
-          # and Envoy's per-client rate limiting silently collapses into one
-          # global limit. Must be paired with the listener-side PROXY
-          # protocol setting below - either alone is a client-IP mismatch.
+          # Without this, every request appears to come from the NLB's own
+          # IP and per-client rate limiting collapses into one global limit.
+          # Must be paired with the listener-side PROXY protocol setting below.
           service.beta.kubernetes.io/aws-load-balancer-proxy-protocol: "*"
       envoyDeployment:
         replicas: 1
@@ -63,20 +61,18 @@ metadata:
 spec:
   gatewayClassName: envoy-gateway
   listeners:
-    # protocol: HTTP, no tls block - TLS terminates at the NLB, Envoy never
-    # holds a certificate (spec 010 Requirement 7).
-    - name: http
+    # port 443, protocol HTTP: NLB terminates TLS and forwards plaintext
+    # here - Envoy never holds a cert. Must match ssl-ports=443 above, since
+    # the Service's ports mirror this list 1:1. No port 80, by design.
+    - name: https
       protocol: HTTP
-      port: 80
+      port: 443
       allowedRoutes:
         namespaces:
           from: All
 ---
-# Listener-side half of Proxy Protocol v2 - the EnvoyProxy annotation above
-# tells the NLB to prepend a PROXY v2 header; without this, Envoy doesn't
-# expect one and fails to parse every request (a hard failure of the whole
-# path, not a degraded rate limit). Verify the exact field name against the
-# pinned chart's ClientTrafficPolicy CRD schema - it is version-dependent.
+# Listener-side half of Proxy Protocol v2 - without this Envoy doesn't
+# expect the header the NLB now prepends and fails to parse every request.
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: ClientTrafficPolicy
 metadata:
