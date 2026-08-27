@@ -17,6 +17,7 @@ spec:
   # Defensive, not tight: high enough that normal dashboard use never hits
   # it, low enough that a quick curl burst demonstrably 429s.
   rateLimit:
+    type: Local
     local:
       rules:
         - limit:

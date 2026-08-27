@@ -39,10 +39,16 @@ acm_output() {
   terragrunt --working-dir "$REPO_ROOT/terraform/live/persistent/acm" output -raw "$1"
 }
 
+route53_output() {
+  terragrunt --working-dir "$REPO_ROOT/terraform/live/persistent/route53" output -raw "$1"
+}
+
 CLUSTER_NAME="$(eks_output cluster_name)"
 ACM_CERTIFICATE_ARN="$(acm_output certificate_arn)"
 VPC_ID="$(eks_output vpc_id)"
 NODE_SUBNET_ID="$(eks_output node_subnet_id)"
+# fqdn ("lab.<root-domain>") is sensitive output - never echo it.
+LAB_FQDN="$(route53_output fqdn)"
 aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$REGION" --alias "$CLUSTER_NAME" >/dev/null
 kubectl config set-context --current --namespace=default >/dev/null
 
@@ -150,7 +156,8 @@ helm upgrade --install root-application "$REPO_ROOT/gitops/bootstrap" \
   --set-json karpenter.spot.instanceTypes="$SPOT_KARPENTER_INSTANCE_TYPES_JSON" \
   --set-json karpenter.onDemand.instanceTypes="$ON_DEMAND_KARPENTER_INSTANCE_TYPES_JSON" \
   --set envoyGateway.acmCertificateArn="$ACM_CERTIFICATE_ARN" \
-  --set envoyGateway.nlbSubnetIds="$NODE_SUBNET_ID"
+  --set envoyGateway.nlbSubnetIds="$NODE_SUBNET_ID" \
+  --set envoyGateway.fqdn="$LAB_FQDN"
 
 # Every child Application (cnpg-operator, karpenter, ...) with its own
 # sync/health, so a single stuck one is visible by name instead of only

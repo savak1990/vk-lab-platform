@@ -44,6 +44,9 @@ karpenter:
 # certificate_arn output, nlbSubnetIds from the eks unit's node_subnet_id -
 # kept explicit as a fast-follow even though spec 020's VPC subnets already
 # carry kubernetes.io/role/elb (see envoy-gateway/gateway.yaml's comment).
+# fqdn is persistent/route53's fqdn output ("lab.<root-domain>") - the
+# HTTPRoutes' hostnames are built from this, not a literal domain string.
 envoyGateway:
   acmCertificateArn: ""
   nlbSubnetIds: ""
+  fqdn: ""

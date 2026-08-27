@@ -14,7 +14,7 @@ spec:
   # Matches by hostname. Ahead of automated DNS publishing, reach this via
   # an /etc/hosts entry pointing the hostname at the NLB's address.
   hostnames:
-    - "argo.lab.<root-domain>"
+    - "argo.{{ .Values.envoyGateway.fqdn }}"
   rules:
     - backendRefs:
         - name: argocd-server
@@ -33,7 +33,7 @@ spec:
     - name: platform-gateway
       namespace: envoy
   hostnames:
-    - "grafana.lab.<root-domain>"
+    - "grafana.{{ .Values.envoyGateway.fqdn }}"
   rules:
     - backendRefs:
         - name: kube-prometheus-stack-grafana
