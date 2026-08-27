@@ -68,7 +68,9 @@ Pass: `kubectl get application root -n argocd -o jsonpath='{.status.sync.status}
       **one** NLB exists (cross-check against the "one load balancer" confirmation from earlier in this work —
       `grep -rn "LoadBalancer" gitops/` should still show exactly one `type: LoadBalancer` in the whole repo).
 - [ ] `aws elbv2 describe-tags --resource-arns <nlb-arn>` — confirm `Project=vk-lab-platform`, `Scope=platform`,
-      `Lifecycle=disposable` appear (the AWS Load Balancer Controller tags what it creates; constitution §16).
+      `Lifecycle=disposable`, `ManagedBy=aws-load-balancer-controller` all appear (from the controller's
+      `defaultTags` value in `aws-load-balancer-controller/application.yaml` — not Terraform, so `ManagedBy`
+      names the controller instead of constitution §16's `terraform` value).
 
 Pass: one NLB, tagged, `EXTERNAL-IP` populated.
 
@@ -109,6 +111,47 @@ Pass: one clean response, Argo CD's login UI reachable, no redirect loop.
       backend).
 
 Pass: both real hostnames route correctly; an unmatched hostname doesn't silently fall through to one of them.
+
+## 6a. Ad-hoc workload — a route created directly via the Kubernetes API, not GitOps
+
+Proves the Gateway isn't hardcoded to Argo CD/Grafana: `allowedRoutes.namespaces.from: All` on
+`platform-gateway` (`gateway.yaml`) must let a plain `kubectl`-applied Deployment/Service/HTTPRoute in an
+unrelated namespace attach and route traffic, with no Argo Application involved.
+
+- [ ] `kubectl create namespace smoketest`
+- [ ] `kubectl -n smoketest create deployment nginx --image=nginx:alpine`
+- [ ] `kubectl -n smoketest expose deployment nginx --port=80`
+- [ ] Apply an `HTTPRoute` (same shape as `httproutes.yaml`, no Argo annotations needed since this isn't
+      GitOps-managed):
+      ```
+      cat <<'EOF' | kubectl apply -f -
+      apiVersion: gateway.networking.k8s.io/v1
+      kind: HTTPRoute
+      metadata:
+        name: smoketest
+        namespace: smoketest
+      spec:
+        parentRefs:
+          - name: platform-gateway
+            namespace: envoy
+        hostnames:
+          - "test.lab.<root-domain>"
+        rules:
+          - backendRefs:
+              - name: nginx
+                port: 80
+      EOF
+      ```
+- [ ] Add `test.lab.<root-domain>` to the same `/etc/hosts` line used in step 5.
+- [ ] `curl -sk -o /dev/null -w '%{http_code}\n' https://test.lab.<root-domain>/` → `200` (nginx welcome page).
+- [ ] Confirm the existing routes still work unaffected: repeat step 6's two `curl`s.
+- [ ] Confirm cross-host isolation still holds: `curl -sk -H "Host: test.lab.<root-domain>" https://<nlb-hostname>`
+      returns nginx, but the argo/grafana hostnames still don't route to it (or to each other).
+- [ ] Clean up: `kubectl delete namespace smoketest` (also deletes the HTTPRoute; the Gateway itself is
+      untouched since it's cluster-scoped and owned by GitOps).
+
+Pass: a workload and route created with no GitOps/Argo involvement gets a working hostname through the same
+Gateway, with zero interference to the pre-existing routes; deleting it leaves everything else running.
 
 ## 7. Proxy Protocol — client IP survives the NLB hop
 
