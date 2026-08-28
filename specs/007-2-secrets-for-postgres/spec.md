@@ -1,5 +1,7 @@
 # 007-2 — Secrets for Postgres (External Secrets Operator, scoped)
 
+**Status:** Implemented
+
 **Complexity:** Medium
 **Risk:** Medium — narrow IAM permission design for one Secrets Manager ARN, plus a new Argo-managed controller whose cross-Application startup ordering relative to CNPG is unverified.
 **Estimated cost:** ~0.5 day, given `terraform/modules/ebs-csi-pod-identity`/`karpenter-pod-identity` and `terraform/modules/secrets-manager-secret` already exist and are reused as-is.
@@ -25,7 +27,7 @@ Postgres-relevant slice of spec 013 (External Secrets Operator, Secrets
 Manager, EKS Pod Identity) — the user's explicit choice, prioritizing the
 architecturally-correct mechanism over the smaller patch, given the
 underlying fix (a stable password) is identical either way. Out of scope:
-migrating Kafka/spec 024 credentials (spec 013's job when that spec lands),
+migrating Kafka/spec 025 credentials (spec 013's job when that spec lands),
 secret rotation automation beyond ESO's default polling, and any change to
 `argo-up.sh`/`argo-down.sh` — the password now flows entirely in-cluster.
 

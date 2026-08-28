@@ -1,5 +1,7 @@
 # 006-1 — Karpenter Node Lifecycle on Teardown
 
+**Status:** Implemented
+
 **Complexity:** Medium
 **Risk:** Medium — a stuck teardown blocks every subsequent `cluster-up`/`cluster-down` cycle until manually unblocked; the failure is silent until AWS's own `DependencyViolation` error surfaces it.
 **Estimated cost:** ~0.5–1 day.
@@ -38,7 +40,7 @@ This is not Karpenter-specific. Any future controller that provisions AWS resour
 3. Teardown MUST perform, before any Terraform/Terragrunt destroy of disposable AWS infrastructure: `kubectl delete application root -n argocd --cascade=foreground --wait --timeout=<n>` (or equivalent), and MUST treat a skip of this step (cluster unreachable, controller unavailable) as a loud, visible condition — not a silently-swallowed log line — since a silent skip is indistinguishable from a successful drain until the destroy fails downstream.
 4. `cluster-down` MUST refuse to proceed to any Terraform/Terragrunt destroy if the cluster is reachable and the Argo `root` Application still exists — that condition means the graceful drain (Requirement 3) has not completed, and proceeding anyway is exactly what causes the `DependencyViolation` failure this spec fixes. `cluster-down` MUST proceed if the cluster is unreachable — there is nothing to verify against in that state, and destroy must stay resumable after a prior partial/interrupted run rather than being permanently blocked by a guard it can no longer satisfy.
 5. This mechanism MUST generalize without new code per component: a future ALB-via-`Ingress` or cert-manager `Certificate` uses the same finalizer + sync-wave pattern, not a bespoke drain script.
-6. The design MUST hold in the future `local` target (spec 021, minikube/kind) with no cloud-specific logic — `kubectl delete application root --cascade=foreground` is the same command regardless of where the cluster runs.
+6. The design MUST hold in the future `local` target (spec 022, minikube/kind) with no cloud-specific logic — `kubectl delete application root --cascade=foreground` is the same command regardless of where the cluster runs.
 
 ## Implementation hints
 

@@ -1,5 +1,7 @@
 # 011 — NLB Edge (AWS Load Balancer Controller + NLB/ACM)
 
+**Status:** Implemented (aws target)
+
 **Complexity:** Medium
 **Risk:** Medium — deletion-ordering between the NLB and the AWS Load Balancer Controller is a constitution-flagged risk; getting it wrong can strand an NLB/leak AWS cost during `make down`.
 **Estimated cost:** ~1 day · AWS runtime cost: NLB hourly cost while `make up` is active.
@@ -26,7 +28,7 @@ Completes the public traffic path from architecture.md §8/§10–12:
   `grafana.lab.<root-domain>` and `argo.lab.<root-domain>` at the NLB —
   owned by ExternalDNS, specified separately in spec 012.
 
-This entire spec is `aws`-target-only. The `local` target (spec 021) has no
+This entire spec is `aws`-target-only. The `local` target (spec 022) has no
 NLB, Route 53, or ACM at all — access there is via `kubectl port-forward`
 directly to Envoy Gateway's Service (spec 010 Requirements 5–6), with no
 equivalent public-edge layer.

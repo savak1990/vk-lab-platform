@@ -3,6 +3,12 @@ kind: Application
 metadata:
   name: root
   namespace: argocd
+  annotations:
+    # Without this, Argo diffs the raw git manifest against the live object's
+    # server-defaulted fields (e.g. HTTPRoute's default path match) and reports
+    # permanent false-positive drift. It is a compare option, not a sync one -
+    # an unknown string in syncOptions is silently ignored.
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
@@ -62,7 +68,3 @@ spec:
       selfHeal: true
     syncOptions:
       - ServerSideApply=true
-      # Without this, Argo diffs the raw git manifest against the live
-      # object's server-defaulted fields (e.g. HTTPRoute's default path
-      # match) and reports permanent false-positive drift.
-      - ServerSideDiff=true

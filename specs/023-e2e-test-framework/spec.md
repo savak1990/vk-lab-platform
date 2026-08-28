@@ -1,23 +1,23 @@
-# 021 — Go E2E Test Framework
+# 022 — Go E2E Test Framework
 
 **Complexity:** Medium
 **Risk:** Low — no AWS credentials, no persistent state; the framework itself is a library, not something that mutates infrastructure.
-**Estimated cost:** ~1.5–2 days · AWS runtime cost: none — this spec is pure Go tooling, reused by (not run standalone in) specs 019 and 022.
+**Estimated cost:** ~1.5–2 days · AWS runtime cost: none — this spec is pure Go tooling, reused by (not run standalone in) specs 020 and 023.
 **Recommended model:** Sonnet — well-documented Go/Ginkgo patterns, low architectural ambiguity.
-**Depends on:** none directly; consumed by 018-ci-full-lifecycle-validation and 022-ci-kind-integration-test.
+**Depends on:** none directly; consumed by 020-ci-full-lifecycle-validation and 024-ci-kind-integration-test.
 **Lifecycle class(es) touched:** none — a test framework, not infrastructure.
 
 ## Scope
 
-Introduces the platform's E2E verification framework, per ADR 0007: a Go/Ginkgo v2/Gomega test suite under `tests/e2e/`, with an `Environment` abstraction so the same service-level assertions run unmodified against a kind cluster (spec 023) or real EKS (spec 019).
+Introduces the platform's E2E verification framework, per ADR 0007: a Go/Ginkgo v2/Gomega test suite under `tests/e2e/`, with an `Environment` abstraction so the same service-level assertions run unmodified against a kind cluster (spec 024) or real EKS (spec 020).
 
 - `tests/e2e/suite_test.go` — the Ginkgo suite entry point, explicit kubeconfig-context selection, Ginkgo parallel-process configuration.
 - Per-service test files: `postgres_test.go`, `grafana_test.go`, and equivalents for Kafka, Prometheus, Argo CD (added incrementally as each service's checks are defined — this spec establishes the pattern via Postgres and Grafana in full; the others follow the same shape).
 - `tests/e2e/framework/`: `config.go` (test configuration/flags), `kubernetes.go` (client-go wiring, explicit context), `environment.go` (the `Environment` interface and its `kind`/`aws` implementations), `endpoints.go` (how to resolve a service's reachable address per environment), `portforward.go` (kind-side port-forward helper), `diagnostics.go` (failure-path diagnostics: pod logs/events dump on test failure).
 
-This spec is a library and CLI entry point (`go test ./tests/e2e/...` via Ginkgo), not a workflow. Specs 018 and 022 each invoke it against their own cluster; neither duplicates its assertions.
+This spec is a library and CLI entry point (`go test ./tests/e2e/...` via Ginkgo), not a workflow. Specs 019 and 023 each invoke it against their own cluster; neither duplicates its assertions.
 
-Excludes: the workflows/Makefile targets that create the cluster this suite runs against (020, 022) or that stand up the full AWS environment (018) — this spec only owns what happens once a cluster already exists and Argo CD has reconciled it. Also excludes any test of business application code (constitution §1 — there is none in this repository).
+Excludes: the workflows/Makefile targets that create the cluster this suite runs against (021, 023) or that stand up the full AWS environment (019) — this spec only owns what happens once a cluster already exists and Argo CD has reconciled it. Also excludes any test of business application code (constitution §1 — there is none in this repository).
 
 ## Requirements
 
@@ -39,14 +39,14 @@ Excludes: the workflows/Makefile targets that create the cluster this suite runs
 8. Grafana checks MUST verify actual usability: operator/controller ready, Grafana resource/deployment ready, Service reachable, `/api/health` returns success, and — where a datasource/config expectation exists — that it's present. Prefer API/health verification over browser-based rendering unless a concrete UI behavior genuinely requires a browser.
 9. Equivalent functional (not just `Running`) checks MUST be designed for every other platform service already planned in the architecture (Kafka, Prometheus, Argo CD itself) following the same "verify actual usability" pattern as Requirements 7–8, added incrementally as each service's spec matures — this spec establishes the pattern and its first two full implementations, not a closed list.
 10. Independent services' tests MUST be able to run in parallel via Ginkgo's own parallel-process support, using a fixed, bounded process count — start with `-p 2` (this spec covers two services at inception: Postgres, Grafana) and revisit the number once a third service's suite exists, rather than building a tunable config knob for a suite this small.
-11. Ginkgo labels MUST allow running a single service's tests in isolation (e.g. `ginkgo --label-filter=postgres`), so `make test-postgres`-style targets (spec 023) can invoke exactly one service's suite without running the rest.
+11. Ginkgo labels MUST allow running a single service's tests in isolation (e.g. `ginkgo --label-filter=postgres`), so `make test-postgres`-style targets (spec 024) can invoke exactly one service's suite without running the rest.
 
 ## Implementation hints
 
 - Keep `framework/environment.go`'s `Environment` interface small and grow it only when a real test needs a new capability — resist adding methods speculatively. `PostgresDSN` is a deliberate exception (Postgres is this spec's first stateful-service check), not a pattern to repeat: before writing Kafka's test, reconsider whether a single bespoke method per data store (`PostgresDSN`, then a future `KafkaBootstrapServers`, etc.) is still the right shape, or whether a general `ConnectionInfo(service string) map[string]string` avoids growing one accessor per service.
 - `framework/diagnostics.go` is worth building early: on any test failure, dump the relevant pod's recent logs and events before the test exits, since a failed `Eventually()` with no diagnostic output is the single most common source of wasted CI-debugging time.
 - For the `kind` `Environment` implementation, prefer talking to services via their in-cluster `ClusterIP` address from a test-runner pod (or the GitHub Actions runner's direct network reach into the kind cluster) over spawning `kubectl port-forward` subprocesses per test where practical — the port-forward helper (`portforward.go`) is still useful for genuinely external-only access patterns and for local developer use.
-- Structure the suite so `go vet`/`golangci-lint` (or whatever the repo eventually settles on for Go) can run as part of spec 018's fast validation once this code exists.
+- Structure the suite so `go vet`/`golangci-lint` (or whatever the repo eventually settles on for Go) can run as part of spec 019's fast validation once this code exists.
 
 ## Testing / acceptance criteria
 

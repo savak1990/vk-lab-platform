@@ -1,11 +1,11 @@
-# 027 — Pod density ceiling and IPv6 cluster networking
+# 028 — Pod density ceiling and IPv6 cluster networking
 
 **Complexity:** High
 **Risk:** Medium — a cluster-networking-mode change is not an in-place upgrade; a botched migration means recreating the disposable cluster.
 **Estimated cost:** ~1–2 days, mostly validation (this is a lab-scale re-learning task, not large code).
 **Recommended model:** Sonnet, with advisor consultation before touching NodePool/EC2NodeClass or the EKS module — networking-mode mistakes are expensive to unwind.
 **Depends on:** 003 (network-and-eks), 006/006-1 (Karpenter), 009 (observability — the pod-count ceiling was discovered there).
-**Lifecycle class(es) touched:** Disposable (EKS cluster, Karpenter-provisioned nodes). No Persistent-lifecycle resource is affected — VPC/subnets remain out of scope per spec 020 until that lands.
+**Lifecycle class(es) touched:** Disposable (EKS cluster, Karpenter-provisioned nodes). No Persistent-lifecycle resource is affected — VPC/subnets remain out of scope per spec 021 until that lands.
 
 ## Problem
 
@@ -58,7 +58,7 @@ and instance-size options below actually cost more.
    no-ops: the addon's `configuration_values` (`ENABLE_PREFIX_DELEGATION`, `WARM_PREFIX_TARGET=1`), and
    kubelet `--max-pods` raised on *both* the Terraform-managed system node group and Karpenter's
    `EC2NodeClass.spec.kubelet.maxPods`. Verified 2026-08-25: the system node's subnet
-   (`172.31.32.0/20`, the account's default-VPC public subnet used per spec 020's deferral) has 4,039
+   (`172.31.32.0/20`, the account's default-VPC public subnet used per spec 021's deferral) has 4,039
    free IPs — ample room for /28 reservations. Verification for whenever this lands: confirm
    `status.allocatable.pods` actually changed on a fresh node, not just that the addon config applied.
 2. **IPv6 cluster networking (the long-term structural fix — also zero AWS cost).** EKS in IPv6 mode is
@@ -66,7 +66,7 @@ and instance-size options below actually cost more.
    of a per-ENI secondary-IP budget, and IPv6 egress needs only a free egress-only internet gateway, no
    paid NAT. This is the structurally correct fix, not a workaround, but it is a cluster-wide
    networking-mode decision: it touches the EKS cluster resource's IP family, the VPC/subnet CIDR
-   allocation (relevant once spec 020 builds a dedicated VPC instead of relying on the account's
+   allocation (relevant once spec 021 builds a dedicated VPC instead of relying on the account's
    default VPC), the VPC CNI config, and any hardcoded IPv4 assumption in Terraform modules or
    Kubernetes manifests. Not a retrofit onto a running cluster — implement as a fresh `make up` on a
    cluster created IPv6-native, not an in-place migration of the current one.
@@ -105,7 +105,7 @@ actually gets billed here.
 - IPv6 EKS clusters still run dual-stack at the control-plane/service level in most configurations —
   read current AWS EKS IPv6 documentation before assuming a specific mode; this spec intentionally does
   not pin exact API fields since EKS IPv6 support has evolved.
-- Coordinate with spec 020 (VPC): building the dedicated VPC IPv6-native from the start avoids a second
+- Coordinate with spec 021 (VPC): building the dedicated VPC IPv6-native from the start avoids a second
   migration later.
 - Re-verify Karpenter's `EC2NodeClass`/`NodePool` IPv6 support and the VPC CNI's IPv6 mode compatibility
   with the exact chart/addon versions in use at implementation time — don't assume parity with IPv4 mode.

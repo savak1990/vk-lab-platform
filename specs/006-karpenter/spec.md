@@ -1,5 +1,7 @@
 # 006 — Karpenter
 
+**Status:** Implemented
+
 **Complexity:** Medium
 **Risk:** Low–Medium — disposable-only, and bounded by design, so a misconfiguration mostly costs money rather than data.
 **Estimated cost:** ~1 day · AWS runtime cost: bounded by design (~0–2 medium nodes max while workloads need them).
@@ -15,7 +17,7 @@ Installs Karpenter as the dynamic workload-capacity provisioner, bounded tightly
 - `NodePool`/`EC2NodeClass` (or equivalent) definitions bounding instance types and count.
 - IAM role for Karpenter-provisioned nodes (the node-level IAM identity, distinct from the controller's own permissions which may need a small Terraform-side IAM piece for the controller's IRSA/Pod Identity role — see implementation hints).
 
-Not applicable to the `local` target (spec 021): minikube/kind use fixed local nodes with no dynamic provisioning, and Karpenter is omitted from the `local` target's rendered app list entirely (spec 021 Requirements 3, 14).
+Not applicable to the `local` target (spec 022): minikube/kind use fixed local nodes with no dynamic provisioning, and Karpenter is omitted from the `local` target's rendered app list entirely (spec 022 Requirements 3, 14).
 
 Excludes: any actual workload that triggers scaling (those come with Postgres/Kafka/observability/Envoy in later specs).
 

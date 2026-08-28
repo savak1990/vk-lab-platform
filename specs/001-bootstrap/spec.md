@@ -8,17 +8,16 @@
 **Lifecycle class(es) touched:** Bootstrap
 
 > **Scope amendments:**
-> 1. The GitHub OIDC **provider** (`token.actions.githubusercontent.com`)
->    lives here after all: it's account-level, region-agnostic
->    infrastructure (AWS allows exactly one per provider URL per account),
->    so it belongs with the KMS key as foundational, essentially-permanent
->    Bootstrap infrastructure, not bundled into whichever spec happens to
->    need a role first (see ADR 0007, constitution §5/§19). This spec
->    creates the provider only — no IAM role trusts it directly from here.
->    Per-consumer **roles** trusting this provider remain owned by their
->    respective specs: spec 015 creates the personal-lab "normal deploy"
->    role, spec 019 creates the CI "privileged full-environment-test" role.
->    Spec 016's Atlantis authenticates via its own compute's instance/task
+> 1. The GitHub OIDC **provider** (`token.actions.githubusercontent.com`),
+>    originally planned here per ADR 0007, is now its own spec,
+>    **015-github-oidc-bootstrap**, run immediately before spec 016 (the
+>    first workflow that needs it) rather than bundled into this spec. It
+>    remains Bootstrap-lifecycle, account-level, region-agnostic
+>    infrastructure (AWS allows exactly one per provider URL per account).
+>    Per-consumer **roles** trusting that provider remain owned by their
+>    respective specs: spec 016 creates the personal-lab "normal deploy"
+>    role, spec 020 creates the CI "privileged full-environment-test" role.
+>    Spec 017's Atlantis authenticates via its own compute's instance/task
 >    role plus `sts:AssumeRole`, not GitHub OIDC federation, so it never
 >    consumes this provider. Local Terraform runs in this spec authenticate
 >    with the operator's own AWS credentials (IAM Identity Center/SSO), per
@@ -36,17 +35,16 @@
 Creates Bootstrap-lifecycle infrastructure, assuming the State layer (the Terraform remote-state bucket) already exists:
 
 - One KMS key used later to encrypt each individual bootstrap-config file under `secrets/` (one file per secret/config value — never a combined blob, per constitution §5/§14). These files carry both runtime secrets (populated fully in spec 013) and non-secret private configuration needed earlier — notably `secrets/root-domain.enc`, consumed by spec 002 — so the decrypt-and-supply mechanism this spec establishes must be usable well before spec 013's full secrets lifecycle exists.
-- One GitHub OIDC provider (`token.actions.githubusercontent.com`), a `terraform/live/bootstrap/github-oidc/` unit — the provider only, account-level and region-agnostic, created once and reused by every OIDC-authenticated consumer role this platform ever creates (spec 015's personal-lab role, spec 019's CI role). This unit creates no IAM role.
 - A provider-level `default_tags` block (AWS provider) establishing the platform's standard resource tags (constitution §16): `Project=vk-lab-platform`, `Scope=platform`, `Lifecycle=<state|bootstrap|persistent|disposable>`, `ManagedBy=terraform`. Defined once in `terraform/live/root.hcl` (shared with the State layer and every later stack) rather than re-invented per resource.
 - `make bootstrap-up` / `make bootstrap-down` Makefile targets (constitution §17) wrapping `terragrunt apply`/`destroy` on `terraform/live/bootstrap/` — `make bootstrap-down` is a guarded, explicit-confirmation command this repository expects to run essentially never, not a routine target.
 
-Excludes: the Terraform state bucket (moved to the State layer — see the scope amendments above), every OIDC-trusted IAM role (spec 015's personal-lab role, spec 019's CI role — this spec creates only the shared provider they trust), Atlantis's own per-stack IAM roles and compute (spec 017), networking (a dedicated VPC is deferred to spec 020 — EKS runs in the AWS default VPC until then, per spec 003), Route 53/ACM/Secrets Manager (002), EKS (003), any Kubernetes-facing IAM (Pod Identity roles are created alongside the workloads that need them, in later specs).
+Excludes: the Terraform state bucket (moved to the State layer — see the scope amendments above), the GitHub OIDC provider and every OIDC-trusted IAM role (moved to spec 015, spec 016's personal-lab role, spec 020's CI role), Atlantis's own per-stack IAM roles and compute (spec 018), networking (a dedicated VPC is deferred to spec 021 — EKS runs in the AWS default VPC until then, per spec 003), Route 53/ACM/Secrets Manager (002), EKS (003), any Kubernetes-facing IAM (Pod Identity roles are created alongside the workloads that need them, in later specs).
 
 ## Requirements
 
 1. This stack MUST NOT create or manage the Terraform state bucket — that's the State layer's resource (ADR 0004). `terraform/live/bootstrap/`'s own units store their state in the bucket the State layer already created. `make bootstrap-up` MUST verify the State layer already exists (`make status`) and fail with an actionable error if it does not — it MUST NOT create the State layer on the caller's behalf (constitution §17).
-2. GitHub Actions → AWS authentication MUST use OIDC and temporary credentials; no long-lived AWS access keys may be stored as GitHub secrets (constitution §5). This spec creates the one account-level OIDC provider every such role trusts; it does not create any role itself (spec 015, spec 019) — but nothing built here may require a long-lived AWS key as a substitute in the meantime.
-3. The KMS key and the GitHub OIDC provider created here are both Bootstrap-lifecycle: created once, essentially never destroyed. Exactly one OIDC provider MUST exist per account (constitution §5) — this spec is its only creator; no other spec may create a second one.
+2. GitHub Actions → AWS authentication MUST use OIDC and temporary credentials; no long-lived AWS access keys may be stored as GitHub secrets (constitution §5). The OIDC provider itself is created by spec 015, not this spec — but nothing built here may require a long-lived AWS key as a substitute in the meantime.
+3. The KMS key created here is Bootstrap-lifecycle: created once, essentially never destroyed.
 4. No plaintext secret may be committed to Git at any point (constitution §5) — this spec introduces the KMS key that makes the per-secret encrypted files under `secrets/` possible, but does not populate any of them with runtime secrets (that's spec 013).
 5. The decrypt-and-supply mechanism (KMS decrypt → value available to `terraform apply` as a variable, without landing in a committed file) MUST be usable standalone, independent of any in-cluster component — spec 002 needs the decrypted root domain value (`secrets/root-domain.enc`) before EKS or Argo CD exist, so this cannot depend on Pod Identity or an in-cluster secrets controller (those come later, in spec 013, for runtime application secrets).
 6. Each secret or private config value MUST live in its own ciphertext file under `secrets/`, named after its contents (e.g. `secrets/root-domain.enc`) — never combined into one shared file (constitution §5/§14).
@@ -63,7 +61,7 @@ Excludes: the Terraform state bucket (moved to the State layer — see the scope
 
 - `terraform plan`/`apply` succeeds for the `kms` unit, assuming the State layer already exists.
 - Every resource created by this stack carries the standard tag set (`Project`, `Scope`, `Lifecycle=bootstrap`, `ManagedBy`) — spot-check via `aws resourcegroupstaggingapi get-resources` or equivalent, not just by reading the Terraform source.
-- The GitHub OIDC provider exists exactly once in the account after `make bootstrap-up` — confirm via `aws iam list-open-id-connect-providers` — and re-running `terraform apply` (or a second `make bootstrap-up`) does not attempt to create a second one. The role-level acceptance criteria (trust policy scoping, `aws sts assume-role-with-web-identity` against a specific role) belong to spec 015 (personal-lab role) and spec 019 (CI role), where those roles are actually created.
+- The GitHub OIDC provider's own acceptance criteria belong to spec 015, not this spec.
 - No state-bucket acceptance criterion applies to this spec — see the State layer's own README/ADR 0004/ADR 0005 for its verification.
 - This spec has no destroy/recreate lifecycle test of its own (Bootstrap is "almost never destroyed" per architecture.md §6), so the full lifecycle test (constitution §11) does not apply here; standard fast validation (fmt, validate, plan) is sufficient.
-- `make bootstrap-down` is exercised at most once, deliberately, in a disposable/throwaway test AWS account (never against the real personal-lab account) to confirm: it refuses to run while Persistent or Disposable state exists, it requires its confirmation step, and it successfully removes the KMS key and the GitHub OIDC provider without touching the State layer's bucket. (Every role trusting that provider — spec 015's, spec 019's — and Atlantis's compute from spec 017 are separate Bootstrap-lifecycle resources this command must also account for once those specs exist.)
+- `make bootstrap-down` is exercised at most once, deliberately, in a disposable/throwaway test AWS account (never against the real personal-lab account) to confirm: it refuses to run while Persistent or Disposable state exists, it requires its confirmation step, and it successfully removes the KMS key without touching the State layer's bucket. (Spec 015's OIDC provider, every role trusting it — spec 016's, spec 020's — and Atlantis's compute from spec 018 are separate Bootstrap-lifecycle resources this command must also account for once those specs exist.)

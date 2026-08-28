@@ -1,5 +1,7 @@
 # 007-1 — Postgres Persistence Recovery (initdb doesn't reuse the retained volume)
 
+**Status:** Implemented
+
 **Complexity:** High
 **Risk:** High — this is the platform's core persistence promise (constitution §4, spec 007 Requirement 2) empirically failing; every `cluster-down`/`cluster-up` cycle currently discards the previous cycle's data.
 **Estimated cost:** ~1–2 days, including a real destroy/recreate proof against non-trivial data.

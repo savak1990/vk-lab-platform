@@ -1,5 +1,7 @@
 # 012 — ExternalDNS
 
+**Status:** Implemented
+
 **Complexity:** Small–Medium
 **Risk:** Medium — a misconfigured sync policy can delete a DNS record it doesn't own, including Terraform's ACM DNS-validation record in the same hosted zone.
 **Estimated cost:** ~0.5 day · AWS runtime cost: negligible (a controller pod, no additional AWS-billed resource beyond the Route 53 records it manages).

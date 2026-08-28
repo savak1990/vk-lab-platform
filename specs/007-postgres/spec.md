@@ -1,5 +1,7 @@
 # 007 — PostgreSQL (in-cluster)
 
+**Status:** Implemented — Req 2/5 (Terraform-owned volume + static-PV rebind) superseded by ADR 0013 (CNPG VolumeSnapshot recovery, see spec 007-1)
+
 **Complexity:** High
 **Risk:** High — the first real stateful workload; this is where the storage-contract proof from spec 005 gets exercised against actual data for the first time, and where an in-cluster-vs-RDS mistake would be expensive to unwind later.
 **Estimated cost:** ~2–3 days, including a full destroy/recreate proof against real data · AWS runtime cost: one or two small EBS volumes + node cost while running.
@@ -13,12 +15,12 @@ Deploys PostgreSQL **in-cluster** via an operator (project decision: operator-ma
 
 - A Kubernetes-native Postgres operator (e.g., CloudNativePG or Zalando Postgres Operator — pick one and record the choice with rationale, since architecture.md explicitly defers this to an ADR).
 - A Postgres cluster CR using the `Retain` StorageClass from spec 005.
-- Logical replication enabled (`wal_level = logical`), since Debezium (spec 025) requires it.
+- Logical replication enabled (`wal_level = logical`), since Debezium (spec 026) requires it.
 - Basic connection/auth wiring for later application/integration workloads.
 
-This spec's persistence guarantees (Requirement 2, Retain-based storage) are `aws`-target-only. On the `local` target (spec 021), Postgres runs the same operator/CR but on the default local StorageClass with `Delete` semantics — data is throwaway, and no destroy/recreate persistence proof is required there.
+This spec's persistence guarantees (Requirement 2, Retain-based storage) are `aws`-target-only. On the `local` target (spec 022), Postgres runs the same operator/CR but on the default local StorageClass with `Delete` semantics — data is throwaway, and no destroy/recreate persistence proof is required there.
 
-Excludes: Debezium and its connector configuration (023), observability dashboards (009 covers Postgres metrics, though this spec should expose them).
+Excludes: Debezium and its connector configuration (024), observability dashboards (009 covers Postgres metrics, though this spec should expose them).
 
 ### Storage architecture
 
@@ -49,7 +51,7 @@ Initial volume size: **10–30 GiB** gp3, not larger, unless a concrete workload
 1. This is a genuine architectural decision the project owes an ADR for: **in-cluster operator-managed Postgres**, not RDS. Record the ADR before or alongside this spec per constitution §13 (architectural decisions must be documented, not silently assumed).
 2. Postgres data MUST survive EKS deletion and recreation (constitution §4) — this spec's core acceptance criterion is proving that end to end. Recovery is automatic (ADR 0010): the Terraform-owned volume's ID/AZ flow into the gitops values with no manual step, and CNPG binds to it via static provisioning (ADR 0009) — not spec 005's manual hand-written-PV+PVC rebind procedure, which does not apply to CNPG's operator-managed PVCs.
 3. The operator is a controller and MUST be Argo-managed (constitution §2, §7); it MUST remain running until any Postgres CR it manages has completed cleanup — Postgres CRs must be removed before the operator itself is ever removed.
-4. Logical replication MUST be enabled and MUST support Debezium's requirements (replication slots, `wal_level = logical`, appropriate `max_replication_slots`/`max_wal_senders`) even though Debezium isn't wired up until spec 025 — get the Postgres-side prerequisites right now.
+4. Logical replication MUST be enabled and MUST support Debezium's requirements (replication slots, `wal_level = logical`, appropriate `max_replication_slots`/`max_wal_senders`) even though Debezium isn't wired up until spec 026 — get the Postgres-side prerequisites right now.
 5. No destructive reclaim policy anywhere in the storage path (constitution §4) — reuse the `Retain` StorageClass from spec 005, don't introduce a new one.
 6. Runtime credentials (the Postgres superuser/app passwords) MUST NOT be plaintext in Git — a minimal, temporary secret-handling approach is acceptable here (e.g., operator-generated Secret) as long as it's not committed anywhere; full Secrets Manager integration lands in spec 013.
 7. Storage capacity increases MUST be applied declaratively through the Postgres operator's CR — CloudNativePG's `spec.storage.size` field (e.g. `20Gi` → `30Gi`), per ADR 0009 — not by manually resizing or replacing the underlying EBS volume. This relies on the `allowVolumeExpansion: true` StorageClass from spec 005 and MUST NOT require data migration or volume replacement; no downtime or pod restart is required, since CNPG's CSI-backed expansion is confirmed online — the change is applied in place, immediately, when the StorageClass supports online expansion (`ebs-retain` does). `spec.storage.size` remains authoritative for resize even when `spec.storage.pvcTemplate` is also set (used by the recovery path, Requirement 2) — see ADR 0009.
@@ -65,11 +67,11 @@ Initial volume size: **10–30 GiB** gp3, not larger, unless a concrete workload
 - **Superseded — this claim did not survive contact with the recovery path.** This originally argued the app-user password didn't need pinning because CNPG reconciles the `lab-postgres-app` Secret's password into the live role on every secret-version change. Empirically false for `bootstrap.recovery` (spec 007-1/ADR 0013): CNPG only restores PGDATA on recovery and never resets any role's password, so a fresh random password after a `cluster-down`/`cluster-up` cycle *does* desync from the recovered database. Fixed by pinning the password via External Secrets Operator, scoped to this one credential — see spec `007-2-secrets-for-postgres` and ADR 0014.
 - **Resolved — CloudNativePG's resize behavior (was an open decision, now confirmed, ADR 0009):** `spec.storage.size` triggers a PVC/EBS resize in place via the CSI driver, with no pod restart, when the StorageClass supports online expansion (`ebs-retain` does, `allowVolumeExpansion: true`). No documented minimum-increment constraint from CNPG itself, but AWS rate-limits EBS volume modifications to roughly one per 6-hour rolling window — sequence acceptance tests accordingly (expansion proof last).
 - **Still open, must be verified empirically before the real acceptance run touches real data:** whether CNPG's instance manager starts against an already-initialized PGDATA on a `pvcTemplate`-bound pre-existing volume, or re-runs `initdb` and overwrites it. CNPG's docs don't settle this (the closest thing to guidance is an open, maintainer-unanswered GitHub discussion). Dry-run this on a throwaway volume — delete just the `Cluster` CR, not the whole EKS stack — before trusting it in the destroy/recreate proof.
-- **`local` target is out of scope for this implementation pass.** Spec 020 (the `local` execution target) is not yet implemented on disk, so this spec's manifests are `aws`-only for now (`gitops/templates/platform/aws/postgres/`), matching the existing `karpenter`/`ebs-csi` convention. Revisit when spec 021 lands.
+- **`local` target is out of scope for this implementation pass.** Spec 021 (the `local` execution target) is not yet implemented on disk, so this spec's manifests are `aws`-only for now (`gitops/templates/platform/aws/postgres/`), matching the existing `karpenter`/`ebs-csi` convention. Revisit when spec 022 lands.
 
 ## Testing / acceptance criteria
 
-- Full lifecycle proof required (constitution §11/§12 — this is squarely a "stateful and lifecycle-sensitive change"): CREATE → VERIFY Postgres healthy and accepting connections → WRITE real test data (a table with rows, not just a health check) → DESTROY the disposable EKS stack → VERIFY the EBS volume persisted (Terraform-tracked, per ADR 0010 — `persistent-down` was never run) → RECREATE the EKS stack and reinstall the operator via Argo → VERIFY the test data is recovered automatically, with no manual values edit → confirm replication slot configuration survived (needed for spec 025).
+- Full lifecycle proof required (constitution §11/§12 — this is squarely a "stateful and lifecycle-sensitive change"): CREATE → VERIFY Postgres healthy and accepting connections → WRITE real test data (a table with rows, not just a health check) → DESTROY the disposable EKS stack → VERIFY the EBS volume persisted (Terraform-tracked, per ADR 0010 — `persistent-down` was never run) → RECREATE the EKS stack and reinstall the operator via Argo → VERIFY the test data is recovered automatically, with no manual values edit → confirm replication slot configuration survived (needed for spec 026).
 - Argo shows the Postgres operator and CR as `Synced`/`Healthy` after both the initial deploy and the post-recreation rebind.
 - Storage expansion proof required: with the cluster running and holding test data, increase the CR's declared size (e.g., 20Gi → 30Gi) and verify the PVC, the underlying EBS volume, and the filesystem visible inside the Postgres pod all reflect the new size, no data is lost, and no PVC/volume replacement occurred.
 - Fast validation (Helm/manifest rendering, k8s schema) on every change; full lifecycle test specifically required whenever the Postgres CR, StorageClass reference, or operator version changes.

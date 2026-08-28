@@ -1,4 +1,4 @@
-# 026 — Alternative Cloud Execution Targets (Civo, DigitalOcean)
+# 027 — Alternative Cloud Execution Targets (Civo, DigitalOcean)
 
 **Complexity:** High — not one hard problem, but every AWS-specific
 integration point in specs 003–013 needs its own provider-gated branch, and
@@ -8,14 +8,14 @@ divergence from what the platform claims to provide (persistence, secrets,
 credential hygiene) if a gap is papered over instead of stated.
 **Estimated cost:** research/spec only for this document (~done). Full
 implementation, if pursued later: ~1–2 weeks, comparable in shape to spec
-021 but touching more specs (003–013, plus 015/017 for CI credentials).
+022 but touching more specs (003–013, plus 016/018 for CI credentials).
 **Recommended model:** Opus, for the ADR and cross-spec amendment pass;
 Sonnet is fine for the mechanical Terraform module work once the design is
 settled.
 **Depends on:** architecture.md §10a (execution-target pattern), ADR 0006,
-spec 021 (the `local` target — this spec reuses its structure, not a new
+spec 022 (the `local` target — this spec reuses its structure, not a new
 design). Constrains, rather than depends on, specs 003–013 the same way
-spec 021 does.
+spec 022 does.
 **Lifecycle class(es) touched:** none by this document. A future
 implementation would introduce `civo`/`do` disposable-lifecycle units
 alongside the existing `aws` ones; persistent-lifecycle stays AWS-only
@@ -64,7 +64,7 @@ and for a meaningful chunk of the platform. It does not hold for the
 AWS-native pieces — Karpenter's spot-fleet behavior, Pod Identity, Secrets
 Manager, ACM/NLB TLS termination, and GitHub OIDC — which have no drop-in
 equivalent and must be explicitly re-designed per target, the same way spec
-021 explicitly re-designed them for `local` rather than silently omitting
+022 explicitly re-designed them for `local` rather than silently omitting
 them.
 
 ## Findings
@@ -130,7 +130,7 @@ avoidance" decision, not a silent no-op.
 
 - **EKS Pod Identity + Secrets Manager + External Secrets Operator** — no
   Civo/DO counterpart exists. A `civo`/`do` target would need to fall back
-  to the same placeholder-or-KMS-decrypt-into-plain-Secret pattern spec 021
+  to the same placeholder-or-KMS-decrypt-into-plain-Secret pattern spec 022
   already defined for `local` (Requirements 11–13 there), not invent a
   third mechanism.
 - **Karpenter's AWS-specific behavior** — spot-fleet capacity-optimized
@@ -143,7 +143,7 @@ avoidance" decision, not a silent no-op.
   provides AWS ingress and TLS termination; Envoy owns all application
   traffic policy and routing") no longer holds verbatim for these targets —
   it needs its own stated variant, the same way `local`'s TLS story
-  (Requirement 10, spec 021) is a separate, explicit divergence rather than
+  (Requirement 10, spec 022) is a separate, explicit divergence rather than
   a silent gap.
 - **GitHub OIDC → temporary credentials** (constitution invariant 4,
   architecture §17) — Civo and DigitalOcean Terraform providers authenticate
@@ -166,7 +166,7 @@ controller capability based on its own test suite, but this was not
 confirmed against a running cluster for this spec — **treat as unverified**.
 If Civo's snapshot support turns out to be absent or unreliable, a `civo`
 target cannot satisfy invariant 6 and must be scoped as throwaway-only for
-Postgres, the same way the `local` target is (spec 021, Requirement 6),
+Postgres, the same way the `local` target is (spec 022, Requirement 6),
 rather than silently claiming persistence it doesn't have.
 
 ## Open Questions (block implementation, not this spec)
@@ -193,5 +193,5 @@ provider-native equivalent (cluster, load balancer, block storage). Not
 achievable as literally "zero changes" for Pod Identity/Secrets
 Manager/Karpenter/ACM+NLB/GitHub OIDC — those need explicit, documented
 divergences per target, following the precedent architecture.md §10a and
-spec 021 already established for `local`, not a retrofit that pretends
+spec 022 already established for `local`, not a retrofit that pretends
 parity. Do not start implementation before Open Questions 1–2 are resolved.
