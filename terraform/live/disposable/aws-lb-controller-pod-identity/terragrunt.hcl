@@ -3,7 +3,7 @@ include "root" {
 }
 
 terraform {
-  source = "${get_repo_root()}/terraform/modules/aws-lb-controller-pod-identity"
+  source = "${get_repo_root()}/terraform/modules//aws-lb-controller-pod-identity"
 }
 
 dependency "eks" {

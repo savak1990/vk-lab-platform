@@ -1,3 +1,3 @@
 output "role_arn" {
-  value = aws_iam_role.controller.arn
+  value = module.pod_identity.role_arn
 }

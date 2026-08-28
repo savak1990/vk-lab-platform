@@ -62,3 +62,7 @@ spec:
       selfHeal: true
     syncOptions:
       - ServerSideApply=true
+      # Without this, Argo diffs the raw git manifest against the live
+      # object's server-defaulted fields (e.g. HTTPRoute's default path
+      # match) and reports permanent false-positive drift.
+      - ServerSideDiff=true
