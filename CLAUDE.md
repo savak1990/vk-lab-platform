@@ -311,8 +311,13 @@ Expected high-level structure:
 `terraform/modules/`
 Reusable Terraform modules.
 
+`terraform/live/account/`
+Account-global resources (the GitHub OIDC provider). Bootstrap lifecycle,
+but one per AWS account rather than one per project — `make account-up` /
+`make account-down`, in no composite target (ADR 0021).
+
 `terraform/live/bootstrap/`
-Bootstrap lifecycle.
+Bootstrap lifecycle, per project.
 
 `terraform/live/persistent/`
 Persistent lifecycle.

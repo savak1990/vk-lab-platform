@@ -1,5 +1,13 @@
 # ADR 0007: CI/CD account bootstrap, fork configurability, and Go/Ginkgo E2E testing
 
+> **Note (2026-08-28):** every spec number below predates a later renumber.
+> The OIDC provider is now spec 015, not spec 001, and lives in
+> `terraform/live/account/` applied by `make account-up`, not in the Bootstrap
+> stack — see ADR 0021. The decision this ADR records (exactly one provider per
+> account, per-consumer roles trusting it) is unchanged and still binding; only
+> its location and owning spec moved. Body left as written, since an ADR records
+> what was decided when.
+
 ## Status
 
 Accepted

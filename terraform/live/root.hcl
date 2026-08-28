@@ -22,7 +22,11 @@ locals {
 
   # "ci/persistent/..." and "ci/disposable/..." map to the persistent/disposable
   # Lifecycle value they actually are (constitution §3), not "ci" itself.
-  lifecycle_class = local.path_parts[0] == "ci" ? local.path_parts[1] : local.path_parts[0]
+  raw_class = local.path_parts[0] == "ci" ? local.path_parts[1] : local.path_parts[0]
+
+  # "account" is a scope, not a lifecycle class: its resources are account-global
+  # rather than per-project, but they're still Bootstrap-lifecycle.
+  lifecycle_class = lookup({ account = "bootstrap" }, local.raw_class, local.raw_class)
 }
 
 generate "provider" {

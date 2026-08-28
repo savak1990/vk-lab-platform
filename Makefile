@@ -1,4 +1,4 @@
-.PHONY: up down full-up full-down state-up state-down status bootstrap-up bootstrap-down secret-encrypt secret-decrypt generate-secrets persistent-up persistent-down clear-cache cluster-up cluster-down eks-kubeconfig argo-up argo-down
+.PHONY: up down full-up full-down state-up state-down status account-up account-down bootstrap-up bootstrap-down secret-encrypt secret-decrypt generate-secrets persistent-up persistent-down clear-cache cluster-up cluster-down eks-kubeconfig argo-up argo-down
 
 .NOTPARALLEL:
 
@@ -49,6 +49,16 @@ state-up:
 ## Destroys the State layer. Expected to never be run for real. Only for ci/cd.
 state-down:
 	./scripts/state-down.sh
+
+## Creates account-global resources (GitHub OIDC provider). Run once per AWS
+## account with the primary PROJECT_NAME - deliberately in no composite target.
+account-up:
+	./scripts/account-up.sh
+
+## Destroys account-global resources. Guarded, expected to run essentially
+## never - the provider is shared by every project in the account.
+account-down:
+	./scripts/account-down.sh
 
 ## Creates bootstrap-lifecycle resources.
 bootstrap-up:

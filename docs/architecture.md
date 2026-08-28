@@ -166,10 +166,12 @@ vk-lab-platform/
 │       │
 │       ├── state/                      # ADR 0004; own lifecycle class below Bootstrap; make state-up / state-down (ADR 0005, guarded)
 │       │
+│       ├── account/                    # ADR 0021; account-global scope, not a lifecycle class; make account-up / account-down
+│       │   └── github-oidc/            # spec 015; one account-level provider, created once (§17a, ADR 0007)
+│       │
 │       ├── bootstrap/
 │       │   ├── terragrunt.stack.hcl
 │       │   ├── kms/
-│       │   ├── github-oidc/            # spec 001; one account-level provider, created once (§17a, ADR 0007)
 │       │   └── atlantis/               # spec 018; standalone compute, independent of EKS; own instance/task role, not OIDC
 │       │
 │       ├── persistent/
@@ -939,17 +941,24 @@ The GitHub OIDC provider (`token.actions.githubusercontent.com`) is
 account-level, region-agnostic AWS IAM infrastructure: AWS permits exactly
 one such provider per provider URL per account, and the same provider
 authenticates GitHub Actions runs deploying into any AWS region. It is
-created exactly once, as part of Bootstrap (§6, spec 001), and is never
-recreated or destroyed by `make up`/`make down`/`make bootstrap-down` — it
-sits alongside the KMS key as foundational, essentially-permanent account
-infrastructure (ADR 0007).
+created exactly once, by `make account-up` (spec 015), and is never recreated
+or destroyed by `make up`/`make down`/`make bootstrap-down` — it is
+foundational, essentially-permanent account infrastructure (ADR 0007).
+
+It lives in its own `terraform/live/account/` layer rather than under
+`bootstrap/`, because it is account-global while every Bootstrap resource is
+per-project: a second project applying `bootstrap/` in the same account would
+attempt a duplicate provider and be rejected by AWS. Keeping it outside
+`bootstrap/` also puts it beyond the reach of `make bootstrap-up`/`make
+bootstrap-down`, which discover units by listing their own directory
+(ADR 0021).
 
 Individual **IAM roles** trusting that provider are a separate concern.
 Each role belongs to the spec that uses it. Each role is scoped to only
 the state paths and actions it needs:
 
 ```text
-one GitHub OIDC provider (spec 001, Bootstrap, created once)
+one GitHub OIDC provider (spec 015, account layer, created once)
         │
         ├── personal-lab role (spec 016) — "normal deploy"
         │     scoped to the personal lab's persistent/disposable state
@@ -1158,7 +1167,10 @@ Each lifecycle class (State, Bootstrap, Persistent, Disposable — §6) gets its
 make state-up           creates the State layer (the Terraform state S3 bucket)
 make state-down         destroys it — guarded, expected to run essentially never (ADR 0004, ADR 0005)
 
-make bootstrap-up      verifies the State layer exists (fails if not, never creates it), then creates Bootstrap-lifecycle resources (OIDC, IAM, KMS, Atlantis)
+make account-up        creates account-global resources (the GitHub OIDC provider) — run once per AWS account, in no composite target (§17a, ADR 0021)
+make account-down      destroys them — guarded, expected to run essentially never
+
+make bootstrap-up      verifies the State layer exists (fails if not, never creates it), then creates Bootstrap-lifecycle resources (IAM, KMS, Atlantis)
 make bootstrap-down    destroys them — guarded, expected to run essentially never
 
 make persistent-up     creates Persistent-lifecycle resources (lab DNS zone, ACM cert, Secrets Manager, retained EBS)
@@ -1805,7 +1817,7 @@ All implementation specifications must preserve the following:
 19. Failed CI runs must make a best effort to clean up their disposable infrastructure.
 20. A successful Terraform destroy does not alone prove successful platform shutdown.
 21. `make up` never creates Persistent resources implicitly; `make down` never destroys Persistent or Bootstrap resources. Removing those is a separate, explicitly-confirmed command (§21a).
-22. Exactly one GitHub OIDC provider exists per account, created once in Bootstrap (§17a); every consumer gets its own role trusting it, never its own provider.
+22. Exactly one GitHub OIDC provider exists per account, created once by `make account-up` in the account layer (§17a, ADR 0021); every consumer gets its own role trusting it, never its own provider.
 23. No workflow, module, or spec hardcodes an account ID, role ARN, region, or domain value — forking requires only account bootstrap plus the configuration values in §24a, never a source change.
 
 ---

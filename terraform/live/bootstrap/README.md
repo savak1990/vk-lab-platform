@@ -1,8 +1,13 @@
 # Bootstrap stack
 
-Creates Bootstrap-lifecycle resources that aren't the state bucket itself
-(that's a separate, lower layer — see below). Currently just the `kms`
-unit (the key for `secrets/*.enc`).
+Creates per-project Bootstrap-lifecycle resources that aren't the state
+bucket itself (that's a separate, lower layer — see below). Currently just
+the `kms` unit (the key for `secrets/*.enc`).
+
+Account-global Bootstrap resources — the GitHub OIDC provider, of which
+exactly one may exist per AWS account — live in `terraform/live/account/`
+instead, applied by `make account-up`. Everything here is per-project: each
+`PROJECT_NAME` gets its own copy, in its own state bucket (ADR 0021).
 
 ## Prerequisite: the `state` layer must already exist
 

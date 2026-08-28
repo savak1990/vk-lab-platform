@@ -1,4 +1,4 @@
-# 014 — GitHub Actions Lifecycle (lab-up / lab-down)
+# 016 — GitHub Actions Lifecycle (lab-up / lab-down)
 
 **Complexity:** Medium
 **Risk:** Medium — a workflow that can create/destroy real AWS infrastructure on trigger; wrong trigger scoping or a missing environment gate could let the wrong actor start or tear down the lab.
@@ -18,7 +18,7 @@
 
 Gives the platform's lifecycle commands a GitHub Actions entry point, so `make up`/`make down` can be triggered from GitHub and not only from a developer's machine, per architecture.md §34's "Workstation-Initiated and GitHub Lifecycle Equivalence" (this is about the `aws` target run from GitHub vs. a workstation — unrelated to the `local`/minikube-kind target from spec 022):
 
-- A personal-lab-scoped IAM role trusting the GitHub OIDC provider spec 001 creates — the first real consumer of GitHub OIDC federation in this platform (spec 018's Atlantis uses its own instance/task role instead, never OIDC).
+- A personal-lab-scoped IAM role trusting the GitHub OIDC provider spec 015 creates (in `terraform/live/account/`, applied by `make account-up`) — the first real consumer of GitHub OIDC federation in this platform (spec 018's Atlantis uses its own instance/task role instead, never OIDC).
 - `.github/workflows/lab-up.yml` — a manually-triggered (`workflow_dispatch`) workflow that authenticates via that OIDC role and runs `make up`.
 - `.github/workflows/lab-down.yml` — the equivalent for `make down`.
 
