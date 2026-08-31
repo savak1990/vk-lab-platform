@@ -13,7 +13,11 @@ phase's end state.
 1. `make account-up` — creates the GitHub OIDC provider and `eks-access-identity`.
    Re-run once more, confirm both existence checks report "already exists - nothing
    to create" (idempotency).
-2. `make bootstrap-up` — creates `kms` and `personal-lab-role`.
+2. `make bootstrap-up` — creates `kms` and `personal-lab-role`. Re-run this
+   step after every future change to `personal-lab-role`'s policy, before
+   the next `lab-up.yml`/`lab-down.yml` dispatch - a pushed policy change
+   doesn't apply itself; a stale live policy produces AccessDenied errors
+   that look like new missing actions but aren't.
 3. `make github-vars-up` - sets `vars.AWS_ROLE_ARN` (from `personal-lab-role`'s
    own ARN) and `secrets.ROOT_DOMAIN` (decrypted from the already-committed
    `secrets/$PROJECT_NAME/root-domain.enc`) via `gh`. No `AWS_REGION` variable
