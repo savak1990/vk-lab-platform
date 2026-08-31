@@ -33,6 +33,13 @@ spec:
             ruleSelectorNilUsesHelmValues: false
             retention: 7d
             retentionSize: "8GB"
+            # Chart default is {} (Kubernetes' own StatefulSet default,
+            # Retain) - without this, `make down` orphans the bound EBS
+            # volume every cycle, since the PVC survives the StatefulSet's
+            # deletion and never triggers ebs-delete's reclaim.
+            persistentVolumeClaimRetentionPolicy:
+              whenDeleted: Delete
+              whenScaled: Delete
             # Request sized from measured usage (~665Mi over 45m); no CPU
             # limit since compaction bursts shouldn't be throttled. Memory
             # limit leaves headroom for TSDB growth toward the 7d retention.
@@ -63,6 +70,10 @@ spec:
                       storage: 10Gi
         alertmanager:
           alertmanagerSpec:
+            # Same orphaned-volume reasoning as prometheusSpec above.
+            persistentVolumeClaimRetentionPolicy:
+              whenDeleted: Delete
+              whenScaled: Delete
             resources:
               requests:
                 cpu: 10m
