@@ -58,29 +58,54 @@ kubectl config set-context --current --namespace=default >/dev/null
 # "unresolved" here rather than aborting under set -euo pipefail - a wait
 # loop should keep polling through a transient resolver error, not die on one.
 declare -A DNS_HOSTS=([argo]="argo.$LAB_FQDN" [grafana]="grafana.$LAB_FQDN")
+
+# Same label selector monitors.yaml already uses to find this Gateway's
+# Service. Resolving the NLB's own hostname (not comparing Service objects)
+# catches a stale Route 53 record left over from a torn-down cluster's NLB -
+# a record that still resolves, just no longer to the live NLB.
+current_nlb_ips() {
+  local nlb_host
+  nlb_host="$(kubectl get svc -n envoy -l gateway.envoyproxy.io/owning-gateway-name=platform-gateway \
+    -o jsonpath='{.items[0].status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)"
+  [ -n "$nlb_host" ] && dig +short "$nlb_host" 2>/dev/null || true
+}
+
 dns_status() {
+  local nlb_ips="$1"
   for label in "${!DNS_HOSTS[@]}"; do
     ip="$(dig +short "${DNS_HOSTS[$label]}" 2>/dev/null | tail -n1 || true)"
-    echo "  $label -> ${ip:-<unresolved>}"
+    if [ -z "$ip" ]; then
+      echo "  $label -> <unresolved>"
+    elif [ -n "$nlb_ips" ] && grep -qxF "$ip" <<< "$nlb_ips"; then
+      echo "  $label -> $ip (matches current NLB)"
+    else
+      echo "  $label -> $ip (stale - does not match current NLB)"
+    fi
   done
 }
 wait_for_dns() {
   local watch_seconds="${ARGO_UP_DNS_WATCH_SECONDS:-300}"
   local poll_interval="${ARGO_UP_POLL_INTERVAL:-5}"
-  local elapsed=0 all_resolved=""
+  local elapsed=0 all_resolved="" nlb_ips=""
   while [ "$elapsed" -lt "$watch_seconds" ]; do
+    nlb_ips="$(current_nlb_ips)"
     all_resolved=true
-    for label in "${!DNS_HOSTS[@]}"; do
-      [ -n "$(dig +short "${DNS_HOSTS[$label]}" 2>/dev/null | tail -n1 || true)" ] || all_resolved=false
-    done
+    if [ -z "$nlb_ips" ]; then
+      all_resolved=false
+    else
+      for label in "${!DNS_HOSTS[@]}"; do
+        ip="$(dig +short "${DNS_HOSTS[$label]}" 2>/dev/null | tail -n1 || true)"
+        { [ -n "$ip" ] && grep -qxF "$ip" <<< "$nlb_ips"; } || all_resolved=false
+      done
+    fi
     [ "$all_resolved" = true ] && break
     sleep "$poll_interval"
     elapsed=$((elapsed + poll_interval))
   done
   echo "ARGO-UP: DNS status:"
-  dns_status
+  dns_status "$nlb_ips"
   if [ "$all_resolved" != true ]; then
-    echo "ARGO-UP: timed out after ${watch_seconds}s waiting for DNS to resolve." >&2
+    echo "ARGO-UP: timed out after ${watch_seconds}s waiting for DNS to resolve to the current NLB." >&2
     return 1
   fi
 }
