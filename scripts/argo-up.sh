@@ -47,27 +47,59 @@ CLUSTER_NAME="$(eks_output cluster_name)"
 ACM_CERTIFICATE_ARN="$(acm_output certificate_arn)"
 VPC_ID="$(eks_output vpc_id)"
 NODE_SUBNET_ID="$(eks_output node_subnet_id)"
-# fqdn ("lab.<root-domain>") is sensitive output - never echo it.
+# fqdn ("lab.<root-domain>") is sensitive output - never echo it, including
+# via a full hostname built from it (label DNS output by short name instead).
 LAB_FQDN="$(route53_output fqdn)"
 aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$REGION" --alias "$CLUSTER_NAME" >/dev/null
 kubectl config set-context --current --namespace=default >/dev/null
 
+# Labels, not full hostnames: DNS_HOSTS[label]=fqdn, keeps $LAB_FQDN out of
+# any echoed output. dig failures (missing binary, network) are swallowed to
+# "unresolved" here rather than aborting under set -euo pipefail - a wait
+# loop should keep polling through a transient resolver error, not die on one.
+declare -A DNS_HOSTS=([argo]="argo.$LAB_FQDN" [grafana]="grafana.$LAB_FQDN")
+dns_status() {
+  for label in "${!DNS_HOSTS[@]}"; do
+    ip="$(dig +short "${DNS_HOSTS[$label]}" 2>/dev/null | tail -n1 || true)"
+    echo "  $label -> ${ip:-<unresolved>}"
+  done
+}
+wait_for_dns() {
+  local watch_seconds="${ARGO_UP_DNS_WATCH_SECONDS:-300}"
+  local poll_interval="${ARGO_UP_POLL_INTERVAL:-5}"
+  local elapsed=0 all_resolved=""
+  while [ "$elapsed" -lt "$watch_seconds" ]; do
+    all_resolved=true
+    for label in "${!DNS_HOSTS[@]}"; do
+      [ -n "$(dig +short "${DNS_HOSTS[$label]}" 2>/dev/null | tail -n1 || true)" ] || all_resolved=false
+    done
+    [ "$all_resolved" = true ] && break
+    sleep "$poll_interval"
+    elapsed=$((elapsed + poll_interval))
+  done
+  echo "ARGO-UP: DNS status:"
+  dns_status
+  if [ "$all_resolved" != true ]; then
+    echo "ARGO-UP: timed out after ${watch_seconds}s waiting for DNS to resolve." >&2
+    return 1
+  fi
+}
+
 # Idempotency guard: if the root Application is already Synced/Healthy,
-# there's nothing to do. Just an optimization to avoid pointless work -
-# the helm upgrade below uses --server-side/--force-conflicts specifically
-# so a second run doesn't need this guard for correctness: Argo's own
-# controller takes server-side-apply ownership of some Application spec
-# fields (e.g. normalized .spec.ignoreDifferences) once it's reconciled the
-# object, and a plain client-side `helm upgrade --install` on an
-# already-synced root fails with "Apply failed with 1 conflict" against
-# that field manager otherwise.
-#
-# Safe under the stricter wait below: Argo's health rollup for the CNPG
-# Cluster resource already reflects Postgres readiness, not just sync state.
+# there's nothing to do beyond confirming DNS - see wait_for_dns above for
+# why a stuck DNS record still needs to be caught even on this fast path.
+# Not a correctness requirement for the helm upgrade below (which uses
+# --server-side/--force-conflicts specifically so a second run doesn't need
+# this guard: Argo's own controller takes server-side-apply ownership of
+# some Application spec fields once it's reconciled the object, and a plain
+# client-side `helm upgrade --install` on an already-synced root fails with
+# "Apply failed with 1 conflict" against that field manager otherwise).
 EXISTING_STATUS="$(kubectl get application root -n argocd \
   -o jsonpath='{.status.sync.status}/{.status.health.status}' 2>/dev/null || true)"
 if [ "$EXISTING_STATUS" = "Synced/Healthy" ]; then
-  echo "ARGO-UP: root Application already Synced/Healthy - nothing to do."
+  echo "ARGO-UP: root Application already Synced/Healthy - checking DNS."
+  wait_for_dns
+  echo "ARGO-UP: root Synced/Healthy and DNS resolved - platform ready."
   exit 0
 fi
 
@@ -211,4 +243,6 @@ if [ "$overall" != "Synced/Healthy" ]; then
   print_app_status >&2
   exit 1
 fi
-echo "ARGO-UP: root Synced/Healthy - platform ready."
+echo "ARGO-UP: root Synced/Healthy - waiting for external-dns to publish records."
+wait_for_dns
+echo "ARGO-UP: root Synced/Healthy and DNS resolved - platform ready."
