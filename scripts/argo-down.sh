@@ -24,6 +24,19 @@ SNAPSHOT_TAG_FILTERS=("Name=tag:Project,Values=$PROJECT_NAME" "Name=tag:Componen
 
 if ! kubectl cluster-info --request-timeout=5s >/dev/null 2>&1; then
   echo "ARGO-DOWN: cluster unreachable - nothing to cascade, skipping."
+  # The cascade below is the only thing that lets Karpenter drain and
+  # terminate its own nodes gracefully - if the cluster is already gone
+  # (e.g. a prior make down attempt got through cluster-down but failed
+  # later), any Karpenter-owned instance still running here was never
+  # drained and never will be. Surfacing it now, not just when it later
+  # blocks a security-group destroy with DependencyViolation.
+  STRAY="$(aws ec2 describe-instances --region "$REGION" \
+    --filters "Name=tag:eks:eks-cluster-name,Values=${PROJECT_NAME}-eks" "Name=instance-state-name,Values=running,pending,stopping,stopped" \
+    --query 'Reservations[].Instances[].InstanceId' --output text 2>/dev/null || true)"
+  if [ -n "$STRAY" ] && [ "$STRAY" != "None" ]; then
+    echo "ARGO-DOWN: WARNING - found instance(s) tagged for this cluster that can no longer be gracefully drained (cluster already unreachable): $STRAY" >&2
+    echo "ARGO-DOWN: these will likely block cluster-down's security-group destroy - terminate manually if so." >&2
+  fi
   exit 0
 fi
 
