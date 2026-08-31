@@ -151,10 +151,19 @@ data "aws_iam_policy_document" "permissions" {
   # then needs to detach/delete it directly - a distinct resource type
   # (instance-profile, not role) from the statement above, evaluated
   # separately by IAM.
+  #
+  # Path, not just name, matters here: Karpenter creates these under
+  # "/karpenter/<region>/<cluster>/<uuid>/" - confirmed live
+  # (`aws iam get-instance-profile`) - not path "/". A resource pattern
+  # anchored on the name alone ("instance-profile/${cluster_name}_*") never
+  # matches, since IAM's ARN path segment sits before the name; `*` does
+  # cross "/" but only once matched from where it's placed in the pattern.
+  # The per-EC2NodeClass UUID segment is unknowable at commit time, so this
+  # is scoped by Karpenter's own path prefix instead of the full path.
   statement {
     sid       = "KarpenterOrphanedInstanceProfileCleanup"
     actions   = ["iam:RemoveRoleFromInstanceProfile", "iam:DeleteInstanceProfile"]
-    resources = ["arn:aws:iam::${local.account}:instance-profile/${var.cluster_name}_*"]
+    resources = ["arn:aws:iam::${local.account}:instance-profile/karpenter/*"]
   }
 
   # This role's own IAM role, and eks-access-identity's, don't match the
