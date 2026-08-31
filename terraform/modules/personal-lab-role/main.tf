@@ -151,6 +151,16 @@ data "aws_iam_policy_document" "permissions" {
     resources = [aws_iam_role.this.arn, data.aws_iam_role.eks_access_identity.arn]
   }
 
+  # argo-up.sh/argo-down.sh's `aws eks update-kubeconfig --role-arn` bakes a
+  # chained sts:AssumeRole into the kubeconfig (this role assuming
+  # eks-access-identity) - confirmed live, denied without this. Distinct from
+  # the read-only statement above: this is the actual role-chaining grant.
+  statement {
+    sid       = "AssumeEksAccessIdentity"
+    actions   = ["sts:AssumeRole"]
+    resources = [data.aws_iam_role.eks_access_identity.arn]
+  }
+
   # EKS/AutoScaling validate their own service-linked roles' existence before
   # CreateNodegroup/CreateCluster - AWS-owned roles under a fixed path, never
   # named cluster_name-*. Read-only, wildcard-scoped: GetRole on an AWS-owned

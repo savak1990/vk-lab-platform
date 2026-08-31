@@ -15,6 +15,8 @@ data "aws_iam_session_context" "operator" {
   arn = data.aws_caller_identity.operator.arn
 }
 
+data "aws_caller_identity" "current" {}
+
 data "aws_iam_policy_document" "trust" {
   source_policy_documents = [module.github_oidc_trust.json]
 
@@ -25,6 +27,31 @@ data "aws_iam_policy_document" "trust" {
     principals {
       type        = "AWS"
       identifiers = [data.aws_iam_session_context.operator.issuer_arn]
+    }
+  }
+
+  # argo-up.sh/argo-down.sh chain a plain sts:AssumeRole onto this role from
+  # whichever role GitHub Actions already assumed via OIDC (personal-lab-role
+  # today). Trusting personal-lab-role's ARN directly as a principal would
+  # force account-up to run again after bootstrap-up creates it - AWS
+  # validates a named principal exists at policy-set time, and account-up
+  # (this module) applies before bootstrap-up (personal-lab-role) ever does.
+  # Trusting the account root instead, scoped down by a Condition, sidesteps
+  # that: a condition value is a string match evaluated at AssumeRole time,
+  # never checked for existence up front.
+  statement {
+    sid     = "ChainedAssumeFromRegisteredAutomationRoles"
+    actions = ["sts:AssumeRole"]
+
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:PrincipalArn"
+      values   = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/personal-lab-role"]
     }
   }
 }
