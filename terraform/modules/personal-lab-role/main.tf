@@ -162,6 +162,15 @@ data "aws_iam_policy_document" "permissions" {
     resources = [aws_iam_role.this.arn, data.aws_iam_role.eks_access_identity.arn]
   }
 
+  # The eks_managed_node_group submodule looks up the recommended AMI via
+  # this AWS-owned public parameter (no account ID in its ARN) instead of a
+  # pinned AMI ID - read-only, scoped to the EKS AMI namespace only.
+  statement {
+    sid       = "EksAmiSsmParameter"
+    actions   = ["ssm:GetParameter"]
+    resources = ["arn:aws:ssm:${local.region}::parameter/aws/service/eks/optimized-ami/*"]
+  }
+
   statement {
     sid = "CloudWatchLogs"
     actions = [
