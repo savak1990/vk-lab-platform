@@ -11,8 +11,10 @@ phase's end state.
 ## Phase 0 — One-time setup (workstation only, never CI)
 
 1. `make account-up` — creates the GitHub OIDC provider and `eks-access-identity`.
-   Re-run once more, confirm both existence checks report "already exists - nothing
-   to create" (idempotency).
+   Re-run once more, confirm both units report "No changes." (idempotency).
+   Run this again any time either module changes - it always applies, never
+   skips based on a raw AWS existence check (that check was removed: it
+   silently no-opped real trust-policy updates to an already-existing role).
 2. `make bootstrap-up` — creates `kms` and `personal-lab-role`. Re-run this
    step after every future change to `personal-lab-role`'s policy, before
    the next `lab-up.yml`/`lab-down.yml` dispatch - a pushed policy change

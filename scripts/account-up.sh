@@ -15,33 +15,23 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # terragrunt's own prompts, not terraform's native apply confirmation -
 # confirmed empirically, --non-interactive alone still prompted.
 #
-# Per-unit, not layer-wide: a second project's own Terraform state has never
-# seen these account-global resources, so a blanket `run --all apply` after
-# the first project already created them would try to recreate whichever one
-# already exists and get AWS's EntityAlreadyExists - checked and skipped
-# individually instead, so a genuinely new unit still gets applied even after
-# an older one already exists.
+# Always apply, per-unit, not layer-wide - never a raw AWS existence check to
+# decide whether to skip. That was tried and removed: it made a genuine
+# policy/trust update to an already-existing role silently do nothing, twice
+# in the same debugging session (confirmed live - a pushed IAM change stayed
+# unapplied because this script reported "already exists" and skipped
+# `apply` entirely). `terraform apply` is already idempotent when this
+# project's own state owns the resource - it plans only the real diff.
+# A second PROJECT_NAME's own (empty) state hitting these same account-global
+# singletons would still fail with AWS's EntityAlreadyExists - that's the
+# correct outcome (an explicit `terraform import` is the fix then), not
+# something to paper over with a pre-check that also hides real updates.
 
-echo "Checking github-oidc ..."
-GITHUB_ISSUER="token.actions.githubusercontent.com"
-# An empty JMESPath result renders as the literal string "None" under
-# --output text, not as an empty string.
-existing_provider=$(aws iam list-open-id-connect-providers \
-  --query "OpenIDConnectProviderList[?contains(Arn, '$GITHUB_ISSUER')].Arn" \
-  --output text)
+echo "Applying github-oidc ..."
+(cd "$REPO_ROOT/terraform/live/account/github-oidc" && terragrunt apply --non-interactive -auto-approve)
 
-if [ -n "$existing_provider" ] && [ "$existing_provider" != "None" ]; then
-  echo "GitHub OIDC provider already exists: $existing_provider - nothing to create."
-else
-  (cd "$REPO_ROOT/terraform/live/account/github-oidc" && terragrunt apply --non-interactive -auto-approve)
-fi
+echo "Applying eks-access-identity ..."
+(cd "$REPO_ROOT/terraform/live/account/eks-access-identity" && terragrunt apply --non-interactive -auto-approve)
 
-echo "Checking eks-access-identity ..."
-if aws iam get-role --role-name eks-access-identity >/dev/null 2>&1; then
-  echo "eks-access-identity already exists - nothing to create."
-else
-  (cd "$REPO_ROOT/terraform/live/account/eks-access-identity" && terragrunt apply --non-interactive -auto-approve)
-fi
-
-# A future third account-global unit needs its own check block here, matching
-# this file's pattern - there's no shared existence check across resource types.
+# A future third account-global unit needs its own `terragrunt apply` line
+# here, matching this file's pattern.
