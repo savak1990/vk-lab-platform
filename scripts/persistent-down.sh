@@ -144,10 +144,12 @@ cd "$REPO_ROOT/terraform/live/persistent"
 # runs ungated, for every registered combination, so dispatching that
 # workflow run is itself the confirmation step; a workstation run still
 # gets terragrunt's own interactive "yes" prompt via the TTY check below.
+# -auto-approve is what actually skips it - --non-interactive alone doesn't
+# (confirmed empirically).
 if [ -t 0 ]; then
   terragrunt run --all destroy
 else
-  terragrunt run --all destroy --non-interactive
+  terragrunt run --all destroy --non-interactive -auto-approve
 fi
 
 for unit_prefix in persistent/vpc persistent/route53 persistent/acm persistent/secrets; do

@@ -54,11 +54,11 @@ cd "$REPO_ROOT/terraform/live/bootstrap"
 # has changed" - run `make clear-cache` first in that case.
 #
 # confirm_destroy already required a real confirmation (interactive, or the
-# ephemeral non-interactive path) - --non-interactive here on the ephemeral
-# path skips Terraform's own redundant "yes" prompt, not the confirmation
-# itself. Not on the allow-list: unchanged, Terraform's own prompt still runs.
+# ephemeral non-interactive path) - -auto-approve here on the ephemeral path
+# skips Terraform's own redundant "yes" prompt (--non-interactive alone
+# doesn't suppress it, confirmed empirically), not the confirmation itself.
 if is_ephemeral_project "$PROJECT_NAME"; then
-  terragrunt run --all destroy --non-interactive
+  terragrunt run --all destroy --non-interactive -auto-approve
 else
   terragrunt run --all destroy
 fi

@@ -18,4 +18,4 @@ if kubectl cluster-info --request-timeout=5s >/dev/null 2>&1; then
   fi
 fi
 
-cd "$REPO_ROOT/terraform/live/disposable" && terragrunt run --all destroy --non-interactive
+cd "$REPO_ROOT/terraform/live/disposable" && terragrunt run --all destroy --non-interactive -auto-approve

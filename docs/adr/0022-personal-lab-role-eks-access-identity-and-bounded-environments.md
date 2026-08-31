@@ -221,8 +221,13 @@ during this work's research; out of scope to reconcile here.
   statement via `source_policy_documents` - avoids maintaining the same
   `aud`/`sub` condition block in two places.
 - `persistent-down.sh` detects a non-interactive shell (`[ -t 0 ]`) and passes
-  `--non-interactive` to terragrunt automatically - unlike `bootstrap-down.sh`/
-  `state-down.sh`, it isn't gated by the ephemeral allow-list, since
+  `--non-interactive -auto-approve` to terragrunt automatically - both flags,
+  not just the first: `--non-interactive` alone still left Terraform's own
+  "Do you want to perform these actions?" prompt in place (confirmed live,
+  against `account-up.sh`'s equivalent single-unit `apply` calls, which had
+  the same gap); `-auto-approve` is Terraform's own flag and the one that
+  actually suppresses it. Unlike `bootstrap-down.sh`/`state-down.sh`,
+  `persistent-down.sh` isn't gated by the ephemeral allow-list, since
   `down-through-persistent` is meant to run ungated for every registered
   combination; dispatching that workflow run is itself the confirmation step.
 

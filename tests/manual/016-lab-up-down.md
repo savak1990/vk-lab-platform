@@ -46,8 +46,10 @@ phase's end state.
     no environment gate — confirm it runs immediately without an approval step.
 11. Confirm `persistent-down.sh` completed without hanging: it detects the
     non-interactive shell (`[ -t 0 ]` false under GitHub Actions) and passes
-    `--non-interactive` to terragrunt automatically, skipping the "type yes" prompt
-    that would otherwise block forever with no TTY.
+    `--non-interactive -auto-approve` to terragrunt automatically — both flags;
+    `-auto-approve` is the one that actually skips Terraform's own "type yes"
+    prompt (`--non-interactive` alone doesn't, hit for real in `account-up.sh`'s
+    single-unit `apply` calls — see this same fix there).
 12. Confirm Persistent state is gone (`make status`) but Bootstrap/State remain.
 
 ## Phase 4 — full-down refuses for vk-lab-platform, on two independent paths
