@@ -46,10 +46,10 @@ if ! kubectl cluster-info --request-timeout=5s >/dev/null 2>&1; then
   # containing PROJECT_NAME - tag-based lookup is the only reliable match.
   STRAY_NLBS="$(aws resourcegroupstaggingapi get-resources --region "$REGION" \
     --tag-filters "Key=Project,Values=$PROJECT_NAME" "Key=Lifecycle,Values=disposable" \
-    --resource-type-filters elasticloadbalancing:loadbalancer \
+    --resource-type-filters elasticloadbalancing:loadbalancer elasticloadbalancing:targetgroup \
     --query 'ResourceTagMappingList[].ResourceARN' --output text 2>/dev/null || true)"
   if [ -n "$STRAY_NLBS" ] && [ "$STRAY_NLBS" != "None" ]; then
-    echo "ARGO-DOWN: WARNING - found NLB(s) that can no longer be gracefully deleted (cluster already unreachable): $STRAY_NLBS" >&2
+    echo "ARGO-DOWN: WARNING - found NLB(s)/target group(s) that can no longer be gracefully deleted (cluster already unreachable): $STRAY_NLBS" >&2
     echo "ARGO-DOWN: aws-load-balancer-controller and external-dns are both gone - delete the NLB, its security groups, and any lab.<root-domain> DNS records pointing at it manually." >&2
   fi
   exit 0

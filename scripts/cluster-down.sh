@@ -48,13 +48,13 @@ LEAKED_VOLUMES="$(aws ec2 describe-volumes --region "$REGION" \
 # unreachable condition argo-down.sh warns about.
 LEAKED_NLBS="$(aws resourcegroupstaggingapi get-resources --region "$REGION" \
   --tag-filters "Key=Project,Values=$PROJECT_NAME" "Key=Lifecycle,Values=disposable" \
-  --resource-type-filters elasticloadbalancing:loadbalancer \
+  --resource-type-filters elasticloadbalancing:loadbalancer elasticloadbalancing:targetgroup \
   --query 'ResourceTagMappingList[].ResourceARN' --output text 2>/dev/null || true)"
 if { [ -n "$LEAKED_INSTANCES" ] && [ "$LEAKED_INSTANCES" != "None" ]; } || { [ -n "$LEAKED_VOLUMES" ] && [ "$LEAKED_VOLUMES" != "None" ]; } || { [ -n "$LEAKED_NLBS" ] && [ "$LEAKED_NLBS" != "None" ]; }; then
   echo "CLUSTER-DOWN: WARNING - disposable-lifecycle resources still present after destroy:" >&2
   [ -n "$LEAKED_INSTANCES" ] && [ "$LEAKED_INSTANCES" != "None" ] && echo "CLUSTER-DOWN:   instances: $LEAKED_INSTANCES" >&2
   [ -n "$LEAKED_VOLUMES" ] && [ "$LEAKED_VOLUMES" != "None" ] && echo "CLUSTER-DOWN:   volumes: $LEAKED_VOLUMES" >&2
-  [ -n "$LEAKED_NLBS" ] && [ "$LEAKED_NLBS" != "None" ] && echo "CLUSTER-DOWN:   load balancers: $LEAKED_NLBS (its security groups are also leaked - check DNS records in the lab zone too)" >&2
+  [ -n "$LEAKED_NLBS" ] && [ "$LEAKED_NLBS" != "None" ] && echo "CLUSTER-DOWN:   load balancers/target groups: $LEAKED_NLBS (an NLB's security groups are also leaked - check DNS records in the lab zone too)" >&2
 else
   echo "CLUSTER-DOWN: no leaked disposable-lifecycle instances or available volumes found."
 fi
