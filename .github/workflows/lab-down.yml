@@ -23,7 +23,7 @@ on:
         options: [eu-west-1]
         default: eu-west-1
       depth:
-        description: down (this Makefile target only) / down-through-persistent / full-down (ephemeral projects only, requires approval)
+        description: depth
         type: choice
         options: [down, down-through-persistent, full-down]
         default: down

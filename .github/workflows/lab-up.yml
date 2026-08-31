@@ -22,7 +22,7 @@ on:
         options: [eu-west-1]
         default: eu-west-1
       depth:
-        description: up (this Makefile target only) or full-up (State -> Bootstrap -> Persistent -> up)
+        description: depth
         type: choice
         options: [up, full-up]
         default: up
