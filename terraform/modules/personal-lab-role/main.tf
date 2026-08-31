@@ -141,6 +141,22 @@ data "aws_iam_policy_document" "permissions" {
     resources = ["arn:aws:iam::${local.account}:role/${var.cluster_name}-*"]
   }
 
+  # Karpenter dynamically creates/owns an EC2 instance profile per
+  # EC2NodeClass (name "${cluster_name}_<hash>", not the role-name prefix
+  # above) via its own controller's IAM permissions, normally cleaned up by
+  # its own EC2NodeClass finalizer. Confirmed live: if Karpenter's controller
+  # is already torn down before that finalizer completes (e.g. an earlier
+  # interrupted `make down`), the instance profile is orphaned with no
+  # controller left to remove it, and Terraform's own node-role DeleteRole
+  # then needs to detach/delete it directly - a distinct resource type
+  # (instance-profile, not role) from the statement above, evaluated
+  # separately by IAM.
+  statement {
+    sid       = "KarpenterOrphanedInstanceProfileCleanup"
+    actions   = ["iam:RemoveRoleFromInstanceProfile", "iam:DeleteInstanceProfile"]
+    resources = ["arn:aws:iam::${local.account}:instance-profile/${var.cluster_name}_*"]
+  }
+
   # This role's own IAM role, and eks-access-identity's, don't match the
   # cluster_name-* prefix above - both need to be readable (Terraform refresh/
   # plan against personal-lab-role itself; the eks-access-identity data-source
