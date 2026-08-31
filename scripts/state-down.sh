@@ -5,6 +5,10 @@
 # operation and not part of any per-environment lifecycle.
 set -euo pipefail
 
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=lib/ephemeral-confirm.sh
+source "$REPO_ROOT/scripts/lib/ephemeral-confirm.sh"
+
 PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
 BUCKET="${PROJECT_NAME}-tf-state"
 REGION="${REGION:-eu-west-1}"
@@ -47,10 +51,7 @@ for prefix in bootstrap persistent disposable ci; do
   fi
 done
 
-echo "This permanently deletes s3://$BUCKET and every version it holds."
-echo "Only do this against a throwaway/test AWS account, or when fully retiring the personal lab."
-read -r -p "Continue? (y/n): " confirm
-[ "$confirm" = "y" ] || { echo "Aborted."; exit 1; }
+confirm_destroy "This permanently deletes s3://$BUCKET and every version it holds. Only do this against a throwaway/test AWS account, or when fully retiring the personal lab."
 
 aws s3api list-object-versions --bucket "$BUCKET" --region "$REGION" \
   --output json --query '{Objects: Versions[].{Key:Key,VersionId:VersionId}}' > "$TMP_DIR/versions.json"

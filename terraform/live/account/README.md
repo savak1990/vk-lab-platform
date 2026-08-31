@@ -29,8 +29,12 @@ A unit belongs in this layer only if it is account-global: exactly one must
 exist per AWS account regardless of how many projects or PR environments do.
 Being long-lived is not sufficient — that is what `bootstrap/` is for.
 
-Qualifies: the GitHub OIDC provider, an account-wide CloudTrail trail, an IAM
-Access Analyzer. Does not qualify: the secrets KMS key (one per project).
+Qualifies: the GitHub OIDC provider, `eks-access-identity` (a Kubernetes-
+access-only identity with no AWS permission policy, reused across every
+project's clusters — ADR 0022), an account-wide CloudTrail trail, an IAM
+Access Analyzer. Does not qualify: the secrets KMS key (one per project), the
+`personal-lab-role` that calls AWS APIs on a specific project's behalf (that's
+per-project, in `bootstrap/`).
 
 ## Prerequisite: the `state` layer must already exist
 
@@ -48,9 +52,27 @@ make account-down     # guarded, expected to run essentially never
 
 Run `make account-up` with your primary `PROJECT_NAME`, since this layer's
 state lands in that project's bucket. Never run it with a CI or per-PR
-`PROJECT_NAME` — the resource is shared, so a second project must reuse it,
-not recreate it. Re-running is a no-op: the script detects an existing
-provider and exits without applying.
+`PROJECT_NAME` — both resources here are shared, so a second project must
+reuse them, not recreate them. Re-running is a no-op per-resource: the script
+checks each one independently (not the whole layer at once — a genuinely new
+unit still gets applied even after an older one already exists) and exits
+without applying whatever it finds already present.
+
+`eks-access-identity`'s trust policy names whichever IAM identity is running
+`make account-up` at apply time — always you, since this command is never
+run from CI. Resolved via `data "aws_caller_identity"` +
+`data "aws_iam_session_context"` (not a manually-supplied ARN), so an SSO
+session's ARN resolves to its underlying role ARN, path included, rather than
+a hand-reconstructed one that would silently miss it. If you later
+authenticate differently (switch from an IAM user to SSO, or vice versa),
+that recorded principal goes stale: `kubectl` starts failing with
+`Unauthorized` even though the access entry is still correct, and the fix is
+to re-run `make account-up` under the new identity, not to touch the cluster.
+
+`personal-lab-role` (in `terraform/live/bootstrap/`) is granted read-only
+access to this role's ARN — needed for `terraform/modules/eks`'s data-source
+lookup and `argo-up.sh`'s `aws iam get-role` to succeed when either runs as
+that role from GitHub Actions, not to modify it.
 
 Neither target appears in a composite target: not `up`, not `full-up`, not
 `bootstrap-up`/`bootstrap-down`.

@@ -1,0 +1,54 @@
+name: lab-up
+
+# Manually triggered only - this starts real, billable AWS infrastructure.
+# project_name/subdomain/region are bounded choices, not free text: the
+# assumed role's policy is hand-enumerated to exactly this one combination.
+on:
+  workflow_dispatch:
+    inputs:
+      project_name:
+        description: PROJECT_NAME
+        type: choice
+        options: [vk-lab-platform]
+        default: vk-lab-platform
+      subdomain:
+        description: SUBDOMAIN
+        type: choice
+        options: [lab]
+        default: lab
+      region:
+        description: REGION
+        type: choice
+        options: [eu-west-1]
+        default: eu-west-1
+      depth:
+        description: up (this Makefile target only) or full-up (State -> Bootstrap -> Persistent -> up)
+        type: choice
+        options: [up, full-up]
+        default: up
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  up:
+    runs-on: ubuntu-latest
+    env:
+      PROJECT_NAME: ${{ inputs.project_name }}
+      SUBDOMAIN: ${{ inputs.subdomain }}
+      REGION: ${{ inputs.region }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ inputs.region }}
+
+      # ROOT_DOMAIN is a GitHub secret, not decrypted from secrets/root-domain.enc -
+      # only needed when depth=full-up reaches persistent-up; harmless to set
+      # unconditionally otherwise (make up never reads it).
+      - run: make ${{ inputs.depth }}
+        env:
+          ROOT_DOMAIN: ${{ secrets.ROOT_DOMAIN }}

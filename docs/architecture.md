@@ -167,11 +167,13 @@ vk-lab-platform/
 │       ├── state/                      # ADR 0004; own lifecycle class below Bootstrap; make state-up / state-down (ADR 0005, guarded)
 │       │
 │       ├── account/                    # ADR 0021; account-global scope, not a lifecycle class; make account-up / account-down
-│       │   └── github-oidc/            # spec 015; one account-level provider, created once (§17a, ADR 0007)
+│       │   ├── github-oidc/            # spec 015; one account-level provider, created once (§17a, ADR 0007)
+│       │   └── eks-access-identity/    # spec 016; Kubernetes-access-only identity, no permission policy (§17a, ADR 0022)
 │       │
 │       ├── bootstrap/
 │       │   ├── terragrunt.stack.hcl
 │       │   ├── kms/
+│       │   ├── personal-lab-role/      # spec 016; hand-enumerated AWS-automation role for lab-up.yml/lab-down.yml (ADR 0022)
 │       │   └── atlantis/               # spec 018; standalone compute, independent of EKS; own instance/task role, not OIDC
 │       │
 │       ├── persistent/
@@ -961,11 +963,23 @@ the state paths and actions it needs:
 one GitHub OIDC provider (spec 015, account layer, created once)
         │
         ├── personal-lab role (spec 016) — "normal deploy"
-        │     scoped to the personal lab's persistent/disposable state
+        │     hand-enumerated, no service wildcards, scoped to exactly one
+        │     registered PROJECT_NAME/REGION combination's state and AWS
+        │     resources — never a service the workstation/GitHub distinction
+        │     could touch outside it (ADR 0022)
         │
         └── CI role (spec 020) — "privileged full-environment test"
               scoped to ci/* state paths only
 ```
+
+A second, account-global identity trusts the same provider for a different
+purpose entirely: **`eks-access-identity`** (spec 016, account layer,
+alongside the provider) authenticates to the *Kubernetes* API, not the AWS
+API — it carries no IAM permission policy at all (`aws eks get-token
+--role-arn <this>` performs only `sts:AssumeRole` and signs a token; nothing
+else). What it can do inside a given cluster is a per-cluster EKS access
+entry, granted unconditionally at cluster creation, independent of which
+principal — workstation or GitHub — happened to run that `apply` (ADR 0022).
 
 Atlantis (spec 018) does not use this provider at all — it authenticates via
 its own compute's instance/task role, never OIDC (ADR 0003).
@@ -1716,16 +1730,17 @@ make up
 make down
 ```
 
-GitHub:
+GitHub (`lab-up.yml`/`lab-down.yml` take bounded `PROJECT_NAME`/`SUBDOMAIN`/
+`REGION` choice inputs plus a depth selector — see ADR 0022):
 
 ```text
-lab-up.yml
+lab-up.yml (depth: up | full-up)
     ↓
-make up
+make up | make full-up
 
-lab-down.yml
+lab-down.yml (depth: down | down-through-persistent | full-down)
     ↓
-make down
+make down | make down-through-persistent | make full-down
 ```
 
 The environment initiating the operation must not affect infrastructure semantics.
@@ -1733,6 +1748,13 @@ The environment initiating the operation must not affect infrastructure semantic
 GitHub authenticates through OIDC.
 
 Workstation-initiated execution may authenticate through AWS IAM Identity Center/SSO or another approved temporary credential mechanism.
+
+This equivalence extends to Kubernetes access, not just the AWS API calls
+`make up`/`make down` make: both the operator's workstation and GitHub
+authenticate to the cluster as the same dedicated `eks-access-identity` (via
+`--role-arn` on `aws eks update-kubeconfig`), so which of the two created a
+given cluster never determines which one can run `kubectl` against it
+(ADR 0022).
 
 ---
 
@@ -1818,6 +1840,8 @@ All implementation specifications must preserve the following:
 20. A successful Terraform destroy does not alone prove successful platform shutdown.
 21. `make up` never creates Persistent resources implicitly; `make down` never destroys Persistent or Bootstrap resources. Removing those is a separate, explicitly-confirmed command (§21a).
 22. Exactly one GitHub OIDC provider exists per account, created once by `make account-up` in the account layer (§17a, ADR 0021); every consumer gets its own role trusting it, never its own provider.
+23. A cluster's Kubernetes access is an explicit, per-cluster grant (EKS access entries), never implied by which principal happened to run `terraform apply` (§17a, §34, ADR 0022).
+24. An IAM policy's resource scope is never widened to match a runtime workflow input; a new environment combination gets its own committed ARNs, added deliberately, never accepted as free text (ADR 0022).
 23. No workflow, module, or spec hardcodes an account ID, role ARN, region, or domain value — forking requires only account bootstrap plus the configuration values in §24a, never a source change.
 
 ---

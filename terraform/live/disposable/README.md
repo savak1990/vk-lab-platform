@@ -56,11 +56,13 @@ make cluster-down      # terragrunt destroy, all units in this stack
 make eks-kubeconfig        # points local kubectl at the cluster
 ```
 
-No `make up`/`make down` composite orchestration exists yet (spec 015) —
-these targets are applied/destroyed directly for now. No guard script
-verifies the Persistent stack exists first; that check is the future
-composite `make up`'s job (constitution §17), not this stack's own targets.
+`cluster-up` (part of `make up`/`make full-up`) runs
+`scripts/require-persistent.sh` first, which fails fast if the Persistent
+stack hasn't been applied yet, or if `eks-access-identity` doesn't exist yet
+(`make account-up` not yet run) — both are prerequisites `eks/` depends on.
 
-Cluster access comes from `enable_cluster_creator_admin_permissions`, which
-binds cluster-admin to whichever principal ran `terragrunt apply` — this
-will need re-examination once CI applies this stack (specs 016/018).
+Cluster access comes from an unconditional EKS access entry granted to
+`eks-access-identity` (`terraform/live/account/eks-access-identity/`, ADR
+0022), not from `enable_cluster_creator_admin_permissions` (deliberately
+`false` — see ADR 0022 for why binding admin to whichever principal ran
+`apply` broke workstation/GitHub access equivalence).

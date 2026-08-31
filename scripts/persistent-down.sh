@@ -13,9 +13,10 @@
 # and a partial failure there could otherwise leave the zone (and its
 # parent-zone delegation) orphaned while reporting success.
 # Confirmation is terragrunt's own interactive destroy prompt below (typing
-# "yes"), not a separate custom one - same approach as bootstrap-down.sh;
-# the volume/snapshot lists are echoed before that prompt so it covers
-# them too.
+# "yes") on a workstation; a non-interactive run (no TTY, e.g. lab-down.yml's
+# ungated down-through-persistent depth) skips straight to --non-interactive,
+# since dispatching that workflow run is itself the confirmation step. The
+# volume/snapshot lists are echoed before the prompt either way.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -138,9 +139,16 @@ cd "$REPO_ROOT/terraform/live/persistent"
 # If PROJECT_NAME/REGION/SUBDOMAIN differs from whatever this unit's
 # .terragrunt-cache was last built against, terraform will refuse with
 # "Backend configuration has changed" - run `make clear-cache` first in
-# that case. No --non-interactive here: terragrunt's own destroy prompt
-# (type "yes") is the confirmation step, not a custom one.
-terragrunt run --all destroy
+# that case. Unlike bootstrap-down.sh/state-down.sh, this isn't gated by
+# the ephemeral allow-list - lab-down.yml's down-through-persistent depth
+# runs ungated, for every registered combination, so dispatching that
+# workflow run is itself the confirmation step; a workstation run still
+# gets terragrunt's own interactive "yes" prompt via the TTY check below.
+if [ -t 0 ]; then
+  terragrunt run --all destroy
+else
+  terragrunt run --all destroy --non-interactive
+fi
 
 for unit_prefix in persistent/vpc persistent/route53 persistent/acm persistent/secrets; do
   if ! remaining=$(count_resources "$unit_prefix"); then

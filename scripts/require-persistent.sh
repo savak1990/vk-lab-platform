@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# Fails fast if the Persistent layer hasn't been applied yet. Intended for
-# spec 015's `make up` to call before creating any Disposable resource -
-# not wired into any target yet.
+# Fails fast if the Persistent layer hasn't been applied yet, or if
+# eks-access-identity doesn't exist yet - both prerequisites for cluster-up.
 set -euo pipefail
 
 PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
@@ -28,5 +27,13 @@ fi
 
 if [ "$total" -eq 0 ]; then
   echo "Persistent-lifecycle resources not found under persistent/ in s3://$BUCKET. Run 'make persistent-up' first." >&2
+  exit 1
+fi
+
+# terraform/modules/eks looks this up by fixed name (account-global, not
+# state-tracked in this project's bucket) - check it explicitly here so
+# cluster-up fails with a clear message instead of a raw data-source error.
+if ! aws iam get-role --role-name eks-access-identity >/dev/null 2>&1; then
+  echo "eks-access-identity not found. Run 'make account-up' first." >&2
   exit 1
 fi

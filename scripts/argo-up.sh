@@ -50,7 +50,9 @@ NODE_SUBNET_ID="$(eks_output node_subnet_id)"
 # fqdn ("lab.<root-domain>") is sensitive output - never echo it, including
 # via a full hostname built from it (label DNS output by short name instead).
 LAB_FQDN="$(route53_output fqdn)"
-aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$REGION" --alias "$CLUSTER_NAME" >/dev/null
+EKS_ACCESS_IDENTITY_ARN="$(aws iam get-role --role-name eks-access-identity --query Role.Arn --output text)"
+aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$REGION" --alias "$CLUSTER_NAME" \
+  --role-arn "$EKS_ACCESS_IDENTITY_ARN" >/dev/null
 kubectl config set-context --current --namespace=default >/dev/null
 
 # Labels, not full hostnames: DNS_HOSTS[label]=fqdn, keeps $LAB_FQDN out of

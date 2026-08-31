@@ -1,8 +1,9 @@
 # Bootstrap stack
 
 Creates per-project Bootstrap-lifecycle resources that aren't the state
-bucket itself (that's a separate, lower layer — see below). Currently just
-the `kms` unit (the key for `secrets/*.enc`).
+bucket itself (that's a separate, lower layer — see below): `kms` (the key for
+`secrets/*.enc`) and `personal-lab-role` (the hand-enumerated GitHub OIDC role
+`lab-up.yml`/`lab-down.yml` assume — ADR 0022).
 
 Account-global Bootstrap resources — the GitHub OIDC provider, of which
 exactly one may exist per AWS account — live in `terraform/live/account/`
@@ -26,7 +27,9 @@ make bootstrap-up      # applies every unit under terraform/live/bootstrap/
 make bootstrap-down    # guarded, rarely-used - see constitution §17
 ```
 
-`make bootstrap-down` destroys `kms` (and any future bootstrap unit). It
-does **not** touch the state bucket — that's `terraform/live/state`'s
+`make bootstrap-down` destroys `kms` and `personal-lab-role` (and any future
+bootstrap unit) — destroying `personal-lab-role` breaks `lab-up.yml`/
+`lab-down.yml`'s GitHub Actions auth for this project until it's re-applied.
+It does **not** touch the state bucket — that's `terraform/live/state`'s
 resource, not this stack's, and there is no command that destroys it
 (intentionally — see ADR 0004).

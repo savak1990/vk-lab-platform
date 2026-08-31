@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Creates account-global resources (currently the GitHub OIDC provider). Run
-# once per AWS account from a workstation, with the primary PROJECT_NAME -
-# never from CI, and never with a per-PR PROJECT_NAME. Deliberately not part
-# of `make up` or `make full-up`.
+# Creates account-global resources (the GitHub OIDC provider,
+# eks-access-identity). Run once per AWS account from a workstation, with the
+# primary PROJECT_NAME - never from CI, and never with a per-PR PROJECT_NAME.
+# Deliberately not part of `make up` or `make full-up`.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -11,24 +11,33 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # opaque backend-init error without this.
 "$REPO_ROOT/scripts/require-state.sh"
 
-GITHUB_ISSUER="token.actions.githubusercontent.com"
+# Per-unit, not layer-wide: a second project's own Terraform state has never
+# seen these account-global resources, so a blanket `run --all apply` after
+# the first project already created them would try to recreate whichever one
+# already exists and get AWS's EntityAlreadyExists - checked and skipped
+# individually instead, so a genuinely new unit still gets applied even after
+# an older one already exists.
 
-# ponytail: issuer-specific check inside a layer-level script, fine while
-# github-oidc is the layer's only unit; move to a per-unit precondition if it grows.
+echo "Checking github-oidc ..."
+GITHUB_ISSUER="token.actions.githubusercontent.com"
 # An empty JMESPath result renders as the literal string "None" under
 # --output text, not as an empty string.
-existing=$(aws iam list-open-id-connect-providers \
+existing_provider=$(aws iam list-open-id-connect-providers \
   --query "OpenIDConnectProviderList[?contains(Arn, '$GITHUB_ISSUER')].Arn" \
   --output text)
 
-if [ -n "$existing" ] && [ "$existing" != "None" ]; then
-  # ponytail: exits before applying the whole layer, which is only correct while
-  # github-oidc is its only unit; check per-unit once a second one lands.
-  echo "GitHub OIDC provider already exists: $existing"
-  echo "It is account-global - one per AWS account, shared by every project and"
-  echo "PR environment - so there is nothing to create. Nothing was changed."
-  exit 0
+if [ -n "$existing_provider" ] && [ "$existing_provider" != "None" ]; then
+  echo "GitHub OIDC provider already exists: $existing_provider - nothing to create."
+else
+  (cd "$REPO_ROOT/terraform/live/account/github-oidc" && terragrunt apply --non-interactive)
 fi
 
-cd "$REPO_ROOT/terraform/live/account"
-terragrunt run --all apply --non-interactive
+echo "Checking eks-access-identity ..."
+if aws iam get-role --role-name eks-access-identity >/dev/null 2>&1; then
+  echo "eks-access-identity already exists - nothing to create."
+else
+  (cd "$REPO_ROOT/terraform/live/account/eks-access-identity" && terragrunt apply --non-interactive)
+fi
+
+# A future third account-global unit needs its own check block here, matching
+# this file's pattern - there's no shared existence check across resource types.

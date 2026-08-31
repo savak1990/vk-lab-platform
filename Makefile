@@ -1,4 +1,4 @@
-.PHONY: up down full-up full-down state-up state-down status account-up account-down bootstrap-up bootstrap-down secret-encrypt secret-decrypt generate-secrets persistent-up persistent-down clear-cache cluster-up cluster-down eks-kubeconfig argo-up argo-down
+.PHONY: up down full-up full-down down-through-persistent state-up state-down status account-up account-down bootstrap-up bootstrap-down secret-encrypt secret-decrypt generate-secrets persistent-up persistent-down clear-cache cluster-up cluster-down eks-kubeconfig argo-up argo-down
 
 .NOTPARALLEL:
 
@@ -37,6 +37,13 @@ full-up: clear-cache state-up bootstrap-up persistent-up cluster-up argo-up
 ## Bootstrap -> State. Rarely used - persistent-down/bootstrap-down/
 ## state-down each keep their own explicit confirmation prompts.
 full-down: clear-cache argo-down cluster-down persistent-down bootstrap-down state-down
+
+## Tears down through Persistent only - Argo CD -> cluster -> Persistent.
+## Leaves Bootstrap/State untouched. For an environment whose Bootstrap/State
+## must survive (e.g. the personal lab) but whose Persistent layer (DNS zone,
+## ACM cert, Secrets Manager) is meant to be torn down along with everything
+## above it.
+down-through-persistent: clear-cache argo-down cluster-down persistent-down
 
 ## Reports which lifecycle layers currently have state in the shared bucket.
 status:
@@ -105,10 +112,14 @@ cluster-up:
 cluster-down:
 	./scripts/cluster-down.sh
 
-## Points local kubectl context at the disposable EKS cluster.
+## Points local kubectl context at the disposable EKS cluster. Every kubectl
+## call re-assumes eks-access-identity via --role-arn (baked into the
+## generated kubeconfig's exec plugin), so access never depends on whether
+## you or GitHub Actions created the cluster - see docs/adr on this.
 ## Usage: make eks-kubeconfig
 eks-kubeconfig:
-	aws eks update-kubeconfig --name $(PROJECT_NAME)-eks --region $(REGION) --alias $(PROJECT_NAME)-eks
+	aws eks update-kubeconfig --name $(PROJECT_NAME)-eks --region $(REGION) --alias $(PROJECT_NAME)-eks \
+		--role-arn "$$(aws iam get-role --role-name eks-access-identity --query Role.Arn --output text)"
 	kubectl config set-context --current --namespace=default
 
 ## Installs Argo CD and the root Application onto the disposable EKS

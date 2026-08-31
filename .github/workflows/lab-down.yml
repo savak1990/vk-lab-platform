@@ -1,0 +1,75 @@
+name: lab-down
+
+# Manually triggered only. depth=full-down runs as its own job, gated by the
+# ephemeral-teardown Environment's required-reviewer approval. It still
+# refuses for vk-lab-platform: not on the ephemeral allow-list, and its IAM
+# role has no permission to delete the KMS key or state bucket at all.
+on:
+  workflow_dispatch:
+    inputs:
+      project_name:
+        description: PROJECT_NAME
+        type: choice
+        options: [vk-lab-platform]
+        default: vk-lab-platform
+      subdomain:
+        description: SUBDOMAIN
+        type: choice
+        options: [lab]
+        default: lab
+      region:
+        description: REGION
+        type: choice
+        options: [eu-west-1]
+        default: eu-west-1
+      depth:
+        description: down (this Makefile target only) / down-through-persistent / full-down (ephemeral projects only, requires approval)
+        type: choice
+        options: [down, down-through-persistent, full-down]
+        default: down
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  down:
+    if: inputs.depth == 'down' || inputs.depth == 'down-through-persistent'
+    runs-on: ubuntu-latest
+    env:
+      PROJECT_NAME: ${{ inputs.project_name }}
+      SUBDOMAIN: ${{ inputs.subdomain }}
+      REGION: ${{ inputs.region }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ inputs.region }}
+
+      - run: make ${{ inputs.depth }}
+
+  full-down:
+    if: inputs.depth == 'full-down'
+    runs-on: ubuntu-latest
+    environment: ephemeral-teardown
+    env:
+      PROJECT_NAME: ${{ inputs.project_name }}
+      SUBDOMAIN: ${{ inputs.subdomain }}
+      REGION: ${{ inputs.region }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ inputs.region }}
+
+      # CONFIRM_DESTROY must exactly equal PROJECT_NAME (scripts/lib/ephemeral-confirm.sh) -
+      # the environment's required-reviewer gate above is what makes this
+      # step reachable at all; this is just confirming the right project was
+      # the one approved.
+      - run: make full-down
+        env:
+          CONFIRM_DESTROY: ${{ inputs.project_name }}

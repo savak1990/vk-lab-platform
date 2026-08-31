@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Destroys account-global resources (the GitHub OIDC provider). Guarded:
-# refuses while this project still has state. Confirmation is terragrunt's own
-# interactive destroy prompt below, not a separate custom one.
+# Destroys account-global resources (the GitHub OIDC provider,
+# eks-access-identity). Guarded: refuses while this project still has state.
+# Confirmation is terragrunt's own interactive destroy prompt below, not a
+# separate custom one.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -43,8 +44,8 @@ done
 # environment in the same account may still be relying on the provider, and
 # there is no cheap way to enumerate them - hence the warning rather than a
 # guard.
-echo "This destroys the account-global stack: the GitHub OIDC provider."
-echo "It is shared by EVERY project and CI environment in AWS account"
+echo "This destroys the account-global stack: the GitHub OIDC provider and eks-access-identity."
+echo "Both are shared by EVERY project and CI environment in AWS account"
 echo "$(aws sts get-caller-identity --query Account --output text) - any of them still using it will fail to authenticate."
 echo "This is expected to run essentially never."
 

@@ -24,7 +24,11 @@ REGION="${REGION:-eu-west-1}"
 STATE_BUCKET="${PROJECT_NAME}-tf-state"
 STATE_KEY="persistent/route53/terraform.tfstate"
 
-ROOT_DOMAIN="$("$REPO_ROOT/scripts/secret-decrypt.sh" root-domain)"
+# CI supplies ROOT_DOMAIN directly (a GitHub secret) rather than decrypting
+# secrets/root-domain.enc, so this role never needs KMS decrypt just to learn
+# a non-secret hostname (ADR 0007 alternative (c)). Workstation runs still
+# decrypt, unchanged.
+ROOT_DOMAIN="${ROOT_DOMAIN:-$("$REPO_ROOT/scripts/secret-decrypt.sh" root-domain)}"
 FQDN="${SUBDOMAIN}.${ROOT_DOMAIN}"
 
 # list-hosted-zones-by-name matches by prefix/lexicographic position, not

@@ -2,6 +2,15 @@ locals {
   node_subnet_id = var.public_subnet_ids_by_az[var.availability_zone]
 }
 
+# Fixed, well-known name, looked up live rather than via a Terragrunt
+# dependency - this role is account-global (created once by `make
+# account-up`), so a state-file dependency would resolve against whichever
+# PROJECT_NAME's bucket happens to be active, not necessarily the one that
+# ran account-up first.
+data "aws_iam_role" "eks_access_identity" {
+  name = "eks-access-identity"
+}
+
 module "eks" {
   source  = "terraform-aws-modules/eks/aws"
   version = "21.25.0" # 21.0.0 has a `length(null)` bug in its encryption_config handling; this patch fixes it
@@ -15,8 +24,28 @@ module "eks" {
   endpoint_public_access  = true
   endpoint_private_access = false # the persistent vpc unit has no private connectivity path
 
-  authentication_mode                      = "API"
-  enable_cluster_creator_admin_permissions = true
+  authentication_mode = "API"
+
+  # Off, deliberately: whichever principal runs `apply` (the operator's
+  # workstation, or GitHub) would otherwise silently become the cluster's
+  # sole admin, leaving the other one locked out of kubectl entirely. The
+  # access_entries grant below is explicit and unconditional instead, so
+  # access never depends on who happened to create the cluster.
+  enable_cluster_creator_admin_permissions = false
+
+  access_entries = {
+    eks_access_identity = {
+      principal_arn = data.aws_iam_role.eks_access_identity.arn
+      policy_associations = {
+        admin = {
+          policy_arn = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+          access_scope = {
+            type = "cluster"
+          }
+        }
+      }
+    }
+  }
 
   # This platform uses EKS Pod Identity for workload IAM, not IRSA. IRSA
   # needs an OIDC provider registered with a TLS root-CA thumbprint; Pod

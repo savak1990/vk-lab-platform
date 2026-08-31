@@ -1,5 +1,29 @@
 # 016 — GitHub Actions Lifecycle (lab-up / lab-down)
 
+**Status:** Implemented — scope grew past the text below during
+implementation; see the scope amendment immediately after this line, and
+ADR 0022.
+
+> **Scope amendment (ADR 0022):** the two workflows became dashboards rather
+> than fixed single-purpose triggers. `lab-up.yml`/`lab-down.yml` take
+> `project_name`/`subdomain`/`region` as bounded `type: choice` inputs
+> (exactly one option today, `vk-lab-platform`/`lab`/`eu-west-1` — a second
+> registered combination needs a second option plus its own role's ARNs,
+> added together, deliberately, never accepted as free text — see the ADR for
+> why), plus a `depth` selector. `lab-up.yml`'s depth reaches `full-up`
+> (State → Bootstrap → Persistent → up), not just `up`; `lab-down.yml`'s
+> reaches `down-through-persistent` and `full-down`. `full-down` is gated,
+> from day one, by a per-environment allow-list (`scripts/lib/
+> ephemeral-confirm.sh`'s `EPHEMERAL_PROJECTS`, empty today) plus IAM
+> (`personal-lab-role` has no action that could delete the Bootstrap KMS key
+> or State bucket) plus a GitHub Environment (`ephemeral-teardown`) requiring
+> reviewer approval on that job — `vk-lab-platform` cannot reach it today, by
+> two independent structural reasons, not merely by convention. The personal-
+> lab role is also the first to trust a second, Kubernetes-access-only
+> identity, `eks-access-identity` (spec 016 creates this too, in the
+> account-global layer alongside spec 015's provider) — see ADR 0022 for why
+> `enable_cluster_creator_admin_permissions` alone wasn't sufficient.
+
 **Complexity:** Medium
 **Risk:** Medium — a workflow that can create/destroy real AWS infrastructure on trigger; wrong trigger scoping or a missing environment gate could let the wrong actor start or tear down the lab.
 **Estimated cost:** ~1 day · AWS runtime cost: none beyond whatever `make up`/`make down` already costs when invoked.
@@ -43,6 +67,14 @@ Excludes: any PR-triggered validation workflow (`validate.yml`), the Atlantis PR
 - If a Slack/notification step is ever desired for lab up/down events, add it as a clearly optional, separate step — it's not required for this spec's acceptance criteria.
 
 ## Testing / acceptance criteria
+
+> **Scope amendment (ADR 0022):** see `test-plan.md` in this directory for the
+> full manual test plan covering the bounded-environment/depth-selector scope
+> this spec grew into (the `up`/`full-up`/`down`/`down-through-persistent`/
+> `full-down` matrix, the workstation/GitHub Kubernetes-access equivalence via
+> `eks-access-identity`, the full-down refusal for `vk-lab-platform`, and
+> fault-injection cases). The criteria below are the original, narrower set;
+> still true, just no longer the whole picture.
 
 - Manually triggering `lab-up.yml` from the GitHub Actions UI produces the same healthy end state as running `make up` locally (verified against spec 014's own health checks).
 - Manually triggering `lab-down.yml` produces the same clean teardown as running `make down` locally, including all of spec 014's postcondition checks passing.
