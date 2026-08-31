@@ -60,6 +60,14 @@ jobs:
           chmod +x terragrunt_linux_amd64
           sudo mv terragrunt_linux_amd64 /usr/local/bin/terragrunt
 
+      # ubuntu-latest's preinstalled helm predates --server-side/--force-conflicts
+      # (argo-up.sh's root-application install, also used by argo-down.sh's
+      # `helm status`/`helm uninstall`). Pinned to the same version used to
+      # develop this repo.
+      - uses: azure/setup-helm@v4
+        with:
+          version: "v4.1.4"
+
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
@@ -95,6 +103,14 @@ jobs:
           grep " terragrunt_linux_amd64$" SHA256SUMS | sha256sum -c -
           chmod +x terragrunt_linux_amd64
           sudo mv terragrunt_linux_amd64 /usr/local/bin/terragrunt
+
+      # ubuntu-latest's preinstalled helm predates --server-side/--force-conflicts
+      # (argo-up.sh's root-application install, also used by argo-down.sh's
+      # `helm status`/`helm uninstall`). Pinned to the same version used to
+      # develop this repo.
+      - uses: azure/setup-helm@v4
+        with:
+          version: "v4.1.4"
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
