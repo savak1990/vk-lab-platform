@@ -43,6 +43,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.15.9" # matches every module's required_version
+          terraform_wrapper: false # the wrapper breaks terragrunt's own stdout/stderr capture
+
+      # No official Terragrunt setup action - ubuntu-latest doesn't ship it
+      # (unlike aws-cli/kubectl/helm/jq, confirmed already present). Pinned
+      # release binary, checksum-verified before trusting it.
+      - name: Set up Terragrunt
+        run: |
+          TG_VERSION=1.1.3
+          curl -sSL -o terragrunt_linux_amd64 "https://github.com/gruntwork-io/terragrunt/releases/download/v${TG_VERSION}/terragrunt_linux_amd64"
+          curl -sSL -o SHA256SUMS "https://github.com/gruntwork-io/terragrunt/releases/download/v${TG_VERSION}/SHA256SUMS"
+          grep " terragrunt_linux_amd64$" SHA256SUMS | sha256sum -c -
+          chmod +x terragrunt_linux_amd64
+          sudo mv terragrunt_linux_amd64 /usr/local/bin/terragrunt
+
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
@@ -61,6 +78,23 @@ jobs:
       REGION: ${{ inputs.region }}
     steps:
       - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.15.9" # matches every module's required_version
+          terraform_wrapper: false # the wrapper breaks terragrunt's own stdout/stderr capture
+
+      # No official Terragrunt setup action - ubuntu-latest doesn't ship it
+      # (unlike aws-cli/kubectl/helm/jq, confirmed already present). Pinned
+      # release binary, checksum-verified before trusting it.
+      - name: Set up Terragrunt
+        run: |
+          TG_VERSION=1.1.3
+          curl -sSL -o terragrunt_linux_amd64 "https://github.com/gruntwork-io/terragrunt/releases/download/v${TG_VERSION}/terragrunt_linux_amd64"
+          curl -sSL -o SHA256SUMS "https://github.com/gruntwork-io/terragrunt/releases/download/v${TG_VERSION}/SHA256SUMS"
+          grep " terragrunt_linux_amd64$" SHA256SUMS | sha256sum -c -
+          chmod +x terragrunt_linux_amd64
+          sudo mv terragrunt_linux_amd64 /usr/local/bin/terragrunt
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
