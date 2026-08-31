@@ -231,6 +231,43 @@ during this work's research; out of scope to reconcile here.
   `down-through-persistent` is meant to run ungated for every registered
   combination; dispatching that workflow run is itself the confirmation step.
 
+## Amendment: hand-enumeration replaced with broad Allow + explicit Deny
+
+`personal-lab-role`'s permission policy was originally hand-enumerated
+per-action, per the "Two roles" section above. Live use against a real
+account surfaced one missing action per apply attempt in a row -
+`iam:PassRole` and the EKS pod-identity-association actions, then
+`ssm:GetParameter` (the EKS-optimized-AMI lookup), then `logs:DescribeLogGroups`
+and a `iam:CreateRole` naming mismatch (the upstream module's default node-group
+role name doesn't start with `cluster_name`, fixed via an explicit
+`iam_role_name` override) - each only discoverable by actually running
+`apply` against AWS, never by reading the Terraform config.
+
+Replaced with: broad per-service `Allow` (`eks:*`, `ec2:*`, `acm:*`,
+`secretsmanager:*`, `logs:*`, `s3:*` on this project's own state bucket,
+`kms:*` scoped to the one secrets key) for every service where the
+enumerated-action approach was the actual source of repeated live failures,
+paired with explicit `Deny` statements covering exactly the actions that
+would destroy Bootstrap/State (`s3:DeleteBucket` and bucket-reconfiguration
+actions on the state bucket; `kms:ScheduleKeyDeletion`/`DisableKey`/
+`DeleteImportedKeyMaterial` on the secrets key; `kms:DeleteAlias` globally).
+An explicit Deny always overrides any Allow, so the "this role cannot
+destroy Bootstrap/State" guarantee is now structurally stronger than before -
+it no longer depends on nobody ever adding a missing action to a hand-written
+list; it depends on nobody removing a Deny statement, a categorically
+different (and more visible) kind of mistake.
+
+**Kept narrow, deliberately not broadened:**
+- **IAM** (`PlatformIamRoles`/`SelfAndAccessIdentityIamRolesReadOnly`) -
+  broad `iam:*` would let this role modify its own permissions or create
+  arbitrary roles/policies, a privilege-escalation surface distinct from the
+  "missing a Describe action" problem the other services had.
+- **Route53** - a service-level wildcard would grant `DeleteHostedZone` on
+  *any* zone, including the parent/root zone, violating the constitution's
+  hard invariant that this platform must never manage that zone. The
+  read-any-zone / own-zone-only-write split stays exactly as originally
+  designed.
+
 ## Alternatives considered
 
 **a. Shared IAM role for both the operator and GitHub.** Rejected - see

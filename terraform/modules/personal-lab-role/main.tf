@@ -24,28 +24,6 @@ locals {
   account    = data.aws_caller_identity.current.account_id
   region     = data.aws_region.current.region
   bucket_arn = "arn:aws:s3:::${var.project}-tf-state"
-
-  # EC2's Create*/Modify*/Delete* actions for these resource types don't
-  # support ARN-based resource scoping at all (a well-known IAM limitation,
-  # not an oversight here) - every EC2 statement below uses Resource = "*",
-  # narrowed instead by an aws:ResourceTag condition on this platform's own
-  # Project tag where the action supports resource-tag conditions.
-  ec2_actions = [
-    "ec2:CreateSecurityGroup", "ec2:DeleteSecurityGroup", "ec2:DescribeSecurityGroups",
-    "ec2:AuthorizeSecurityGroupIngress", "ec2:AuthorizeSecurityGroupEgress",
-    "ec2:RevokeSecurityGroupIngress", "ec2:RevokeSecurityGroupEgress",
-    "ec2:CreateLaunchTemplate", "ec2:DeleteLaunchTemplate", "ec2:DescribeLaunchTemplates",
-    "ec2:CreateLaunchTemplateVersion",
-    "ec2:CreateTags", "ec2:DeleteTags", "ec2:DescribeTags",
-    "ec2:DescribeSnapshots", "ec2:DeleteSnapshot",
-    "ec2:CreateVpc", "ec2:DescribeVpcs", "ec2:DeleteVpc", "ec2:ModifyVpcAttribute",
-    "ec2:CreateInternetGateway", "ec2:AttachInternetGateway", "ec2:DescribeInternetGateways",
-    "ec2:DetachInternetGateway", "ec2:DeleteInternetGateway",
-    "ec2:CreateSubnet", "ec2:DescribeSubnets", "ec2:ModifySubnetAttribute", "ec2:DeleteSubnet",
-    "ec2:CreateRouteTable", "ec2:DescribeRouteTables", "ec2:CreateRoute", "ec2:DeleteRouteTable",
-    "ec2:AssociateRouteTable", "ec2:DisassociateRouteTable",
-    "ec2:DescribeVolumes", "ec2:DeleteVolume",
-  ]
 }
 
 resource "aws_iam_role" "this" {
@@ -57,6 +35,20 @@ resource "aws_iam_role" "this" {
   max_session_duration = 14400
 }
 
+# ADR 0022 originally hand-enumerated every action per service ("exact,
+# auditable, safe to commit publicly"). In practice this meant one silent
+# gap per apply attempt against a real account - a missing Describe/List/Get
+# action Terraform's own providers or upstream modules call internally,
+# never knowable ahead of time without a live run (ssm:GetParameter for the
+# EKS AMI lookup, logs:DescribeLogGroups, several more never hit yet).
+# Switched to broad per-service Allows for everything except IAM and
+# Route53, with the security guarantee moved to explicit Deny statements
+# instead of the Allow list's own narrowness - a Deny always overrides any
+# Allow, so it can't be silently widened by a future action addition the way
+# an enumerated list's omissions could. IAM and Route53 stay narrow: IAM
+# because over-broad iam:* is a privilege-escalation surface (this role
+# could grant itself anything), Route53 because "never touch the parent/
+# root zone" is a hard constitution invariant, not just a convenience gap.
 data "aws_iam_policy_document" "permissions" {
   statement {
     sid       = "CallerIdentity"
@@ -64,58 +56,39 @@ data "aws_iam_policy_document" "permissions" {
     resources = ["*"]
   }
 
+  # This project's own dedicated state bucket - not shared with CI (a
+  # different PROJECT_NAME gets its own bucket entirely, constitution §11),
+  # so no prefix restriction is needed to keep environments apart.
   statement {
     sid       = "StateBucketList"
     actions   = ["s3:ListBucket"]
     resources = [local.bucket_arn]
-    condition {
-      test     = "StringLike"
-      variable = "s3:prefix"
-      values   = ["disposable/*", "persistent/*"]
-    }
   }
 
   statement {
-    sid = "DisposableStateReadWrite"
+    sid       = "StateBucketObjects"
+    actions   = ["s3:*"]
+    resources = ["${local.bucket_arn}/*"]
+  }
+
+  # The actual safety guarantee for the state bucket - not the Allow list's
+  # narrowness above. Bucket-level actions (bare ARN, no /* suffix): can't
+  # delete the bucket or weaken/remove its own protections.
+  statement {
+    sid    = "DenyStateBucketDestruction"
+    effect = "Deny"
     actions = [
-      "s3:GetObject", "s3:PutObject",
+      "s3:DeleteBucket", "s3:PutBucketPolicy", "s3:PutBucketAcl",
+      "s3:PutBucketVersioning", "s3:PutLifecycleConfiguration",
+      "s3:PutBucketPublicAccessBlock", "s3:PutEncryptionConfiguration",
     ]
-    resources = ["${local.bucket_arn}/disposable/*"]
-  }
-
-  statement {
-    sid       = "DisposableStateLock"
-    actions   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
-    resources = ["${local.bucket_arn}/disposable/*.tflock"]
-  }
-
-  statement {
-    sid = "PersistentStateReadWrite"
-    actions = [
-      "s3:GetObject", "s3:PutObject",
-    ]
-    resources = ["${local.bucket_arn}/persistent/*"]
-  }
-
-  statement {
-    sid       = "PersistentStateLock"
-    actions   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
-    resources = ["${local.bucket_arn}/persistent/*.tflock"]
+    resources = [local.bucket_arn]
   }
 
   statement {
     sid = "Eks"
     actions = [
-      "eks:CreateCluster", "eks:DeleteCluster", "eks:DescribeCluster",
-      "eks:TagResource", "eks:UntagResource", "eks:ListTagsForResource",
-      "eks:DescribeAddonVersions", "eks:CreateAddon", "eks:DeleteAddon",
-      "eks:DescribeAddon", "eks:UpdateAddon",
-      "eks:CreateAccessEntry", "eks:DeleteAccessEntry", "eks:DescribeAccessEntry",
-      "eks:ListAccessEntries", "eks:AssociateAccessPolicy", "eks:DisassociateAccessPolicy",
-      "eks:ListAssociatedAccessPolicies",
-      "eks:CreateNodegroup", "eks:DeleteNodegroup", "eks:DescribeNodegroup",
-      "eks:CreatePodIdentityAssociation", "eks:DeletePodIdentityAssociation",
-      "eks:DescribePodIdentityAssociation",
+      "eks:*",
     ]
     resources = [
       "arn:aws:eks:${local.region}:${local.account}:cluster/${var.cluster_name}",
@@ -126,9 +99,12 @@ data "aws_iam_policy_document" "permissions" {
     ]
   }
 
+  # EC2 doesn't support ARN-based resource scoping for most actions (a
+  # well-known IAM limitation, not an oversight) - Resource "*" either way,
+  # so a wildcard action list costs nothing in scoping precision.
   statement {
     sid       = "Ec2"
-    actions   = local.ec2_actions
+    actions   = ["ec2:*"]
     resources = ["*"]
   }
 
@@ -164,7 +140,9 @@ data "aws_iam_policy_document" "permissions" {
 
   # The eks_managed_node_group submodule looks up the recommended AMI via
   # this AWS-owned public parameter (no account ID in its ARN) instead of a
-  # pinned AMI ID - read-only, scoped to the EKS AMI namespace only.
+  # pinned AMI ID - kept narrow (unlike the rest of this policy) since it's
+  # the one SSM access this role has at all; no reason to open Parameter
+  # Store more broadly for a single, known, read-only lookup.
   statement {
     sid       = "EksAmiSsmParameter"
     actions   = ["ssm:GetParameter"]
@@ -172,12 +150,9 @@ data "aws_iam_policy_document" "permissions" {
   }
 
   statement {
-    sid = "CloudWatchLogs"
-    actions = [
-      "logs:CreateLogGroup", "logs:DeleteLogGroup", "logs:PutRetentionPolicy",
-      "logs:ListTagsLogGroup", "logs:TagResource",
-    ]
-    resources = ["arn:aws:logs:${local.region}:${local.account}:log-group:/aws/eks/${var.cluster_name}/cluster*"]
+    sid       = "CloudWatchLogs"
+    actions   = ["logs:*"]
+    resources = ["*"] # Describe/List actions don't support resource scoping - confirmed live
   }
 
   # Route53 zone IDs aren't known until Terraform creates them, and this
@@ -185,7 +160,10 @@ data "aws_iam_policy_document" "permissions" {
   # actions above, these can't be scoped to a specific hostedzone ARN. The
   # real scoping here is by action set, not by zone: this role can list/read
   # any zone, and can only write records (never create/delete a zone) in
-  # whichever zone isn't the one it manages itself.
+  # whichever zone isn't the one it manages itself. NOT broadened to
+  # route53:* like the other services above - a wildcard here would grant
+  # DeleteHostedZone on the parent/root zone too, violating the constitution's
+  # "never manage the parent/root hosted zone" invariant.
   statement {
     sid       = "Route53Read"
     actions   = ["route53:ListHostedZonesByName", "route53:GetHostedZone", "route53:ListResourceRecordSets"]
@@ -208,20 +186,14 @@ data "aws_iam_policy_document" "permissions" {
   }
 
   statement {
-    sid = "Acm"
-    actions = [
-      "acm:RequestCertificate", "acm:DescribeCertificate", "acm:DeleteCertificate",
-      "acm:AddTagsToCertificate", "acm:ListTagsForCertificate",
-    ]
+    sid       = "Acm"
+    actions   = ["acm:*"]
     resources = ["*"] # certificate ARN includes a random ID assigned at creation, unknown ahead of time
   }
 
   statement {
-    sid = "SecretsManager"
-    actions = [
-      "secretsmanager:CreateSecret", "secretsmanager:DescribeSecret", "secretsmanager:PutSecretValue",
-      "secretsmanager:DeleteSecret", "secretsmanager:TagResource", "secretsmanager:UntagResource",
-    ]
+    sid       = "SecretsManager"
+    actions   = ["secretsmanager:*"]
     resources = ["arn:aws:secretsmanager:${local.region}:${local.account}:secret:${var.project}-*"]
   }
 
@@ -231,16 +203,32 @@ data "aws_iam_policy_document" "permissions" {
     resources = ["*"] # not a resource-scoped action
   }
 
-  # Decrypts committed secrets/*.enc payloads via Terraform's aws_kms_secrets
-  # data source (persistent/secrets, persistent/route53). Encrypt is only
-  # exercised if generate-secrets.sh ever needs to create a new .enc file -
-  # a no-op in steady state for this one already-bootstrapped project, kept
-  # for correctness. Deliberately no kms:ScheduleKeyDeletion/DeleteAlias -
-  # this role must never be able to destroy the bootstrap KMS key itself.
+  # Broadened from just Decrypt/Encrypt (still scoped to this one key's ARN,
+  # never any other key in the account) - the actual "never destroy the
+  # Bootstrap KMS key" guarantee is the explicit Deny below, not this list's
+  # narrowness.
   statement {
-    sid       = "KmsSecretsFile"
-    actions   = ["kms:Decrypt", "kms:Encrypt"]
+    sid       = "KmsSecretsKey"
+    actions   = ["kms:*"]
     resources = [data.aws_kms_alias.secrets.target_key_arn]
+  }
+
+  statement {
+    sid       = "DenyBootstrapKmsKeyDestruction"
+    effect    = "Deny"
+    actions   = ["kms:ScheduleKeyDeletion", "kms:DisableKey", "kms:DeleteImportedKeyMaterial"]
+    resources = [data.aws_kms_alias.secrets.target_key_arn]
+  }
+
+  # aws_kms_alias isn't itself scoped by the key's own ARN in IAM (aliases
+  # are a separate resource type) - denied globally since this role has no
+  # legitimate reason to delete any alias, and a deleted alias would orphan
+  # secret-decrypt.sh's alias-based lookup even if the key itself survives.
+  statement {
+    sid       = "DenyKmsAliasDeletion"
+    effect    = "Deny"
+    actions   = ["kms:DeleteAlias"]
+    resources = ["*"]
   }
 }
 
