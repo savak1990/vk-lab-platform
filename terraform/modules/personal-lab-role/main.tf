@@ -129,6 +129,10 @@ data "aws_iam_policy_document" "permissions" {
       "iam:AttachRolePolicy", "iam:DetachRolePolicy",
       "iam:ListAttachedRolePolicies", "iam:ListRolePolicies",
       "iam:PassRole",
+      # The AWS provider's aws_iam_role delete path always checks for
+      # attached instance profiles first, even when none exist - confirmed
+      # live, DeleteRole denied on every one of these roles at teardown.
+      "iam:ListInstanceProfilesForRole",
     ]
     # Every role this platform's disposable/persistent units create is
     # prefixed with the cluster name (cluster role, node-group role,
