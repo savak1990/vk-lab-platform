@@ -51,6 +51,10 @@ locals {
 resource "aws_iam_role" "this" {
   name               = var.name
   assume_role_policy = module.github_oidc_trust.json
+  # AWS default is 3600s - full-up/full-down can run close to or over an
+  # hour, and an assumed-role session expiring mid-job fails the run with
+  # ExpiredToken partway through Terraform apply/destroy, not cleanly.
+  max_session_duration = 14400
 }
 
 data "aws_iam_policy_document" "permissions" {

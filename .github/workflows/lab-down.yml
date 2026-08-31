@@ -47,6 +47,7 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ inputs.region }}
+          role-duration-seconds: 14400 # matches personal-lab-role's own max_session_duration
 
       - run: make ${{ inputs.depth }}
 
@@ -65,6 +66,7 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ inputs.region }}
+          role-duration-seconds: 14400 # matches personal-lab-role's own max_session_duration
 
       # CONFIRM_DESTROY must exactly equal PROJECT_NAME (scripts/lib/ephemeral-confirm.sh) -
       # the environment's required-reviewer gate above is what makes this

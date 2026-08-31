@@ -45,6 +45,7 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ inputs.region }}
+          role-duration-seconds: 14400 # full-up can run close to/over an hour; matches the role's own max_session_duration
 
       # ROOT_DOMAIN is a GitHub secret, not decrypted from secrets/root-domain.enc -
       # only needed when depth=full-up reaches persistent-up; harmless to set
