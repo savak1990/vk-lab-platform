@@ -19,9 +19,9 @@ for what went wrong and how this platform fixes it.
 State, Bootstrap, and Persistent (specs 001–002) and the full Disposable
 stack — EKS, Karpenter, Argo CD, Envoy Gateway, NLB, Postgres, Kafka, and
 observability (specs 003–014, 024) — are implemented and wired up behind
-`make up`/`make down`. GitHub Actions-driven lifecycle automation (spec
-015 onward) is not yet built, so the platform is currently
-workstation-invoked only.
+`make up`/`make down`. The GitHub OIDC provider and `lab-up.yml`/
+`lab-down.yml` (specs 015–016) are also implemented — the platform can be
+started/stopped from GitHub Actions, not just a workstation.
 
 ## Usage
 
@@ -32,8 +32,9 @@ does not create the layers below it for you (it fails fast, naming the
 command to run first, instead).
 
 ```bash
+make account-up        # once per AWS account: GitHub OIDC provider, eks-access-identity
 make state-up          # once, ever: remote state bucket + locking
-make bootstrap-up      # rare: KMS key, GitHub OIDC, foundational IAM
+make bootstrap-up      # rare: KMS key, personal-lab-role
 make persistent-up     # occasional: lab.<root-domain> zone + cert, secrets
 make up                # frequent: EKS cluster + Argo CD + everything it manages
 
@@ -78,6 +79,7 @@ make status             # reports which layers currently have state in the share
 Other targets:
 
 ```bash
+make github-vars-up                            # once per repo: wires lab-up.yml/lab-down.yml's AWS_ROLE_ARN/ROOT_DOMAIN
 make eks-kubeconfig                            # points kubectl at the disposable cluster
 make clear-cache                               # clears .terragrunt-cache after switching PROJECT_NAME/REGION/SUBDOMAIN
 make secret-encrypt NAME=<name> VALUE=<value>  # encrypts one secrets/<project>/<name>.enc
@@ -92,5 +94,4 @@ shutdown sequence.
 
 Read `docs/architecture.md` and `specs/000-constitution/spec.md` before
 writing a new spec under `specs/`. See [`specs/`](specs/) for what's
-already implemented (001–014, 024) and what's next (015 onward: GitHub
-Actions-driven lifecycle).
+already implemented (001–016, 024) and what's next.

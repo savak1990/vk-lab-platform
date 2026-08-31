@@ -12,9 +12,14 @@ phase's end state.
    Re-run once more, confirm both existence checks report "already exists - nothing
    to create" (idempotency).
 2. `make bootstrap-up` — creates `kms` and `personal-lab-role`.
-3. In GitHub repo settings: set `vars.AWS_ROLE_ARN` to `personal-lab-role`'s ARN,
-   `vars.AWS_REGION` to `eu-west-1`; set `secrets.ROOT_DOMAIN`. Create the
-   `ephemeral-teardown` Environment with a required reviewer (yourself).
+3. `make github-vars-up` - sets `vars.AWS_ROLE_ARN` (from `personal-lab-role`'s
+   own ARN) and `secrets.ROOT_DOMAIN` (decrypted from the already-committed
+   `secrets/$PROJECT_NAME/root-domain.enc`) via `gh`. No `AWS_REGION` variable
+   needed - both workflows already take `region` as a `workflow_dispatch` input
+   and pass `${{ inputs.region }}` straight to `configure-aws-credentials`.
+   Re-run once more, confirm it reports the same values (idempotent).
+   Then create the `ephemeral-teardown` Environment with a required reviewer
+   (yourself) - not scriptable via `gh`, do this once in repo Settings → Environments.
 
 ## Phase 1 — GitHub-initiated up, workstation-initiated verification
 

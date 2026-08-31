@@ -1,4 +1,4 @@
-.PHONY: up down full-up full-down down-through-persistent state-up state-down status account-up account-down bootstrap-up bootstrap-down secret-encrypt secret-decrypt generate-secrets persistent-up persistent-down clear-cache cluster-up cluster-down eks-kubeconfig argo-up argo-down
+.PHONY: up down full-up full-down down-through-persistent state-up state-down status account-up account-down bootstrap-up bootstrap-down github-vars-up secret-encrypt secret-decrypt generate-secrets persistent-up persistent-down clear-cache cluster-up cluster-down eks-kubeconfig argo-up argo-down
 
 .NOTPARALLEL:
 
@@ -75,6 +75,13 @@ bootstrap-up:
 ## Destroys bootstrap-lifecycle resources.
 bootstrap-down:
 	./scripts/bootstrap-down.sh
+
+## Wires lab-up.yml/lab-down.yml's repo variable/secret from what already
+## exists: vars.AWS_ROLE_ARN (personal-lab-role's ARN) and secrets.ROOT_DOMAIN
+## (decrypted from secrets/$(PROJECT_NAME)/root-domain.enc). Run once per
+## project/repo, after `make bootstrap-up` - deliberately in no composite target.
+github-vars-up:
+	./scripts/github-vars-up.sh
 
 ## Creates Persistent-lifecycle resources (lab DNS zone + delegation, ACM
 ## cert, Secrets Manager). Auto-generates postgres-app-password.enc /
