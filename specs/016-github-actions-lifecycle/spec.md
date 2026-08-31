@@ -68,7 +68,7 @@ Excludes: any PR-triggered validation workflow (`validate.yml`), the Atlantis PR
 
 ## Testing / acceptance criteria
 
-> **Scope amendment (ADR 0022):** see `test-plan.md` in this directory for the
+> **Scope amendment (ADR 0022):** see `tests/manual/016-lab-up-down.md` for the
 > full manual test plan covering the bounded-environment/depth-selector scope
 > this spec grew into (the `up`/`full-up`/`down`/`down-through-persistent`/
 > `full-down` matrix, the workstation/GitHub Kubernetes-access equivalence via

@@ -1,9 +1,11 @@
-# 016 test plan (post ADR 0022)
+# 016 — lab-up.yml / lab-down.yml manual test plan
 
-Manual test plan for the personal-lab-role / eks-access-identity / bounded-environment
-lifecycle workflows. Supersedes spec.md's original "Testing / acceptance criteria"
-section, which only covered the pre-amendment scope (see the scope amendment at the
-top of spec.md, and ADR 0022). Run phases in order — each depends on the previous
+Covers personal-lab-role, eks-access-identity, and the bounded-environment
+depth selector (spec 016, ADR 0022) — supersedes spec.md's original
+"Testing / acceptance criteria", which only covered the pre-amendment scope.
+~2–3h end to end (mostly waiting on `full-up`/`full-down`), needs
+`aws`/`kubectl`/`gh`/`terragrunt` CLIs plus repo admin access (Environments,
+variables, secrets). Run phases in order — each depends on the previous
 phase's end state.
 
 ## Phase 0 — One-time setup (workstation only, never CI)
