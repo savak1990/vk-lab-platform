@@ -37,6 +37,21 @@ if ! kubectl cluster-info --request-timeout=5s >/dev/null 2>&1; then
     echo "ARGO-DOWN: WARNING - found instance(s) tagged for this cluster that can no longer be gracefully drained (cluster already unreachable): $STRAY" >&2
     echo "ARGO-DOWN: these will likely block cluster-down's security-group destroy - terminate manually if so." >&2
   fi
+  # Same reasoning as above, but for the NLB: the Gateway-deletion-and-wait
+  # block further down is the only thing that gets aws-load-balancer-
+  # controller to actually delete the NLB (and external-dns to clean up its
+  # DNS records) before those controllers disappear with the cluster. If we
+  # never reached that block, both are now stuck the same way.
+  # aws-load-balancer-controller-created NLBs get a hashed name, not one
+  # containing PROJECT_NAME - tag-based lookup is the only reliable match.
+  STRAY_NLBS="$(aws resourcegroupstaggingapi get-resources --region "$REGION" \
+    --tag-filters "Key=Project,Values=$PROJECT_NAME" "Key=Lifecycle,Values=disposable" \
+    --resource-type-filters elasticloadbalancing:loadbalancer \
+    --query 'ResourceTagMappingList[].ResourceARN' --output text 2>/dev/null || true)"
+  if [ -n "$STRAY_NLBS" ] && [ "$STRAY_NLBS" != "None" ]; then
+    echo "ARGO-DOWN: WARNING - found NLB(s) that can no longer be gracefully deleted (cluster already unreachable): $STRAY_NLBS" >&2
+    echo "ARGO-DOWN: aws-load-balancer-controller and external-dns are both gone - delete the NLB, its security groups, and any lab.<root-domain> DNS records pointing at it manually." >&2
+  fi
   exit 0
 fi
 
