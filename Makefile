@@ -70,7 +70,7 @@ account-down:
 ## Creates bootstrap-lifecycle resources.
 bootstrap-up:
 	./scripts/require-state.sh
-	cd terraform/live/bootstrap && terragrunt run --all apply --non-interactive -auto-approve
+	cd terraform/live/bootstrap && terragrunt run --all --non-interactive -- apply -auto-approve
 
 ## Destroys bootstrap-lifecycle resources.
 bootstrap-down:
@@ -94,7 +94,7 @@ persistent-up:
 	./scripts/generate-secrets.sh
 	./scripts/require-persistent-secrets.sh
 	./scripts/require-unique-subdomain.sh
-	cd terraform/live/persistent && terragrunt run --all apply --non-interactive -auto-approve
+	cd terraform/live/persistent && terragrunt run --all --non-interactive -- apply -auto-approve
 
 ## Destroys Persistent-lifecycle resources. Guarded, rarely-used - see constitution §17.
 ## Also permanently deletes every retained EBS volume the ebs-retain
@@ -111,7 +111,7 @@ persistent-down:
 ## this to install Argo CD and the platform.
 cluster-up:
 	./scripts/require-persistent.sh
-	cd terraform/live/disposable && terragrunt run --all apply --non-interactive -auto-approve
+	cd terraform/live/disposable && terragrunt run --all --non-interactive -- apply -auto-approve
 
 ## Destroys the disposable EKS cluster. Routine, unlike bootstrap-down/persistent-down.
 ## Requires `make argo-down` to have already cascaded away Argo/Karpenter's

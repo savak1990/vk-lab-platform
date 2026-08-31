@@ -58,7 +58,7 @@ cd "$REPO_ROOT/terraform/live/bootstrap"
 # skips Terraform's own redundant "yes" prompt (--non-interactive alone
 # doesn't suppress it, confirmed empirically), not the confirmation itself.
 if is_ephemeral_project "$PROJECT_NAME"; then
-  terragrunt run --all destroy --non-interactive -auto-approve
+  terragrunt run --all --non-interactive -- destroy -auto-approve
 else
   terragrunt run --all destroy
 fi

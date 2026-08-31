@@ -149,7 +149,7 @@ cd "$REPO_ROOT/terraform/live/persistent"
 if [ -t 0 ]; then
   terragrunt run --all destroy
 else
-  terragrunt run --all destroy --non-interactive -auto-approve
+  terragrunt run --all --non-interactive -- destroy -auto-approve
 fi
 
 for unit_prefix in persistent/vpc persistent/route53 persistent/acm persistent/secrets; do
