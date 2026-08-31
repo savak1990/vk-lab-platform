@@ -108,6 +108,19 @@ data "aws_iam_policy_document" "permissions" {
     resources = ["*"]
   }
 
+  # Discovery/list actions with no cluster-scoped ARN form (unlike the Eks
+  # statement above) - confirmed live, DescribeAddonVersions denied under the
+  # cluster/addon-scoped statement.
+  statement {
+    sid = "EksDiscovery"
+    actions = [
+      "eks:DescribeAddonVersions", "eks:DescribeAddonConfiguration",
+      "eks:ListClusters", "eks:ListAddons", "eks:ListNodegroups",
+      "eks:DescribeClusterVersions",
+    ]
+    resources = ["*"]
+  }
+
   statement {
     sid = "PlatformIamRoles"
     actions = [
@@ -136,6 +149,17 @@ data "aws_iam_policy_document" "permissions" {
       "iam:ListAttachedRolePolicies", "iam:ListRolePolicies",
     ]
     resources = [aws_iam_role.this.arn, data.aws_iam_role.eks_access_identity.arn]
+  }
+
+  # EKS/AutoScaling validate their own service-linked roles' existence before
+  # CreateNodegroup/CreateCluster - AWS-owned roles under a fixed path, never
+  # named cluster_name-*. Read-only, wildcard-scoped: GetRole on an AWS-owned
+  # SLR isn't a privilege-escalation surface, unlike the PlatformIamRoles
+  # statement above.
+  statement {
+    sid       = "ServiceLinkedRolesReadOnly"
+    actions   = ["iam:GetRole"]
+    resources = ["arn:aws:iam::${local.account}:role/aws-service-role/*"]
   }
 
   # The eks_managed_node_group submodule looks up the recommended AMI via
