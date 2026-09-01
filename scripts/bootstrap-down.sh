@@ -1,13 +1,11 @@
 #!/usr/bin/env bash
 # Destroys Bootstrap-lifecycle resources (the secrets KMS key and
 # personal-lab-role). Never touches the state bucket itself. Guarded:
-# refuses if Persistent or Disposable state exists; confirmation is
-# terragrunt's own interactive destroy prompt below, not a separate custom one.
+# refuses if Persistent or Disposable state exists. Runs non-interactively,
+# no destroy confirmation prompt.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-# shellcheck source=lib/ephemeral-confirm.sh
-source "$REPO_ROOT/scripts/lib/ephemeral-confirm.sh"
 PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
 STATE_BUCKET="${PROJECT_NAME}-tf-state"
 REGION="${REGION:-eu-west-1}"
@@ -45,7 +43,7 @@ for prefix in persistent disposable; do
   fi
 done
 
-confirm_destroy "This destroys the Bootstrap-lifecycle stack: the secrets KMS key and personal-lab-role (not the state bucket). This is expected to run essentially never."
+echo "Destroying Bootstrap-lifecycle stack for $PROJECT_NAME: secrets KMS key and personal-lab-role (not the state bucket)."
 
 cd "$REPO_ROOT/terraform/live/bootstrap"
 
@@ -53,15 +51,9 @@ cd "$REPO_ROOT/terraform/live/bootstrap"
 # was last built against, terraform will refuse with "Backend configuration
 # has changed" - run `make clear-cache` first in that case.
 #
-# confirm_destroy already required a real confirmation (interactive, or the
-# ephemeral non-interactive path) - -auto-approve here on the ephemeral path
-# skips Terraform's own redundant "yes" prompt (--non-interactive alone
-# doesn't suppress it, confirmed empirically), not the confirmation itself.
-if is_ephemeral_project "$PROJECT_NAME"; then
-  terragrunt run --all --non-interactive -- destroy -auto-approve
-else
-  terragrunt run --all destroy
-fi
+# -auto-approve skips Terraform's own interactive "yes" prompt so this runs
+# unattended (--non-interactive alone doesn't suppress it, confirmed empirically).
+terragrunt run --all --non-interactive -- destroy -auto-approve
 
 # Only after the KMS key is actually gone: its secrets/$PROJECT_NAME/*.enc
 # files are now permanently undecryptable ciphertext, so delete them from

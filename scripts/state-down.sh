@@ -6,8 +6,6 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-# shellcheck source=lib/ephemeral-confirm.sh
-source "$REPO_ROOT/scripts/lib/ephemeral-confirm.sh"
 
 PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
 BUCKET="${PROJECT_NAME}-tf-state"
@@ -51,7 +49,7 @@ for prefix in bootstrap persistent disposable ci; do
   fi
 done
 
-confirm_destroy "This permanently deletes s3://$BUCKET and every version it holds. Only do this against a throwaway/test AWS account, or when fully retiring the personal lab."
+echo "Permanently deleting s3://$BUCKET and every version it holds."
 
 aws s3api list-object-versions --bucket "$BUCKET" --region "$REGION" \
   --output json --query '{Objects: Versions[].{Key:Key,VersionId:VersionId}}' > "$TMP_DIR/versions.json"
