@@ -17,12 +17,12 @@ dependency "eks" {
   mock_outputs_allowed_terraform_commands = ["validate", "plan", "destroy"]
 }
 
-# Crosses into persistent/ like cluster/eks -> persistent/vpc already does.
+# Crosses into bootstrap/ like cluster/eks -> persistent/vpc already does.
 # `make down`'s `run --all destroy` only discovers units under its own cwd
-# (terraform/live/cluster), so this doesn't pull persistent/route53 into
+# (terraform/live/cluster), so this doesn't pull bootstrap/route53 into
 # that scope.
 dependency "route53" {
-  config_path = "${get_repo_root()}/terraform/live/persistent/route53"
+  config_path = "${get_repo_root()}/terraform/live/bootstrap/route53"
 
   mock_outputs = {
     zone_id = "Z00000000000000000000"
