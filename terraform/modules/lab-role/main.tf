@@ -240,7 +240,7 @@ data "aws_iam_policy_document" "permissions" {
   # "never manage the parent/root hosted zone" invariant.
   statement {
     sid       = "Route53Read"
-    actions   = ["route53:ListHostedZonesByName", "route53:GetHostedZone", "route53:ListResourceRecordSets"]
+    actions   = ["route53:ListHostedZones", "route53:ListHostedZonesByName", "route53:GetHostedZone", "route53:ListResourceRecordSets"]
     resources = ["*"]
   }
 
