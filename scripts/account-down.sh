@@ -11,7 +11,7 @@ source "$REPO_ROOT/scripts/lib/confirm-destroy.sh"
 
 PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
 STATE_BUCKET="${PROJECT_NAME}-tf-state"
-REGION="${REGION:-eu-west-1}"
+PROJECT_REGION="${PROJECT_REGION:-eu-west-1}"
 
 confirm_destroy "$PROJECT_NAME"
 
@@ -27,13 +27,13 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 for prefix in bootstrap persistent disposable; do
   # An empty prefix makes list-objects-v2's JMESPath filter evaluate against
   # null, which --output text renders as the literal string "None".
-  keys=$(aws s3api list-objects-v2 --bucket "$STATE_BUCKET" --prefix "$prefix/" --region "$REGION" \
+  keys=$(aws s3api list-objects-v2 --bucket "$STATE_BUCKET" --prefix "$prefix/" --region "$PROJECT_REGION" \
     --query "Contents[?ends_with(Key, 'terraform.tfstate')].Key" --output text)
 
   total=0
   if [ -n "$keys" ] && [ "$keys" != "None" ]; then
     for key in $keys; do
-      aws s3api get-object --bucket "$STATE_BUCKET" --key "$key" --region "$REGION" "$TMP_DIR/state.json" >/dev/null
+      aws s3api get-object --bucket "$STATE_BUCKET" --key "$key" --region "$PROJECT_REGION" "$TMP_DIR/state.json" >/dev/null
       count=$(jq '.resources | length' "$TMP_DIR/state.json")
       total=$((total + count))
     done
@@ -58,7 +58,7 @@ echo "This is expected to run essentially never."
 
 cd "$REPO_ROOT/terraform/live/account"
 
-# If ACCOUNT_MAIN_REGION (not this script's own REGION - see root.hcl) differs
+# If ACCOUNT_MAIN_REGION (not this script's own PROJECT_REGION - see root.hcl) differs
 # from whatever this unit's .terragrunt-cache was last built against,
 # terraform will refuse with "Backend configuration has changed" - run
 # `make clear-cache` first in that case.

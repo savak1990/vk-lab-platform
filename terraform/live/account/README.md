@@ -57,10 +57,10 @@ make account-down     # guarded (CONFIRM_DESTROY=<PROJECT_NAME>), expected to ru
 
 This layer applies in `ACCOUNT_MAIN_REGION` (defaults `eu-west-1`,
 `terraform/live/root.hcl`'s `account_main_region` local), independent of
-whatever `REGION` any given project uses — the secrets KMS key created here
+whatever `PROJECT_REGION` any given project uses — the secrets KMS key created here
 only exists in that one region. `scripts/secret-encrypt.sh`/`secret-decrypt.sh`
-read the same variable directly (not `REGION`) for their `aws kms`
-calls, so a project running under a different `REGION` still resolves the
+read the same variable directly (not `PROJECT_REGION`) for their `aws kms`
+calls, so a project running under a different `PROJECT_REGION` still resolves the
 same key. Only set `ACCOUNT_MAIN_REGION` explicitly if `account-up` was run
 against a non-default region — every other command leaves it at the default.
 

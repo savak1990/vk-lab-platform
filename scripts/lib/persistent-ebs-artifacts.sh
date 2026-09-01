@@ -9,11 +9,11 @@
 # Lifecycle/ManagedBy/Project/Component tag filters - load-bearing - have
 # exactly one definition even though only one caller currently uses them.
 #
-# Not sourced standalone - the caller sets PROJECT_NAME/REGION first.
+# Not sourced standalone - the caller sets PROJECT_NAME/PROJECT_REGION first.
 
 list_retained_volumes() {
   aws ec2 describe-volumes \
-    --region "$REGION" \
+    --region "$PROJECT_REGION" \
     --filters \
       "Name=tag:Lifecycle,Values=persistent" \
       "Name=tag:ManagedBy,Values=ebs-csi-driver" \
@@ -25,7 +25,7 @@ list_retained_volumes() {
 
 list_postgres_snapshots() {
   aws ec2 describe-snapshots \
-    --region "$REGION" \
+    --region "$PROJECT_REGION" \
     --owner-ids self \
     --filters "Name=tag:Project,Values=$PROJECT_NAME" "Name=tag:Component,Values=postgres" \
     --query "Snapshots[].{Id:SnapshotId,StartTime:StartTime}" \

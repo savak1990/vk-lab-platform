@@ -54,7 +54,7 @@ of the operator's default identity - which doesn't match actual usage.
 ### 2. IAM policies can't template a runtime input
 
 The user wanted `lab-up.yml`/`lab-down.yml` to accept `PROJECT_NAME`/
-`SUBDOMAIN`/`REGION` as workflow inputs, plus a depth selector reaching
+`SUBDOMAIN`/`PROJECT_REGION` as workflow inputs, plus a depth selector reaching
 `full-up`/`full-down`, so the same mechanism can later drive a disposable CI
 project. Free-text inputs were rejected: an IAM policy's resource ARNs are
 static strings baked in at Terraform-apply time, so a policy can't expand to
@@ -95,7 +95,7 @@ Bootstrap-lifecycle, per-project) does the AWS-API work: create/destroy the
 disposable EKS cluster and, at `full-up`/`down-through-persistent` depth, the
 Persistent layer (Route53 zone/record, ACM certificate, Secrets Manager). Its
 permission policy is a hand-enumerated allow-list, no service wildcards,
-scoped to exactly one registered `PROJECT_NAME`/`REGION` combination
+scoped to exactly one registered `PROJECT_NAME`/`PROJECT_REGION` combination
 (`vk-lab-platform`/`eu-west-1` today). Its trust policy's `sub` condition
 scopes which GitHub repo can assume it - not which environment a given run
 targets; that's enforced entirely by the resource ARNs in the permission

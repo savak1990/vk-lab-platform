@@ -17,7 +17,7 @@ set -euo pipefail
 
 TIMEOUT="${ARGO_DOWN_TIMEOUT:-900s}"
 POLL_INTERVAL="${ARGO_DOWN_POLL_INTERVAL:-5}"
-REGION="${REGION:-eu-west-1}"
+PROJECT_REGION="${PROJECT_REGION:-eu-west-1}"
 PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
 BACKUP_TIMEOUT="${ARGO_DOWN_BACKUP_TIMEOUT:-120s}"
 SNAPSHOT_TAG_FILTERS=("Name=tag:Project,Values=$PROJECT_NAME" "Name=tag:Component,Values=postgres")
@@ -30,7 +30,7 @@ if ! kubectl cluster-info --request-timeout=5s >/dev/null 2>&1; then
   # later), any Karpenter-owned instance still running here was never
   # drained and never will be. Surfacing it now, not just when it later
   # blocks a security-group destroy with DependencyViolation.
-  STRAY="$(aws ec2 describe-instances --region "$REGION" \
+  STRAY="$(aws ec2 describe-instances --region "$PROJECT_REGION" \
     --filters "Name=tag:eks:eks-cluster-name,Values=${PROJECT_NAME}-eks" "Name=instance-state-name,Values=running,pending,stopping,stopped" \
     --query 'Reservations[].Instances[].InstanceId' --output text 2>/dev/null || true)"
   if [ -n "$STRAY" ] && [ "$STRAY" != "None" ]; then
@@ -44,7 +44,7 @@ if ! kubectl cluster-info --request-timeout=5s >/dev/null 2>&1; then
   # never reached that block, both are now stuck the same way.
   # aws-load-balancer-controller-created NLBs get a hashed name, not one
   # containing PROJECT_NAME - tag-based lookup is the only reliable match.
-  STRAY_NLBS="$(aws resourcegroupstaggingapi get-resources --region "$REGION" \
+  STRAY_NLBS="$(aws resourcegroupstaggingapi get-resources --region "$PROJECT_REGION" \
     --tag-filters "Key=Project,Values=$PROJECT_NAME" "Key=Lifecycle,Values=disposable" \
     --resource-type-filters elasticloadbalancing:loadbalancer elasticloadbalancing:targetgroup \
     --query 'ResourceTagMappingList[].ResourceARN' --output text 2>/dev/null || true)"
@@ -107,7 +107,7 @@ EOF
   # prune time would miscount "newest 2" and delete the wrong one. Count
   # everything tagged, regardless of state.
   echo "ARGO-DOWN: pruning old Postgres EBS snapshots (keeping newest 2)..."
-  if ! OLD_SNAPSHOTS="$(aws ec2 describe-snapshots --region "$REGION" --owner-ids self \
+  if ! OLD_SNAPSHOTS="$(aws ec2 describe-snapshots --region "$PROJECT_REGION" --owner-ids self \
     --filters "${SNAPSHOT_TAG_FILTERS[@]}" \
     --query 'sort_by(Snapshots,&StartTime)[:-2].SnapshotId' --output text)"; then
     echo "ARGO-DOWN: failed to list Postgres EBS snapshots for pruning - aborting." >&2
@@ -115,7 +115,7 @@ EOF
   fi
   if [ -n "$OLD_SNAPSHOTS" ] && [ "$OLD_SNAPSHOTS" != "None" ]; then
     for snapshot_id in $OLD_SNAPSHOTS; do
-      aws ec2 delete-snapshot --region "$REGION" --snapshot-id "$snapshot_id"
+      aws ec2 delete-snapshot --region "$PROJECT_REGION" --snapshot-id "$snapshot_id"
       echo "ARGO-DOWN: pruned old snapshot $snapshot_id"
     done
   fi

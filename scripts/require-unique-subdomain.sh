@@ -20,7 +20,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
 SUBDOMAIN="${SUBDOMAIN:-lab}"
-REGION="${REGION:-eu-west-1}"
+PROJECT_REGION="${PROJECT_REGION:-eu-west-1}"
 STATE_BUCKET="${PROJECT_NAME}-tf-state"
 STATE_KEY="bootstrap/route53/terraform.tfstate"
 
@@ -34,7 +34,7 @@ FQDN="${SUBDOMAIN}.${ROOT_DOMAIN}"
 # list-hosted-zones-by-name matches by prefix/lexicographic position, not
 # exact name - filter down to an exact, trailing-dot-normalized match.
 EXISTING_ZONE_ID="$(aws route53 list-hosted-zones-by-name \
-  --dns-name "$FQDN" --region "$REGION" \
+  --dns-name "$FQDN" --region "$PROJECT_REGION" \
   --query "HostedZones[?Name=='${FQDN}.'].Id" --output text)"
 
 if [ -z "$EXISTING_ZONE_ID" ] || [ "$EXISTING_ZONE_ID" = "None" ]; then
@@ -45,7 +45,7 @@ fi
 TMP_STATE="$(mktemp)"
 trap 'rm -f "$TMP_STATE"' EXIT
 
-if ! aws s3api get-object --bucket "$STATE_BUCKET" --key "$STATE_KEY" --region "$REGION" "$TMP_STATE" >/dev/null 2>&1; then
+if ! aws s3api get-object --bucket "$STATE_BUCKET" --key "$STATE_KEY" --region "$PROJECT_REGION" "$TMP_STATE" >/dev/null 2>&1; then
   echo "REQUIRE-UNIQUE-SUBDOMAIN: refusing - a Route53 zone for $FQDN already exists ($EXISTING_ZONE_ID)," >&2
   echo "but PROJECT_NAME=$PROJECT_NAME has no bootstrap/route53 state - it doesn't own this zone." >&2
   echo "Pick a different SUBDOMAIN for this project, e.g.: SUBDOMAIN=$PROJECT_NAME make bootstrap-up" >&2

@@ -20,7 +20,7 @@ Two units, applied/destroyed together via `make persistent-up`/
 ## Configuration
 
 - `PROJECT_NAME` (env var, default `vk-lab-platform`)
-- `REGION` (env var, default `eu-west-1`)
+- `PROJECT_REGION` (env var, default `eu-west-1`)
 
 `root-domain`/`SUBDOMAIN` and the hosted-zone lookup now belong to
 `bootstrap-up` (see `terraform/live/bootstrap/README.md`) — `bootstrap-up`
@@ -50,7 +50,7 @@ interactive destroy confirmation (type `yes`) rather than a custom prompt,
 and after destroying verifies every unit's state is actually empty before
 reporting success.
 
-If you switch `PROJECT_NAME`/`REGION`, run `make clear-cache`
+If you switch `PROJECT_NAME`/`PROJECT_REGION`, run `make clear-cache`
 first — a `.terragrunt-cache` left over from a different value bakes its
 old backend config into the cached working directory and makes terraform
 refuse to proceed ("Backend configuration has changed"). Not run

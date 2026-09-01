@@ -75,7 +75,7 @@ them.
 command pair. `make civo-up` / `make do-up` / `make aws-up` alongside the
 existing `make cluster-up` would violate that — three commands for one
 lifecycle class, and `make cluster-up` orphaned. The existing precedent
-(`PROJECT_NAME`/`REGION` env vars in `argo-up.sh`, `.Values.target` in
+(`PROJECT_NAME`/`PROJECT_REGION` env vars in `argo-up.sh`, `.Values.target` in
 `gitops/`) is a `TARGET` variable, not a new command per provider:
 
 ```text

@@ -68,10 +68,10 @@ make status             # reports which layers currently have state in the share
   state bucket so no project's `bootstrap-down` can ever affect it.
   Destroying it (`account-down`) affects every project in the account at
   once — expected to run essentially never. Applies in `ACCOUNT_MAIN_REGION`
-  (defaults `eu-west-1`), independent of any project's own `REGION` — the
+  (defaults `eu-west-1`), independent of any project's own `PROJECT_REGION` — the
   shared KMS key only exists in that one region, so
   `secret-encrypt`/`secret-decrypt`/`generate-secrets` also read
-  `ACCOUNT_MAIN_REGION` for their KMS calls regardless of which `REGION`
+  `ACCOUNT_MAIN_REGION` for their KMS calls regardless of which `PROJECT_REGION`
   the current project uses.
 - **Bootstrap** — this project's own state bucket, plus the delegated
   `lab.<root-domain>` DNS zone (and its parent-zone NS delegation) and its
@@ -80,7 +80,7 @@ make status             # reports which layers currently have state in the share
   no per-project IAM scoping to fall back on, so this is the only guard.
 - **Persistent** — the VPC and Secrets Manager. Survives `make down`. See
   [`terraform/live/persistent/README.md`](terraform/live/persistent/README.md)
-  for required configuration (`PROJECT_NAME`/`REGION` env vars).
+  for required configuration (`PROJECT_NAME`/`PROJECT_REGION` env vars).
   `persistent-up` auto-generates any missing password
   (`postgres-app-password`, `grafana-admin-password`,
   `argocd-admin-password`) — it never overwrites one that already exists.
@@ -100,7 +100,7 @@ Other targets:
 
 ```bash
 make eks-kubeconfig                            # points kubectl at the disposable cluster
-make clear-cache                               # clears .terragrunt-cache after switching PROJECT_NAME/REGION/SUBDOMAIN
+make clear-cache                               # clears .terragrunt-cache after switching PROJECT_NAME/PROJECT_REGION/SUBDOMAIN
 make secret-encrypt NAME=<name> VALUE=<value>  # encrypts one secrets/<project>/<name>.enc
 make secret-decrypt NAME=<name>                # prints one secret's plaintext to stdout
 PROJECT_NAME=vk-lab-ci ROOT_DOMAIN=<domain> make generate-secrets  # throwaway CI secrets (fixed "test" passwords)

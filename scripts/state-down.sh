@@ -9,9 +9,9 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
 BUCKET="${PROJECT_NAME}-tf-state"
-REGION="${REGION:-eu-west-1}"
+PROJECT_REGION="${PROJECT_REGION:-eu-west-1}"
 
-if ! aws s3api head-bucket --bucket "$BUCKET" --region "$REGION" 2>/dev/null; then
+if ! aws s3api head-bucket --bucket "$BUCKET" --region "$PROJECT_REGION" 2>/dev/null; then
   echo "s3://$BUCKET does not exist. Nothing to do."
   exit 0
 fi
@@ -31,13 +31,13 @@ for prefix in bootstrap persistent disposable ci; do
   # An empty prefix makes list-objects-v2's JMESPath filter evaluate
   # against null, which --output text renders as the literal string
   # "None" - not empty - so this must be checked explicitly.
-  keys=$(aws s3api list-objects-v2 --bucket "$BUCKET" --prefix "$prefix/" --region "$REGION" \
+  keys=$(aws s3api list-objects-v2 --bucket "$BUCKET" --prefix "$prefix/" --region "$PROJECT_REGION" \
     --query "Contents[?ends_with(Key, 'terraform.tfstate')].Key" --output text)
 
   total=0
   if [ -n "$keys" ] && [ "$keys" != "None" ]; then
     for key in $keys; do
-      aws s3api get-object --bucket "$BUCKET" --key "$key" --region "$REGION" "$TMP_DIR/state.json" >/dev/null
+      aws s3api get-object --bucket "$BUCKET" --key "$key" --region "$PROJECT_REGION" "$TMP_DIR/state.json" >/dev/null
       count=$(jq '.resources | length' "$TMP_DIR/state.json")
       total=$((total + count))
     done
@@ -51,9 +51,9 @@ done
 
 echo "Permanently deleting s3://$BUCKET and every version it holds."
 
-aws s3api list-object-versions --bucket "$BUCKET" --region "$REGION" \
+aws s3api list-object-versions --bucket "$BUCKET" --region "$PROJECT_REGION" \
   --output json --query '{Objects: Versions[].{Key:Key,VersionId:VersionId}}' > "$TMP_DIR/versions.json"
-aws s3api list-object-versions --bucket "$BUCKET" --region "$REGION" \
+aws s3api list-object-versions --bucket "$BUCKET" --region "$PROJECT_REGION" \
   --output json --query '{Objects: DeleteMarkers[].{Key:Key,VersionId:VersionId}}' > "$TMP_DIR/markers.json"
 
 for f in versions markers; do
@@ -63,11 +63,11 @@ for f in versions markers; do
   while [ "$offset" -lt "$total" ]; do
     jq -c --argjson offset "$offset" '{Objects: .Objects[$offset:($offset+1000)], Quiet:true}' "$TMP_DIR/$f.json" > "$TMP_DIR/${f}_batch.json"
     if jq -e '.Objects | length > 0' "$TMP_DIR/${f}_batch.json" >/dev/null; then
-      aws s3api delete-objects --bucket "$BUCKET" --region "$REGION" --delete "file://$TMP_DIR/${f}_batch.json"
+      aws s3api delete-objects --bucket "$BUCKET" --region "$PROJECT_REGION" --delete "file://$TMP_DIR/${f}_batch.json"
     fi
     offset=$((offset + 1000))
   done
 done
 
-aws s3api delete-bucket --bucket "$BUCKET" --region "$REGION"
+aws s3api delete-bucket --bucket "$BUCKET" --region "$PROJECT_REGION"
 echo "Deleted s3://$BUCKET."

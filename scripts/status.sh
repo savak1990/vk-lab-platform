@@ -7,9 +7,9 @@ set -euo pipefail
 
 PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
 BUCKET="${PROJECT_NAME}-tf-state"
-REGION="${REGION:-eu-west-1}"
+PROJECT_REGION="${PROJECT_REGION:-eu-west-1}"
 
-if ! aws s3api head-bucket --bucket "$BUCKET" --region "$REGION" >/dev/null 2>&1; then
+if ! aws s3api head-bucket --bucket "$BUCKET" --region "$PROJECT_REGION" >/dev/null 2>&1; then
   echo "state:        absent   (run: make state-up)"
   echo "bootstrap:    unknown  (state layer missing)"
   echo "persistent:   unknown  (state layer missing)"
@@ -30,7 +30,7 @@ for prefix in bootstrap persistent disposable; do
   # An empty prefix makes list-objects-v2's JMESPath filter evaluate
   # against null, which --output text renders as the literal string
   # "None" - not empty - so this must be checked explicitly.
-  keys=$(aws s3api list-objects-v2 --bucket "$BUCKET" --prefix "$prefix/" --region "$REGION" \
+  keys=$(aws s3api list-objects-v2 --bucket "$BUCKET" --prefix "$prefix/" --region "$PROJECT_REGION" \
     --query "Contents[?ends_with(Key, 'terraform.tfstate')].Key" --output text)
 
   if [ -z "$keys" ] || [ "$keys" = "None" ]; then
@@ -40,7 +40,7 @@ for prefix in bootstrap persistent disposable; do
 
   total=0
   for key in $keys; do
-    aws s3api get-object --bucket "$BUCKET" --key "$key" --region "$REGION" "$TMP_DIR/state.json" >/dev/null
+    aws s3api get-object --bucket "$BUCKET" --key "$key" --region "$PROJECT_REGION" "$TMP_DIR/state.json" >/dev/null
     count=$(jq '.resources | length' "$TMP_DIR/state.json")
     total=$((total + count))
   done
@@ -61,7 +61,7 @@ CLUSTER_NAME="$(terragrunt --working-dir "$REPO_ROOT/terraform/live/disposable/e
 
 if [ -z "$CLUSTER_NAME" ]; then
   printf '%-13s unknown  (cluster not up)\n' "argo:"
-elif ! aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$REGION" --alias "$CLUSTER_NAME" >/dev/null 2>&1 \
+elif ! aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$PROJECT_REGION" --alias "$CLUSTER_NAME" >/dev/null 2>&1 \
   || ! kubectl cluster-info --request-timeout=5s >/dev/null 2>&1; then
   printf '%-13s unknown  (cluster unreachable)\n' "argo:"
 elif ! kubectl get application root -n argocd >/dev/null 2>&1; then

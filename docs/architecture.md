@@ -969,7 +969,7 @@ one GitHub OIDC provider (spec 015, account layer, created once)
         │
         ├── personal-lab role (spec 016) — "normal deploy"
         │     hand-enumerated, no service wildcards, scoped to exactly one
-        │     registered PROJECT_NAME/REGION combination's state and AWS
+        │     registered PROJECT_NAME/PROJECT_REGION combination's state and AWS
         │     resources — never a service the workstation/GitHub distinction
         │     could touch outside it (ADR 0022)
         │
@@ -1201,7 +1201,7 @@ make full-down         the exact reverse of full-up — tears down the entire pl
 
 `make state-up`/`make state-down` still exist as their own targets (per-project state bucket create/destroy), but nothing in the normal flow calls them directly — `bootstrap-up`/`bootstrap-down` call them internally as their first/last step. The Account layer has its own separate dedicated state bucket, created/destroyed the same way by `scripts/account-state-up.sh`/`scripts/account-state-down.sh`, called internally by `account-up`/`account-down`.
 
-The Account layer applies in `ACCOUNT_MAIN_REGION` (`terraform/live/root.hcl`'s `account_main_region` local, defaults `eu-west-1`), independent of any project's own `REGION` — the shared secrets KMS key created there only exists in that one region. `scripts/secret-encrypt.sh`/`secret-decrypt.sh` read `ACCOUNT_MAIN_REGION` directly for their `aws kms` calls (not `REGION`), so `make secret-encrypt`/`secret-decrypt`/`generate-secrets` resolve the same key regardless of which `REGION` the current `PROJECT_NAME` runs in — see `tests/manual/016-lab-up-down.md` Phase 7 for the test that would otherwise miss this.
+The Account layer applies in `ACCOUNT_MAIN_REGION` (`terraform/live/root.hcl`'s `account_main_region` local, defaults `eu-west-1`), independent of any project's own `PROJECT_REGION` — the shared secrets KMS key created there only exists in that one region. `scripts/secret-encrypt.sh`/`secret-decrypt.sh` read `ACCOUNT_MAIN_REGION` directly for their `aws kms` calls (not `PROJECT_REGION`), so `make secret-encrypt`/`secret-decrypt`/`generate-secrets` resolve the same key regardless of which `PROJECT_REGION` the current `PROJECT_NAME` runs in — see `tests/manual/016-lab-up-down.md` Phase 7 for the test that would otherwise miss this.
 
 `make up`/`make down` compose `cluster-up`/`argo-up` and `argo-down`/`cluster-down` respectively (ADR 0012, spec 006-1) — `argo-down`'s Argo-driven cascade must complete before `cluster-down` touches the EKS cluster, since only Argo/Karpenter's own controllers can clean up the AWS resources they provisioned outside Terraform.
 
@@ -1736,16 +1736,14 @@ make up
 make down
 ```
 
-GitHub (`lab.yml` takes bounded `PROJECT_NAME`/`SUBDOMAIN`/`REGION` choice
-inputs plus a `target` selector enumerating individual `make` targets
-directly, plus a `confirm_destroy` free-text input wired to `CONFIRM_DESTROY`
-for `bootstrap-down`/`full-down`):
+GitHub (`lab.yml` takes bounded `PROJECT_NAME`/`SUBDOMAIN`/`PROJECT_REGION` choice
+inputs plus a `target` selector enumerating only the composite `make` targets
+(individual-phase targets like `bootstrap-up`/`cluster-up` are workstation-only,
+not dispatchable), plus a `confirm_destroy` free-text input wired to
+`CONFIRM_DESTROY` for `full-down`, which reaches `bootstrap-down`):
 
 ```text
-lab.yml (target: status | state-up | state-down | bootstrap-up |
-                 bootstrap-down | persistent-up | persistent-down |
-                 cluster-up | cluster-down | argo-up | argo-down |
-                 up | down | platform-up | platform-down |
+lab.yml (target: status | up | down | platform-up | platform-down |
                  full-up | full-down)
     ↓
 make ${{ inputs.target }}   (CONFIRM_DESTROY=${{ inputs.confirm_destroy }})

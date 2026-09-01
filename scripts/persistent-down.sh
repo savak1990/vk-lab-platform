@@ -22,7 +22,7 @@ source "$REPO_ROOT/scripts/lib/persistent-ebs-artifacts.sh"
 
 PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
 STATE_BUCKET="${PROJECT_NAME}-tf-state"
-REGION="${REGION:-eu-west-1}"
+PROJECT_REGION="${PROJECT_REGION:-eu-west-1}"
 
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
@@ -39,7 +39,7 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 count_resources() {
   local prefix="$1"
   local keys
-  if ! keys=$(aws s3api list-objects-v2 --bucket "$STATE_BUCKET" --prefix "$prefix/" --region "$REGION" \
+  if ! keys=$(aws s3api list-objects-v2 --bucket "$STATE_BUCKET" --prefix "$prefix/" --region "$PROJECT_REGION" \
     --query "Contents[?ends_with(Key, 'terraform.tfstate')].Key" --output text); then
     echo "Failed to list s3://$STATE_BUCKET/$prefix/ - aborting rather than treating this as 'no resources'." >&2
     return 1
@@ -52,7 +52,7 @@ count_resources() {
   if [ -n "$keys" ] && [ "$keys" != "None" ]; then
     local key count
     for key in $keys; do
-      if ! aws s3api get-object --bucket "$STATE_BUCKET" --key "$key" --region "$REGION" "$TMP_DIR/state.json" >/dev/null; then
+      if ! aws s3api get-object --bucket "$STATE_BUCKET" --key "$key" --region "$PROJECT_REGION" "$TMP_DIR/state.json" >/dev/null; then
         echo "Failed to read state object $key - aborting rather than treating this as 'no resources'." >&2
         return 1
       fi
@@ -101,7 +101,7 @@ echo "This is expected to run essentially never."
 
 cd "$REPO_ROOT/terraform/live/persistent"
 
-# If PROJECT_NAME/REGION/SUBDOMAIN differs from whatever this unit's
+# If PROJECT_NAME/PROJECT_REGION/SUBDOMAIN differs from whatever this unit's
 # .terragrunt-cache was last built against, terraform will refuse with
 # "Backend configuration has changed" - run `make clear-cache` first in
 # that case. Unlike bootstrap-down.sh/account-down.sh, this isn't gated by
@@ -143,7 +143,7 @@ failed_volumes=()
 # is bash-4+ only; no other script here assumes a non-default bash.
 while read -r volume_id; do
   [ -z "$volume_id" ] && continue
-  if aws ec2 delete-volume --region "$REGION" --volume-id "$volume_id"; then
+  if aws ec2 delete-volume --region "$PROJECT_REGION" --volume-id "$volume_id"; then
     echo "Deleted retained volume $volume_id"
   else
     echo "Failed to delete retained volume $volume_id" >&2
@@ -177,7 +177,7 @@ fi
 failed_snapshots=()
 while read -r snapshot_id; do
   [ -z "$snapshot_id" ] && continue
-  if aws ec2 delete-snapshot --region "$REGION" --snapshot-id "$snapshot_id"; then
+  if aws ec2 delete-snapshot --region "$PROJECT_REGION" --snapshot-id "$snapshot_id"; then
     echo "Deleted Postgres snapshot $snapshot_id"
   else
     echo "Failed to delete Postgres snapshot $snapshot_id" >&2

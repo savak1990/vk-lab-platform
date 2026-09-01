@@ -10,11 +10,11 @@
 export PROJECT_NAME ?= vk-lab-platform
 
 # Overridable to run the whole platform in another AWS region, e.g.
-# REGION=us-east-1 make bootstrap-up
-export REGION ?= eu-west-1
+# PROJECT_REGION=us-east-1 make bootstrap-up
+export PROJECT_REGION ?= eu-west-1
 
 # The account layer (kms/lab-role/github-oidc/eks-access-identity, created
-# once by account-up) applies in this fixed region regardless of REGION -
+# once by account-up) applies in this fixed region regardless of PROJECT_REGION -
 # the shared secrets KMS key only exists here. Only relevant to
 # account-up/account-down and secret-encrypt/secret-decrypt/generate-secrets;
 # leave unset unless account-up itself was run against a non-default region.
@@ -138,7 +138,7 @@ cluster-down:
 ## you or GitHub Actions created the cluster - see docs/adr on this.
 ## Usage: make eks-kubeconfig
 eks-kubeconfig:
-	aws eks update-kubeconfig --name $(PROJECT_NAME)-eks --region $(REGION) --alias $(PROJECT_NAME)-eks \
+	aws eks update-kubeconfig --name $(PROJECT_NAME)-eks --region $(PROJECT_REGION) --alias $(PROJECT_NAME)-eks \
 		--role-arn "$$(aws iam get-role --role-name eks-access-identity --query Role.Arn --output text)"
 	kubectl config set-context --current --namespace=default
 
@@ -157,7 +157,7 @@ argo-down:
 
 ## Clears every .terragrunt-cache dir under terraform/live/. Run as the
 ## first step of every composite *-up/*-down target below - a cache left
-## over from a different PROJECT_NAME/REGION/SUBDOMAIN bakes its old backend
+## over from a different PROJECT_NAME/PROJECT_REGION/SUBDOMAIN bakes its old backend
 ## config into the cached working directory, which then makes terraform
 ## refuse to proceed ("Backend configuration has changed").
 clear-cache:

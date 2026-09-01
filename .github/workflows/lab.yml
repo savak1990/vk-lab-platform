@@ -22,7 +22,7 @@ on:
         options: [lab]
         default: lab
       region:
-        description: REGION
+        description: PROJECT_REGION
         type: choice
         options: [eu-west-1]
         default: eu-west-1
@@ -31,16 +31,6 @@ on:
         type: choice
         options:
           - status
-          - state-up
-          - state-down
-          - bootstrap-up
-          - bootstrap-down
-          - persistent-up
-          - persistent-down
-          - cluster-up
-          - cluster-down
-          - argo-up
-          - argo-down
           - up
           - down
           - platform-up
@@ -49,7 +39,7 @@ on:
           - full-down
         default: up
       confirm_destroy:
-        description: "Only for bootstrap-down/full-down: type PROJECT_NAME exactly to confirm."
+        description: "Only for full-down (which reaches bootstrap-down): type PROJECT_NAME exactly to confirm."
         type: string
         default: ""
 
@@ -65,7 +55,7 @@ jobs:
     env:
       PROJECT_NAME: ${{ inputs.project_name }}
       SUBDOMAIN: ${{ inputs.subdomain }}
-      REGION: ${{ inputs.region }}
+      PROJECT_REGION: ${{ inputs.region }}
     steps:
       - uses: actions/checkout@v4
 

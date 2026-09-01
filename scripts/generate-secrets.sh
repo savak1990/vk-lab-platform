@@ -27,10 +27,10 @@ PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
 SECRETS_DIR="$REPO_ROOT/secrets/$PROJECT_NAME"
 ROOT_DOMAIN="${ROOT_DOMAIN:-}"
 FIXED_TEST_PASSWORDS="${FIXED_TEST_PASSWORDS:-false}"
-REGION="${REGION:-eu-west-1}"
+PROJECT_REGION="${PROJECT_REGION:-eu-west-1}"
 
 random_password() {
-  aws secretsmanager get-random-password --region "$REGION" --exclude-punctuation \
+  aws secretsmanager get-random-password --region "$PROJECT_REGION" --exclude-punctuation \
     --password-length 32 --output text --query RandomPassword
 }
 

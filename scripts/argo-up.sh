@@ -8,7 +8,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
-REGION="${REGION:-eu-west-1}"
+PROJECT_REGION="${PROJECT_REGION:-eu-west-1}"
 ARGOCD_CHART_VERSION="${ARGOCD_CHART_VERSION:-10.4.0}"
 TARGET_REVISION="${TARGET_REVISION:-main}"
 REPO_URL="${REPO_URL:-https://github.com/savak1990/vk-lab-platform}"
@@ -51,7 +51,7 @@ NODE_SUBNET_ID="$(eks_output node_subnet_id)"
 # via a full hostname built from it (label DNS output by short name instead).
 LAB_FQDN="$(route53_output fqdn)"
 EKS_ACCESS_IDENTITY_ARN="$(aws iam get-role --role-name eks-access-identity --query Role.Arn --output text)"
-aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$REGION" --alias "$CLUSTER_NAME" \
+aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$PROJECT_REGION" --alias "$CLUSTER_NAME" \
   --role-arn "$EKS_ACCESS_IDENTITY_ARN" >/dev/null
 kubectl config set-context --current --namespace=default >/dev/null
 
@@ -142,7 +142,7 @@ fi
 # apply time, so there's nothing for Terraform state to track (ADR 0013).
 # A probe error (creds/network) aborts loudly rather than silently
 # falling through to a fresh initdb over a good snapshot.
-if ! SNAPSHOTS_JSON="$(aws ec2 describe-snapshots --region "$REGION" --owner-ids self \
+if ! SNAPSHOTS_JSON="$(aws ec2 describe-snapshots --region "$PROJECT_REGION" --owner-ids self \
   --filters "${SNAPSHOT_TAG_FILTERS[@]}" "Name=status,Values=completed" \
   --query 'sort_by(Snapshots,&StartTime)' --output json)"; then
   echo "ARGO-UP: failed to query AWS for existing Postgres snapshots - aborting rather than risking a false 'fresh start'." >&2
@@ -160,7 +160,7 @@ fi
 # a new snapshot). Re-queried without the status=completed filter, unlike
 # the discovery query above - a still-pending snapshot must still count
 # toward "newest 2" or this miscounts and prunes the wrong one.
-if ! ALL_SNAPSHOTS_JSON="$(aws ec2 describe-snapshots --region "$REGION" --owner-ids self \
+if ! ALL_SNAPSHOTS_JSON="$(aws ec2 describe-snapshots --region "$PROJECT_REGION" --owner-ids self \
   --filters "${SNAPSHOT_TAG_FILTERS[@]}" \
   --query 'sort_by(Snapshots,&StartTime)' --output json)"; then
   echo "ARGO-UP: failed to query AWS for Postgres snapshots to prune - aborting." >&2
@@ -169,7 +169,7 @@ fi
 OLD_SNAPSHOTS="$(echo "$ALL_SNAPSHOTS_JSON" | jq -r '.[:-2][].SnapshotId')"
 if [ -n "$OLD_SNAPSHOTS" ]; then
   for snapshot_id in $OLD_SNAPSHOTS; do
-    aws ec2 delete-snapshot --region "$REGION" --snapshot-id "$snapshot_id"
+    aws ec2 delete-snapshot --region "$PROJECT_REGION" --snapshot-id "$snapshot_id"
     echo "ARGO-UP: pruned old snapshot $snapshot_id"
   done
 fi
@@ -209,7 +209,7 @@ helm upgrade --install root-application "$REPO_ROOT/gitops/bootstrap" \
   --server-side --force-conflicts \
   --set target=aws \
   --set project="$PROJECT_NAME" \
-  --set region="$REGION" \
+  --set region="$PROJECT_REGION" \
   --set vpcId="$VPC_ID" \
   --set repoURL="$REPO_URL" \
   --set targetRevision="$TARGET_REVISION" \

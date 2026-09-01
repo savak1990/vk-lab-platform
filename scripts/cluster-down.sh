@@ -10,7 +10,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-REGION="${REGION:-eu-west-1}"
+PROJECT_REGION="${PROJECT_REGION:-eu-west-1}"
 PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
 
 if kubectl cluster-info --request-timeout=5s >/dev/null 2>&1; then
@@ -24,7 +24,7 @@ else
   # when the cluster went unreachable is now permanently un-drainable, and
   # will surface later as a DependencyViolation on the node security group's
   # destroy. Log it now so that failure isn't a surprise several minutes in.
-  STRAY="$(aws ec2 describe-instances --region "$REGION" \
+  STRAY="$(aws ec2 describe-instances --region "$PROJECT_REGION" \
     --filters "Name=tag:eks:eks-cluster-name,Values=${PROJECT_NAME}-eks" "Name=instance-state-name,Values=running,pending,stopping,stopped" \
     --query 'Reservations[].Instances[].InstanceId' --output text 2>/dev/null || true)"
   if [ -n "$STRAY" ] && [ "$STRAY" != "None" ]; then
@@ -36,17 +36,17 @@ fi
 cd "$REPO_ROOT/terraform/live/disposable" && terragrunt run --all --non-interactive -- destroy -auto-approve
 
 echo "CLUSTER-DOWN: destroy complete - checking for leaked disposable-lifecycle AWS resources..."
-LEAKED_INSTANCES="$(aws ec2 describe-instances --region "$REGION" \
+LEAKED_INSTANCES="$(aws ec2 describe-instances --region "$PROJECT_REGION" \
   --filters "Name=tag:Project,Values=$PROJECT_NAME" "Name=tag:Lifecycle,Values=disposable" "Name=instance-state-name,Values=running,pending,stopping,stopped" \
   --query 'Reservations[].Instances[].InstanceId' --output text 2>/dev/null || true)"
-LEAKED_VOLUMES="$(aws ec2 describe-volumes --region "$REGION" \
+LEAKED_VOLUMES="$(aws ec2 describe-volumes --region "$PROJECT_REGION" \
   --filters "Name=tag:Project,Values=$PROJECT_NAME" "Name=tag:Lifecycle,Values=disposable" "Name=status,Values=available" \
   --query 'Volumes[].VolumeId' --output text 2>/dev/null || true)"
 # NLBs/ENIs/security groups created by aws-load-balancer-controller aren't
 # Terraform-tracked, so the destroy above never touches them - tag-based
 # lookup is the only way to catch one stranded by the same cluster-already-
 # unreachable condition argo-down.sh warns about.
-LEAKED_NLBS="$(aws resourcegroupstaggingapi get-resources --region "$REGION" \
+LEAKED_NLBS="$(aws resourcegroupstaggingapi get-resources --region "$PROJECT_REGION" \
   --tag-filters "Key=Project,Values=$PROJECT_NAME" "Key=Lifecycle,Values=disposable" \
   --resource-type-filters elasticloadbalancing:loadbalancer elasticloadbalancing:targetgroup \
   --query 'ResourceTagMappingList[].ResourceARN' --output text 2>/dev/null || true)"

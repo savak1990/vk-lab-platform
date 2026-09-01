@@ -13,7 +13,7 @@ nested inside it, for the same reason `terraform/live/state/` sits outside
 the very bucket its own Terraform state lives in.
 
 Like every unit under `account/`, this bucket lives in `ACCOUNT_MAIN_REGION`
-(defaults `eu-west-1`), not whatever `REGION` a project happens to be using.
+(defaults `eu-west-1`), not whatever `PROJECT_REGION` a project happens to be using.
 
 ## Usage
 

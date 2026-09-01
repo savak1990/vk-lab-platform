@@ -100,17 +100,22 @@ Merge the redesign to `main`, then:
 
 ## Phase 6 — CONFIRM_DESTROY guard: negative and positive
 
-19. Dispatch `lab.yml` with `target=bootstrap-down` and `confirm_destroy`
-    left blank. Confirm the job fails fast with `Refusing: set
+19. `lab.yml`'s dropdown only exposes composite targets
+    (`status`/`up`/`down`/`platform-up`/`platform-down`/`full-up`/`full-down`)
+    — `bootstrap-down` alone isn't dispatchable, so exercise its
+    `CONFIRM_DESTROY` guard via `full-down` instead. Dispatch `lab.yml` with
+    `target=full-down` and `confirm_destroy` left blank. Confirm the job
+    fails fast, once it reaches `bootstrap-down`, with `Refusing: set
     CONFIRM_DESTROY=vk-lab-platform to confirm destroying it.` before any
-    Terraform/AWS call.
+    Route53/ACM/state-bucket call — `argo-down`/`cluster-down`/`persistent-down`
+    (which run first, unguarded) still complete.
 20. Dispatch again with `confirm_destroy=vk-lab-platform`. Confirm it
     proceeds: destroys `route53`+`acm`, then this project's own state
     bucket via raw AWS API (`scripts/state-down.sh`) — confirm no Terraform
     "backend bucket not found" error appears (the self-reference case ADR
     0004 exists to avoid).
-21. `make status` — confirm Bootstrap is absent. Re-run `make bootstrap-up`
-    to restore the environment for later phases.
+21. `make status` — confirm Bootstrap is absent. Locally, `make full-up` to
+    restore the environment for later phases.
 22. Locally, `account-down`'s same guard: run `CONFIRM_DESTROY=wrong-name
     make account-down` (do **not** use the real project name) — confirm it
     refuses. Do not actually run `account-down` for real in this test pass;
@@ -120,32 +125,32 @@ Merge the redesign to `main`, then:
 
 The shared `lab-role`'s permission policy is applied once, in
 `ACCOUNT_MAIN_REGION`, but must authorize a project's resources in *any*
-`REGION` — its EKS/SSM/Secrets Manager resource ARNs are wildcarded on
+`PROJECT_REGION` — its EKS/SSM/Secrets Manager resource ARNs are wildcarded on
 region (`arn:aws:eks:*:...`, not `arn:aws:eks:eu-west-1:...`) specifically
 for this. The shared `alias/lab-secrets` KMS key, unlike the role, isn't
 region-portable — it only exists in `ACCOUNT_MAIN_REGION` — so
 `secret-encrypt`/`secret-decrypt`/`generate-secrets` must keep resolving it
-there even while `REGION` (this project's own region) changes.
+there even while `PROJECT_REGION` (this project's own region) changes.
 
 23. Leave `ACCOUNT_MAIN_REGION` unset (defaults `eu-west-1`, matching
     wherever `account-up` actually ran). Pick a second region (e.g.
     `us-east-1`) and a throwaway `PROJECT_NAME` (e.g. `vk-lab-region-test`).
-    `REGION=us-east-1 PROJECT_NAME=vk-lab-region-test ROOT_DOMAIN=<domain>
+    `PROJECT_REGION=us-east-1 PROJECT_NAME=vk-lab-region-test ROOT_DOMAIN=<domain>
     make generate-secrets` — confirm this succeeds: `generate-secrets`
     calls `secret-encrypt.sh`, which must resolve `alias/lab-secrets` under
-    `ACCOUNT_MAIN_REGION` (still `eu-west-1`), not the `REGION=us-east-1`
-    this command was invoked with. Then `REGION=us-east-1
+    `ACCOUNT_MAIN_REGION` (still `eu-west-1`), not the `PROJECT_REGION=us-east-1`
+    this command was invoked with. Then `PROJECT_REGION=us-east-1
     PROJECT_NAME=vk-lab-region-test make bootstrap-up` (a different
     `SUBDOMAIN` too, to avoid the uniqueness guard) — confirm this project's
     own state bucket and Route53/ACM units apply in `us-east-1`
-    (`REGION`), while `secret-decrypt.sh`/`secret-encrypt.sh` calls
+    (`PROJECT_REGION`), while `secret-decrypt.sh`/`secret-encrypt.sh` calls
     anywhere in this flow still succeed against `eu-west-1`
     (`ACCOUNT_MAIN_REGION`).
-24. `REGION=us-east-1 PROJECT_NAME=vk-lab-region-test make persistent-up
+24. `PROJECT_REGION=us-east-1 PROJECT_NAME=vk-lab-region-test make persistent-up
     cluster-up`. Confirm the cluster actually comes up — this is the real
     test that `lab-role`'s EKS/SSM-AMI-lookup/Secrets-Manager statements
     aren't silently denying every action outside `account-up`'s own region.
-25. `REGION=us-east-1 PROJECT_NAME=vk-lab-region-test CONFIRM_DESTROY=vk-lab-region-test
+25. `PROJECT_REGION=us-east-1 PROJECT_NAME=vk-lab-region-test CONFIRM_DESTROY=vk-lab-region-test
     make full-down` to tear it down again (no `account-down` needed — the
     shared role/KMS survive, only this throwaway project's own resources
     are destroyed).
@@ -195,7 +200,7 @@ there even while `REGION` (this project's own region) changes.
 
 - Registering a second, permanently-dispatchable `PROJECT_NAME` dropdown
   entry for `vk-lab-ci` — Phase 7 above proves the shared role/KMS already
-  support any `PROJECT_NAME`/`REGION` mechanically; wiring a permanent
+  support any `PROJECT_NAME`/`PROJECT_REGION` mechanically; wiring a permanent
   second dropdown option is a separate, smaller follow-up.
 - Numeric per-PR ephemeral clusters — a stated future idea, not yet
   designed; a full EKS cluster per PR was flagged as likely the wrong tool
