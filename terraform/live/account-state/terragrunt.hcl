@@ -21,5 +21,5 @@ locals {
 }
 
 inputs = {
-  bucket_name = "${local.github_repo_owner}-account-tf-state"
+  bucket_name = "${local.github_repo_owner}-account-state"
 }

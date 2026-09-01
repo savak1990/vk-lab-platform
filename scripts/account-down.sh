@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Destroys account-global resources (the shared secrets KMS key, lab-role,
-# the GitHub OIDC provider, eks-access-identity), then the Account layer's
-# own dedicated state bucket. Destroys EVERY project's ability to
+# Destroys account-global resources (lab-role, eks-access-identity,
+# github-oidc, the shared secrets KMS key, in that sequence), then the
+# Account layer's own dedicated state bucket, then every project's now-dead
+# secrets/*/*.enc ciphertext. Destroys EVERY project's ability to
 # authenticate/decrypt secrets at once - guarded by confirm_destroy and by
 # refusing while this project still has state.
 set -euo pipefail
@@ -62,9 +63,39 @@ cd "$REPO_ROOT/terraform/live/account"
 # from whatever this unit's .terragrunt-cache was last built against,
 # terraform will refuse with "Backend configuration has changed" - run
 # `make clear-cache` first in that case.
-terragrunt run --all destroy
+#
+# Sequenced explicitly, not `terragrunt run --all destroy` - these units
+# have no terragrunt `dependency` blocks (a destroy plan re-evaluates each
+# unit's own `data` lookups too, so an unordered/parallel run --all could
+# destroy kms or eks-access-identity before lab-role's destroy-time plan
+# re-resolves its data.aws_kms_alias/data.aws_iam_role lookups, aborting
+# mid-teardown). lab-role first (the only one with such lookups), the rest
+# in any order - mirrors account-up.sh's apply order, reversed.
+echo "Destroying lab-role ..."
+(cd "$REPO_ROOT/terraform/live/account/lab-role" && terragrunt destroy --non-interactive -auto-approve)
+
+echo "Destroying eks-access-identity ..."
+(cd "$REPO_ROOT/terraform/live/account/eks-access-identity" && terragrunt destroy --non-interactive -auto-approve)
+
+echo "Destroying github-oidc ..."
+(cd "$REPO_ROOT/terraform/live/account/github-oidc" && terragrunt destroy --non-interactive -auto-approve)
+
+echo "Destroying kms ..."
+(cd "$REPO_ROOT/terraform/live/account/kms" && terragrunt destroy --non-interactive -auto-approve)
 
 # The account bucket itself, via raw AWS API - same self-reference
 # constraint as state-down.sh: Terraform can't destroy the bucket holding
 # its own state.
 "$REPO_ROOT/scripts/account-state-down.sh"
+
+# Only after alias/lab-secrets is actually gone: every project's
+# secrets/<project>/*.enc becomes permanently undecryptable ciphertext at
+# once (the key was shared, unlike the old per-project key this replaced) -
+# delete them all so a later bootstrap-up/generate-secrets/secret-decrypt
+# fails with a clear "missing, regenerate" error instead of silently
+# attempting to decrypt dead ciphertext. Never commits on its own - the
+# operator commits the deletion themselves.
+if compgen -G "$REPO_ROOT/secrets/*/*.enc" > /dev/null; then
+  find "$REPO_ROOT/secrets" -mindepth 2 -maxdepth 2 -name '*.enc' -print -delete
+  echo "Deleted every project's secrets/*/*.enc (alias/lab-secrets destroyed - commit this deletion)."
+fi

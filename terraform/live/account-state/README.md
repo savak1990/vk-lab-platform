@@ -3,7 +3,7 @@
 Creates the Terraform remote-state S3 bucket the Account layer
 (`terraform/live/account/*`) stores its own state in — never a project's
 `${PROJECT_NAME}-tf-state` (see `terraform/live/state/README.md` for that
-one). Named `${github_repo_owner}-account-tf-state`, derived from `GITHUB_REPO`,
+one). Named `${github_repo_owner}-account-state`, derived from `GITHUB_REPO`,
 not `PROJECT_NAME`.
 
 Kept as its own top-level directory, a sibling of `account/` rather than

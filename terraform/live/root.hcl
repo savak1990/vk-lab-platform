@@ -25,7 +25,7 @@ locals {
   # Derived from the repo owner, not PROJECT_NAME, so it's stable regardless
   # of which project happens to run account-up.
   github_repo_owner    = split("/", get_env("GITHUB_REPO", "savak1990/vk-lab-platform"))[0]
-  account_state_bucket = "${local.github_repo_owner}-account-tf-state"
+  account_state_bucket = "${local.github_repo_owner}-account-state"
 
   relative_path = path_relative_to_include()
   path_parts    = split("/", local.relative_path)

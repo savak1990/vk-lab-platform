@@ -163,7 +163,7 @@ argo-down:
 clear-cache:
 	find terraform/live -type d -name .terragrunt-cache -prune -exec rm -rf {} +
 
-## Encrypts a value into secrets/<NAME>.enc using the bootstrap KMS key.
+## Encrypts a value into secrets/<NAME>.enc using the shared account-global KMS key.
 ## Usage: make secret-encrypt NAME=test VALUE=secret
 secret-encrypt: export SECRET_NAME := $(NAME)
 secret-encrypt: export SECRET_VALUE := $(VALUE)

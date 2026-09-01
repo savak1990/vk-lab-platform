@@ -11,7 +11,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 UNIT_DIR="$REPO_ROOT/terraform/live/account-state"
 GITHUB_REPO="${GITHUB_REPO:-savak1990/vk-lab-platform}"
 GITHUB_REPO_OWNER="${GITHUB_REPO%%/*}"
-BUCKET="${GITHUB_REPO_OWNER}-account-tf-state"
+BUCKET="${GITHUB_REPO_OWNER}-account-state"
 ACCOUNT_MAIN_REGION="${ACCOUNT_MAIN_REGION:-eu-west-1}"
 
 cd "$UNIT_DIR"

@@ -40,7 +40,7 @@ redesign), against the live `vk-lab-platform` environment.
 Merge the redesign to `main`, then:
 
 4. `make account-up` — creates the account's own dedicated state bucket
-   (`${github_repo_owner}-account-tf-state`), `kms` (`alias/lab-secrets`),
+   (`${github_repo_owner}-account-state`), `kms` (`alias/lab-secrets`),
    `github-oidc`, `lab-role`, `eks-access-identity`. Confirm it reports
    `vars.AWS_ROLE_ARN` set; `secrets.ROOT_DOMAIN` will report **skipped**
    (no `root-domain.enc` under the new key yet — expected at this point).
