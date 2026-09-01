@@ -244,10 +244,20 @@ data "aws_iam_policy_document" "permissions" {
     resources = ["*"]
   }
 
+  # CreateHostedZone doesn't support resource-level scoping (no zone ID
+  # exists yet) - same AWS IAM limitation as s3:CreateBucket/ec2:Create*
+  # above, so it needs Resource "*" rather than the hostedzone/* pattern
+  # below.
+  statement {
+    sid       = "Route53CreateZone"
+    actions   = ["route53:CreateHostedZone"]
+    resources = ["*"]
+  }
+
   statement {
     sid = "Route53OwnedZone"
     actions = [
-      "route53:CreateHostedZone", "route53:DeleteHostedZone",
+      "route53:DeleteHostedZone",
       "route53:ChangeTagsForResource", "route53:ListTagsForResource",
     ]
     resources = ["arn:aws:route53:::hostedzone/*"]
