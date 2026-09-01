@@ -22,7 +22,7 @@ Excludes: any dedicated/custom VPC (spec 021), Karpenter itself (006 — Karpent
 
 ## Requirements
 
-1. EKS control plane and system node group are Disposable-lifecycle — created by `terraform/live/disposable/` and destroyed by `make down` (constitution §3, architecture.md §6).
+1. EKS control plane and system node group are Disposable-lifecycle — created by `terraform/live/cluster/` and destroyed by `make down` (constitution §3, architecture.md §6).
 2. The cluster and node group MUST run in the AWS account's **default VPC**, using its default public subnets — no VPC is created by this repository yet. This is an intentional, temporary simplification (see architecture.md §10): nodes will have public IPs as a result. A dedicated, more isolated persistent VPC is deferred to spec 021 and MUST NOT be built prematurely here.
 3. Because nodes sit in public subnets, security groups MUST be scoped tightly (cluster/node communication only, no broad inbound access) to partially compensate for the lack of network-layer isolation — this is not a substitute for a real VPC, just a mitigation until spec 021.
 4. System node group MUST be sized only for controllers, not workloads — Karpenter (spec 006) is responsible for workload capacity, kept separately bounded per constitution §9.
@@ -32,7 +32,7 @@ Excludes: any dedicated/custom VPC (spec 021), Karpenter itself (006 — Karpent
 
 ## Implementation hints
 
-- `terraform/live/disposable/` is its own Terragrunt stack/state, separate from bootstrap and persistent, so `make down` can destroy this without touching the Route 53 zone/ACM certificate from spec 002.
+- `terraform/live/cluster/` is its own Terragrunt stack/state, separate from bootstrap and persistent, so `make down` can destroy this without touching the Route 53 zone/ACM certificate from spec 002.
 - Use a well-maintained community EKS Terraform module rather than hand-rolling control-plane/node-group resources — reduces surface area for IAM/security-group mistakes. Most such modules accept an existing VPC/subnet ID list, so pointing them at the default VPC's subnets (via a data source, not a hardcoded ID) is a small, well-supported configuration, not a workaround.
 - Keep the system node group small (e.g., 1–2 small/medium instances) — it only needs to run controllers, not application or data workloads.
 - Note for spec 021: record which AZs the default VPC's subnets used here, since any EBS volumes created later (specs 005/007/025) will be locked to those AZs — this matters when planning the eventual move to a dedicated VPC.

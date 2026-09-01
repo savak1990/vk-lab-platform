@@ -186,7 +186,7 @@ vk-lab-platform/
 │       │   ├── rds/
 │       │   └── persistent-storage/
 │       │
-│       ├── disposable/            # aws target only; the local target (§10a) has no Terraform-managed equivalent
+│       ├── cluster/                # aws target only; the local target (§10a) has no Terraform-managed equivalent
 │       │   ├── terragrunt.stack.hcl
 │       │   ├── eks/
 │       │   ├── eks-addons/
@@ -196,7 +196,7 @@ vk-lab-platform/
 │       │
 │       └── ci/
 │           ├── persistent/
-│           └── disposable/
+│           └── cluster/
 │
 ├── gitops/
 │   ├── bootstrap/
@@ -1584,12 +1584,12 @@ AWS account
 
 personal/
 ├── persistent
-└── disposable
+└── cluster
 
 ci/
 ├── persistent     CI's own delegated subdomain (ci.lab.<root-domain>)
 │                  and certificate (*.ci.lab.<root-domain>)
-└── disposable     one shared ephemeral environment, torn down after
+└── cluster        one shared ephemeral environment, torn down after
                    each run
 ```
 
@@ -1659,7 +1659,7 @@ This protects against:
 
 Destructive lifecycle tests must be protected against conflicting concurrent runs.
 
-The CI architecture must prevent two workflows from mutating the same Terraform state simultaneously. One GitHub Actions `concurrency:` group, with `cancel-in-progress: false`, covers the full-lifecycle workflow as a whole: successive triggers queue behind each other rather than racing against the same shared `ci/disposable` environment (§29). Terraform state locking (native S3 lockfile locking, per stack) provides the underlying guarantee that two runs can never write the same state concurrently even if the GitHub-side concurrency group were somehow bypassed.
+The CI architecture must prevent two workflows from mutating the same Terraform state simultaneously. One GitHub Actions `concurrency:` group, with `cancel-in-progress: false`, covers the full-lifecycle workflow as a whole: successive triggers queue behind each other rather than racing against the same shared `ci/cluster` environment (§29). Terraform state locking (native S3 lockfile locking, per stack) provides the underlying guarantee that two runs can never write the same state concurrently even if the GitHub-side concurrency group were somehow bypassed.
 
 Cheap, stateless jobs (fast validation, the kind-based GitOps test) use ordinary PR-scoped concurrency with `cancel-in-progress: true` instead — nothing is lost by cancelling a superseded run of a check that holds no infrastructure.
 
@@ -1675,7 +1675,7 @@ GitOps/Argo/Helm/Kubernetes config change
 
 Terraform/full-infra pull request
     → apply → E2E suite → idempotency check (plan shows no diff) → destroy
-    (the shared ci/disposable environment, §29)
+    (the shared ci/cluster environment, §29)
 
 scheduled (e.g. nightly) or manually triggered
     → recreate-after-destroy resilience test:

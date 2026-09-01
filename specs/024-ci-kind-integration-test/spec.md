@@ -32,7 +32,7 @@ Excludes: `minikube` as a CI target (spec 022 keeps both `make minikube-up` and 
 - `make test` should accept an optional service filter (e.g. `make test SERVICE=postgres` invoking `make test-postgres`), or `make test-postgres` etc. can simply be thin wrappers around `ginkgo --label-filter=postgres ./tests/e2e/...` — either is fine as long as the mapping from Makefile target to Ginkgo label is obvious and documented in the Makefile itself.
 - Pointing the root Application's `targetRevision` at the PR's commit SHA can reuse whatever mechanism spec 022 Requirement 15 chose for syncing from a local working directory, or simply set `targetRevision` to `${{ github.event.pull_request.head.sha }}` if the CI cluster syncs from the GitHub repo (rather than a local checkout) for this particular workflow — pick whichever is simpler given spec 022's final mechanism, and document the choice here once made.
 - A GitHub Actions matrix or simple sequential `make test-<service>` calls both work for running services in parallel/isolation (spec 023 Requirement 10/11); start with whichever is simpler to wire up and revisit if CI time becomes a problem.
-- Keep the workflow's only real logic in path filters (trigger on `gitops/**`, `terraform/live/disposable/**` changes) and the trusted-context gate (Requirement 6) — everything else is `make kind-up && make test && make kind-delete`.
+- Keep the workflow's only real logic in path filters (trigger on `gitops/**`, `terraform/live/cluster/**` changes) and the trusted-context gate (Requirement 6) — everything else is `make kind-up && make test && make kind-delete`.
 
 ## Testing / acceptance criteria
 

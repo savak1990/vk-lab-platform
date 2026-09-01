@@ -33,7 +33,7 @@ else
   fi
 fi
 
-cd "$REPO_ROOT/terraform/live/disposable" && terragrunt run --all --non-interactive -- destroy -auto-approve
+cd "$REPO_ROOT/terraform/live/cluster" && terragrunt run --all --non-interactive -- destroy -auto-approve
 
 echo "CLUSTER-DOWN: destroy complete - checking for leaked disposable-lifecycle AWS resources..."
 LEAKED_INSTANCES="$(aws ec2 describe-instances --region "$PROJECT_REGION" \

@@ -323,7 +323,7 @@ Bootstrap lifecycle, per project.
 `terraform/live/persistent/`
 Persistent lifecycle.
 
-`terraform/live/disposable/`
+`terraform/live/cluster/`
 Disposable personal-lab lifecycle.
 
 `terraform/live/ci/`

@@ -56,7 +56,9 @@ locals {
   # resources are account-global rather than per-project, but they're still
   # Bootstrap-lifecycle (constitution §16 requires one of
   # bootstrap|persistent|disposable, not a scope name, on every tagged resource).
-  lifecycle_class = lookup({ account = "bootstrap", "account-state" = "bootstrap" }, local.raw_class, local.raw_class)
+  # "cluster" is likewise a directory name, not a lifecycle class - the
+  # constitution's tag vocabulary is disposable, so it maps back to that.
+  lifecycle_class = lookup({ account = "bootstrap", "account-state" = "bootstrap", cluster = "disposable" }, local.raw_class, local.raw_class)
 }
 
 generate "provider" {

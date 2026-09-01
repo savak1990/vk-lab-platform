@@ -2,7 +2,7 @@
 
 Covers `gitops/templates/platform/aws/envoy-gateway/{application,gateway,httproutes,policies}.yaml`,
 `gitops/templates/platform/aws/aws-load-balancer-controller/application.yaml`,
-`terraform/modules/aws-lb-controller-pod-identity/`, `terraform/live/disposable/aws-lb-controller-pod-identity/`,
+`terraform/modules/aws-lb-controller-pod-identity/`, `terraform/live/cluster/aws-lb-controller-pod-identity/`,
 the `scripts/argo-up.sh`/`scripts/argo-down.sh` edits, and the metrics wiring added to
 `gitops/templates/platform/aws/ebs-csi/application.yaml` and `aws-load-balancer-controller/application.yaml`.
 

@@ -226,7 +226,7 @@ CREATE
 
 A required GitHub status check MUST NOT itself be path-filtered in a way that lets it stay pending forever — fast validation MUST include an always-running gate job that reports a result (success or explicit skip) for every change category, fanning out to path-filtered sub-jobs rather than exposing them directly as required checks.
 
-CI infrastructure MUST be isolated from the personal lab environment. Full-lifecycle validation runs against one shared, isolated `ci/persistent`/`ci/disposable` environment, tagged `Ephemeral=true` (§16) so a scheduled cleanup job can find leftovers. Runs MUST be serialized — a GitHub Actions concurrency group MUST queue successive triggers rather than let two runs race against the same environment (ADR 0007).
+CI infrastructure MUST be isolated from the personal lab environment. Full-lifecycle validation runs against one shared, isolated `ci/persistent`/`ci/cluster` environment, tagged `Ephemeral=true` (§16) so a scheduled cleanup job can find leftovers. Runs MUST be serialized — a GitHub Actions concurrency group MUST queue successive triggers rather than let two runs race against the same environment (ADR 0007).
 
 Untrusted public pull requests MUST NOT receive privileged AWS deployment access.
 

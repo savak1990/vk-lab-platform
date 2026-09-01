@@ -9,7 +9,7 @@ terraform {
 
 # Crosses into persistent/ like external-secrets-pod-identity already does.
 # `make down`'s `run --all destroy` only discovers units under its own cwd
-# (terraform/live/disposable), so this doesn't pull persistent/vpc into that scope.
+# (terraform/live/cluster), so this doesn't pull persistent/vpc into that scope.
 dependency "vpc" {
   config_path = "${get_repo_root()}/terraform/live/persistent/vpc"
 

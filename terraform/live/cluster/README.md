@@ -1,4 +1,4 @@
-# Disposable stack
+# Cluster stack
 
 Creates Disposable-lifecycle resources: destroyed by `make cluster-down`,
 recreated by `make cluster-up`, with zero effect on the Persistent stack

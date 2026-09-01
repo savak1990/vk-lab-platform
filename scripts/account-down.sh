@@ -25,7 +25,7 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 # rather than testing key existence, since a destroyed stack's now-empty state
 # file is never deleted. The command substitution is a plain statement, not an
 # `if` condition, so `set -e` fails closed if the aws call itself errors.
-for prefix in bootstrap persistent disposable; do
+for prefix in bootstrap persistent cluster; do
   # An empty prefix makes list-objects-v2's JMESPath filter evaluate against
   # null, which --output text renders as the literal string "None".
   keys=$(aws s3api list-objects-v2 --bucket "$STATE_BUCKET" --prefix "$prefix/" --region "$PROJECT_REGION" \

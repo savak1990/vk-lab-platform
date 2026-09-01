@@ -32,7 +32,7 @@ ON_DEMAND_KARPENTER_INSTANCE_TYPES_JSON="$(jq -Rc 'split(",")' <<< "$ON_DEMAND_K
 SNAPSHOT_TAG_FILTERS=("Name=tag:Project,Values=$PROJECT_NAME" "Name=tag:Component,Values=postgres")
 
 eks_output() {
-  terragrunt --working-dir "$REPO_ROOT/terraform/live/disposable/eks" output -raw "$1"
+  terragrunt --working-dir "$REPO_ROOT/terraform/live/cluster/eks" output -raw "$1"
 }
 
 acm_output() {

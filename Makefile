@@ -124,7 +124,7 @@ persistent-down:
 ## this to install Argo CD and the platform.
 cluster-up:
 	./scripts/require-persistent.sh
-	cd terraform/live/disposable && terragrunt run --all --non-interactive -- apply -auto-approve
+	cd terraform/live/cluster && terragrunt run --all --non-interactive -- apply -auto-approve
 
 ## Destroys the disposable EKS cluster. Routine, unlike bootstrap-down/persistent-down.
 ## Requires `make argo-down` to have already cascaded away Argo/Karpenter's

@@ -26,7 +26,7 @@ opt-in exception (Requirement 12). It shares a single `gitops/` tree with
 the existing **`aws` target** (real EKS) via Helm values-file overrides —
 there is no separate local-only manifest tree.
 
-Because `terraform/live/disposable/` and `gitops/` don't exist on disk yet,
+Because `terraform/live/cluster/` and `gitops/` don't exist on disk yet,
 this spec's requirements are binding on how specs 004 and 006–012, and 024, get
 implemented, not an add-on applied after the fact. Any of those specs whose
 current text assumes AWS is the only target has (or will get) a scope note

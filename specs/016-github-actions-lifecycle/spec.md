@@ -70,7 +70,7 @@ Excludes: any PR-triggered validation workflow (`validate.yml`), the Atlantis PR
 
 1. `lab-up.yml`/`lab-down.yml` MUST be thin wrappers: check out the repo, assume the OIDC role created by this spec, and call the exact same `make up`/`make down` targets a developer would run from their own workstation — no divergent logic between workstation-initiated and GitHub execution (architecture.md §34, constitution's platform invariant #13).
 2. GitHub Actions → AWS authentication MUST use OIDC and temporary credentials (constitution §5) — the same requirement that applies to every other GitHub-triggered AWS interaction in this platform, not a special case for these two workflows.
-3. These workflows operate on the **personal** lab's persistent/disposable state, not CI's isolated `ci/persistent`/`ci/disposable` state (constitution §11) — the OIDC role they assume MUST be scoped to the personal-lab Terraform state paths, distinct from spec 020's CI-scoped role and from spec 018's per-stack Atlantis roles.
+3. These workflows operate on the **personal** lab's persistent/disposable state, not CI's isolated `ci/persistent`/`ci/cluster` state (constitution §11) — the OIDC role they assume MUST be scoped to the personal-lab Terraform state paths, distinct from spec 020's CI-scoped role and from spec 018's per-stack Atlantis roles.
 4. Triggering MUST NOT be automatic on every push or PR — these workflows start/stop real, billable infrastructure and MUST require an explicit human action (`workflow_dispatch`, optionally gated by a GitHub Environment with required reviewers) rather than firing on routine repository activity.
 5. `make down` runs (whether local or via `lab-down.yml`) MUST still respect every postcondition and safety check spec 014 already defines — this spec adds a trigger, not a second implementation of shutdown logic.
 6. `AWS_ROLE_ARN` and `AWS_REGION` MUST be supplied to these workflows as GitHub Environment/repository variables, never hardcoded (constitution §19) — this is what lets a fork owner point `lab-up.yml`/`lab-down.yml` at their own account/role/region with zero source-code changes.
@@ -99,5 +99,5 @@ Excludes: any PR-triggered validation workflow (`validate.yml`), the Atlantis PR
 - Manually triggering `lab.yml` with `target=up` from the GitHub Actions UI produces the same healthy end state as running `make up` locally (verified against spec 014's own health checks).
 - Manually triggering `lab.yml` with `target=down` produces the same clean teardown as running `make down` locally, including all of spec 014's postcondition checks passing.
 - The workflow doesn't fire on a routine `git push` or pull request — confirm by pushing a commit and a PR and observing no `lab.yml` run is triggered.
-- The OIDC role these workflows assume cannot touch `ci/persistent`/`ci/disposable` state (verify via IAM policy scoping, not just convention).
+- The OIDC role these workflows assume cannot touch `ci/persistent`/`ci/cluster` state (verify via IAM policy scoping, not just convention).
 - Fast validation (GitHub Actions workflow YAML validation) applies to these workflow files like any other change under `.github/workflows/`.

@@ -28,7 +28,7 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 # first apply. Command substitution assignment is a plain statement, not
 # an `if` condition, so `set -e` aborts here (fails closed) if the aws
 # call itself errors, instead of silently treating a failed check as "ok".
-for prefix in persistent disposable; do
+for prefix in persistent cluster; do
   # An empty prefix makes list-objects-v2's JMESPath filter evaluate
   # against null, which --output text renders as the literal string
   # "None" - not empty - so this must be checked explicitly.

@@ -2,7 +2,7 @@
 
 Creates the Terraform remote-state S3 bucket every other project-scoped unit
 in this repository (`state` itself, `bootstrap/*`, `persistent/*`,
-`disposable/*`, `ci/persistent`, `ci/disposable`) stores its state in. See
+`cluster/*`, `ci/persistent`, `ci/cluster`) stores its state in. See
 `docs/adr/0004-dedicated-state-lifecycle-layer.md` for why this is its own
 layer below Bootstrap rather than a unit inside it.
 

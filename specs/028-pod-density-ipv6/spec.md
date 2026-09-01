@@ -41,7 +41,7 @@ it, for future implementation. **This spec does not implement anything yet** —
 problem and its trade-offs are captured once, instead of being re-discovered at the next density
 crunch.
 
-Excludes: any change to `terraform/live/disposable/eks`, Karpenter's `EC2NodeClass`/`NodePool`, or VPC
+Excludes: any change to `terraform/live/cluster/eks`, Karpenter's `EC2NodeClass`/`NodePool`, or VPC
 CNI config as part of *this* spec — those are the follow-up work an implementer picks from Option 1 or
 4 below, done under its own PR once actually needed or chosen.
 

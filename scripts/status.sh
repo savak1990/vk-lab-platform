@@ -23,9 +23,8 @@ echo "state:        present  (s3://$BUCKET)"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
-for prefix in bootstrap persistent disposable; do
+for prefix in bootstrap persistent cluster; do
   label="$prefix"
-  [ "$prefix" = "disposable" ] && label="cluster"
 
   # An empty prefix makes list-objects-v2's JMESPath filter evaluate
   # against null, which --output text renders as the literal string
@@ -57,7 +56,7 @@ done
 # cluster instead, and only attempts to if the disposable EKS cluster
 # actually has Terraform state to read a cluster_name from.
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CLUSTER_NAME="$(terragrunt --working-dir "$REPO_ROOT/terraform/live/disposable/eks" output -raw cluster_name 2>/dev/null || true)"
+CLUSTER_NAME="$(terragrunt --working-dir "$REPO_ROOT/terraform/live/cluster/eks" output -raw cluster_name 2>/dev/null || true)"
 
 if [ -z "$CLUSTER_NAME" ]; then
   printf '%-13s unknown  (cluster not up)\n' "argo:"

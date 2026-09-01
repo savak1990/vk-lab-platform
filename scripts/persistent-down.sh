@@ -68,7 +68,7 @@ count_resources() {
 
 echo "Checking for Disposable state in s3://$STATE_BUCKET ..."
 
-if ! disposable_total=$(count_resources "disposable"); then
+if ! disposable_total=$(count_resources "cluster"); then
   exit 1
 fi
 if [ "$disposable_total" -gt 0 ]; then
