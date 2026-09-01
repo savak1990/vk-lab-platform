@@ -1,15 +1,20 @@
 #!/usr/bin/env bash
-# Creates account-global resources (the GitHub OIDC provider,
-# eks-access-identity). Run once per AWS account from a workstation, with the
-# primary PROJECT_NAME - never from CI, and never with a per-PR PROJECT_NAME.
-# Deliberately not part of `make up` or `make full-up`.
+# Creates account-global resources (the shared secrets KMS key, the shared
+# lab-role every project's GitHub Actions run assumes, the GitHub OIDC
+# provider, eks-access-identity), then wires lab.yml's repo variable/secret:
+# vars.AWS_ROLE_ARN (lab-role's own ARN - set once, ever, not per-project)
+# and secrets.ROOT_DOMAIN (decrypted locally, never something a CI role
+# does at runtime). Run once per AWS account from a workstation - never
+# from CI. Deliberately not part of `make up` or `make full-up`.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
+GITHUB_REPO="${GITHUB_REPO:-savak1990/vk-lab-platform}"
 
-# Units here inherit the S3 backend, so a missing state bucket surfaces as an
-# opaque backend-init error without this.
-"$REPO_ROOT/scripts/require-state.sh"
+# This layer's own dedicated state bucket - never a project's, so no
+# project's bootstrap-down can ever orphan these units' Terraform state.
+"$REPO_ROOT/scripts/account-state-up.sh"
 
 # -auto-approve alongside --non-interactive: the latter only covers
 # terragrunt's own prompts, not terraform's native apply confirmation -
@@ -22,10 +27,17 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # unapplied because this script reported "already exists" and skipped
 # `apply` entirely). `terraform apply` is already idempotent when this
 # project's own state owns the resource - it plans only the real diff.
-# A second PROJECT_NAME's own (empty) state hitting these same account-global
-# singletons would still fail with AWS's EntityAlreadyExists - that's the
-# correct outcome (an explicit `terraform import` is the fix then), not
-# something to paper over with a pre-check that also hides real updates.
+#
+# kms and eks-access-identity both before lab-role: lab-role's
+# data "aws_kms_alias" and data "aws_iam_role" (looked up by fixed name,
+# "eks-access-identity") both resolve at plan time - a hard failure on a
+# brand-new account if either doesn't exist yet. eks-access-identity itself
+# has no such dependency on lab-role - it only interpolates lab-role's ARN
+# as a string in its trust condition, not a data lookup - so this ordering
+# is one-directional.
+
+echo "Applying kms ..."
+(cd "$REPO_ROOT/terraform/live/account/kms" && terragrunt apply --non-interactive -auto-approve)
 
 echo "Applying github-oidc ..."
 (cd "$REPO_ROOT/terraform/live/account/github-oidc" && terragrunt apply --non-interactive -auto-approve)
@@ -33,5 +45,26 @@ echo "Applying github-oidc ..."
 echo "Applying eks-access-identity ..."
 (cd "$REPO_ROOT/terraform/live/account/eks-access-identity" && terragrunt apply --non-interactive -auto-approve)
 
-# A future third account-global unit needs its own `terragrunt apply` line
-# here, matching this file's pattern.
+echo "Applying lab-role ..."
+(cd "$REPO_ROOT/terraform/live/account/lab-role" && terragrunt apply --non-interactive -auto-approve)
+
+# --- absorbed from the now-deleted scripts/github-vars-up.sh ---
+
+role_arn=$(aws iam get-role --role-name lab-role --query Role.Arn --output text)
+gh variable set AWS_ROLE_ARN --repo "$GITHUB_REPO" --body "$role_arn"
+echo "Set $GITHUB_REPO vars.AWS_ROLE_ARN = $role_arn"
+
+# ROOT_DOMAIN is the same value for every project (it's your one domain, not
+# a per-project setting) - a repo-level secret, set once here, never per
+# project. Decrypted with the operator's own credentials, not a CI role's -
+# granting a GitHub Actions role KMS decrypt just to learn a non-secret
+# hostname was deliberately rejected.
+if [ -f "$REPO_ROOT/secrets/$PROJECT_NAME/root-domain.enc" ]; then
+  "$REPO_ROOT/scripts/secret-decrypt.sh" root-domain | gh secret set ROOT_DOMAIN --repo "$GITHUB_REPO"
+  echo "Set $GITHUB_REPO secrets.ROOT_DOMAIN"
+else
+  echo "secrets/$PROJECT_NAME/root-domain.enc not found - skipping secrets.ROOT_DOMAIN." >&2
+  echo "Re-run account-up after 'make bootstrap-up' has generated it." >&2
+fi
+
+echo "Still manual: create the ephemeral-teardown Environment (Settings > Environments) with a required reviewer - not scriptable via gh for this repo."

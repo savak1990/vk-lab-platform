@@ -36,11 +36,11 @@ eks_output() {
 }
 
 acm_output() {
-  terragrunt --working-dir "$REPO_ROOT/terraform/live/persistent/acm" output -raw "$1"
+  terragrunt --working-dir "$REPO_ROOT/terraform/live/bootstrap/acm" output -raw "$1"
 }
 
 route53_output() {
-  terragrunt --working-dir "$REPO_ROOT/terraform/live/persistent/route53" output -raw "$1"
+  terragrunt --working-dir "$REPO_ROOT/terraform/live/bootstrap/route53" output -raw "$1"
 }
 
 CLUSTER_NAME="$(eks_output cluster_name)"

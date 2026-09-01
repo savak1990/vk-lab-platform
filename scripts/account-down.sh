@@ -1,14 +1,19 @@
 #!/usr/bin/env bash
-# Destroys account-global resources (the GitHub OIDC provider,
-# eks-access-identity). Guarded: refuses while this project still has state.
-# Confirmation is terragrunt's own interactive destroy prompt below, not a
-# separate custom one.
+# Destroys account-global resources (the shared secrets KMS key, lab-role,
+# the GitHub OIDC provider, eks-access-identity), then the Account layer's
+# own dedicated state bucket. Destroys EVERY project's ability to
+# authenticate/decrypt secrets at once - guarded by confirm_destroy and by
+# refusing while this project still has state.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$REPO_ROOT/scripts/lib/confirm-destroy.sh"
+
 PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
 STATE_BUCKET="${PROJECT_NAME}-tf-state"
 REGION="${REGION:-eu-west-1}"
+
+confirm_destroy "$PROJECT_NAME"
 
 echo "Checking for Bootstrap/Persistent/Disposable state in s3://$STATE_BUCKET ..."
 
@@ -44,14 +49,22 @@ done
 # environment in the same account may still be relying on the provider, and
 # there is no cheap way to enumerate them - hence the warning rather than a
 # guard.
-echo "This destroys the account-global stack: the GitHub OIDC provider and eks-access-identity."
-echo "Both are shared by EVERY project and CI environment in AWS account"
-echo "$(aws sts get-caller-identity --query Account --output text) - any of them still using it will fail to authenticate."
+echo "This destroys the account-global stack: the shared secrets KMS key (alias/lab-secrets),"
+echo "lab-role, the GitHub OIDC provider, and eks-access-identity."
+echo "All are shared by EVERY project and CI environment in AWS account"
+echo "$(aws sts get-caller-identity --query Account --output text) - any of them still using it will fail to"
+echo "authenticate, and every project's committed secrets/*/*.enc becomes permanently undecryptable."
 echo "This is expected to run essentially never."
 
 cd "$REPO_ROOT/terraform/live/account"
 
-# If PROJECT_NAME/REGION differs from whatever this unit's .terragrunt-cache
-# was last built against, terraform will refuse with "Backend configuration
-# has changed" - run `make clear-cache` first in that case.
+# If ACCOUNT_MAIN_REGION (not this script's own REGION - see root.hcl) differs
+# from whatever this unit's .terragrunt-cache was last built against,
+# terraform will refuse with "Backend configuration has changed" - run
+# `make clear-cache` first in that case.
 terragrunt run --all destroy
+
+# The account bucket itself, via raw AWS API - same self-reference
+# constraint as state-down.sh: Terraform can't destroy the bucket holding
+# its own state.
+"$REPO_ROOT/scripts/account-state-down.sh"

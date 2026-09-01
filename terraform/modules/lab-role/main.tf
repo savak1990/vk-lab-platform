@@ -17,13 +17,16 @@ data "aws_iam_role" "eks_access_identity" {
 # the underlying key's ARN, not an alias ARN - an alias-ARN resource element
 # would silently grant nothing.
 data "aws_kms_alias" "secrets" {
-  name = "alias/${var.project}-secrets"
+  name = "alias/lab-secrets"
 }
 
 locals {
-  account    = data.aws_caller_identity.current.account_id
-  region     = data.aws_region.current.region
-  bucket_arn = "arn:aws:s3:::${var.project}-tf-state"
+  account = data.aws_caller_identity.current.account_id
+  region  = data.aws_region.current.region
+  # Every project's own dedicated state bucket, whatever its PROJECT_NAME -
+  # the account layer's own state bucket is named distinctly (not "*-tf-state")
+  # specifically so this role never matches it.
+  bucket_arn = "arn:aws:s3:::*-tf-state"
 }
 
 resource "aws_iam_role" "this" {
@@ -71,14 +74,17 @@ data "aws_iam_policy_document" "permissions" {
     resources = ["${local.bucket_arn}/*"]
   }
 
-  # The actual safety guarantee for the state bucket - not the Allow list's
-  # narrowness above. Bucket-level actions (bare ARN, no /* suffix): can't
-  # delete the bucket or weaken/remove its own protections.
+  # NOT denying s3:DeleteBucket here (unlike the earlier per-project role) -
+  # this role is shared, and an ephemeral project's own bootstrap-down must
+  # be able to actually delete its own state bucket. The remaining Denies
+  # still block weakening the bucket's protections while it's in use -
+  # nothing in this platform's own destroy path (raw aws s3api
+  # delete-objects/delete-bucket in state-down.sh) needs any of these.
   statement {
-    sid    = "DenyStateBucketDestruction"
+    sid    = "DenyStateBucketProtectionWeakening"
     effect = "Deny"
     actions = [
-      "s3:DeleteBucket", "s3:PutBucketPolicy", "s3:PutBucketAcl",
+      "s3:PutBucketPolicy", "s3:PutBucketAcl",
       "s3:PutBucketVersioning", "s3:PutLifecycleConfiguration",
       "s3:PutBucketPublicAccessBlock", "s3:PutEncryptionConfiguration",
     ]
@@ -90,12 +96,18 @@ data "aws_iam_policy_document" "permissions" {
     actions = [
       "eks:*",
     ]
+    # "*-eks" matches any PROJECT_NAME's cluster ("<project>-eks") - no
+    # per-project apply needed to grant this role a new project's cluster.
+    # Region wildcarded too: this role is applied once, in account-up's own
+    # region, but must authorize clusters created in any REGION a project
+    # chooses - a literal ${local.region} here would silently deny every
+    # other region.
     resources = [
-      "arn:aws:eks:${local.region}:${local.account}:cluster/${var.cluster_name}",
-      "arn:aws:eks:${local.region}:${local.account}:nodegroup/${var.cluster_name}/*/*",
-      "arn:aws:eks:${local.region}:${local.account}:addon/${var.cluster_name}/*/*",
-      "arn:aws:eks:${local.region}:${local.account}:access-entry/${var.cluster_name}/*",
-      "arn:aws:eks:${local.region}:${local.account}:podidentityassociation/${var.cluster_name}/*",
+      "arn:aws:eks:*:${local.account}:cluster/*-eks",
+      "arn:aws:eks:*:${local.account}:nodegroup/*-eks/*/*",
+      "arn:aws:eks:*:${local.account}:addon/*-eks/*/*",
+      "arn:aws:eks:*:${local.account}:access-entry/*-eks/*",
+      "arn:aws:eks:*:${local.account}:podidentityassociation/*-eks/*",
     ]
   }
 
@@ -135,10 +147,11 @@ data "aws_iam_policy_document" "permissions" {
       "iam:ListInstanceProfilesForRole",
     ]
     # Every role this platform's disposable/persistent units create is
-    # prefixed with the cluster name (cluster role, node-group role,
-    # karpenter controller/node roles, the four pod-identity controller
-    # roles) - never this role itself, never an unrelated role in the account.
-    resources = ["arn:aws:iam::${local.account}:role/${var.cluster_name}-*"]
+    # prefixed with the cluster name ("<project>-eks-...": cluster role,
+    # node-group role, karpenter controller/node roles, the four
+    # pod-identity controller roles) - "*-eks-*", not "*-*", so this never
+    # matches this role's own name or eks-access-identity's.
+    resources = ["arn:aws:iam::${local.account}:role/*-eks-*"]
   }
 
   # Karpenter dynamically creates/owns an EC2 instance profile per
@@ -167,8 +180,8 @@ data "aws_iam_policy_document" "permissions" {
   }
 
   # This role's own IAM role, and eks-access-identity's, don't match the
-  # cluster_name-* prefix above - both need to be readable (Terraform refresh/
-  # plan against personal-lab-role itself; the eks-access-identity data-source
+  # *-eks-* prefix above - both need to be readable (Terraform refresh/
+  # plan against lab-role itself; the eks-access-identity data-source
   # lookup in terraform/modules/eks and in argo-up.sh's `aws iam get-role`).
   # Read-only: neither is ever modified through this role.
   statement {
@@ -176,6 +189,23 @@ data "aws_iam_policy_document" "permissions" {
     actions = [
       "iam:GetRole", "iam:GetRolePolicy",
       "iam:ListAttachedRolePolicies", "iam:ListRolePolicies",
+    ]
+    resources = [aws_iam_role.this.arn, data.aws_iam_role.eks_access_identity.arn]
+  }
+
+  # Belt-and-suspenders alongside PlatformIamRoles' "*-eks-*" resource
+  # pattern above: an explicit Deny, not just a narrower Allow, on this
+  # role modifying its own permissions or eks-access-identity's - a
+  # future PlatformIamRoles pattern change can't silently reopen
+  # self-escalation the way a same-shaped-but-broader Allow could.
+  statement {
+    sid    = "DenySelfAndAccessIdentityIamRoleMutation"
+    effect = "Deny"
+    actions = [
+      "iam:PutRolePolicy", "iam:DeleteRolePolicy",
+      "iam:AttachRolePolicy", "iam:DetachRolePolicy",
+      "iam:DeleteRole", "iam:UpdateAssumeRolePolicy",
+      "iam:PutRolePermissionsBoundary", "iam:DeleteRolePermissionsBoundary",
     ]
     resources = [aws_iam_role.this.arn, data.aws_iam_role.eks_access_identity.arn]
   }
@@ -205,11 +235,13 @@ data "aws_iam_policy_document" "permissions" {
   # this AWS-owned public parameter (no account ID in its ARN) instead of a
   # pinned AMI ID - kept narrow (unlike the rest of this policy) since it's
   # the one SSM access this role has at all; no reason to open Parameter
-  # Store more broadly for a single, known, read-only lookup.
+  # Store more broadly for a single, known, read-only lookup. Region
+  # wildcarded: this role is applied once, in account-up's own region, but
+  # a project's cluster (and its AMI lookup) can be in any region.
   statement {
     sid       = "EksAmiSsmParameter"
     actions   = ["ssm:GetParameter"]
-    resources = ["arn:aws:ssm:${local.region}::parameter/aws/service/eks/optimized-ami/*"]
+    resources = ["arn:aws:ssm:*::parameter/aws/service/eks/optimized-ami/*"]
   }
 
   statement {
@@ -254,10 +286,13 @@ data "aws_iam_policy_document" "permissions" {
     resources = ["*"] # certificate ARN includes a random ID assigned at creation, unknown ahead of time
   }
 
+  # "*-secrets*" matches any PROJECT_NAME's own secret ("<project>-secrets",
+  # plus Secrets Manager's random ARN suffix). Region wildcarded for the
+  # same reason as the Eks/SSM statements above.
   statement {
     sid       = "SecretsManager"
     actions   = ["secretsmanager:*"]
-    resources = ["arn:aws:secretsmanager:${local.region}:${local.account}:secret:${var.project}-*"]
+    resources = ["arn:aws:secretsmanager:*:${local.account}:secret:*-secrets*"]
   }
 
   statement {
@@ -268,8 +303,12 @@ data "aws_iam_policy_document" "permissions" {
 
   # Broadened from just Decrypt/Encrypt (still scoped to this one key's ARN,
   # never any other key in the account) - the actual "never destroy the
-  # Bootstrap KMS key" guarantee is the explicit Deny below, not this list's
-  # narrowness.
+  # shared secrets KMS key" guarantee is the explicit Deny below, not this
+  # list's narrowness. Unlike the state bucket above, this Deny stays
+  # unconditional: the key is account-global and shared by every project's
+  # secrets, so no per-project destroy should ever be able to touch it -
+  # only account-down (a distinct script/role/terragrunt unit this role
+  # never runs) destroys it.
   statement {
     sid       = "KmsSecretsKey"
     actions   = ["kms:*"]
@@ -277,7 +316,7 @@ data "aws_iam_policy_document" "permissions" {
   }
 
   statement {
-    sid       = "DenyBootstrapKmsKeyDestruction"
+    sid       = "DenySharedKmsKeyDestruction"
     effect    = "Deny"
     actions   = ["kms:ScheduleKeyDeletion", "kms:DisableKey", "kms:DeleteImportedKeyMaterial"]
     resources = [data.aws_kms_alias.secrets.target_key_arn]

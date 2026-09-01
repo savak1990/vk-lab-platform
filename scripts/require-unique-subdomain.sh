@@ -5,11 +5,11 @@
 # named lab.<root-domain>, and the second apply's NS delegation record in
 # the parent zone silently overwrites the first's - Route53 allows
 # multiple same-named hosted zones, but the parent zone can hold only one
-# NS record set per name, so the second project's persistent-up would
+# NS record set per name, so the second project's bootstrap-up would
 # quietly break the first project's DNS.
 #
 # Ownership is decided by state, not by tagging the zone: does the
-# *current* PROJECT_NAME's own persistent/route53 Terraform state already
+# *current* PROJECT_NAME's own bootstrap/route53 Terraform state already
 # track an aws_route53_zone resource? If a same-named zone exists in
 # Route53 but this project's state doesn't know about it, it belongs to
 # someone else (or was created out-of-band) - refuse. Same
@@ -22,7 +22,7 @@ PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
 SUBDOMAIN="${SUBDOMAIN:-lab}"
 REGION="${REGION:-eu-west-1}"
 STATE_BUCKET="${PROJECT_NAME}-tf-state"
-STATE_KEY="persistent/route53/terraform.tfstate"
+STATE_KEY="bootstrap/route53/terraform.tfstate"
 
 # CI supplies ROOT_DOMAIN directly (a GitHub secret) rather than decrypting
 # secrets/root-domain.enc, so this role never needs KMS decrypt just to learn
@@ -47,8 +47,8 @@ trap 'rm -f "$TMP_STATE"' EXIT
 
 if ! aws s3api get-object --bucket "$STATE_BUCKET" --key "$STATE_KEY" --region "$REGION" "$TMP_STATE" >/dev/null 2>&1; then
   echo "REQUIRE-UNIQUE-SUBDOMAIN: refusing - a Route53 zone for $FQDN already exists ($EXISTING_ZONE_ID)," >&2
-  echo "but PROJECT_NAME=$PROJECT_NAME has no persistent/route53 state - it doesn't own this zone." >&2
-  echo "Pick a different SUBDOMAIN for this project, e.g.: SUBDOMAIN=$PROJECT_NAME make persistent-up" >&2
+  echo "but PROJECT_NAME=$PROJECT_NAME has no bootstrap/route53 state - it doesn't own this zone." >&2
+  echo "Pick a different SUBDOMAIN for this project, e.g.: SUBDOMAIN=$PROJECT_NAME make bootstrap-up" >&2
   exit 1
 fi
 
@@ -59,7 +59,7 @@ TRACKED_ZONE_ID="$(jq -r '.resources[] | select(.mode=="managed" and .type=="aws
 if [ "$TRACKED_ZONE_ID" != "${EXISTING_ZONE_ID#/hostedzone/}" ]; then
   echo "REQUIRE-UNIQUE-SUBDOMAIN: refusing - a Route53 zone for $FQDN already exists ($EXISTING_ZONE_ID)," >&2
   echo "but it doesn't match what PROJECT_NAME=$PROJECT_NAME's own state tracks (${TRACKED_ZONE_ID:-none})." >&2
-  echo "Pick a different SUBDOMAIN for this project, e.g.: SUBDOMAIN=$PROJECT_NAME make persistent-up" >&2
+  echo "Pick a different SUBDOMAIN for this project, e.g.: SUBDOMAIN=$PROJECT_NAME make bootstrap-up" >&2
   exit 1
 fi
 

@@ -2,8 +2,7 @@
 # Reports which lifecycle layers currently have resources in their
 # Terraform state. Purely informational - always exits 0. Checks actual
 # resource counts inside each state file, not just whether the (possibly
-# emptied-by-destroy) file exists. See require-state.sh for the check
-# bootstrap-up uses to fail fast when the State layer is missing.
+# emptied-by-destroy) file exists.
 set -euo pipefail
 
 PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"

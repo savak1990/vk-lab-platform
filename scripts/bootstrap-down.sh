@@ -1,14 +1,21 @@
 #!/usr/bin/env bash
-# Destroys Bootstrap-lifecycle resources (the secrets KMS key and
-# personal-lab-role). Never touches the state bucket itself. Guarded:
-# refuses if Persistent or Disposable state exists. Runs non-interactively,
-# no destroy confirmation prompt.
+# Destroys Bootstrap-lifecycle resources for this PROJECT_NAME: the lab DNS
+# zone/delegation + ACM cert, then this project's own state bucket. Never
+# touches the shared account-global lab-role/kms (those are account-down's
+# job, not this project's). Guarded: refuses if Persistent or Disposable
+# state exists, and requires CONFIRM_DESTROY to match PROJECT_NAME exactly -
+# applies uniformly to every project, including vk-lab-platform, since the
+# shared role has no per-project ARN scoping to fall back on.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$REPO_ROOT/scripts/lib/confirm-destroy.sh"
+
 PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
 STATE_BUCKET="${PROJECT_NAME}-tf-state"
 REGION="${REGION:-eu-west-1}"
+
+confirm_destroy "$PROJECT_NAME"
 
 echo "Checking for Persistent/Disposable state in s3://$STATE_BUCKET ..."
 
@@ -43,7 +50,7 @@ for prefix in persistent disposable; do
   fi
 done
 
-echo "Destroying Bootstrap-lifecycle stack for $PROJECT_NAME: secrets KMS key and personal-lab-role (not the state bucket)."
+echo "Destroying Bootstrap-lifecycle stack for $PROJECT_NAME: Route53 zone + ACM cert."
 
 cd "$REPO_ROOT/terraform/live/bootstrap"
 
@@ -55,15 +62,7 @@ cd "$REPO_ROOT/terraform/live/bootstrap"
 # unattended (--non-interactive alone doesn't suppress it, confirmed empirically).
 terragrunt run --all --non-interactive -- destroy -auto-approve
 
-# Only after the KMS key is actually gone: its secrets/$PROJECT_NAME/*.enc
-# files are now permanently undecryptable ciphertext, so delete them from
-# the working tree. Scoped to this PROJECT_NAME only - never a
-# secrets/**/*.enc glob, since a different PROJECT_NAME's secrets are
-# encrypted under a different KMS key and must survive. This is not
-# history scrubbing (old ciphertext remains in git history); it just
-# tidies the working tree to match the key's destruction. Never commits on
-# its own - the operator commits the deletion themselves.
-if [ -d "$REPO_ROOT/secrets/$PROJECT_NAME" ]; then
-  find "$REPO_ROOT/secrets/$PROJECT_NAME" -maxdepth 1 -name '*.enc' -print -delete
-  echo "Deleted secrets/$PROJECT_NAME/*.enc (KMS key alias/${PROJECT_NAME}-secrets destroyed - commit this deletion)."
-fi
+# This project's own state bucket, via raw AWS API - same self-reference
+# constraint as account-state-down.sh: Terraform can't destroy the bucket
+# holding its own state.
+"$REPO_ROOT/scripts/state-down.sh"

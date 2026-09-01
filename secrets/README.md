@@ -8,7 +8,12 @@ decrypts it, and `make secret-decrypt`/`secret-encrypt` don't apply to it.
 
 Each file here is one value — a runtime secret or a piece of non-secret
 private configuration (like the root domain, constitution §14) — encrypted
-independently with the bootstrap KMS key (`alias/<project>-secrets`).
+independently with the shared, account-global secrets KMS key
+(`alias/lab-secrets`, created once by `make account-up` — not per-project).
+That key lives in one fixed region, `ACCOUNT_MAIN_REGION` (defaults
+`eu-west-1`) — `make secret-encrypt`/`secret-decrypt`/`generate-secrets` all
+call it under that variable, independent of whatever `REGION` the current
+`PROJECT_NAME` uses for its own cluster/state bucket.
 
 Files live under a per-project directory, `secrets/<PROJECT_NAME>/<name>.enc`
 (`PROJECT_NAME` defaults to `vk-lab-platform`), so a different `PROJECT_NAME`

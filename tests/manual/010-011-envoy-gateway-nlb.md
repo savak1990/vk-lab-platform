@@ -76,7 +76,7 @@ Pass: one NLB, tagged, `EXTERNAL-IP` populated.
 
 ## 4. The certificate actually served is the real one
 
-- [ ] `terragrunt --working-dir terraform/live/persistent/acm output -raw certificate_arn` — note the ARN.
+- [ ] `terragrunt --working-dir terraform/live/bootstrap/acm output -raw certificate_arn` — note the ARN.
 - [ ] `kubectl get envoyproxy envoy-proxy-config -n envoy -o jsonpath='{.spec.provider.kubernetes.envoyService.annotations}'`
       — confirm the `aws-load-balancer-ssl-cert` annotation matches that exact ARN (proves the
       `argo-up.sh` → `gitops/bootstrap` → `gitops/values.yaml` → `EnvoyProxy` wiring chain actually worked end to

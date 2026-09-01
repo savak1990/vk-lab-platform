@@ -1,25 +1,25 @@
 #!/usr/bin/env bash
-# Destroys Persistent-lifecycle resources: the lab DNS zone (and its
-# parent-zone NS delegation record), the ACM certificate, everything in
-# Secrets Manager, every retained EBS volume the ebs-retain StorageClass
-# created (spec 005), and every retained Postgres EBS snapshot (ADR 0013).
-# Those volumes/snapshots are Persistent-lifecycle data but live outside
-# any Terraform state (no stack creates them, the CSI driver does) - this
-# script is where their deletion is accounted for, since persistent-down
-# is already the guarded, rarely-run path for permanently deleting
-# Persistent data. Guarded: refuses while Disposable state exists, and
-# verifies afterward that every unit's state is actually empty -
-# `dependency`-based destroy ordering applies acm/secrets before route53,
-# and a partial failure there could otherwise leave the zone (and its
-# parent-zone delegation) orphaned while reporting success.
+# Destroys Persistent-lifecycle resources: the VPC, everything in Secrets
+# Manager, every retained EBS volume the ebs-retain StorageClass created
+# (spec 005), and every retained Postgres EBS snapshot (ADR 0013). The lab
+# DNS zone/delegation and ACM cert are Bootstrap-lifecycle now (see
+# bootstrap-down.sh) - not this script's job. The volumes/snapshots are
+# Persistent-lifecycle data but live outside any Terraform state (no stack
+# creates them, the CSI driver does) - this script is where their deletion
+# is accounted for, since persistent-down is already the guarded,
+# rarely-run path for permanently deleting Persistent data. Guarded:
+# refuses while Disposable state exists, and verifies afterward that every
+# unit's state is actually empty.
 # Confirmation is terragrunt's own interactive destroy prompt below (typing
-# "yes") on a workstation; a non-interactive run (no TTY, e.g. lab-down.yml's
-# ungated down-through-persistent depth) skips straight to --non-interactive,
-# since dispatching that workflow run is itself the confirmation step. The
+# "yes") on a workstation; a non-interactive run (no TTY, e.g. lab.yml's
+# ungated platform-down target) skips straight to --non-interactive, since
+# dispatching that workflow run is itself the confirmation step. The
 # volume/snapshot lists are echoed before the prompt either way.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$REPO_ROOT/scripts/lib/persistent-ebs-artifacts.sh"
+
 PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
 STATE_BUCKET="${PROJECT_NAME}-tf-state"
 REGION="${REGION:-eu-west-1}"
@@ -66,40 +66,6 @@ count_resources() {
   echo "$total"
 }
 
-# Note: matched by Lifecycle=persistent, not just ManagedBy=ebs-csi-driver -
-# a future Delete-reclaim scratch StorageClass could set ManagedBy the same
-# way, and only Lifecycle=persistent actually means "this is retained data".
-# The Project tag is templated through .Values.project in the StorageClass
-# (gitops/templates/platform/aws/ebs-csi/storageclass.yaml, fixed
-# alongside ADR 0013's snapshot tagging), so two environments with
-# different PROJECT_NAME values never match each other's volumes here.
-list_retained_volumes() {
-  aws ec2 describe-volumes \
-    --region "$REGION" \
-    --filters \
-      "Name=tag:Lifecycle,Values=persistent" \
-      "Name=tag:ManagedBy,Values=ebs-csi-driver" \
-      "Name=tag:Project,Values=$PROJECT_NAME" \
-      "Name=status,Values=available" \
-    --query "Volumes[].{Id:VolumeId,Size:Size,AZ:AvailabilityZone}" \
-    --output json
-}
-
-# Postgres's EBS volume itself is Disposable now (ADR 0013) - the
-# Persistent-lifecycle artifact is the retained VolumeSnapshot instead,
-# tagged by the VolumeSnapshotClass at snapshot-creation time (the EBS CSI
-# driver sets this tag, not Terraform, so it's identified by AWS tag here
-# rather than any Terraform state). A full wipe of the persistent tier is
-# expected to delete all of them, not just prune to N.
-list_postgres_snapshots() {
-  aws ec2 describe-snapshots \
-    --region "$REGION" \
-    --owner-ids self \
-    --filters "Name=tag:Project,Values=$PROJECT_NAME" "Name=tag:Component,Values=postgres" \
-    --query "Snapshots[].{Id:SnapshotId,StartTime:StartTime}" \
-    --output json
-}
-
 echo "Checking for Disposable state in s3://$STATE_BUCKET ..."
 
 if ! disposable_total=$(count_resources "disposable"); then
@@ -116,8 +82,7 @@ if ! retained_volumes=$(list_retained_volumes); then
 fi
 retained_count=$(echo "$retained_volumes" | jq 'length')
 
-echo "This permanently deletes the lab.<root-domain> DNS zone (and its parent-zone NS"
-echo "delegation record), its ACM certificate, and every secret in Secrets Manager."
+echo "This permanently deletes the VPC and every secret in Secrets Manager."
 if [ "$retained_count" -gt 0 ]; then
   echo "It will also permanently delete $retained_count retained EBS volume(s):"
   echo "$retained_volumes" | jq -r '.[] | "  \(.Id)  \(.Size)GiB  \(.AZ)"'
@@ -139,20 +104,19 @@ cd "$REPO_ROOT/terraform/live/persistent"
 # If PROJECT_NAME/REGION/SUBDOMAIN differs from whatever this unit's
 # .terragrunt-cache was last built against, terraform will refuse with
 # "Backend configuration has changed" - run `make clear-cache` first in
-# that case. Unlike bootstrap-down.sh/state-down.sh, this isn't gated by
-# the ephemeral allow-list - lab-down.yml's down-through-persistent depth
-# runs ungated, for every registered combination, so dispatching that
-# workflow run is itself the confirmation step; a workstation run still
-# gets terragrunt's own interactive "yes" prompt via the TTY check below.
-# -auto-approve is what actually skips it - --non-interactive alone doesn't
-# (confirmed empirically).
+# that case. Unlike bootstrap-down.sh/account-down.sh, this isn't gated by
+# CONFIRM_DESTROY - lab.yml's platform-down target runs ungated, so
+# dispatching that workflow run is itself the confirmation step; a
+# workstation run still gets terragrunt's own interactive "yes" prompt via
+# the TTY check below. -auto-approve is what actually skips it -
+# --non-interactive alone doesn't (confirmed empirically).
 if [ -t 0 ]; then
   terragrunt run --all destroy
 else
   terragrunt run --all --non-interactive -- destroy -auto-approve
 fi
 
-for unit_prefix in persistent/vpc persistent/route53 persistent/acm persistent/secrets; do
+for unit_prefix in persistent/vpc persistent/secrets; do
   if ! remaining=$(count_resources "$unit_prefix"); then
     exit 1
   fi

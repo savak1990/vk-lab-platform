@@ -101,8 +101,8 @@ module "eks" {
   eks_managed_node_groups = {
     system = {
       # Default naming ("<key>-eks-node-group-<hash>") doesn't start with
-      # cluster_name, breaking personal-lab-role's role/${cluster_name}-*
-      # IAM scoping (confirmed live: iam:CreateRole denied on the default name).
+      # cluster_name, breaking lab-role's role/*-eks-* IAM scoping (confirmed
+      # live: iam:CreateRole denied on the default name).
       # Short suffix deliberately: name_prefix + Terraform's random suffix
       # must stay under IAM's 64-char role-name limit for longer PROJECT_NAMEs.
       iam_role_name  = "${var.cluster_name}-system-ng"

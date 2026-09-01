@@ -163,23 +163,25 @@ vk-lab-platform/
 │   └── live/
 │       ├── root.hcl
 │       │
-│       ├── state/                      # ADR 0004; own lifecycle class below Bootstrap; make state-up / state-down (ADR 0005, guarded)
+│       ├── state/                      # ADR 0004; per-project state bucket; make state-up / state-down (ADR 0005, guarded) - usually invoked via bootstrap-up/bootstrap-down, not directly
 │       │
-│       ├── account/                    # ADR 0021; account-global scope, not a lifecycle class; make account-up / account-down
+│       ├── account-state/              # dedicated state bucket for account/ alone - never a project's own, so no project's bootstrap-down can orphan it
+│       │
+│       ├── account/                    # account-global scope, not a lifecycle class; make account-up / account-down
+│       │   ├── kms/                    # shared secrets KMS key (alias/lab-secrets), one per account, not per-project
 │       │   ├── github-oidc/            # spec 015; one account-level provider, created once (§17a, ADR 0007)
-│       │   └── eks-access-identity/    # spec 016; Kubernetes-access-only identity, no permission policy (§17a, ADR 0022)
+│       │   ├── lab-role/               # shared AWS-automation role for lab.yml, scoped by naming convention (not per-project)
+│       │   └── eks-access-identity/    # spec 016; Kubernetes-access-only identity, no permission policy (§17a)
 │       │
 │       ├── bootstrap/
 │       │   ├── terragrunt.stack.hcl
-│       │   ├── kms/
-│       │   ├── personal-lab-role/      # spec 016; hand-enumerated AWS-automation role for lab.yml (ADR 0022)
+│       │   ├── route53/                # lab DNS zone/delegation - moved here from persistent/
+│       │   ├── acm/                    # cert for that zone - moved here from persistent/
 │       │   └── atlantis/               # spec 018; standalone compute, independent of EKS; own instance/task role, not OIDC
 │       │
 │       ├── persistent/
 │       │   ├── terragrunt.stack.hcl
 │       │   ├── vpc/                   # spec 021; platform-owned, public subnets, no NAT
-│       │   ├── route53/
-│       │   ├── acm/
 │       │   ├── secrets/
 │       │   ├── rds/
 │       │   └── persistent-storage/
@@ -308,14 +310,18 @@ unit in this repository, including Bootstrap, depends on to store its own
 state. See ADR 0004 for why this is its own layer rather than a unit
 inside Bootstrap, and ADR 0005 for why a guarded `make state-down` exists
 despite that: destroy bypasses Terraform entirely (plain S3 API calls), so
-there's no final state write to fail.
+there's no final state write to fail. `bootstrap-up`/`bootstrap-down` call
+`state-up`/`state-down` internally as their first/last step — there's no
+separate manual invocation in the normal flow, though both targets still
+exist for manual/debugging use. The Account layer (§21a) has its own,
+separate dedicated state bucket, created/destroyed the same way.
 
 Lifecycle:
 
 ```text
-created once (make state-up)
+created once (make state-up, normally via bootstrap-up)
     ↓
-essentially never destroyed (make state-down — guarded, ADR 0005)
+essentially never destroyed (make state-down, normally via bootstrap-down — guarded, ADR 0005)
 ```
 
 ## Bootstrap
@@ -1177,28 +1183,29 @@ controller deleted afterward
 Each lifecycle class (State, Bootstrap, Persistent, Disposable — §6) gets its own explicit create command. No command implicitly creates or destroys a different lifecycle class's resources; see constitution §17 for the binding rule.
 
 ```text
-make state-up           creates the State layer (the Terraform state S3 bucket)
-make state-down         destroys it — guarded, expected to run essentially never (ADR 0004, ADR 0005)
+make account-up       creates account-global resources (shared secrets KMS key, shared lab-role, GitHub OIDC provider, eks-access-identity), in their own dedicated state bucket — run once per AWS account, in no composite target
+make account-down     destroys them — guarded (CONFIRM_DESTROY), expected to run essentially never; affects every project in the account at once
 
-make account-up        creates account-global resources (the GitHub OIDC provider) — run once per AWS account, in no composite target (§17a, ADR 0021)
-make account-down      destroys them — guarded, expected to run essentially never
+make bootstrap-up     creates this project's own state bucket, then Bootstrap-lifecycle resources (lab DNS zone, ACM cert, Atlantis)
+make bootstrap-down   destroys them — guarded (CONFIRM_DESTROY must match PROJECT_NAME), expected to run essentially never
 
-make bootstrap-up      verifies the State layer exists (fails if not, never creates it), then creates Bootstrap-lifecycle resources (IAM, KMS, Atlantis)
-make bootstrap-down    destroys them — guarded, expected to run essentially never
-
-make persistent-up     creates Persistent-lifecycle resources (lab DNS zone, ACM cert, Secrets Manager, retained EBS)
-make persistent-down   destroys them — guarded, deliberate, rarely used, real and permanent data loss
+make persistent-up    creates Persistent-lifecycle resources (VPC, Secrets Manager, retained EBS)
+make persistent-down  destroys them — guarded, deliberate, rarely used, real and permanent data loss
 
 make up                creates Disposable-lifecycle resources (EKS, then argo-up: Argo, workloads)
 make down              destroys them — argo-down (Argo cascade) then Terragrunt destroy — the routine, frequently-used command
 
-make full-up           state-up -> bootstrap-up -> persistent-up -> up, in order — brings up the entire platform from nothing
+make full-up           bootstrap-up -> persistent-up -> up, in order — brings up the entire platform from nothing
 make full-down         the exact reverse of full-up — tears down the entire platform, including Persistent/Bootstrap
 ```
 
+`make state-up`/`make state-down` still exist as their own targets (per-project state bucket create/destroy), but nothing in the normal flow calls them directly — `bootstrap-up`/`bootstrap-down` call them internally as their first/last step. The Account layer has its own separate dedicated state bucket, created/destroyed the same way by `scripts/account-state-up.sh`/`scripts/account-state-down.sh`, called internally by `account-up`/`account-down`.
+
+The Account layer applies in `ACCOUNT_MAIN_REGION` (`terraform/live/root.hcl`'s `account_main_region` local, defaults `eu-west-1`), independent of any project's own `REGION` — the shared secrets KMS key created there only exists in that one region. `scripts/secret-encrypt.sh`/`secret-decrypt.sh` read `ACCOUNT_MAIN_REGION` directly for their `aws kms` calls (not `REGION`), so `make secret-encrypt`/`secret-decrypt`/`generate-secrets` resolve the same key regardless of which `REGION` the current `PROJECT_NAME` runs in — see `tests/manual/016-lab-up-down.md` Phase 7 for the test that would otherwise miss this.
+
 `make up`/`make down` compose `cluster-up`/`argo-up` and `argo-down`/`cluster-down` respectively (ADR 0012, spec 006-1) — `argo-down`'s Argo-driven cascade must complete before `cluster-down` touches the EKS cluster, since only Argo/Karpenter's own controllers can clean up the AWS resources they provisioned outside Terraform.
 
-`make full-up`/`make full-down` are convenience compositions of the commands above, for the from-scratch case. They add no new guard logic and change no individual command's own contract — each step still enforces its own precondition/confirmation exactly as if invoked standalone, so `full-down` still pauses on `persistent-down`'s and `state-down`'s own confirmation prompts rather than smoothing them over.
+`make full-up`/`make full-down` are convenience compositions of the commands above, for the from-scratch case. They add no new guard logic and change no individual command's own contract — each step still enforces its own precondition/confirmation exactly as if invoked standalone, so `full-down` still pauses on `persistent-down`'s and `bootstrap-down`'s own confirmation prompts rather than smoothing them over.
 
 `make minikube-up` and `make kind-up` (the `local` target, §10a) are separate commands outside this lifecycle-class command surface entirely — they don't create or destroy any State/Bootstrap/Persistent/Disposable resource, so they aren't governed by the "one command per class" rule below.
 
@@ -1206,8 +1213,8 @@ make full-down         the exact reverse of full-up — tears down the entire pl
 
 `make persistent-down` and `make bootstrap-down` are destructive, rarely-used escape hatches, not part of the routine up/down cycle:
 
-- `make persistent-down` MUST refuse to run while any Disposable-lifecycle resource still exists (mirroring the controller-cleanup ordering in §21 — Disposable resources that reference Persistent ones, such as DNS records inside the lab hosted zone, must be gone first) and MUST require an explicit confirmation step, since it deletes the lab DNS zone (and its parent-zone NS delegation record), certificate, Secrets Manager contents, and retained EBS volumes permanently. It MUST verify afterward that every unit's Terraform state is actually empty before reporting success, rather than trusting a possibly-partial destroy.
-- `make bootstrap-down` MUST refuse to run while Persistent or Disposable state still exists, and MUST require its own explicit confirmation step. This repository does not expect it to run against a live environment in normal operation.
+- `make persistent-down` MUST refuse to run while any Disposable-lifecycle resource still exists (mirroring the controller-cleanup ordering in §21) and MUST require an explicit confirmation step, since it deletes Secrets Manager contents and retained EBS volumes permanently. It MUST verify afterward that every unit's Terraform state is actually empty before reporting success, rather than trusting a possibly-partial destroy.
+- `make bootstrap-down` MUST refuse to run while Persistent or Disposable state still exists, and MUST require `CONFIRM_DESTROY` to exactly match `PROJECT_NAME` — the shared account-global `lab-role` has no per-project IAM scoping to fall back on, so this script-level check is the only guard. It deletes the lab DNS zone (and its parent-zone NS delegation record) and ACM certificate, then this project's own state bucket. This repository does not expect it to run against a live environment in normal operation.
 
 ---
 
@@ -1731,7 +1738,8 @@ make down
 
 GitHub (`lab.yml` takes bounded `PROJECT_NAME`/`SUBDOMAIN`/`REGION` choice
 inputs plus a `target` selector enumerating individual `make` targets
-directly — see ADR 0022):
+directly, plus a `confirm_destroy` free-text input wired to `CONFIRM_DESTROY`
+for `bootstrap-down`/`full-down`):
 
 ```text
 lab.yml (target: status | state-up | state-down | bootstrap-up |
@@ -1740,7 +1748,7 @@ lab.yml (target: status | state-up | state-down | bootstrap-up |
                  up | down | platform-up | platform-down |
                  full-up | full-down)
     ↓
-make ${{ inputs.target }}
+make ${{ inputs.target }}   (CONFIRM_DESTROY=${{ inputs.confirm_destroy }})
 ```
 
 The environment initiating the operation must not affect infrastructure semantics.

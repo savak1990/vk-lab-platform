@@ -1,4 +1,4 @@
-.PHONY: up down full-up full-down platform-up platform-down state-up state-down status account-up account-down bootstrap-up bootstrap-down github-vars-up secret-encrypt secret-decrypt generate-secrets persistent-up persistent-down clear-cache cluster-up cluster-down eks-kubeconfig argo-up argo-down
+.PHONY: up down full-up full-down platform-up platform-down state-up state-down status account-up account-down bootstrap-up bootstrap-down secret-encrypt secret-decrypt generate-secrets persistent-up persistent-down clear-cache cluster-up cluster-down eks-kubeconfig argo-up argo-down
 
 .NOTPARALLEL:
 
@@ -13,6 +13,13 @@ export PROJECT_NAME ?= vk-lab-platform
 # REGION=us-east-1 make bootstrap-up
 export REGION ?= eu-west-1
 
+# The account layer (kms/lab-role/github-oidc/eks-access-identity, created
+# once by account-up) applies in this fixed region regardless of REGION -
+# the shared secrets KMS key only exists here. Only relevant to
+# account-up/account-down and secret-encrypt/secret-decrypt/generate-secrets;
+# leave unset unless account-up itself was run against a non-default region.
+export ACCOUNT_MAIN_REGION ?= eu-west-1
+
 # Overridable subdomain delegated from the root domain, e.g. lab.<root-domain>.
 export SUBDOMAIN ?= lab
 
@@ -26,17 +33,19 @@ up: clear-cache cluster-up argo-up
 ## Bootstrap - use `make persistent-down`/`make bootstrap-down` for those.
 down: clear-cache argo-down cluster-down
 
-## Brings up the entire platform from nothing: State -> Bootstrap ->
-## Persistent -> cluster -> Argo CD. Persistent-lifecycle passwords are
-## generated only if missing (see persistent-up); root-domain.enc is
-## generated from $ROOT_DOMAIN if set and missing, otherwise it must
-## already exist - it's a real domain, never randomly generated.
-full-up: clear-cache state-up bootstrap-up persistent-up cluster-up argo-up
+## Brings up the entire platform from nothing: Bootstrap (state bucket +
+## DNS zone + ACM cert) -> Persistent (VPC + Secrets Manager) -> cluster ->
+## Argo CD. Persistent-lifecycle passwords are generated only if missing
+## (see persistent-up); root-domain.enc is generated from $ROOT_DOMAIN if
+## set and missing, otherwise it must already exist - it's a real domain,
+## never randomly generated.
+full-up: clear-cache bootstrap-up persistent-up cluster-up argo-up
 
 ## Tears down the entire platform: Argo CD -> cluster -> Persistent ->
-## Bootstrap -> State. Rarely used - persistent-down/bootstrap-down/
-## state-down each keep their own explicit confirmation prompts.
-full-down: clear-cache argo-down cluster-down persistent-down bootstrap-down state-down
+## Bootstrap (DNS zone + ACM cert, then this project's own state bucket).
+## Rarely used - persistent-down/bootstrap-down each keep their own guards
+## (CONFIRM_DESTROY for bootstrap-down).
+full-down: clear-cache argo-down cluster-down persistent-down bootstrap-down
 
 ## Brings up Persistent + the disposable cluster + Argo CD onto an existing
 ## State/Bootstrap layer. For cluster+Argo only (Persistent already up) use
@@ -54,51 +63,50 @@ platform-down: clear-cache argo-down cluster-down persistent-down
 status:
 	./scripts/status.sh
 
-## Creates the State layer. Run once, first, expected that it should never be re-run.
+## Creates this project's own state bucket directly. Usually invoked via
+## `make bootstrap-up`, not directly - kept as its own target for manual/
+## debugging use.
 state-up:
 	./scripts/state-up.sh
 
-## Destroys the State layer. Expected to never be run for real. Only for ci/cd.
+## Destroys this project's own state bucket directly. Usually invoked via
+## `make bootstrap-down`, not directly - kept as its own target for manual/
+## debugging use. Only for ci/cd or a full manual teardown.
 state-down:
 	./scripts/state-down.sh
 
-## Creates account-global resources (GitHub OIDC provider). Run once per AWS
-## account with the primary PROJECT_NAME - deliberately in no composite target.
+## Creates account-global resources (shared secrets KMS key, shared lab-role,
+## GitHub OIDC provider, eks-access-identity) in their own dedicated state
+## bucket, then sets lab.yml's vars.AWS_ROLE_ARN/secrets.ROOT_DOMAIN. Run
+## once per AWS account - deliberately in no composite target.
 account-up:
 	./scripts/account-up.sh
 
-## Destroys account-global resources. Guarded, expected to run essentially
-## never - the provider is shared by every project in the account.
+## Destroys account-global resources, including their own dedicated state
+## bucket. Guarded (CONFIRM_DESTROY), expected to run essentially never -
+## every project in the account shares these.
 account-down:
 	./scripts/account-down.sh
 
-## Creates bootstrap-lifecycle resources.
+## Creates Bootstrap-lifecycle resources for this project: its own state
+## bucket, then the lab DNS zone/delegation + ACM cert.
 bootstrap-up:
-	./scripts/require-state.sh
-	cd terraform/live/bootstrap && terragrunt run --all --non-interactive -- apply -auto-approve
+	./scripts/bootstrap-up.sh
 
-## Destroys bootstrap-lifecycle resources.
+## Destroys Bootstrap-lifecycle resources for this project: the DNS zone/
+## cert, then its own state bucket. Guarded (CONFIRM_DESTROY must match
+## PROJECT_NAME) and refuses while Persistent/Disposable state still exists.
 bootstrap-down:
 	./scripts/bootstrap-down.sh
 
-## Wires lab.yml's repo variable/secret from what already
-## exists: vars.AWS_ROLE_ARN (personal-lab-role's ARN) and secrets.ROOT_DOMAIN
-## (decrypted from secrets/$(PROJECT_NAME)/root-domain.enc). Run once per
-## project/repo, after `make bootstrap-up` - deliberately in no composite target.
-github-vars-up:
-	./scripts/github-vars-up.sh
-
-## Creates Persistent-lifecycle resources (lab DNS zone + delegation, ACM
-## cert, Secrets Manager). Auto-generates postgres-app-password.enc /
-## grafana-admin-password.enc / argocd-admin-password.bcrypt if missing
-## (never overwrites an existing one - see ADR 0014). root-domain.enc is
-## generated from $ROOT_DOMAIN if set and missing, otherwise it must
-## already exist. require-unique-subdomain guards against two PROJECT_NAME
-## environments sharing SUBDOMAIN.<root-domain> - see that script for why.
+## Creates Persistent-lifecycle resources (VPC, Secrets Manager).
+## Auto-generates postgres-app-password.enc / grafana-admin-password.enc /
+## argocd-admin-password.bcrypt if missing (never overwrites an existing
+## one - see ADR 0014); bootstrap-up already generates/requires these plus
+## root-domain, so this is normally a no-op repeat.
 persistent-up:
 	./scripts/generate-secrets.sh
 	./scripts/require-persistent-secrets.sh
-	./scripts/require-unique-subdomain.sh
 	cd terraform/live/persistent && terragrunt run --all --non-interactive -- apply -auto-approve
 
 ## Destroys Persistent-lifecycle resources. Guarded, rarely-used - see constitution §17.

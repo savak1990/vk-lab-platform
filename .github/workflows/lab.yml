@@ -1,12 +1,13 @@
 name: lab
 
 # Manually triggered only - this starts/stops real, billable AWS
-# infrastructure. project_name/subdomain/region are bounded choices, not
-# free text: the assumed role's policy is hand-enumerated to exactly this
-# one combination. `target` maps 1:1 onto a `make` target - no remapping,
-# no per-target gating; whatever safety behavior a given target's script
-# already has (e.g. state-down/bootstrap-down's own confirmation logic) is
-# unaffected by this workflow.
+# infrastructure. The assumed role (lab-role) is account-global and shared
+# by every project - its permission policy scopes by naming convention, not
+# a hand-enumerated per-combination list. `target` maps 1:1 onto a `make`
+# target - no remapping, no per-target gating; whatever safety behavior a
+# given target's script already has (bootstrap-down/account-down's
+# CONFIRM_DESTROY check) is unaffected by this workflow, just wired through
+# from confirm_destroy below.
 on:
   workflow_dispatch:
     inputs:
@@ -47,6 +48,10 @@ on:
           - full-up
           - full-down
         default: up
+      confirm_destroy:
+        description: "Only for bootstrap-down/full-down: type PROJECT_NAME exactly to confirm."
+        type: string
+        default: ""
 
 run-name: "lab: ${{ inputs.target }} (${{ inputs.project_name }})"
 
@@ -101,3 +106,4 @@ jobs:
       - run: make ${{ inputs.target }}
         env:
           ROOT_DOMAIN: ${{ secrets.ROOT_DOMAIN }}
+          CONFIRM_DESTROY: ${{ inputs.confirm_destroy }}

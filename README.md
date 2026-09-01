@@ -32,46 +32,63 @@ does not create the layers below it for you (it fails fast, naming the
 command to run first, instead).
 
 ```bash
-make account-up        # once per AWS account: GitHub OIDC provider, eks-access-identity
-make state-up          # once, ever: remote state bucket + locking
-make bootstrap-up      # rare: KMS key, personal-lab-role
-make persistent-up     # occasional: lab.<root-domain> zone + cert, secrets
+make account-up        # once per AWS account: its own state bucket, shared
+                        # secrets KMS key, GitHub OIDC provider, shared
+                        # lab-role, eks-access-identity - also wires
+                        # lab.yml's vars.AWS_ROLE_ARN/secrets.ROOT_DOMAIN
+make bootstrap-up      # per project: this project's own state bucket,
+                        # lab.<root-domain> zone + cert
+make persistent-up     # occasional: VPC, Secrets Manager
 make up                # frequent: EKS cluster + Argo CD + everything it manages
 
 make down               # frequent: destroy the disposable stack only
-make persistent-down    # rare, guarded: destroys the zone/cert/secrets
-make bootstrap-down     # rare, guarded: destroys KMS/IAM
-make state-down         # essentially never: destroys remote state itself
+make persistent-down    # rare, guarded: destroys the VPC/secrets
+make bootstrap-down     # rare, guarded (CONFIRM_DESTROY=<PROJECT_NAME>):
+                         # destroys the zone/cert, then this project's own
+                         # state bucket
+make account-down       # essentially never, guarded (CONFIRM_DESTROY=<PROJECT_NAME>):
+                         # destroys the shared role/KMS/OIDC provider and
+                         # the account's own state bucket - affects EVERY
+                         # project in the account at once
 
-make platform-up        # persistent-up -> up, onto an existing State/Bootstrap layer
-make platform-down      # down -> persistent-down, stopping before Bootstrap/State
+make platform-up        # persistent-up -> up, onto an existing Bootstrap layer
+make platform-down      # down -> persistent-down, stopping before Bootstrap
 
-make full-up            # from nothing: state-up -> bootstrap-up -> persistent-up -> up
+make full-up            # from nothing: bootstrap-up -> persistent-up -> up
 make full-down          # the exact reverse of full-up (rarely used - each
                          # step keeps its own guard/confirmation)
 
 make status             # reports which layers currently have state in the shared bucket
 ```
 
-- **State** — the S3 backend and lock table Terraform/Terragrunt need to
-  run at all. Expected to be created once and never destroyed for real.
-- **Bootstrap** — the KMS key used to encrypt `secrets/<project>/*.enc`,
-  plus foundational IAM. Long-lived; destroying it is rare and guarded,
-  and deletes those `.enc` files (for the current `PROJECT_NAME` only)
-  once the key is gone.
-- **Persistent** — the delegated `lab.<root-domain>` DNS zone (and its
-  parent-zone NS delegation), its ACM certificate, and Secrets Manager.
-  Survives `make down`. You'll run `persistent-up`/`persistent-down` more
-  often than bootstrap/state, but still far less often than `up`/`down` —
-  see [`terraform/live/persistent/README.md`](terraform/live/persistent/README.md)
-  for required configuration (`PROJECT_NAME`/`REGION`/`SUBDOMAIN` env vars).
+- **Account** — the shared secrets KMS key (`alias/lab-secrets`), the
+  shared `lab-role` every project's GitHub Actions run assumes (scoped by
+  naming convention, not per-project), the GitHub OIDC provider, and
+  `eks-access-identity`. Applied once per AWS account, in its own dedicated
+  state bucket so no project's `bootstrap-down` can ever affect it.
+  Destroying it (`account-down`) affects every project in the account at
+  once — expected to run essentially never. Applies in `ACCOUNT_MAIN_REGION`
+  (defaults `eu-west-1`), independent of any project's own `REGION` — the
+  shared KMS key only exists in that one region, so
+  `secret-encrypt`/`secret-decrypt`/`generate-secrets` also read
+  `ACCOUNT_MAIN_REGION` for their KMS calls regardless of which `REGION`
+  the current project uses.
+- **Bootstrap** — this project's own state bucket, plus the delegated
+  `lab.<root-domain>` DNS zone (and its parent-zone NS delegation) and its
+  ACM certificate. Destroying it (`bootstrap-down`) requires
+  `CONFIRM_DESTROY=<PROJECT_NAME>` to match exactly — the shared role has
+  no per-project IAM scoping to fall back on, so this is the only guard.
+- **Persistent** — the VPC and Secrets Manager. Survives `make down`. See
+  [`terraform/live/persistent/README.md`](terraform/live/persistent/README.md)
+  for required configuration (`PROJECT_NAME`/`REGION` env vars).
   `persistent-up` auto-generates any missing password
   (`postgres-app-password`, `grafana-admin-password`,
   `argocd-admin-password`) — it never overwrites one that already exists.
   `root-domain` is the one exception: it's a real external domain, so it's
   only filled in from `$ROOT_DOMAIN` when set, and otherwise must already
   exist under `secrets/<project>/root-domain.enc`
-  (`make secret-encrypt NAME=root-domain VALUE=<domain>`).
+  (`make secret-encrypt NAME=root-domain VALUE=<domain>`) — `bootstrap-up`
+  is what actually requires/decrypts it, since Route53 lives there now.
 - **Disposable** — EKS, Karpenter, Argo CD, and everything it manages
   (Postgres, Kafka, Envoy Gateway, NLB, observability). Created by
   `make up` (`cluster-up` then `argo-up` under the hood), destroyed by
@@ -82,7 +99,6 @@ make status             # reports which layers currently have state in the share
 Other targets:
 
 ```bash
-make github-vars-up                            # once per repo: wires lab.yml's AWS_ROLE_ARN/ROOT_DOMAIN
 make eks-kubeconfig                            # points kubectl at the disposable cluster
 make clear-cache                               # clears .terragrunt-cache after switching PROJECT_NAME/REGION/SUBDOMAIN
 make secret-encrypt NAME=<name> VALUE=<value>  # encrypts one secrets/<project>/<name>.enc

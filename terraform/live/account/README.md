@@ -10,53 +10,67 @@ Both layers hold resources that are created once and essentially never
 destroyed, so grouping them by lifecycle looks right. They differ on a second,
 independent axis: **scope**.
 
-The `bootstrap` KMS key is per-project — each `PROJECT_NAME` needs its own key,
-and its Terraform state lives in that project's own `${PROJECT_NAME}-tf-state`
-bucket. The GitHub OIDC provider is per-account: AWS permits exactly one
-provider per issuer URL per account, no matter how many projects exist.
+Every resource here is account-global and shared: the secrets KMS key, the
+`lab-role` every project's GitHub Actions run assumes, the GitHub OIDC
+provider, `eks-access-identity`. `bootstrap/`'s own units (this project's
+state bucket, the lab DNS zone + ACM cert) are per-project instead — a second
+`PROJECT_NAME` gets its own, never shares.
 
-Putting an account-global resource in a project-scoped layer breaks as soon as
-a second project runs `make bootstrap-up` in the same account. That run gets a
-fresh, empty state file, issues a create, and AWS rejects it with
-`EntityAlreadyExists`. Since `make bootstrap-up` and `scripts/bootstrap-down.sh`
-both discover units by listing the directory they `cd` into, keeping this layer
-outside `bootstrap/` makes the resource unreachable to them by construction —
-no `exclude` block or `prevent_destroy` guard needed.
+Putting a per-project resource in this account-global layer breaks as soon as
+a second project needs its own copy - AWS rejects a second `EntityAlreadyExists`
+create, or worse, a second apply silently rescopes a shared resource away from
+the first project. Since `make account-up`/`account-down` and `make
+bootstrap-up`/`bootstrap-down` both discover units by listing the directory
+they `cd` into, keeping each layer's units in its own directory makes the
+wrong layer's resources unreachable to the other by construction.
 
 ## What belongs here
 
 A unit belongs in this layer only if it is account-global: exactly one must
 exist per AWS account regardless of how many projects or PR environments do.
-Being long-lived is not sufficient — that is what `bootstrap/` is for.
+Being long-lived is not sufficient on its own — a per-project resource that's
+merely long-lived belongs in `bootstrap/` instead.
 
-Qualifies: the GitHub OIDC provider, `eks-access-identity` (a Kubernetes-
-access-only identity with no AWS permission policy, reused across every
-project's clusters — ADR 0022), an account-wide CloudTrail trail, an IAM
-Access Analyzer. Does not qualify: the secrets KMS key (one per project), the
-`personal-lab-role` that calls AWS APIs on a specific project's behalf (that's
-per-project, in `bootstrap/`).
+Qualifies: the secrets KMS key (`alias/lab-secrets` — shared by every
+project's `secrets/<project>/*.enc`), `lab-role` (the shared role every
+project's GitHub Actions run assumes; scoped by naming convention, not
+per-project ARNs), the GitHub OIDC provider, `eks-access-identity` (a
+Kubernetes-access-only identity with no AWS permission policy, reused across
+every project's clusters). Does not qualify: this project's own state bucket,
+the lab DNS zone + ACM cert (both per-project, in `bootstrap/`).
 
-## Prerequisite: the `state` layer must already exist
+## Prerequisite: this layer's own dedicated state bucket
 
-`terraform/live/state/` creates the Terraform state bucket every unit in this
-repository — including this one — stores its state in. Run `make state-up`
-once, first. `scripts/account-up.sh` checks this and fails with a clear
-message rather than an opaque backend-init error.
+`terraform/live/account-state/` creates a state bucket dedicated to this
+layer alone — never a project's own `${PROJECT_NAME}-tf-state`, so no
+project's `bootstrap-down` can ever orphan this layer's Terraform state.
+`scripts/account-up.sh` bootstraps it first (`scripts/account-state-up.sh`,
+the same two-phase local-then-migrate dance `state-up.sh` uses), before
+applying anything else — no separate manual step needed.
 
 ## Usage
 
 ```
 make account-up       # run once per AWS account, from a workstation
-make account-down     # guarded, expected to run essentially never
+make account-down     # guarded (CONFIRM_DESTROY=<PROJECT_NAME>), expected to run essentially never
 ```
 
-Run `make account-up` with your primary `PROJECT_NAME`, since this layer's
-state lands in that project's bucket. Never run it with a CI or per-PR
-`PROJECT_NAME` — both resources here are shared, so a second project must
-reuse them, not recreate them. Re-running is a no-op per-resource: the script
-checks each one independently (not the whole layer at once — a genuinely new
-unit still gets applied even after an older one already exists) and exits
-without applying whatever it finds already present.
+This layer applies in `ACCOUNT_MAIN_REGION` (defaults `eu-west-1`,
+`terraform/live/root.hcl`'s `account_main_region` local), independent of
+whatever `REGION` any given project uses — the secrets KMS key created here
+only exists in that one region. `scripts/secret-encrypt.sh`/`secret-decrypt.sh`
+read the same variable directly (not `REGION`) for their `aws kms`
+calls, so a project running under a different `REGION` still resolves the
+same key. Only set `ACCOUNT_MAIN_REGION` explicitly if `account-up` was run
+against a non-default region — every other command leaves it at the default.
+
+`make account-up` also sets `lab.yml`'s `vars.AWS_ROLE_ARN` (from `lab-role`'s
+own ARN — set once, ever, never per-project) and `secrets.ROOT_DOMAIN`
+(decrypted locally from `secrets/$PROJECT_NAME/root-domain.enc`, never
+something a GitHub Actions role does at runtime). Re-running is a no-op
+per-resource: the script checks each one independently (not the whole layer
+at once — a genuinely new unit still gets applied even after an older one
+already exists) and exits without applying whatever it finds already present.
 
 `eks-access-identity`'s trust policy names whichever IAM identity is running
 `make account-up` at apply time — always you, since this command is never
@@ -69,17 +83,21 @@ that recorded principal goes stale: `kubectl` starts failing with
 `Unauthorized` even though the access entry is still correct, and the fix is
 to re-run `make account-up` under the new identity, not to touch the cluster.
 
-`personal-lab-role` (in `terraform/live/bootstrap/`) is granted read-only
-access to this role's ARN — needed for `terraform/modules/eks`'s data-source
-lookup and `argo-up.sh`'s `aws iam get-role` to succeed when either runs as
-that role from GitHub Actions, not to modify it.
+`lab-role` (this layer) chains a plain `sts:AssumeRole` onto `eks-access-identity`
+(also this layer) — trusted via the account root scoped down by a
+`aws:PrincipalArn` condition naming `lab-role`'s fixed ARN, not a direct
+principal reference, so ordering between the two units' first applies never
+matters.
 
 Neither target appears in a composite target: not `up`, not `full-up`, not
 `bootstrap-up`/`bootstrap-down`.
 
-`make account-down` refuses while this project still has Bootstrap, Persistent,
-or Disposable state, then hands off to terragrunt's own interactive destroy
-prompt. Note the limit of that guard: it can only see `${PROJECT_NAME}`'s own
-state bucket. Another project or CI environment in the same account may still
-depend on the provider, and there is no cheap way to enumerate them — so the
+`make account-down` destroys every project's ability to authenticate/decrypt
+secrets at once — refuses while this project still has Bootstrap, Persistent,
+or Disposable state, requires `CONFIRM_DESTROY=<PROJECT_NAME>`, then hands off
+to terragrunt's own destroy, followed by this layer's own dedicated state
+bucket deletion (`scripts/account-state-down.sh`). Note the limit of the
+state-based guard: it can only see `${PROJECT_NAME}`'s own state bucket.
+Another project or CI environment in the same account may still depend on
+the shared role/KMS key, and there is no cheap way to enumerate them — so the
 script warns and names the account rather than pretending to know.
