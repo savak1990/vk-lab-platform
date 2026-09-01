@@ -55,11 +55,14 @@ aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$REGION" --alias "$CL
   --role-arn "$EKS_ACCESS_IDENTITY_ARN" >/dev/null
 kubectl config set-context --current --namespace=default >/dev/null
 
-# Labels, not full hostnames: DNS_HOSTS[label]=fqdn, keeps $LAB_FQDN out of
-# any echoed output. dig failures (missing binary, network) are swallowed to
-# "unresolved" here rather than aborting under set -euo pipefail - a wait
-# loop should keep polling through a transient resolver error, not die on one.
-declare -A DNS_HOSTS=([argo]="argo.$LAB_FQDN" [grafana]="grafana.$LAB_FQDN")
+# Parallel arrays, not an associative array: DNS_HOST_LABELS[i]/DNS_HOST_FQDNS[i],
+# so this stays bash-3.2-compatible (stock macOS /bin/bash predates `declare -A`).
+# Labels, not full hostnames, keep $LAB_FQDN out of any echoed output. dig
+# failures (missing binary, network) are swallowed to "unresolved" here rather
+# than aborting under set -euo pipefail - a wait loop should keep polling
+# through a transient resolver error, not die on one.
+DNS_HOST_LABELS=(argo grafana)
+DNS_HOST_FQDNS=("argo.$LAB_FQDN" "grafana.$LAB_FQDN")
 
 # Same label selector monitors.yaml already uses to find this Gateway's
 # Service. Resolving the NLB's own hostname (not comparing Service objects)
@@ -74,8 +77,10 @@ current_nlb_ips() {
 
 dns_status() {
   local nlb_ips="$1"
-  for label in "${!DNS_HOSTS[@]}"; do
-    ip="$(dig +short "${DNS_HOSTS[$label]}" 2>/dev/null | tail -n1 || true)"
+  local i label ip
+  for i in "${!DNS_HOST_LABELS[@]}"; do
+    label="${DNS_HOST_LABELS[$i]}"
+    ip="$(dig +short "${DNS_HOST_FQDNS[$i]}" 2>/dev/null | tail -n1 || true)"
     if [ -z "$ip" ]; then
       echo "  $label -> <unresolved>"
     elif [ -n "$nlb_ips" ] && grep -qxF "$ip" <<< "$nlb_ips"; then
@@ -95,8 +100,8 @@ wait_for_dns() {
     if [ -z "$nlb_ips" ]; then
       all_resolved=false
     else
-      for label in "${!DNS_HOSTS[@]}"; do
-        ip="$(dig +short "${DNS_HOSTS[$label]}" 2>/dev/null | tail -n1 || true)"
+      for i in "${!DNS_HOST_FQDNS[@]}"; do
+        ip="$(dig +short "${DNS_HOST_FQDNS[$i]}" 2>/dev/null | tail -n1 || true)"
         { [ -n "$ip" ] && grep -qxF "$ip" <<< "$nlb_ips"; } || all_resolved=false
       done
     fi
