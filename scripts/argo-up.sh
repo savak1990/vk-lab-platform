@@ -206,7 +206,7 @@ helm upgrade --install argocd argo-cd \
 # install timeout is meant to bound. The wait loop below handles that.
 helm upgrade --install root-application "$REPO_ROOT/gitops/bootstrap" \
   --namespace argocd \
-  --server-side --force-conflicts \
+  --server-side=true --force-conflicts \
   --set target=aws \
   --set project="$PROJECT_NAME" \
   --set region="$PROJECT_REGION" \
