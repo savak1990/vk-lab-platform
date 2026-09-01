@@ -1,5 +1,15 @@
 {{- if eq .Values.target "aws" }}
 apiVersion: v1
+kind: Namespace
+metadata:
+  name: envoy
+  annotations:
+    # Must exist before this file's own ServiceAccount/Role/Job (wave -2) -
+    # envoy-gateway's own Application (wave -1, CreateNamespace=true) only
+    # creates it later, too late for this probe's resources.
+    argocd.argoproj.io/sync-wave: "-3"
+---
+apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: envoy-gateway-webhook-probe
