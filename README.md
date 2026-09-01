@@ -43,6 +43,9 @@ make persistent-down    # rare, guarded: destroys the zone/cert/secrets
 make bootstrap-down     # rare, guarded: destroys KMS/IAM
 make state-down         # essentially never: destroys remote state itself
 
+make platform-up        # persistent-up -> up, onto an existing State/Bootstrap layer
+make platform-down      # down -> persistent-down, stopping before Bootstrap/State
+
 make full-up            # from nothing: state-up -> bootstrap-up -> persistent-up -> up
 make full-down          # the exact reverse of full-up (rarely used - each
                          # step keeps its own guard/confirmation)

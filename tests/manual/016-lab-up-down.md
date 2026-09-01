@@ -45,9 +45,15 @@ on the previous phase's end state.
    which principal created the cluster.
 8. `aws eks describe-cluster --name vk-lab-platform-eks` — confirm `ResourceNotFoundException`.
 
-## Phase 3 — GitHub-initiated platform-down
+## Phase 3 — GitHub-initiated platform-up / platform-down
 
-9. `make full-up` locally (or `target=full-up` via `lab.yml`) to get Persistent back.
+9. Dispatch `lab.yml` with `target=platform-up` (Persistent still exists from
+   Phase 1/2, so this exercises `persistent-up`'s no-op idempotency plus
+   `cluster-up`/`argo-up` - the specific case that confirms `platform-up`, the
+   up-direction mirror added alongside `platform-down`, actually works and
+   not just `platform-down`, which already existed as `down-through-persistent`).
+   Confirm the run succeeds and produces the same healthy end state as
+   `target=up`.
 10. Dispatch `lab.yml` with `target=platform-down`. Confirm it runs immediately -
     no approval step, same as every other target.
 11. Confirm `persistent-down.sh` completed without hanging: it detects the
