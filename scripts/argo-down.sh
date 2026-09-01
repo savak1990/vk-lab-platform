@@ -23,36 +23,12 @@ BACKUP_TIMEOUT="${ARGO_DOWN_BACKUP_TIMEOUT:-120s}"
 SNAPSHOT_TAG_FILTERS=("Name=tag:Project,Values=$PROJECT_NAME" "Name=tag:Component,Values=postgres")
 
 if ! kubectl cluster-info --request-timeout=5s >/dev/null 2>&1; then
-  echo "ARGO-DOWN: cluster unreachable - nothing to cascade, skipping."
-  # The cascade below is the only thing that lets Karpenter drain and
-  # terminate its own nodes gracefully - if the cluster is already gone
-  # (e.g. a prior make down attempt got through cluster-down but failed
-  # later), any Karpenter-owned instance still running here was never
-  # drained and never will be. Surfacing it now, not just when it later
-  # blocks a security-group destroy with DependencyViolation.
-  STRAY="$(aws ec2 describe-instances --region "$PROJECT_REGION" \
-    --filters "Name=tag:eks:eks-cluster-name,Values=${PROJECT_NAME}-eks" "Name=instance-state-name,Values=running,pending,stopping,stopped" \
-    --query 'Reservations[].Instances[].InstanceId' --output text 2>/dev/null || true)"
-  if [ -n "$STRAY" ] && [ "$STRAY" != "None" ]; then
-    echo "ARGO-DOWN: WARNING - found instance(s) tagged for this cluster that can no longer be gracefully drained (cluster already unreachable): $STRAY" >&2
-    echo "ARGO-DOWN: these will likely block cluster-down's security-group destroy - terminate manually if so." >&2
-  fi
-  # Same reasoning as above, but for the NLB: the Gateway-deletion-and-wait
-  # block further down is the only thing that gets aws-load-balancer-
-  # controller to actually delete the NLB (and external-dns to clean up its
-  # DNS records) before those controllers disappear with the cluster. If we
-  # never reached that block, both are now stuck the same way.
-  # aws-load-balancer-controller-created NLBs get a hashed name, not one
-  # containing PROJECT_NAME - tag-based lookup is the only reliable match.
-  STRAY_NLBS="$(aws resourcegroupstaggingapi get-resources --region "$PROJECT_REGION" \
-    --tag-filters "Key=Project,Values=$PROJECT_NAME" "Key=Lifecycle,Values=disposable" \
-    --resource-type-filters elasticloadbalancing:loadbalancer elasticloadbalancing:targetgroup \
-    --query 'ResourceTagMappingList[].ResourceARN' --output text 2>/dev/null || true)"
-  if [ -n "$STRAY_NLBS" ] && [ "$STRAY_NLBS" != "None" ]; then
-    echo "ARGO-DOWN: WARNING - found NLB(s)/target group(s) that can no longer be gracefully deleted (cluster already unreachable): $STRAY_NLBS" >&2
-    echo "ARGO-DOWN: aws-load-balancer-controller and external-dns are both gone - delete the NLB, its security groups, and any lab.<root-domain> DNS records pointing at it manually." >&2
-  fi
-  exit 0
+  echo "ARGO-DOWN: ERROR - cannot reach the cluster via kubectl (cluster-info failed)." >&2
+  echo "ARGO-DOWN: this means either kubeconfig/context was never set up (run 'make eks-kubeconfig' first)" >&2
+  echo "ARGO-DOWN: or the cluster is genuinely gone. Refusing to proceed: without API access there is no" >&2
+  echo "ARGO-DOWN: way to ask Karpenter/aws-load-balancer-controller to drain nodes and delete load" >&2
+  echo "ARGO-DOWN: balancers before the control plane is destroyed - proceeding blind orphans them." >&2
+  exit 1
 fi
 
 # Forces a cold VolumeSnapshot backup of Postgres before the cluster (and

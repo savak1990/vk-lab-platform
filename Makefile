@@ -31,7 +31,7 @@ up: clear-cache cluster-up argo-up
 
 ## Tears down Argo CD then the cluster. Does NOT touch Persistent or
 ## Bootstrap - use `make persistent-down`/`make bootstrap-down` for those.
-down: clear-cache argo-down cluster-down
+down: clear-cache eks-kubeconfig argo-down cluster-down
 
 ## Brings up the entire platform from nothing: Bootstrap (state bucket +
 ## DNS zone + ACM cert) -> Persistent (VPC + Secrets Manager) -> cluster ->
@@ -45,7 +45,7 @@ full-up: clear-cache bootstrap-up persistent-up cluster-up argo-up
 ## Bootstrap (DNS zone + ACM cert, then this project's own state bucket).
 ## Rarely used - persistent-down/bootstrap-down each keep their own guards
 ## (CONFIRM_DESTROY for bootstrap-down).
-full-down: clear-cache argo-down cluster-down persistent-down bootstrap-down
+full-down: clear-cache eks-kubeconfig argo-down cluster-down persistent-down bootstrap-down
 
 ## Brings up Persistent + the disposable cluster + Argo CD onto an existing
 ## State/Bootstrap layer. For cluster+Argo only (Persistent already up) use
@@ -57,7 +57,7 @@ platform-up: clear-cache persistent-up cluster-up argo-up
 ## survive (e.g. the personal lab) but whose Persistent layer (DNS zone,
 ## ACM cert, Secrets Manager) is meant to be torn down along with everything
 ## above it.
-platform-down: clear-cache argo-down cluster-down persistent-down
+platform-down: clear-cache eks-kubeconfig argo-down cluster-down persistent-down
 
 ## Reports which lifecycle layers currently have state in the shared bucket.
 status:
@@ -151,8 +151,9 @@ argo-up:
 ## Cascades away everything Argo CD manages (Karpenter, CNPG, EBS CSI,
 ## Postgres CRs, ...), then removes Argo CD itself - before
 ## `make cluster-down` touches the EKS cluster. Run before
-## `make cluster-down`, always.
-argo-down:
+## `make cluster-down`, always. Depends on eks-kubeconfig - unlike argo-up.sh,
+## argo-down.sh doesn't configure its own kubeconfig, and a CI runner has none.
+argo-down: eks-kubeconfig
 	./scripts/argo-down.sh
 
 ## Clears every .terragrunt-cache dir under terraform/live/. Run as the

@@ -1,36 +1,31 @@
 #!/usr/bin/env bash
 # Implements `make cluster-down`: destroys Disposable-lifecycle resources.
-# Refuses to run if Argo CD's
-# root Application still exists on a reachable cluster - that means
-# `make argo-down` hasn't completed, and proceeding anyway is what causes
-# Karpenter's orphaned EC2 instances to block the node security group's
-# destroy with DependencyViolation (ADR 0012, spec 006-1). Proceeds
-# unconditionally if the cluster is unreachable - there's nothing to check
-# against, and a prior interrupted destroy must stay resumable.
+# Refuses to run if Argo CD's root Application still exists on a reachable
+# cluster - that means `make argo-down` hasn't completed, and proceeding
+# anyway is what causes Karpenter's orphaned EC2 instances to block the node
+# security group's destroy with DependencyViolation (ADR 0012, spec 006-1).
+# Also refuses if the cluster is unreachable at all: without kubectl access
+# there is no way to confirm argo-down's cascade actually ran, and a blind
+# terragrunt destroy against a cluster that turns out to still be alive
+# orphans whatever Karpenter/aws-load-balancer-controller hadn't finished
+# tearing down.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJECT_REGION="${PROJECT_REGION:-eu-west-1}"
 PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
 
-if kubectl cluster-info --request-timeout=5s >/dev/null 2>&1; then
-  if kubectl get application root -n argocd >/dev/null 2>&1; then
-    echo "Argo CD's root Application still exists - run 'make argo-down' first." >&2
-    exit 1
-  fi
-else
-  # Proceeding here (rather than refusing, as above) is deliberate - see the
-  # file header. But it means any Karpenter-owned instance not yet drained
-  # when the cluster went unreachable is now permanently un-drainable, and
-  # will surface later as a DependencyViolation on the node security group's
-  # destroy. Log it now so that failure isn't a surprise several minutes in.
-  STRAY="$(aws ec2 describe-instances --region "$PROJECT_REGION" \
-    --filters "Name=tag:eks:eks-cluster-name,Values=${PROJECT_NAME}-eks" "Name=instance-state-name,Values=running,pending,stopping,stopped" \
-    --query 'Reservations[].Instances[].InstanceId' --output text 2>/dev/null || true)"
-  if [ -n "$STRAY" ] && [ "$STRAY" != "None" ]; then
-    echo "CLUSTER-DOWN: WARNING - cluster unreachable but instance(s) tagged for it still exist: $STRAY" >&2
-    echo "CLUSTER-DOWN: proceeding anyway (resumable-destroy path) - expect the node security group's destroy to fail until these are terminated." >&2
-  fi
+if ! kubectl cluster-info --request-timeout=5s >/dev/null 2>&1; then
+  echo "CLUSTER-DOWN: ERROR - cannot reach the cluster via kubectl (cluster-info failed)." >&2
+  echo "CLUSTER-DOWN: refusing to run 'terragrunt destroy' blind - argo-down's graceful cascade could not" >&2
+  echo "CLUSTER-DOWN: run, so any Karpenter node or load balancer still alive right now will be orphaned" >&2
+  echo "CLUSTER-DOWN: if the control plane is destroyed anyway. Investigate kubectl access before retrying." >&2
+  exit 1
+fi
+
+if kubectl get application root -n argocd >/dev/null 2>&1; then
+  echo "Argo CD's root Application still exists - run 'make argo-down' first." >&2
+  exit 1
 fi
 
 cd "$REPO_ROOT/terraform/live/cluster" && terragrunt run --all --non-interactive -- destroy -auto-approve

@@ -8,12 +8,7 @@ metadata:
     # root-managed object - a workload sharing its wave gets its pods evicted
     # mid-deletion, and controllers whose finalizers it needs die with them.
     argocd.argoproj.io/sync-wave: "-3"
-    # Without this, Argo's Application-deletion cascade may prune this object
-    # with Kubernetes' Background propagation, which ignores the
-    # BlockOwnerDeletion=true Karpenter sets on each NodeClaim's owner
-    # reference - letting this object disappear (and the next wave proceed)
-    # before every NodeClaim it owns has actually drained and terminated.
-    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true,PrunePropagationPolicy=foreground
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
   role: {{ .Values.project }}-eks-karpenter-node
   amiSelectorTerms:
@@ -41,7 +36,7 @@ metadata:
   name: spot
   annotations:
     argocd.argoproj.io/sync-wave: "-3"
-    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true,PrunePropagationPolicy=foreground
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
   template:
     spec:
@@ -73,7 +68,7 @@ metadata:
   name: on-demand
   annotations:
     argocd.argoproj.io/sync-wave: "-3"
-    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true,PrunePropagationPolicy=foreground
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
   template:
     metadata:

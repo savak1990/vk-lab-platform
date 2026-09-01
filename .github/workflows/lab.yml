@@ -33,6 +33,8 @@ on:
           - status
           - up
           - down
+          - argo-up
+          - argo-down
           - platform-up
           - platform-down
           - full-up
