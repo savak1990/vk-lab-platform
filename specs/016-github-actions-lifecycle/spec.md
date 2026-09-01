@@ -1,7 +1,7 @@
 # 016 — GitHub Actions Lifecycle (lab-up / lab-down)
 
 **Status:** Implemented — scope grew past the text below during
-implementation; see the scope amendment immediately after this line, and
+implementation; see the scope amendments immediately after this line, and
 ADR 0022.
 
 > **Scope amendment (ADR 0022):** the two workflows became dashboards rather
@@ -24,6 +24,25 @@ ADR 0022.
 > account-global layer alongside spec 015's provider) — see ADR 0022 for why
 > `enable_cluster_creator_admin_permissions` alone wasn't sufficient.
 
+> **Scope amendment 2 (superseding the workflow shape above):**
+> `lab-up.yml`/`lab-down.yml` were consolidated into a single `lab.yml` with
+> one `target` input (a `type: choice` enumerating individual `make` targets
+> directly — `status`, `state-up/down`, `bootstrap-up/down`,
+> `persistent-up/down`, `cluster-up/down`, `argo-up/down`, `up`/`down`,
+> `platform-up`/`platform-down`, `full-up`/`full-down`) instead of the
+> `depth` selector, so one workflow file replaces two and every lifecycle
+> layer is individually triggerable, not just the five `depth` values.
+> `down-through-persistent` was renamed `platform-down` for symmetry with a
+> new `platform-up` (`persistent-up cluster-up argo-up`) — the up-direction
+> equivalent that didn't exist before. The `ephemeral-teardown` GitHub
+> Environment/required-reviewer gate on `full-down` was removed: this is a
+> single-operator personal lab, not a shared/team environment, and the two
+> structural guards above it (the `EPHEMERAL_PROJECTS` allow-list and
+> `personal-lab-role`'s IAM incapability) were judged sufficient on their
+> own. `run-name: "lab: ${{ inputs.target }} (${{ inputs.project_name }})"`
+> was added so the Actions run list shows which target ran instead of a
+> generic "Manually run by X" line for every run.
+
 **Complexity:** Medium
 **Risk:** Medium — a workflow that can create/destroy real AWS infrastructure on trigger; wrong trigger scoping or a missing environment gate could let the wrong actor start or tear down the lab.
 **Estimated cost:** ~1 day · AWS runtime cost: none beyond whatever `make up`/`make down` already costs when invoked.
@@ -43,8 +62,7 @@ ADR 0022.
 Gives the platform's lifecycle commands a GitHub Actions entry point, so `make up`/`make down` can be triggered from GitHub and not only from a developer's machine, per architecture.md §34's "Workstation-Initiated and GitHub Lifecycle Equivalence" (this is about the `aws` target run from GitHub vs. a workstation — unrelated to the `local`/minikube-kind target from spec 022):
 
 - A personal-lab-scoped IAM role trusting the GitHub OIDC provider spec 015 creates (in `terraform/live/account/`, applied by `make account-up`) — the first real consumer of GitHub OIDC federation in this platform (spec 018's Atlantis uses its own instance/task role instead, never OIDC).
-- `.github/workflows/lab-up.yml` — a manually-triggered (`workflow_dispatch`) workflow that authenticates via that OIDC role and runs `make up`.
-- `.github/workflows/lab-down.yml` — the equivalent for `make down`.
+- `.github/workflows/lab.yml` — a manually-triggered (`workflow_dispatch`) workflow that authenticates via that OIDC role and runs `make ${{ inputs.target }}` for whichever lifecycle target is selected (see scope amendment 2 above; originally two separate workflows, `lab-up.yml`/`lab-down.yml`).
 
 Excludes: any PR-triggered validation workflow (`validate.yml`), the Atlantis PR plan/apply automation (spec 018), or the full automated lifecycle test (`platform-integration.yml`) — those are specs 018–019's responsibility, run against CI's own isolated state, not the personal lab's. This spec is specifically about giving the *personal* lab a remote start/stop button that behaves identically to running `make up`/`make down` locally.
 
@@ -68,16 +86,18 @@ Excludes: any PR-triggered validation workflow (`validate.yml`), the Atlantis PR
 
 ## Testing / acceptance criteria
 
-> **Scope amendment (ADR 0022):** see `tests/manual/016-lab-up-down.md` for the
-> full manual test plan covering the bounded-environment/depth-selector scope
-> this spec grew into (the `up`/`full-up`/`down`/`down-through-persistent`/
-> `full-down` matrix, the workstation/GitHub Kubernetes-access equivalence via
-> `eks-access-identity`, the full-down refusal for `vk-lab-platform`, and
-> fault-injection cases). The criteria below are the original, narrower set;
-> still true, just no longer the whole picture.
+> **Scope amendment (ADR 0022, updated by scope amendment 2 above):** see
+> `tests/manual/016-lab-up-down.md` for the full manual test plan covering the
+> bounded-environment/target-selector scope this spec grew into (the full
+> `status`/`state-*`/`bootstrap-*`/`persistent-*`/`cluster-*`/`argo-*`/
+> `up`/`down`/`platform-*`/`full-*` matrix, the workstation/GitHub
+> Kubernetes-access equivalence via `eks-access-identity`, the `full-down`
+> refusal for `vk-lab-platform`, and fault-injection cases). The criteria
+> below are the original, narrower set; still true, just no longer the whole
+> picture.
 
-- Manually triggering `lab-up.yml` from the GitHub Actions UI produces the same healthy end state as running `make up` locally (verified against spec 014's own health checks).
-- Manually triggering `lab-down.yml` produces the same clean teardown as running `make down` locally, including all of spec 014's postcondition checks passing.
-- Neither workflow fires on a routine `git push` or pull request — confirm by pushing a commit and a PR and observing no lab-up/lab-down run is triggered.
+- Manually triggering `lab.yml` with `target=up` from the GitHub Actions UI produces the same healthy end state as running `make up` locally (verified against spec 014's own health checks).
+- Manually triggering `lab.yml` with `target=down` produces the same clean teardown as running `make down` locally, including all of spec 014's postcondition checks passing.
+- The workflow doesn't fire on a routine `git push` or pull request — confirm by pushing a commit and a PR and observing no `lab.yml` run is triggered.
 - The OIDC role these workflows assume cannot touch `ci/persistent`/`ci/disposable` state (verify via IAM policy scoping, not just convention).
 - Fast validation (GitHub Actions workflow YAML validation) applies to these workflow files like any other change under `.github/workflows/`.

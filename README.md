@@ -19,9 +19,9 @@ for what went wrong and how this platform fixes it.
 State, Bootstrap, and Persistent (specs 001–002) and the full Disposable
 stack — EKS, Karpenter, Argo CD, Envoy Gateway, NLB, Postgres, Kafka, and
 observability (specs 003–014, 024) — are implemented and wired up behind
-`make up`/`make down`. The GitHub OIDC provider and `lab-up.yml`/
-`lab-down.yml` (specs 015–016) are also implemented — the platform can be
-started/stopped from GitHub Actions, not just a workstation.
+`make up`/`make down`. The GitHub OIDC provider and `lab.yml` (specs
+015–016) are also implemented — the platform can be started/stopped from
+GitHub Actions, not just a workstation.
 
 ## Usage
 
@@ -79,7 +79,7 @@ make status             # reports which layers currently have state in the share
 Other targets:
 
 ```bash
-make github-vars-up                            # once per repo: wires lab-up.yml/lab-down.yml's AWS_ROLE_ARN/ROOT_DOMAIN
+make github-vars-up                            # once per repo: wires lab.yml's AWS_ROLE_ARN/ROOT_DOMAIN
 make eks-kubeconfig                            # points kubectl at the disposable cluster
 make clear-cache                               # clears .terragrunt-cache after switching PROJECT_NAME/REGION/SUBDOMAIN
 make secret-encrypt NAME=<name> VALUE=<value>  # encrypts one secrets/<project>/<name>.enc

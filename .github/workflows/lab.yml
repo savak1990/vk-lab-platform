@@ -1,8 +1,12 @@
-name: lab-up
+name: lab
 
-# Manually triggered only - this starts real, billable AWS infrastructure.
-# project_name/subdomain/region are bounded choices, not free text: the
-# assumed role's policy is hand-enumerated to exactly this one combination.
+# Manually triggered only - this starts/stops real, billable AWS
+# infrastructure. project_name/subdomain/region are bounded choices, not
+# free text: the assumed role's policy is hand-enumerated to exactly this
+# one combination. `target` maps 1:1 onto a `make` target - no remapping,
+# no per-target gating; whatever safety behavior a given target's script
+# already has (e.g. state-down/bootstrap-down's own confirmation logic) is
+# unaffected by this workflow.
 on:
   workflow_dispatch:
     inputs:
@@ -21,18 +25,37 @@ on:
         type: choice
         options: [eu-west-1]
         default: eu-west-1
-      depth:
-        description: depth
+      target:
+        description: make target
         type: choice
-        options: [up, full-up]
+        options:
+          - status
+          - state-up
+          - state-down
+          - bootstrap-up
+          - bootstrap-down
+          - persistent-up
+          - persistent-down
+          - cluster-up
+          - cluster-down
+          - argo-up
+          - argo-down
+          - up
+          - down
+          - platform-up
+          - platform-down
+          - full-up
+          - full-down
         default: up
+
+run-name: "lab: ${{ inputs.target }} (${{ inputs.project_name }})"
 
 permissions:
   id-token: write
   contents: read
 
 jobs:
-  up:
+  run:
     runs-on: ubuntu-latest
     env:
       PROJECT_NAME: ${{ inputs.project_name }}
@@ -59,8 +82,9 @@ jobs:
           sudo mv terragrunt_linux_amd64 /usr/local/bin/terragrunt
 
       # ubuntu-latest's preinstalled helm predates --server-side/--force-conflicts
-      # (argo-up.sh's root-application install) - confirmed live, "unknown flag:
-      # --server-side". Pinned to the same version used to develop this repo.
+      # (argo-up.sh's root-application install, also used by argo-down.sh's
+      # `helm status`/`helm uninstall`). Pinned to the same version used to
+      # develop this repo.
       - uses: azure/setup-helm@v4
         with:
           version: "v4.1.4"
@@ -69,11 +93,11 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ inputs.region }}
-          role-duration-seconds: 14400 # full-up can run close to/over an hour; matches the role's own max_session_duration
+          role-duration-seconds: 14400 # full-up/full-down can run close to/over an hour; matches the role's own max_session_duration
 
       # ROOT_DOMAIN is a GitHub secret, not decrypted from secrets/root-domain.enc -
-      # only needed when depth=full-up reaches persistent-up; harmless to set
-      # unconditionally otherwise (make up never reads it).
-      - run: make ${{ inputs.depth }}
+      # only needed by persistent-up/full-up/platform-up; harmless to set
+      # unconditionally for every other target.
+      - run: make ${{ inputs.target }}
         env:
           ROOT_DOMAIN: ${{ secrets.ROOT_DOMAIN }}

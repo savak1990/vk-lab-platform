@@ -139,8 +139,7 @@ vk-lab-platform/
 │       ├── validate.yml
 │       ├── kind-integration.yml        # spec 024; cheap GitOps test, trusted-context PRs only
 │       ├── platform-integration.yml    # spec 020; full-AWS test; mode=routine|resilience
-│       ├── lab-up.yml
-│       ├── lab-down.yml
+│       ├── lab.yml                     # spec 016; single workflow, target selector (ADR 0022)
 │       └── cleanup-stale-ci.yml
 │
 ├── atlantis.yaml                  # spec 018; one project per Terragrunt stack
@@ -173,7 +172,7 @@ vk-lab-platform/
 │       ├── bootstrap/
 │       │   ├── terragrunt.stack.hcl
 │       │   ├── kms/
-│       │   ├── personal-lab-role/      # spec 016; hand-enumerated AWS-automation role for lab-up.yml/lab-down.yml (ADR 0022)
+│       │   ├── personal-lab-role/      # spec 016; hand-enumerated AWS-automation role for lab.yml (ADR 0022)
 │       │   └── atlantis/               # spec 018; standalone compute, independent of EKS; own instance/task role, not OIDC
 │       │
 │       ├── persistent/
@@ -1730,17 +1729,18 @@ make up
 make down
 ```
 
-GitHub (`lab-up.yml`/`lab-down.yml` take bounded `PROJECT_NAME`/`SUBDOMAIN`/
-`REGION` choice inputs plus a depth selector — see ADR 0022):
+GitHub (`lab.yml` takes bounded `PROJECT_NAME`/`SUBDOMAIN`/`REGION` choice
+inputs plus a `target` selector enumerating individual `make` targets
+directly — see ADR 0022):
 
 ```text
-lab-up.yml (depth: up | full-up)
+lab.yml (target: status | state-up | state-down | bootstrap-up |
+                 bootstrap-down | persistent-up | persistent-down |
+                 cluster-up | cluster-down | argo-up | argo-down |
+                 up | down | platform-up | platform-down |
+                 full-up | full-down)
     ↓
-make up | make full-up
-
-lab-down.yml (depth: down | down-through-persistent | full-down)
-    ↓
-make down | make down-through-persistent | make full-down
+make ${{ inputs.target }}
 ```
 
 The environment initiating the operation must not affect infrastructure semantics.

@@ -19,12 +19,12 @@ tooling, not part of `make up`/`make down`, and creates no AWS resource.
 
 A scheduled GitHub Actions workflow that polls whether the disposable EKS
 cluster is currently up, and a badge in `README.md` that reflects that state
-- not whether the last `lab-up.yml`/`lab-down.yml` dispatch succeeded, which
+- not whether the last `lab.yml` dispatch succeeded, which
 a plain workflow-status badge would show instead and which is a poor proxy
 for current state (a successful `lab-up` followed by a later `lab-down`
 still reads as green on a workflow-status badge).
 
-Excludes: any change to `lab-up.yml`/`lab-down.yml`/`make up`/`make down`
+Excludes: any change to `lab.yml`/`make up`/`make down`
 themselves; any new AWS resource; any alerting/notification (Slack, email -
 out of scope per spec 016's own precedent of leaving notifications
 optional); a general-purpose observability dashboard (Prometheus/Grafana,
@@ -36,7 +36,7 @@ front page).
 
 1. A new scheduled workflow (e.g. `.github/workflows/cluster-status.yml`),
    `on: schedule` plus `workflow_dispatch` for manual/on-demand checks, MUST
-   authenticate the same way `lab-up.yml`/`lab-down.yml` do - OIDC via
+   authenticate the same way `lab.yml` do - OIDC via
    `personal-lab-role` (`vars.AWS_ROLE_ARN`), no new IAM role and no new
    long-lived credential.
 2. Core check (MUST): `aws eks describe-cluster --name <cluster>`. A
@@ -105,11 +105,11 @@ front page).
 - With the cluster down: workflow run reports `"down"`/red, badge in
   `README.md` reflects it within one poll interval of a manual
   `workflow_dispatch`.
-- With the cluster up and healthy (post `make up`/`lab-up.yml`): badge
-  reflects `"up"`/green (or the deeper-check equivalent, if Requirement 4 is
-  implemented) within one poll interval.
-- Mid-teardown (`lab-down.yml` in progress): badge reflects a distinct
-  transitional state, never silently reads as `"up"`.
+- With the cluster up and healthy (post `make up`/`lab.yml` with `target=up`):
+  badge reflects `"up"`/green (or the deeper-check equivalent, if
+  Requirement 4 is implemented) within one poll interval.
+- Mid-teardown (`lab.yml` with `target=down` in progress): badge reflects a
+  distinct transitional state, never silently reads as `"up"`.
 - No AWS resource is created or destroyed by this workflow, confirmed via
   the IAM policy: it needs no permission beyond what spec 016 already
   granted for the core check (Requirement 3).

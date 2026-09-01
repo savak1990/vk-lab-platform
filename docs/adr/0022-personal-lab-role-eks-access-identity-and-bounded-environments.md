@@ -4,6 +4,30 @@
 
 Accepted
 
+## Amendment (post-acceptance)
+
+`lab-up.yml`/`lab-down.yml` were consolidated into a single `lab.yml` with one
+`target` input enumerating individual `make` targets directly (`status`,
+`state-up/down`, `bootstrap-up/down`, `persistent-up/down`,
+`cluster-up/down`, `argo-up/down`, `up`/`down`, `platform-up`/`platform-down`,
+`full-up`/`full-down`), replacing the `depth` selector and the two-workflow
+split. `down-through-persistent` was renamed `platform-down`, and a
+`platform-up` (`persistent-up cluster-up argo-up`) was added as its
+previously-missing up-direction mirror.
+
+The `full-down` GitHub Environment gate (`ephemeral-teardown`, required
+reviewers) described below was **removed**. This is a single-operator
+personal lab, not a shared/team environment — the two structural guards that
+remain (the IAM-incapability of `personal-lab-role`, and the script-level
+`EPHEMERAL_PROJECTS` allow-list gating `bootstrap-down.sh`/`state-down.sh`)
+were judged sufficient on their own; a reviewer-approval step with no second
+person to review it added process without adding safety. `CONFIRM_DESTROY`
+plumbing tied to that gate was removed along with it. Every `target` maps
+uniformly to `make ${{ inputs.target }}` in one job, with no per-target
+gating — whatever safety behavior a given target's own script already has
+(e.g. `state-down.sh`'s interactive-prompt-based allow-list) is unaffected by
+the workflow's own job structure.
+
 ## Context
 
 Spec 015 (ADR 0021) created the account-global GitHub OIDC provider. Spec 016

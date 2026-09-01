@@ -1,4 +1,4 @@
-.PHONY: up down full-up full-down down-through-persistent state-up state-down status account-up account-down bootstrap-up bootstrap-down github-vars-up secret-encrypt secret-decrypt generate-secrets persistent-up persistent-down clear-cache cluster-up cluster-down eks-kubeconfig argo-up argo-down
+.PHONY: up down full-up full-down platform-up platform-down state-up state-down status account-up account-down bootstrap-up bootstrap-down github-vars-up secret-encrypt secret-decrypt generate-secrets persistent-up persistent-down clear-cache cluster-up cluster-down eks-kubeconfig argo-up argo-down
 
 .NOTPARALLEL:
 
@@ -38,12 +38,17 @@ full-up: clear-cache state-up bootstrap-up persistent-up cluster-up argo-up
 ## state-down each keep their own explicit confirmation prompts.
 full-down: clear-cache argo-down cluster-down persistent-down bootstrap-down state-down
 
-## Tears down through Persistent only - Argo CD -> cluster -> Persistent.
-## Leaves Bootstrap/State untouched. For an environment whose Bootstrap/State
-## must survive (e.g. the personal lab) but whose Persistent layer (DNS zone,
+## Brings up Persistent + the disposable cluster + Argo CD onto an existing
+## State/Bootstrap layer. For cluster+Argo only (Persistent already up) use
+## `make up`; for everything from scratch use `make full-up`.
+platform-up: clear-cache persistent-up cluster-up argo-up
+
+## Tears down Argo CD -> cluster -> Persistent, stopping there. Leaves
+## Bootstrap/State untouched. For an environment whose Bootstrap/State must
+## survive (e.g. the personal lab) but whose Persistent layer (DNS zone,
 ## ACM cert, Secrets Manager) is meant to be torn down along with everything
 ## above it.
-down-through-persistent: clear-cache argo-down cluster-down persistent-down
+platform-down: clear-cache argo-down cluster-down persistent-down
 
 ## Reports which lifecycle layers currently have state in the shared bucket.
 status:
@@ -76,7 +81,7 @@ bootstrap-up:
 bootstrap-down:
 	./scripts/bootstrap-down.sh
 
-## Wires lab-up.yml/lab-down.yml's repo variable/secret from what already
+## Wires lab.yml's repo variable/secret from what already
 ## exists: vars.AWS_ROLE_ARN (personal-lab-role's ARN) and secrets.ROOT_DOMAIN
 ## (decrypted from secrets/$(PROJECT_NAME)/root-domain.enc). Run once per
 ## project/repo, after `make bootstrap-up` - deliberately in no composite target.
@@ -142,12 +147,11 @@ argo-up:
 argo-down:
 	./scripts/argo-down.sh
 
-## Clears every .terragrunt-cache dir under terraform/live/. Run manually
-## after switching PROJECT_NAME/REGION/SUBDOMAIN - a cache left over from a
-## different value bakes its old backend config into the cached working
-## directory, which then makes terraform refuse to proceed ("Backend
-## configuration has changed"). Not run automatically by any *-up/*-down
-## target; run this yourself first when you know you're switching.
+## Clears every .terragrunt-cache dir under terraform/live/. Run as the
+## first step of every composite *-up/*-down target below - a cache left
+## over from a different PROJECT_NAME/REGION/SUBDOMAIN bakes its old backend
+## config into the cached working directory, which then makes terraform
+## refuse to proceed ("Backend configuration has changed").
 clear-cache:
 	find terraform/live -type d -name .terragrunt-cache -prune -exec rm -rf {} +
 
