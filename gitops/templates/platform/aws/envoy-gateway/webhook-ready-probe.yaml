@@ -68,7 +68,11 @@ spec:
       restartPolicy: Never
       containers:
         - name: probe
-          image: bitnami/kubectl:1.31
+          # bitnami/kubectl dropped floating version tags (only "latest" and
+          # digest-pinned tags remain). alpine/k8s bundles kubectl on a real
+          # shell (rancher/kubectl is a scratch image with no shell at all -
+          # incompatible with this script's bash invocation).
+          image: alpine/k8s:1.31.13
           command: ["/bin/bash", "-c"]
           args:
             - |
