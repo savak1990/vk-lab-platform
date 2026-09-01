@@ -1,0 +1,85 @@
+{{- if eq .Values.target "aws" }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: envoy-gateway-webhook-probe
+  namespace: envoy
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: envoy-gateway-webhook-probe
+  namespace: envoy
+rules:
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: envoy-gateway-webhook-probe
+  namespace: envoy
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: envoy-gateway-webhook-probe
+subjects:
+  - kind: ServiceAccount
+    name: envoy-gateway-webhook-probe
+    namespace: envoy
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: envoy-gateway-webhook-probe
+  namespace: envoy
+  annotations:
+    # Runs between aws-load-balancer-controller (wave -5) and envoy-gateway
+    # (wave -1): the controller Deployment reporting Available doesn't mean
+    # its mutating webhook is serving a cert that matches its own caBundle
+    # yet - only an actual admission call proves that.
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      serviceAccountName: envoy-gateway-webhook-probe
+      restartPolicy: Never
+      containers:
+        - name: probe
+          image: bitnami/kubectl:1.31
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              set -euo pipefail
+
+              attempts=30
+              sleep_seconds=5
+
+              manifest=$(printf '%s\n' \
+                'apiVersion: v1' \
+                'kind: Service' \
+                'metadata:' \
+                '  name: webhook-probe' \
+                '  annotations:' \
+                '    service.beta.kubernetes.io/aws-load-balancer-type: external' \
+                'spec:' \
+                '  type: LoadBalancer' \
+                '  ports: [{port: 443, targetPort: 10443}]' \
+                '  selector: {probe: "true"}')
+
+              for i in $(seq 1 "$attempts"); do
+                if printf '%s\n' "$manifest" | kubectl create -n envoy --dry-run=server -f - >/dev/null 2>&1; then
+                  echo "webhook admitted the probe on attempt $i/$attempts"
+                  exit 0
+                fi
+                echo "webhook not ready yet (attempt $i/$attempts), retrying in ${sleep_seconds}s"
+                sleep "$sleep_seconds"
+              done
+
+              echo "webhook still not admitting requests after $((attempts * sleep_seconds))s, giving up"
+              exit 1
+{{- end }}
