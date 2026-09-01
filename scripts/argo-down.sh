@@ -22,12 +22,25 @@ PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
 BACKUP_TIMEOUT="${ARGO_DOWN_BACKUP_TIMEOUT:-120s}"
 SNAPSHOT_TAG_FILTERS=("Name=tag:Project,Values=$PROJECT_NAME" "Name=tag:Component,Values=postgres")
 
+CLUSTER_NAME="${PROJECT_NAME}-eks"
+
+# Absence is checked against the AWS API, not kubectl - a describe-cluster
+# 404 is proof the cluster is gone (safe to skip), whereas a kubectl failure
+# only proves this shell has no working kubeconfig, never proof of absence.
+if ! aws eks describe-cluster --name "$CLUSTER_NAME" --region "$PROJECT_REGION" >/dev/null 2>&1; then
+  echo "ARGO-DOWN: cluster $CLUSTER_NAME does not exist - nothing to cascade, skipping."
+  exit 0
+fi
+
+aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$PROJECT_REGION" --alias "$CLUSTER_NAME" \
+  --role-arn "$(aws iam get-role --role-name eks-access-identity --query Role.Arn --output text)" >/dev/null
+kubectl config set-context --current --namespace=default >/dev/null
+
 if ! kubectl cluster-info --request-timeout=5s >/dev/null 2>&1; then
-  echo "ARGO-DOWN: ERROR - cannot reach the cluster via kubectl (cluster-info failed)." >&2
-  echo "ARGO-DOWN: this means either kubeconfig/context was never set up (run 'make eks-kubeconfig' first)" >&2
-  echo "ARGO-DOWN: or the cluster is genuinely gone. Refusing to proceed: without API access there is no" >&2
-  echo "ARGO-DOWN: way to ask Karpenter/aws-load-balancer-controller to drain nodes and delete load" >&2
-  echo "ARGO-DOWN: balancers before the control plane is destroyed - proceeding blind orphans them." >&2
+  echo "ARGO-DOWN: ERROR - cluster $CLUSTER_NAME exists but is unreachable via kubectl (cluster-info failed)." >&2
+  echo "ARGO-DOWN: refusing to proceed: without API access there is no way to ask Karpenter/aws-load-balancer-" >&2
+  echo "ARGO-DOWN: controller to drain nodes and delete load balancers before the control plane is destroyed -" >&2
+  echo "ARGO-DOWN: proceeding blind orphans them. Investigate cluster/API-server health before retrying." >&2
   exit 1
 fi
 

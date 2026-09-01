@@ -4,28 +4,38 @@
 # cluster - that means `make argo-down` hasn't completed, and proceeding
 # anyway is what causes Karpenter's orphaned EC2 instances to block the node
 # security group's destroy with DependencyViolation (ADR 0012, spec 006-1).
-# Also refuses if the cluster is unreachable at all: without kubectl access
-# there is no way to confirm argo-down's cascade actually ran, and a blind
-# terragrunt destroy against a cluster that turns out to still be alive
-# orphans whatever Karpenter/aws-load-balancer-controller hadn't finished
-# tearing down.
+# Also refuses if the cluster exists but is unreachable: without kubectl
+# access there is no way to confirm argo-down's cascade actually ran, and a
+# blind terragrunt destroy against a cluster that turns out to still be
+# alive orphans whatever Karpenter/aws-load-balancer-controller hadn't
+# finished tearing down. If the cluster doesn't exist at all (per the AWS
+# API, not kubectl), there's nothing to check - proceed straight to destroy.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJECT_REGION="${PROJECT_REGION:-eu-west-1}"
 PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
+CLUSTER_NAME="${PROJECT_NAME}-eks"
 
-if ! kubectl cluster-info --request-timeout=5s >/dev/null 2>&1; then
-  echo "CLUSTER-DOWN: ERROR - cannot reach the cluster via kubectl (cluster-info failed)." >&2
-  echo "CLUSTER-DOWN: refusing to run 'terragrunt destroy' blind - argo-down's graceful cascade could not" >&2
-  echo "CLUSTER-DOWN: run, so any Karpenter node or load balancer still alive right now will be orphaned" >&2
-  echo "CLUSTER-DOWN: if the control plane is destroyed anyway. Investigate kubectl access before retrying." >&2
-  exit 1
-fi
+if aws eks describe-cluster --name "$CLUSTER_NAME" --region "$PROJECT_REGION" >/dev/null 2>&1; then
+  aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$PROJECT_REGION" --alias "$CLUSTER_NAME" \
+    --role-arn "$(aws iam get-role --role-name eks-access-identity --query Role.Arn --output text)" >/dev/null
+  kubectl config set-context --current --namespace=default >/dev/null
 
-if kubectl get application root -n argocd >/dev/null 2>&1; then
-  echo "Argo CD's root Application still exists - run 'make argo-down' first." >&2
-  exit 1
+  if ! kubectl cluster-info --request-timeout=5s >/dev/null 2>&1; then
+    echo "CLUSTER-DOWN: ERROR - cluster $CLUSTER_NAME exists but is unreachable via kubectl (cluster-info failed)." >&2
+    echo "CLUSTER-DOWN: refusing to run 'terragrunt destroy' blind - argo-down's graceful cascade could not be" >&2
+    echo "CLUSTER-DOWN: confirmed, so any Karpenter node or load balancer still alive right now will be orphaned" >&2
+    echo "CLUSTER-DOWN: if the control plane is destroyed anyway. Investigate cluster/API-server health before retrying." >&2
+    exit 1
+  fi
+
+  if kubectl get application root -n argocd >/dev/null 2>&1; then
+    echo "Argo CD's root Application still exists - run 'make argo-down' first." >&2
+    exit 1
+  fi
+else
+  echo "CLUSTER-DOWN: cluster $CLUSTER_NAME does not exist - skipping kubectl checks, proceeding to terragrunt destroy."
 fi
 
 cd "$REPO_ROOT/terraform/live/cluster" && terragrunt run --all --non-interactive -- destroy -auto-approve
