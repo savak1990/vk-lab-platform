@@ -14,6 +14,20 @@ resource "aws_route53_zone" "this" {
   name = local.fqdn
 }
 
+# Route53 auto-creates an SOA record with the account's default 24h negative-
+# cache TTL; this record overrides just that, keeping the other SOA fields
+# (they only govern zone-transfer semantics, irrelevant here) at their defaults.
+resource "aws_route53_record" "soa" {
+  zone_id = aws_route53_zone.this.zone_id
+  name    = local.fqdn
+  type    = "SOA"
+  ttl     = 900
+
+  records = [
+    "${aws_route53_zone.this.name_servers[0]} awsdns-hostmaster.amazon.com. 1 7200 900 1209600 ${var.negative_cache_ttl}"
+  ]
+}
+
 # Looked up by name rather than an explicit zone ID - the parent zone is
 # never created or deleted, only read for its ID and given this one NS
 # record delegating the subdomain (constitution §14).

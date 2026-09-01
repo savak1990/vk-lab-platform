@@ -131,7 +131,7 @@ fi
 # .status.resources instead would lie here, since that is its tracked
 # desired-state view and keeps listing resources already deleted.
 TERMINATING_KINDS="application.argoproj.io cluster.postgresql.cnpg.io \
-nodepool.karpenter.sh ec2nodeclass.karpenter.k8s.aws \
+nodepool.karpenter.sh ec2nodeclass.karpenter.k8s.aws nodeclaim.karpenter.sh \
 volumesnapshot.snapshot.storage.k8s.io volumesnapshotcontent.snapshot.storage.k8s.io \
 volumesnapshotclass.snapshot.storage.k8s.io storageclass.storage.k8s.io \
 clustersecretstore.external-secrets.io externalsecret.external-secrets.io \
