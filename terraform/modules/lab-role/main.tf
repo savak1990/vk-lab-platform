@@ -59,36 +59,15 @@ data "aws_iam_policy_document" "permissions" {
     resources = ["*"]
   }
 
-  # This project's own dedicated state bucket - not shared with CI (a
-  # different PROJECT_NAME gets its own bucket entirely, constitution §11),
-  # so no prefix restriction is needed to keep environments apart.
+  # This project's own dedicated state bucket - not shared with CI. Covers
+  # both bucket-level (CreateBucket, PutBucketVersioning, ...) and
+  # object-level actions; no Deny on weakening protections since IAM can't
+  # tell "set at creation" from "weakened later" on the same Put* call, and
+  # denying them would break terraform-state's own bucket creation.
   statement {
-    sid       = "StateBucketList"
-    actions   = ["s3:ListBucket"]
-    resources = [local.bucket_arn]
-  }
-
-  statement {
-    sid       = "StateBucketObjects"
+    sid       = "StateBucket"
     actions   = ["s3:*"]
-    resources = ["${local.bucket_arn}/*"]
-  }
-
-  # NOT denying s3:DeleteBucket here (unlike the earlier per-project role) -
-  # this role is shared, and an ephemeral project's own bootstrap-down must
-  # be able to actually delete its own state bucket. The remaining Denies
-  # still block weakening the bucket's protections while it's in use -
-  # nothing in this platform's own destroy path (raw aws s3api
-  # delete-objects/delete-bucket in state-down.sh) needs any of these.
-  statement {
-    sid    = "DenyStateBucketProtectionWeakening"
-    effect = "Deny"
-    actions = [
-      "s3:PutBucketPolicy", "s3:PutBucketAcl",
-      "s3:PutBucketVersioning", "s3:PutLifecycleConfiguration",
-      "s3:PutBucketPublicAccessBlock", "s3:PutEncryptionConfiguration",
-    ]
-    resources = [local.bucket_arn]
+    resources = [local.bucket_arn, "${local.bucket_arn}/*"]
   }
 
   statement {
