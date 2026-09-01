@@ -14,12 +14,18 @@ kind: ServiceAccount
 metadata:
   name: envoy-gateway-webhook-probe
   namespace: envoy
+  annotations:
+    # No explicit wave defaults to "0", after the Job's hook at wave -2 -
+    # the Job's pod creation then fails looking up this ServiceAccount.
+    argocd.argoproj.io/sync-wave: "-3"
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: envoy-gateway-webhook-probe
   namespace: envoy
+  annotations:
+    argocd.argoproj.io/sync-wave: "-3"
 rules:
   - apiGroups: [""]
     resources: ["services"]
@@ -30,6 +36,8 @@ kind: RoleBinding
 metadata:
   name: envoy-gateway-webhook-probe
   namespace: envoy
+  annotations:
+    argocd.argoproj.io/sync-wave: "-3"
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
