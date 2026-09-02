@@ -45,7 +45,9 @@ resource "aws_route53_record" "delegation" {
   zone_id = data.aws_route53_zone.parent.zone_id
   name    = local.fqdn
   type    = "NS"
-  ttl     = 172800
+  # Short TTL so a zone recreate's new nameservers propagate within an hour,
+  # not Route53's 48h NS-record default - see ADR 0002/0023 lifecycle notes.
+  ttl     = 3600
   records = aws_route53_zone.this.name_servers
 }
 

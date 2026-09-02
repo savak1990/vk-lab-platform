@@ -247,7 +247,7 @@ data "aws_iam_policy_document" "permissions" {
   statement {
     sid = "PlatformConfigSsmParameters"
     actions = [
-      "ssm:PutParameter", "ssm:GetParameter", "ssm:GetParametersByPath",
+      "ssm:PutParameter", "ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath",
       "ssm:DeleteParameter", "ssm:AddTagsToResource", "ssm:ListTagsForResource",
     ]
     resources = [
@@ -332,6 +332,16 @@ data "aws_iam_policy_document" "permissions" {
   # secrets, so no per-project destroy should ever be able to touch it -
   # only account-down (a distinct script/role/terragrunt unit this role
   # never runs) destroys it.
+  # ListAliases has no resource-level scoping (like DescribeParameters/
+  # CloudWatchLogs above) - every module's data "aws_kms_alias" "secrets"
+  # lookup calls it, and scoping kms:* to the target key ARN below never
+  # covers it since the API implicitly requests action on Resource "*".
+  statement {
+    sid       = "KmsListAliases"
+    actions   = ["kms:ListAliases"]
+    resources = ["*"]
+  }
+
   statement {
     sid       = "KmsSecretsKey"
     actions   = ["kms:*"]
