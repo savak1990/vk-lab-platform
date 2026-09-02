@@ -7,8 +7,9 @@ terraform {
 }
 
 locals {
-  project        = get_env("PROJECT_NAME", "vk-lab-platform")
-  project_region = get_env("PROJECT_REGION", "eu-west-1")
+  project             = get_env("PROJECT_NAME", "vk-lab-platform")
+  project_region      = get_env("PROJECT_REGION", "eu-west-1")
+  account_main_region = get_env("ACCOUNT_MAIN_REGION", "eu-west-1")
 
   # Prefer the already-recorded subdomain over the env var, so a forgotten
   # SUBDOMAIN re-export on a later apply can't silently move this zone to
@@ -30,6 +31,7 @@ locals {
 }
 
 inputs = {
-  project   = local.project
-  subdomain = local.subdomain
+  project             = local.project
+  subdomain           = local.subdomain
+  account_main_region = local.account_main_region
 }

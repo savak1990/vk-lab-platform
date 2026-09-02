@@ -35,8 +35,7 @@ random_password() {
     --password-length 32 --output text --query RandomPassword
 }
 
-# root-domain is account-global, filed under secrets/ directly rather than
-# secrets/$PROJECT_NAME/ - see secret-encrypt.sh.
+# root-domain is account-global, filed under secrets/ directly - see secret-encrypt.sh.
 generate_if_missing() {
   local name="$1" value="$2"
   local file="$REPO_ROOT/secrets/root-domain.enc"

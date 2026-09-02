@@ -10,15 +10,24 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
 SECRETS_DIR="$REPO_ROOT/secrets/$PROJECT_NAME"
 
+secret_path() {
+  # root-domain is account-global - see secrets/README.md.
+  if [ "$1" = "root-domain" ]; then
+    echo "$REPO_ROOT/secrets/root-domain.enc"
+  else
+    echo "$SECRETS_DIR/$1.enc"
+  fi
+}
+
 missing=()
 for name in root-domain postgres-app-password grafana-admin-password; do
-  test -f "$SECRETS_DIR/$name.enc" || missing+=("$name")
+  test -f "$(secret_path "$name")" || missing+=("$name")
 done
 
 if [ "${#missing[@]}" -gt 0 ]; then
   echo "Missing secret(s) for PROJECT_NAME=$PROJECT_NAME:" >&2
   for name in "${missing[@]}"; do
-    echo "  - $SECRETS_DIR/$name.enc" >&2
+    echo "  - $(secret_path "$name")" >&2
   done
   echo "Create them first, e.g.:" >&2
   for name in "${missing[@]}"; do

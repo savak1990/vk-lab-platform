@@ -18,7 +18,11 @@ call it under that variable, independent of whatever `PROJECT_REGION` the curren
 Files live under a per-project directory, `secrets/<PROJECT_NAME>/<name>.enc`
 (`PROJECT_NAME` defaults to `vk-lab-platform`), so a different `PROJECT_NAME`
 run (e.g. a CI/disposable-account run) gets its own secret set without
-colliding with the personal lab's. For a throwaway CI/test environment,
+colliding with the personal lab's — **except `root-domain.enc`**, filed
+directly under `secrets/` with no project directory, since the root domain
+is account-global: one value shared by every `PROJECT_NAME` in the account,
+applied once by `terraform/live/account/root-domain`. For a throwaway
+CI/test environment,
 `make generate-secrets` creates this project's secrets automatically
 (root domain from an argument, a fixed test Postgres password) instead of
 requiring `make secret-encrypt` to be run by hand — see below.
@@ -44,8 +48,9 @@ the plaintext value you passed as `VALUE`.
 PROJECT_NAME=<ci-project-name> ROOT_DOMAIN=<domain> make generate-secrets
 ```
 
-Creates `secrets/$PROJECT_NAME/root-domain.enc` (from `ROOT_DOMAIN`),
-`secrets/$PROJECT_NAME/postgres-app-password.enc`, and
+Creates `secrets/root-domain.enc` (from `ROOT_DOMAIN`, only if missing —
+it's account-global, so an already-existing value from another project is
+left alone), `secrets/$PROJECT_NAME/postgres-app-password.enc`, and
 `secrets/$PROJECT_NAME/grafana-admin-password.enc` (each a fixed value,
 `test`) — everything `make persistent-up` needs for a disposable
 CI/test project, with no manually pre-committed ciphertext. Never use
@@ -65,7 +70,7 @@ any in-cluster component, so it works from spec 002 onward, long before Pod
 Identity or an in-cluster secrets controller exist (those are spec 014's
 job, for runtime application secrets).
 
-Terraform itself decrypts `secrets/<project>/root-domain.enc` and
+Terraform itself decrypts `secrets/root-domain.enc` and
 `secrets/<project>/postgres-app-password.enc` directly, via the AWS
 provider's `aws_kms_secrets` data source — `make secret-decrypt` is for
 manual inspection of a value, not something spec 002's Terraform code
@@ -82,11 +87,11 @@ Nothing tracked yet — `secrets/vk-lab-platform/test.enc` is only spec 001's
 acceptance-test fixture. Spec 002 needs two real values created once,
 before `make persistent-up` can succeed:
 
-- `vk-lab-platform/root-domain.enc` — the platform's real root domain
-  value, consumed by spec 002's `route53` unit. Create it via
-  `make secret-encrypt NAME=root-domain VALUE=<your real root domain>`,
+- `root-domain.enc` — the account's real root domain value (account-global,
+  not under a project directory), consumed by `terraform/live/account/root-domain`.
+  Create it via `make secret-encrypt NAME=root-domain VALUE=<your real root domain>`,
   and make sure a public Route 53 hosted zone for that exact domain
-  already exists in the target AWS account (spec 002 looks it up by name).
+  already exists in the target AWS account (looked up by name).
 - `vk-lab-platform/postgres-app-password.enc` — the in-cluster Postgres
   `vkdb` role's password, consumed by spec 002's `secrets` unit. Create
   it via `make secret-encrypt NAME=postgres-app-password VALUE=<generated password>`.
