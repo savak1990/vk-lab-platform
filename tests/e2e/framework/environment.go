@@ -27,15 +27,26 @@ type Environment interface {
 	KubernetesClient() kubernetes.Interface
 	ServiceURL(service string) string
 	PostgresDSN(cluster string) string
+	Close()
 }
 
 // AWSEnvironment reaches services via their public HTTPRoute hostname
 // (Grafana, Argo CD) or via a port-forward to their ClusterIP Service
 // (Postgres, which has no external endpoint).
 type AWSEnvironment struct {
-	clientset  kubernetes.Interface
-	dynamic    dynamic.Interface
-	restConfig *rest.Config
+	clientset    kubernetes.Interface
+	dynamic      dynamic.Interface
+	restConfig   *rest.Config
+	portForwards []chan struct{}
+}
+
+// Close stops every port-forward opened by PostgresDSN. Call once from
+// AfterSuite - each forward otherwise leaks its goroutine and SPDY
+// connection for the life of the test binary.
+func (e *AWSEnvironment) Close() {
+	for _, stopCh := range e.portForwards {
+		close(stopCh)
+	}
 }
 
 func NewAWSEnvironment(clientset kubernetes.Interface, dynamicClient dynamic.Interface, restConfig *rest.Config) *AWSEnvironment {
@@ -87,10 +98,11 @@ func (e *AWSEnvironment) PostgresDSN(cluster string) string {
 		panic(fmt.Sprintf("framework: finding ready pod for %s-rw: %v", cluster, err))
 	}
 
-	localPort, _, err := PortForward(e.restConfig, e.clientset, postgresNamespace, podName, 5432)
+	localPort, stopCh, err := PortForward(e.restConfig, e.clientset, postgresNamespace, podName, 5432)
 	if err != nil {
 		panic(fmt.Sprintf("framework: port-forwarding to %s: %v", podName, err))
 	}
+	e.portForwards = append(e.portForwards, stopCh)
 
 	dsn := url.URL{
 		Scheme:   "postgres",

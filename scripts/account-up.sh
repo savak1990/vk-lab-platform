@@ -52,10 +52,8 @@ echo "Applying lab-role ..."
 (cd "$REPO_ROOT/terraform/live/account/lab-role" && terragrunt apply --non-interactive -auto-approve)
 
 # root-domain after lab-role (needs its new SSM write permissions) and kms
-# (decrypts root-domain.enc). Validates the root domain is actually a
-# reachable Route53 hosted zone before recording it - fails fast here
-# instead of much later inside a project's own bootstrap/route53 apply.
-# See docs/adr/0023.
+# (decrypts root-domain.enc). Its own Route53 zone lookup fails this apply
+# fast, instead of much later inside a project's own bootstrap/route53.
 echo "Applying root-domain ..."
 (cd "$REPO_ROOT/terraform/live/account/root-domain" && terragrunt apply --non-interactive -auto-approve)
 

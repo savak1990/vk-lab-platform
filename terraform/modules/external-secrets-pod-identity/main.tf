@@ -10,26 +10,39 @@ module "pod_identity" {
 data "aws_region" "current" {}
 data "aws_caller_identity" "current" {}
 
-# alias/lab-secrets - the same key that encrypts the committed .enc files
-# also encrypts these two SecureString parameters (docs/adr/0023).
+# alias/lab-secrets lives in ACCOUNT_MAIN_REGION, not this unit's own
+# PROJECT_REGION - same reasoning as route53-zone's root_domain lookup.
 data "aws_kms_alias" "secrets" {
-  name = "alias/lab-secrets"
+  name   = "alias/lab-secrets"
+  region = var.account_main_region
+}
+
+locals {
+  postgres_password_arn = "arn:aws:ssm:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:parameter/${var.project}/persistent/postgres/app_password"
+  grafana_password_arn  = "arn:aws:ssm:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:parameter/${var.project}/persistent/grafana/admin_password"
 }
 
 data "aws_iam_policy_document" "controller" {
   statement {
-    sid     = "AllowReadPlatformSecretParameters"
-    actions = ["ssm:GetParameter"]
-    resources = [
-      "arn:aws:ssm:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:parameter/${var.project}/persistent/postgres/app_password",
-      "arn:aws:ssm:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:parameter/${var.project}/persistent/grafana/admin_password",
-    ]
+    sid       = "AllowReadPlatformSecretParameters"
+    actions   = ["ssm:GetParameter"]
+    resources = [local.postgres_password_arn, local.grafana_password_arn]
   }
 
+  # alias/lab-secrets also encrypts /account/root_domain and this project's
+  # fqdn - SSM sets an EncryptionContext of the parameter's own ARN, so this
+  # condition keeps Decrypt scoped to just the two parameters this role can
+  # read, not the whole shared key.
   statement {
     sid       = "AllowDecryptPlatformSecretParameters"
     actions   = ["kms:Decrypt"]
     resources = [data.aws_kms_alias.secrets.target_key_arn]
+
+    condition {
+      test     = "StringEquals"
+      variable = "kms:EncryptionContext:PARAMETER_ARN"
+      values   = [local.postgres_password_arn, local.grafana_password_arn]
+    }
   }
 }
 

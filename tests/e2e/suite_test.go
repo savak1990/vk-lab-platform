@@ -30,6 +30,10 @@ var _ = BeforeSuite(func() {
 	env = framework.NewAWSEnvironment(clientset, dynamicClient, restConfig)
 })
 
+var _ = AfterSuite(func() {
+	env.Close()
+})
+
 var _ = ReportAfterEach(func(report SpecReport) {
 	if !report.State.Is(types.SpecStateFailed) {
 		return

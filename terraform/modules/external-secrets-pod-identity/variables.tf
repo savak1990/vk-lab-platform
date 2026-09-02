@@ -8,6 +8,11 @@ variable "project" {
   type        = string
 }
 
+variable "account_main_region" {
+  description = "ACCOUNT_MAIN_REGION - where alias/lab-secrets actually lives, independent of this unit's own provider region (PROJECT_REGION)."
+  type        = string
+}
+
 variable "service_account_name" {
   description = "Kubernetes service account name the External Secrets Operator controller uses (must match the Helm release's serviceAccount.name)."
   type        = string

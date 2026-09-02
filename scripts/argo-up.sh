@@ -35,16 +35,37 @@ eks_output() {
   terragrunt --working-dir "$REPO_ROOT/terraform/live/cluster/eks" output -raw "$1"
 }
 
+# One batched get-parameters call, not five round trips - $PROJECT_REGION,
+# not $ACCOUNT_MAIN_REGION, since every parameter read here is
+# project-scoped, created by a unit that applies in PROJECT_REGION
+# (root.hcl's aws_region), not the account layer. --with-decryption is a
+# no-op on the plain String ones, so this serves both types uniformly.
+# Bash 3.2 compatible (no associative arrays) - linear scan over 5 items.
+SSM_NAMES=(
+  "/$PROJECT_NAME/bootstrap/acm/certificate_arn"
+  "/$PROJECT_NAME/persistent/vpc/vpc_id"
+  "/$PROJECT_NAME/cluster/eks/node_subnet_id"
+  "/$PROJECT_NAME/bootstrap/route53/fqdn"
+  "/$PROJECT_NAME/persistent/argocd/admin_password_bcrypt"
+)
+SSM_BATCH_NAMES=()
+SSM_BATCH_VALUES=()
+while IFS=$'\t' read -r name value; do
+  SSM_BATCH_NAMES+=("$name")
+  SSM_BATCH_VALUES+=("$value")
+done < <(aws ssm get-parameters --region "$PROJECT_REGION" --with-decryption \
+  --names "${SSM_NAMES[@]}" --query 'Parameters[].[Name,Value]' --output text)
+
 # The owning terragrunt unit is named in the failure message - a plain
 # ParameterNotFound doesn't say which unit should have created it, unlike
-# terragrunt output's own error. $PROJECT_REGION, not $ACCOUNT_MAIN_REGION -
-# every parameter read here is project-scoped, created by a unit that
-# applies in PROJECT_REGION (root.hcl's aws_region), not the account layer.
+# terragrunt output's own error.
 ssm_output() {
-  # --with-decryption is a no-op on a plain String parameter, so this one
-  # helper serves both types without needing to know which is which.
-  aws ssm get-parameter --name "$1" --region "$PROJECT_REGION" --with-decryption --query 'Parameter.Value' --output text \
-    || { echo "ARGO-UP: missing SSM parameter $1 - has its owning terragrunt unit been applied?" >&2; exit 1; }
+  local i
+  for i in "${!SSM_BATCH_NAMES[@]}"; do
+    [ "${SSM_BATCH_NAMES[$i]}" = "$1" ] && { printf '%s' "${SSM_BATCH_VALUES[$i]}"; return; }
+  done
+  echo "ARGO-UP: missing SSM parameter $1 - has its owning terragrunt unit been applied?" >&2
+  exit 1
 }
 
 CLUSTER_NAME="$(eks_output cluster_name)"

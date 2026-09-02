@@ -18,11 +18,9 @@ data "aws_route53_zone" "root" {
   private_zone = false
 }
 
-# SecureString, not String: root_domain is treated as sensitive at the
-# storage layer even though it's also derivable from public DNS once a
-# project's zone is delegated (the NS records for lab.<root-domain> name
-# the parent) - see docs/adr/0023 and CLAUDE.md's "DNS and domain
-# ownership" section.
+# SecureString, not String: treated as sensitive at the storage layer even
+# though it's also derivable from public DNS once a project's zone is
+# delegated (the NS records for lab.<root-domain> name the parent).
 resource "aws_ssm_parameter" "root_domain" {
   name        = "/account/root_domain"
   type        = "SecureString"

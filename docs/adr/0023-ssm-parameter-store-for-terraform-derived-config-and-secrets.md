@@ -214,3 +214,12 @@ the two password parameter ARNs, plus `kms:Decrypt` on `alias/lab-secrets`
 - Explicitly out of scope, permanently, not just deferred: Argo CD's
   admin-password *mechanism* itself (ADR 0012 — pre-Argo CD/ESO,
   structurally can't change).
+- **Known limitation, deferred:** `fqdn` and the two ESO-consumed passwords
+  are SecureString parameters written in `PROJECT_REGION`, encrypted with
+  `alias/lab-secrets`, which exists only in `ACCOUNT_MAIN_REGION` — AWS
+  requires an SSM SecureString's KMS key to be in the same region as the
+  parameter. Running a cluster with `PROJECT_REGION != ACCOUNT_MAIN_REGION`
+  will fail those three `aws_ssm_parameter` creates. Not fixed here;
+  candidate fixes (falling back to the region's own `alias/aws/ssm`, or
+  a multi-region KMS replica key) are deferred until region portability is
+  actually exercised.
