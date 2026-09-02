@@ -348,8 +348,8 @@ A successful `local` run is never a substitute for the `aws`-target full lifecyc
 
 ## 19. Fork Configurability
 
-A forked copy of this repository MUST be runnable against the fork owner's own AWS account and domain with zero source-code changes. The only setup steps a fork owner needs are: run account bootstrap (§17's `make bootstrap-up`, creating the account-level GitHub OIDC provider per §5) once against their own AWS account; set `AWS_ROLE_ARN` and `AWS_REGION` as GitHub Environment/repository variables; set `ROOT_DOMAIN` as a GitHub Environment/repository secret.
+A forked copy of this repository MUST be runnable against the fork owner's own AWS account and domain with zero source-code changes. The only setup steps a fork owner needs are: run account bootstrap (§17's `make bootstrap-up`, creating the account-level GitHub OIDC provider per §5) once against their own AWS account, generate/commit their own `secrets/root-domain.enc` (§14, §5), and set `AWS_ROLE_ARN` and `AWS_REGION` as GitHub Environment/repository variables.
 
-`AWS_ROLE_ARN` and `AWS_REGION` are configuration, not credentials. `ROOT_DOMAIN` is private/hygiene data (§14), delivered to GitHub Actions workflows as a secret directly — a separate delivery path from the KMS-encrypted `secrets/root-domain.enc` ciphertext (§14, §5), which remains the mechanism for workstation/local use only.
+`AWS_ROLE_ARN` and `AWS_REGION` are configuration, not credentials. `ROOT_DOMAIN` is private/hygiene data (§14); GitHub Actions workflows decrypt the committed `secrets/root-domain.enc` ciphertext directly, the same mechanism workstation/local use relies on (ADR 0023 superseded the earlier separate-GitHub-secret path — see ADR 0007).
 
 No workflow, module, or spec MUST hardcode an AWS account ID, IAM role ARN, AWS region, or domain value (see ADR 0007).

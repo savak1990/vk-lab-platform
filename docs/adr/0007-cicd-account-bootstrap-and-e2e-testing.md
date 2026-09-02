@@ -76,18 +76,14 @@ A forked repository needs exactly:
    personal-lab and/or CI).
 2. `AWS_ROLE_ARN` set as a GitHub Environment/repository **variable**.
 3. `AWS_REGION` set as a GitHub Environment/repository **variable**.
-4. `ROOT_DOMAIN` set as a GitHub **secret**.
 
 No source change. `AWS_ROLE_ARN`/`AWS_REGION` are configuration, not
-credentials — safe as plain variables. `ROOT_DOMAIN` is private/hygiene
-data (never a security control, per existing platform convention) delivered
-to workflows as a GitHub secret directly, which is a **separate path** from
-the committed `secrets/root-domain.enc` KMS ciphertext: that ciphertext
-remains the mechanism for workstation/local use (decrypted via
-`scripts/secret-decrypt.sh` against the account's KMS key), while GitHub
-Actions workflows read the GitHub secret instead of decrypting anything.
-Both paths supply the same value through different channels suited to their
-environment; neither replaces the other.
+credentials — safe as plain variables. `ROOT_DOMAIN` no longer needs a
+separate GitHub secret (see "Alternatives considered" (c), superseded by
+ADR 0023): CI decrypts the committed `secrets/root-domain.enc` KMS
+ciphertext the same way a workstation run does, via
+`scripts/secret-decrypt.sh` against the account's KMS key — one path, not
+two.
 
 ### Change-aware CI gate
 
@@ -178,10 +174,12 @@ without a near-duplicate file to keep in sync.
 
 **c. `ROOT_DOMAIN` supplied to GitHub Actions by decrypting the committed
 `secrets/root-domain.enc` in-workflow, instead of a separate GitHub secret.**
-Rejected: would require every consuming workflow to hold KMS decrypt
-permission just to learn a non-secret hostname value, widening IAM scope
-for no security benefit; a plain GitHub secret is simpler and matches how
-`AWS_ROLE_ARN`/`AWS_REGION` are already supplied.
+Originally rejected here on the premise that it would widen `lab-role`'s IAM
+scope for no benefit. **Superseded by ADR 0023**: the SSM Parameter Store
+migration already grants `lab-role` `kms:*` on `alias/lab-secrets` (to
+decrypt SecureString parameters), so the premise no longer holds — the
+`secrets.ROOT_DOMAIN` GitHub secret was removed and CI now decrypts
+`secrets/root-domain.enc` directly, same as a workstation run.
 
 **d. Duplicating service test logic per environment (one test file for kind,
 another for `aws`) instead of an `Environment` abstraction.** Rejected: the
@@ -206,8 +204,10 @@ Trusted-context-only, consistent with spec 019.
   spec 002's pattern) and `Ephemeral=true` tagging are new; the environment
   itself stays shared and serialized, and the resilience proof becomes a
   `mode` input on the same workflow rather than a second file.
-- Spec 002 gains a scope note distinguishing the GitHub-secret path for
-  `ROOT_DOMAIN` (CI) from the KMS-ciphertext path (workstation).
+- Spec 002's original scope note distinguishing a GitHub-secret path for
+  `ROOT_DOMAIN` (CI) from the KMS-ciphertext path (workstation) no longer
+  applies — superseded by ADR 0023, both paths now decrypt the same
+  ciphertext.
 - Spec 017 gains the always-green gate/change-detection requirement.
 - Two new specs (021, 022) exist where previously there was a deliberate
   gap flagged by spec 021.

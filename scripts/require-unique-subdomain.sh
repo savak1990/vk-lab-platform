@@ -24,11 +24,10 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/region.sh"
 STATE_BUCKET="${PROJECT_NAME}-tf-state"
 STATE_KEY="bootstrap/route53/terraform.tfstate"
 
-# CI supplies ROOT_DOMAIN directly (a GitHub secret) rather than decrypting
-# secrets/root-domain.enc, so this role never needs KMS decrypt just to learn
-# a non-secret hostname (ADR 0007 alternative (c)). Workstation runs still
-# decrypt, unchanged.
-ROOT_DOMAIN="${ROOT_DOMAIN:-$("$REPO_ROOT/scripts/secret-decrypt.sh" root-domain)}"
+# lab-role already holds kms:* on alias/lab-secrets (for the SSM
+# SecureString parameters), so CI decrypts root-domain.enc directly too -
+# no separate ROOT_DOMAIN GitHub secret needed.
+ROOT_DOMAIN="$("$REPO_ROOT/scripts/secret-decrypt.sh" root-domain)"
 FQDN="${SUBDOMAIN}.${ROOT_DOMAIN}"
 
 # list-hosted-zones-by-name matches by prefix/lexicographic position, not

@@ -69,9 +69,7 @@ same key. Only set `ACCOUNT_MAIN_REGION` explicitly if `account-up` was run
 against a non-default region — every other command leaves it at the default.
 
 `make account-up` also sets `lab.yml`'s `vars.AWS_ROLE_ARN` (from `lab-role`'s
-own ARN — set once, ever, never per-project) and `secrets.ROOT_DOMAIN`
-(decrypted locally from `secrets/$PROJECT_NAME/root-domain.enc`, never
-something a GitHub Actions role does at runtime). Re-running is a no-op
+own ARN — set once, ever, never per-project). Re-running is a no-op
 per-resource: the script checks each one independently (not the whole layer
 at once — a genuinely new unit still gets applied even after an older one
 already exists) and exits without applying whatever it finds already present.

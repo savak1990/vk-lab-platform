@@ -29,8 +29,8 @@ data "aws_iam_policy_document" "controller" {
     resources = [local.postgres_password_arn, local.grafana_password_arn]
   }
 
-  # alias/lab-secrets also encrypts /account/root_domain and this project's
-  # fqdn - SSM sets an EncryptionContext of the parameter's own ARN, so this
+  # alias/lab-secrets also encrypts other projects' password parameters -
+  # SSM sets an EncryptionContext of the parameter's own ARN, so this
   # condition keeps Decrypt scoped to just the two parameters this role can
   # read, not the whole shared key.
   statement {

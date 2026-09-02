@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 # Creates account-global resources (the shared secrets KMS key, the shared
 # lab-role every project's GitHub Actions run assumes, the GitHub OIDC
-# provider, eks-access-identity, eks-test-identity), then wires lab.yml's repo variable/secret:
-# vars.AWS_ROLE_ARN (lab-role's own ARN - set once, ever, not per-project)
-# and secrets.ROOT_DOMAIN (decrypted locally, never something a CI role
-# does at runtime). Run once per AWS account from a workstation - never
-# from CI. Deliberately not part of `make up` or `make full-up`.
+# provider, eks-access-identity, eks-test-identity, root-domain), then wires
+# lab.yml's repo variable: vars.AWS_ROLE_ARN (lab-role's own ARN - set once,
+# ever, not per-project). Run once per AWS account from a workstation -
+# never from CI. Deliberately not part of `make up` or `make full-up`.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -62,18 +61,5 @@ echo "Applying root-domain ..."
 role_arn=$(aws iam get-role --role-name lab-role --query Role.Arn --output text)
 gh variable set AWS_ROLE_ARN --repo "$GITHUB_REPO" --body "$role_arn"
 echo "Set $GITHUB_REPO vars.AWS_ROLE_ARN = $role_arn"
-
-# ROOT_DOMAIN is the same value for every project (it's your one domain, not
-# a per-project setting) - a repo-level secret, set once here, never per
-# project. Decrypted with the operator's own credentials, not a CI role's -
-# granting a GitHub Actions role KMS decrypt just to learn a non-secret
-# hostname was deliberately rejected.
-if [ -f "$REPO_ROOT/secrets/root-domain.enc" ]; then
-  "$REPO_ROOT/scripts/secret-decrypt.sh" root-domain | gh secret set ROOT_DOMAIN --repo "$GITHUB_REPO"
-  echo "Set $GITHUB_REPO secrets.ROOT_DOMAIN"
-else
-  echo "secrets/root-domain.enc not found - skipping secrets.ROOT_DOMAIN." >&2
-  echo "Re-run account-up after generating it (make generate-secrets)." >&2
-fi
 
 echo "Still manual: create the ephemeral-teardown Environment (Settings > Environments) with a required reviewer - not scriptable via gh for this repo."

@@ -1035,14 +1035,14 @@ Because the domain value is used to create real Route 53 and ACM resources, it w
 
 ## GitHub Actions' path to the domain value
 
-The KMS-encrypted `secrets/root-domain.enc` mechanism above is for
-workstation/local use (Terraform apply from a laptop, `scripts/secret-decrypt.sh`).
-GitHub Actions workflows that need the root domain value (spec 002, 014, 019)
-instead read it from a GitHub Actions secret (`ROOT_DOMAIN`, §24a) supplied
-directly by the repository/environment configuration — a separate delivery
-path for the same value, not a replacement for the committed ciphertext file.
-This avoids granting every consuming workflow KMS decrypt permission just to
-learn a non-secret hostname.
+GitHub Actions workflows that need the root domain value (spec 002, 014,
+019) decrypt the committed `secrets/root-domain.enc` mechanism directly via
+`scripts/secret-decrypt.sh`, the same path workstation/local use relies on —
+one delivery path, not two. A prior design used a separate `ROOT_DOMAIN`
+GitHub secret to avoid granting the CI role KMS decrypt just to learn a
+non-secret hostname; ADR 0023's SSM Parameter Store migration already grants
+`lab-role` `kms:*` on `alias/lab-secrets` (to decrypt SecureString
+parameters), so that rationale no longer applies (see ADR 0007, superseded).
 
 ---
 
@@ -1364,9 +1364,10 @@ infrastructure with a public mirror.
 
 `AWS_ROLE_ARN` and `AWS_REGION` are configuration, not credentials — plain
 GitHub variables are appropriate. `ROOT_DOMAIN` is private/hygiene data
-(§12, §18) delivered to GitHub Actions as a secret directly (§18's "GitHub
-Actions' path to the domain value"), never a hardcoded value in workflow
-YAML, Terraform, Helm values, or documentation (constitution §19, ADR 0007).
+(§12, §18) decrypted in-workflow from the committed `secrets/root-domain.enc`
+(§18's "GitHub Actions' path to the domain value"), never a hardcoded value
+in workflow YAML, Terraform, Helm values, or documentation (constitution
+§19, ADR 0007, ADR 0023).
 
 ---
 

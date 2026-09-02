@@ -94,12 +94,8 @@ jobs:
           aws-region: ${{ inputs.region }}
           role-duration-seconds: 14400 # full-up/full-down can run close to/over an hour; matches the role's own max_session_duration
 
-      # ROOT_DOMAIN is a GitHub secret, not decrypted from secrets/root-domain.enc -
-      # only needed by persistent-up/full-up/platform-up; harmless to set
-      # unconditionally for every other target.
       - run: make ${{ inputs.target }}
         env:
-          ROOT_DOMAIN: ${{ secrets.ROOT_DOMAIN }}
           CONFIRM_DESTROY: ${{ inputs.confirm_destroy }}
 
   # Verifies the platform is actually usable, not just Synced/Healthy - runs

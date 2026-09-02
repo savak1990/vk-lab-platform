@@ -77,7 +77,7 @@ state-down:
 
 ## Creates account-global resources (shared secrets KMS key, shared lab-role,
 ## GitHub OIDC provider, eks-access-identity) in their own dedicated state
-## bucket, then sets lab.yml's vars.AWS_ROLE_ARN/secrets.ROOT_DOMAIN. Run
+## bucket, then sets lab.yml's vars.AWS_ROLE_ARN. Run
 ## once per AWS account - deliberately in no composite target.
 account-up:
 	./scripts/account-up.sh

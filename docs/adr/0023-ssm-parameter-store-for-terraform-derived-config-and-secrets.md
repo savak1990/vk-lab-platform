@@ -214,12 +214,27 @@ the two password parameter ARNs, plus `kms:Decrypt` on `alias/lab-secrets`
 - Explicitly out of scope, permanently, not just deferred: Argo CD's
   admin-password *mechanism* itself (ADR 0012 — pre-Argo CD/ESO,
   structurally can't change).
-- **Known limitation, deferred:** `fqdn` and the two ESO-consumed passwords
-  are SecureString parameters written in `PROJECT_REGION`, encrypted with
+- Supersedes ADR 0007's alternative (c): `lab-role` now holds `kms:*` on
+  `alias/lab-secrets` regardless (to decrypt the SecureString parameters
+  this ADR introduces), so decrypting `root-domain.enc` in-workflow widens
+  no IAM scope that wasn't already granted. The separate `secrets.ROOT_DOMAIN`
+  GitHub secret (`scripts/account-up.sh`, `.github/workflows/lab.yml`) is
+  removed; CI decrypts `secrets/root-domain.enc` directly, the same as a
+  workstation run.
+- `root_domain` and `fqdn` are plain `String` parameters, not `SecureString`
+  — they're private/hygiene data, not credentials (derivable from public DNS
+  once any project's lab zone is delegated), matching how `secrets/root-domain.enc`
+  is already described elsewhere in this repo. This also removes two
+  otherwise-real problems: `root-domain`'s apply no longer depends on
+  `alias/lab-secrets` existing first, and it sidesteps the cross-region
+  SecureString/KMS-key coupling below for `fqdn` specifically.
+- **Known limitation, deferred:** the two ESO-consumed passwords are still
+  SecureString parameters written in `PROJECT_REGION`, encrypted with
   `alias/lab-secrets`, which exists only in `ACCOUNT_MAIN_REGION` — AWS
   requires an SSM SecureString's KMS key to be in the same region as the
   parameter. Running a cluster with `PROJECT_REGION != ACCOUNT_MAIN_REGION`
-  will fail those three `aws_ssm_parameter` creates. Not fixed here;
+  will fail those two `aws_ssm_parameter` creates. Not fixed here (unlike
+  `fqdn`, these genuinely are credentials, so `String` isn't an option);
   candidate fixes (falling back to the region's own `alias/aws/ssm`, or
   a multi-region KMS replica key) are deferred until region portability is
   actually exercised.

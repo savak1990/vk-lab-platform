@@ -131,7 +131,7 @@ The persistent stack's `route53` unit manages the single NS record delegating `l
 
 Records inside the lab zone (e.g., the NLB's record) are disposable; the zone and certificate are not.
 
-Never use a real root domain in code, tfvars, Helm values, or docs — use placeholders like `<root-domain>` or `lab.<root-domain>`. Keeping it out of the public repo is for hygiene, not a security control — it's also derivable from public DNS once a project's zone is delegated (the `lab.<root-domain>` zone's NS records name the parent). Even so, `root_domain` and `fqdn` (which embeds it) are stored as `SecureString` in SSM Parameter Store, not plain `String` — treated as sensitive at the storage layer regardless of that separate public-DNS exposure. See `docs/adr/0002-delegated-lab-subdomain.md`, `docs/adr/0023-ssm-parameter-store-for-terraform-derived-config-and-secrets.md`, and `specs/000-constitution/spec.md` §14.
+Never use a real root domain in code, tfvars, Helm values, or docs — use placeholders like `<root-domain>` or `lab.<root-domain>`. Keeping it out of the public repo is for hygiene, not a security control — it's also derivable from public DNS once a project's zone is delegated (the `lab.<root-domain>` zone's NS records name the parent). `root_domain` and `fqdn` (which embeds it) are stored as plain `String` in SSM Parameter Store, not `SecureString` — private/hygiene data, not credentials, consistent with that same public-DNS exposure; this also removes a KMS-key-must-exist-first ordering dependency and a cross-region SecureString/KMS-key coupling. See `docs/adr/0002-delegated-lab-subdomain.md`, `docs/adr/0023-ssm-parameter-store-for-terraform-derived-config-and-secrets.md`, and `specs/000-constitution/spec.md` §14.
 
 ---
 

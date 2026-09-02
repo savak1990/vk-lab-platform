@@ -35,7 +35,7 @@ command to run first, instead).
 make account-up        # once per AWS account: its own state bucket, shared
                         # secrets KMS key, GitHub OIDC provider, shared
                         # lab-role, eks-access-identity - also wires
-                        # lab.yml's vars.AWS_ROLE_ARN/secrets.ROOT_DOMAIN
+                        # lab.yml's vars.AWS_ROLE_ARN
 make bootstrap-up      # per project: this project's own state bucket,
                         # lab.<root-domain> zone + cert
 make persistent-up     # occasional: VPC, Secrets Manager

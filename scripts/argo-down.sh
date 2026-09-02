@@ -168,7 +168,7 @@ kubectl delete httproute -A --all >/dev/null 2>&1 || true
 # records under the lab zone until none remain, instead of trusting timing.
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SUBDOMAIN="${SUBDOMAIN:-lab}"
-ROOT_DOMAIN="${ROOT_DOMAIN:-$("$REPO_ROOT/scripts/secret-decrypt.sh" root-domain)}"
+ROOT_DOMAIN="$("$REPO_ROOT/scripts/secret-decrypt.sh" root-domain)"
 FQDN="${SUBDOMAIN}.${ROOT_DOMAIN}"
 ZONE_ID="$(aws route53 list-hosted-zones-by-name --dns-name "$FQDN" --region "$PROJECT_REGION" \
   --query "HostedZones[?Name=='${FQDN}.'].Id" --output text 2>/dev/null || true)"

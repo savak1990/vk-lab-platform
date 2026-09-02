@@ -18,13 +18,14 @@ data "aws_route53_zone" "root" {
   private_zone = false
 }
 
-# SecureString, not String: treated as sensitive at the storage layer even
-# though it's also derivable from public DNS once a project's zone is
-# delegated (the NS records for lab.<root-domain> name the parent).
+# Plain String, not SecureString: root_domain is private/hygiene data, not
+# a credential - it's derivable from public DNS once any project's lab
+# zone is delegated (the NS records for lab.<root-domain> name the
+# parent). Also avoids coupling this module's apply order to alias/lab-secrets
+# already existing.
 resource "aws_ssm_parameter" "root_domain" {
   name        = "/account/root_domain"
-  type        = "SecureString"
-  key_id      = "alias/lab-secrets"
+  type        = "String"
   value       = local.root_domain
   description = "Account-global root domain every project's lab subdomain delegates from."
 }
