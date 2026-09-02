@@ -36,8 +36,12 @@ project's `secrets/<project>/*.enc`), `lab-role` (the shared role every
 project's GitHub Actions run assumes; scoped by naming convention, not
 per-project ARNs), the GitHub OIDC provider, `eks-access-identity` (a
 Kubernetes-access-only identity with no AWS permission policy, reused across
-every project's clusters). Does not qualify: this project's own state bucket,
-the lab DNS zone + ACM cert (both per-project, in `bootstrap/`).
+every project's clusters), `eks-test-identity` (same shape as
+`eks-access-identity` — no AWS permission policy — but mapped to a read-only
+EKS access entry instead of `AmazonEKSClusterAdminPolicy`, so `make test`/the
+CI test job never runs with cluster-admin access; see
+`terraform/modules/eks/main.tf`). Does not qualify: this project's own state
+bucket, the lab DNS zone + ACM cert (both per-project, in `bootstrap/`).
 
 ## Prerequisite: this layer's own dedicated state bucket
 

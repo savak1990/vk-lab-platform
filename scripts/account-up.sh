@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Creates account-global resources (the shared secrets KMS key, the shared
 # lab-role every project's GitHub Actions run assumes, the GitHub OIDC
-# provider, eks-access-identity), then wires lab.yml's repo variable/secret:
+# provider, eks-access-identity, eks-test-identity), then wires lab.yml's repo variable/secret:
 # vars.AWS_ROLE_ARN (lab-role's own ARN - set once, ever, not per-project)
 # and secrets.ROOT_DOMAIN (decrypted locally, never something a CI role
 # does at runtime). Run once per AWS account from a workstation - never
@@ -44,6 +44,9 @@ echo "Applying github-oidc ..."
 
 echo "Applying eks-access-identity ..."
 (cd "$REPO_ROOT/terraform/live/account/eks-access-identity" && terragrunt apply --non-interactive -auto-approve)
+
+echo "Applying eks-test-identity ..."
+(cd "$REPO_ROOT/terraform/live/account/eks-test-identity" && terragrunt apply --non-interactive -auto-approve)
 
 echo "Applying lab-role ..."
 (cd "$REPO_ROOT/terraform/live/account/lab-role" && terragrunt apply --non-interactive -auto-approve)

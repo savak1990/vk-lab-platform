@@ -11,6 +11,14 @@ data "aws_iam_role" "eks_access_identity" {
   name = "eks-access-identity"
 }
 
+# Same account-global, no-AWS-policy identity shape as eks-access-identity,
+# but mapped below to a read-only Kubernetes group instead of
+# AmazonEKSClusterAdminPolicy - the E2E test suite (tests/e2e) never runs
+# with cluster-admin access.
+data "aws_iam_role" "eks_test_identity" {
+  name = "eks-test-identity"
+}
+
 module "eks" {
   source  = "terraform-aws-modules/eks/aws"
   version = "21.25.0" # 21.0.0 has a `length(null)` bug in its encryption_config handling; this patch fixes it
@@ -44,6 +52,14 @@ module "eks" {
           }
         }
       }
+    }
+    # No policy_associations: this identity gets no AWS-managed EKS access
+    # policy at all. Its actual permissions come entirely from the
+    # e2e-test-readonly ClusterRole/RoleBindings Argo CD manages
+    # (gitops/templates/platform/aws/rbac), bound to this Kubernetes group.
+    eks_test_identity = {
+      principal_arn     = data.aws_iam_role.eks_test_identity.arn
+      kubernetes_groups = ["e2e-test-readonly"]
     }
   }
 

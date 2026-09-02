@@ -13,6 +13,13 @@ data "aws_iam_role" "eks_access_identity" {
   name = "eks-access-identity"
 }
 
+# Same lookup shape as eks_access_identity above, for the read-only identity
+# eks-test-identity (terraform/modules/eks-access-identity, instantiated as
+# eks-test-identity) - the E2E suite's kubectl access, never cluster-admin.
+data "aws_iam_role" "eks_test_identity" {
+  name = "eks-test-identity"
+}
+
 # kms:Decrypt/Encrypt authorization in an identity policy is checked against
 # the underlying key's ARN, not an alias ARN - an alias-ARN resource element
 # would silently grant nothing.
@@ -169,7 +176,7 @@ data "aws_iam_policy_document" "permissions" {
       "iam:GetRole", "iam:GetRolePolicy",
       "iam:ListAttachedRolePolicies", "iam:ListRolePolicies",
     ]
-    resources = [aws_iam_role.this.arn, data.aws_iam_role.eks_access_identity.arn]
+    resources = [aws_iam_role.this.arn, data.aws_iam_role.eks_access_identity.arn, data.aws_iam_role.eks_test_identity.arn]
   }
 
   # Belt-and-suspenders alongside PlatformIamRoles' "*-eks-*" resource
@@ -186,7 +193,7 @@ data "aws_iam_policy_document" "permissions" {
       "iam:DeleteRole", "iam:UpdateAssumeRolePolicy",
       "iam:PutRolePermissionsBoundary", "iam:DeleteRolePermissionsBoundary",
     ]
-    resources = [aws_iam_role.this.arn, data.aws_iam_role.eks_access_identity.arn]
+    resources = [aws_iam_role.this.arn, data.aws_iam_role.eks_access_identity.arn, data.aws_iam_role.eks_test_identity.arn]
   }
 
   # argo-up.sh/argo-down.sh's `aws eks update-kubeconfig --role-arn` bakes a
@@ -197,6 +204,14 @@ data "aws_iam_policy_document" "permissions" {
     sid       = "AssumeEksAccessIdentity"
     actions   = ["sts:AssumeRole"]
     resources = [data.aws_iam_role.eks_access_identity.arn]
+  }
+
+  # Same chained-assume grant, for `make test-kubeconfig`'s
+  # `aws eks update-kubeconfig --role-arn` into eks-test-identity.
+  statement {
+    sid       = "AssumeEksTestIdentity"
+    actions   = ["sts:AssumeRole"]
+    resources = [data.aws_iam_role.eks_test_identity.arn]
   }
 
   # EKS/AutoScaling validate their own service-linked roles' existence before

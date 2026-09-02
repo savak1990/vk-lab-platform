@@ -3,6 +3,7 @@ package framework
 import (
 	"context"
 	"fmt"
+	"net/url"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/dynamic"
@@ -91,5 +92,12 @@ func (e *AWSEnvironment) PostgresDSN(cluster string) string {
 		panic(fmt.Sprintf("framework: port-forwarding to %s: %v", podName, err))
 	}
 
-	return fmt.Sprintf("postgres://%s:%s@127.0.0.1:%d/vkdb?sslmode=require", username, password, localPort)
+	dsn := url.URL{
+		Scheme:   "postgres",
+		User:     url.UserPassword(username, password),
+		Host:     fmt.Sprintf("127.0.0.1:%d", localPort),
+		Path:     "/vkdb",
+		RawQuery: "sslmode=require",
+	}
+	return dsn.String()
 }

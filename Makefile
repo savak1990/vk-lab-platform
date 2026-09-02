@@ -1,4 +1,4 @@
-.PHONY: up down full-up full-down platform-up platform-down state-up state-down status account-up account-down bootstrap-up bootstrap-down secret-encrypt secret-decrypt generate-secrets persistent-up persistent-down clear-cache cluster-up cluster-down eks-kubeconfig argo-up argo-down test
+.PHONY: up down full-up full-down platform-up platform-down state-up state-down status account-up account-down bootstrap-up bootstrap-down secret-encrypt secret-decrypt generate-secrets persistent-up persistent-down clear-cache cluster-up cluster-down eks-kubeconfig test-kubeconfig argo-up argo-down test
 
 .NOTPARALLEL:
 
@@ -151,15 +151,26 @@ eks-kubeconfig:
 argo-up:
 	./scripts/argo-up.sh
 
+## Points local kubectl context at the disposable EKS cluster via
+## eks-test-identity's read-only access (terraform/modules/eks/main.tf +
+## gitops rbac/e2e-test-readonly.yaml), NOT eks-access-identity's
+## cluster-admin. A distinct alias from eks-kubeconfig's, so running `make
+## test` never clobbers a cluster-admin context a shell still expects.
+## Usage: make test-kubeconfig
+test-kubeconfig:
+	aws eks update-kubeconfig --name $(PROJECT_NAME)-eks --region $(PROJECT_REGION) --alias $(PROJECT_NAME)-eks-test \
+		--role-arn "$$(aws iam get-role --role-name eks-test-identity --query Role.Arn --output text)"
+	kubectl config set-context --current --namespace=default
+
 ## Runs the black-box E2E suite (tests/e2e) against the disposable cluster.
-## Depends on eks-kubeconfig so it works standalone, not just chained after
+## Depends on test-kubeconfig so it works standalone, not just chained after
 ## argo-up/up. Never wired into up/argo-up itself - run explicitly.
 ## Usage: make test | make test-postgres | make test-grafana | make test-argocd
-test: eks-kubeconfig
-	go test ./tests/e2e/... -args --context=$(PROJECT_NAME)-eks
+test: test-kubeconfig
+	go test ./tests/e2e/... -args --context=$(PROJECT_NAME)-eks-test
 
-test-%: eks-kubeconfig
-	go test ./tests/e2e/... -args --context=$(PROJECT_NAME)-eks --ginkgo.label-filter=$*
+test-%: test-kubeconfig
+	go test ./tests/e2e/... -args --context=$(PROJECT_NAME)-eks-test --ginkgo.label-filter=$*
 
 ## Cascades away everything Argo CD manages (Karpenter, CNPG, EBS CSI,
 ## Postgres CRs, ...), then removes Argo CD itself - before

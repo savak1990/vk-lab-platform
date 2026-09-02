@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Destroys account-global resources (root-domain, lab-role, eks-access-identity,
-# github-oidc, the shared secrets KMS key, in that sequence), then the
+# eks-test-identity, github-oidc, the shared secrets KMS key, in that
+# sequence), then the
 # Account layer's own dedicated state bucket, then every project's now-dead
 # secrets/*/*.enc ciphertext. Destroys EVERY project's ability to
 # authenticate/decrypt secrets at once - guarded by confirm_destroy and by
@@ -51,7 +52,7 @@ done
 # there is no cheap way to enumerate them - hence the warning rather than a
 # guard.
 echo "This destroys the account-global stack: the shared secrets KMS key (alias/lab-secrets),"
-echo "lab-role, the GitHub OIDC provider, and eks-access-identity."
+echo "lab-role, the GitHub OIDC provider, eks-access-identity, and eks-test-identity."
 echo "All are shared by EVERY project and CI environment in AWS account"
 echo "$(aws sts get-caller-identity --query Account --output text) - any of them still using it will fail to"
 echo "authenticate, and every project's committed secrets/*/*.enc becomes permanently undecryptable."
@@ -79,6 +80,9 @@ echo "Destroying lab-role ..."
 
 echo "Destroying eks-access-identity ..."
 (cd "$REPO_ROOT/terraform/live/account/eks-access-identity" && terragrunt destroy --non-interactive -auto-approve)
+
+echo "Destroying eks-test-identity ..."
+(cd "$REPO_ROOT/terraform/live/account/eks-test-identity" && terragrunt destroy --non-interactive -auto-approve)
 
 echo "Destroying github-oidc ..."
 (cd "$REPO_ROOT/terraform/live/account/github-oidc" && terragrunt destroy --non-interactive -auto-approve)
