@@ -258,6 +258,14 @@ data "aws_iam_policy_document" "permissions" {
     ]
   }
 
+  # DescribeParameters has no resource-level scoping - like CloudWatchLogs
+  # below, AWS requires Resource "*" for this Describe/List-type action.
+  statement {
+    sid       = "PlatformConfigSsmParametersDescribe"
+    actions   = ["ssm:DescribeParameters"]
+    resources = ["*"]
+  }
+
   statement {
     sid       = "CloudWatchLogs"
     actions   = ["logs:*"]
