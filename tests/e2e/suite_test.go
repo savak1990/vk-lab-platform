@@ -1,6 +1,7 @@
 package e2e_test
 
 import (
+	"os"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -11,7 +12,18 @@ import (
 	"github.com/savak1990/vk-lab-platform/tests/e2e/framework"
 )
 
-var env framework.Environment
+var (
+	env framework.Environment
+	cfg *framework.Config
+)
+
+// TestMain parses our flags before testing's own flag.Parse runs (called by
+// go test's generated main), since a flag registered later would otherwise
+// be rejected as "provided but not defined".
+func TestMain(m *testing.M) {
+	cfg = framework.ParseFlags()
+	os.Exit(m.Run())
+}
 
 func TestE2E(t *testing.T) {
 	RegisterFailHandler(Fail)
@@ -19,8 +31,6 @@ func TestE2E(t *testing.T) {
 }
 
 var _ = BeforeSuite(func() {
-	cfg := framework.ParseFlags()
-
 	clientset, restConfig, err := framework.NewClientset(cfg.KubeconfigPath, cfg.Context)
 	Expect(err).NotTo(HaveOccurred(), "building Kubernetes client for context %q", cfg.Context)
 

@@ -167,10 +167,10 @@ test-kubeconfig:
 ## argo-up/up. Never wired into up/argo-up itself - run explicitly.
 ## Usage: make test | make test-postgres | make test-grafana | make test-argocd
 test: test-kubeconfig
-	go test ./tests/e2e/... -args --context=$(PROJECT_NAME)-eks-test
+	go test ./tests/e2e/... -v -args --context=$(PROJECT_NAME)-eks-test --ginkgo.v
 
 test-%: test-kubeconfig
-	go test ./tests/e2e/... -args --context=$(PROJECT_NAME)-eks-test --ginkgo.label-filter=$*
+	go test ./tests/e2e/... -v -args --context=$(PROJECT_NAME)-eks-test --ginkgo.label-filter=$* --ginkgo.v
 
 ## Cascades away everything Argo CD manages (Karpenter, CNPG, EBS CSI,
 ## Postgres CRs, ...), then removes Argo CD itself - before
