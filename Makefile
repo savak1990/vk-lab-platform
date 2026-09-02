@@ -138,7 +138,11 @@ cluster-down:
 ## Points local kubectl context at the disposable EKS cluster. Every kubectl
 ## call re-assumes eks-access-identity via --role-arn (baked into the
 ## generated kubeconfig's exec plugin), so access never depends on whether
-## you or GitHub Actions created the cluster - see docs/adr on this.
+## you or GitHub Actions created the cluster - see docs/adr on this. A
+## manual/human convenience target only - up/down/argo-up/argo-down/
+## cluster-down/status each configure their own kubeconfig internally
+## instead of depending on this, since the cluster may not exist yet (or
+## anymore) when those run, and a Make prerequisite can't be conditional.
 ## Usage: make eks-kubeconfig
 eks-kubeconfig:
 	aws eks update-kubeconfig --name $(PROJECT_NAME)-eks --region $(PROJECT_REGION) --alias $(PROJECT_NAME)-eks \
@@ -154,8 +158,10 @@ argo-up:
 ## Points local kubectl context at the disposable EKS cluster via
 ## eks-test-identity's read-only access (terraform/modules/eks/main.tf +
 ## gitops rbac/e2e-test-readonly.yaml), NOT eks-access-identity's
-## cluster-admin. A distinct alias from eks-kubeconfig's, so running `make
-## test` never clobbers a cluster-admin context a shell still expects.
+## cluster-admin. A distinct alias from eks-kubeconfig's, so the
+## cluster-admin kubeconfig entry itself is never overwritten - but running
+## `make test` still switches your shell's *current* context to this
+## read-only one; run `make eks-kubeconfig` afterward to switch back.
 ## Usage: make test-kubeconfig
 test-kubeconfig:
 	aws eks update-kubeconfig --name $(PROJECT_NAME)-eks --region $(PROJECT_REGION) --alias $(PROJECT_NAME)-eks-test \
