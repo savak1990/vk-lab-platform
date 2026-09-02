@@ -22,6 +22,9 @@ resource "aws_route53_record" "soa" {
   name    = local.fqdn
   type    = "SOA"
   ttl     = 900
+  # AWS auto-creates a default SOA record the instant the zone exists, so this
+  # is always an overwrite of an already-existing record, never a fresh create.
+  allow_overwrite = true
 
   records = [
     "${aws_route53_zone.this.name_servers[0]} awsdns-hostmaster.amazon.com. 1 7200 900 1209600 ${var.negative_cache_ttl}"
