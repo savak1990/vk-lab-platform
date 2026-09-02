@@ -223,6 +223,26 @@ data "aws_iam_policy_document" "permissions" {
     resources = ["arn:aws:ssm:*::parameter/aws/service/eks/optimized-ami/*"]
   }
 
+  # Scoped by path shape, not project name - this role is account-global
+  # and shared across every project, with no PROJECT_NAME input of its own
+  # (see StateBucket's own project-agnostic bucket_arn above for the same
+  # pattern). The path shape mirrors the literal terraform/live/<X>/
+  # directory that creates each parameter (account/bootstrap/persistent/
+  # cluster) - see docs/adr/0023.
+  statement {
+    sid = "PlatformConfigSsmParameters"
+    actions = [
+      "ssm:PutParameter", "ssm:GetParameter", "ssm:GetParametersByPath",
+      "ssm:DeleteParameter", "ssm:AddTagsToResource", "ssm:ListTagsForResource",
+    ]
+    resources = [
+      "arn:aws:ssm:*:${local.account}:parameter/*/bootstrap/*",
+      "arn:aws:ssm:*:${local.account}:parameter/*/persistent/*",
+      "arn:aws:ssm:*:${local.account}:parameter/*/cluster/*",
+      "arn:aws:ssm:*:${local.account}:parameter/account/*",
+    ]
+  }
+
   statement {
     sid       = "CloudWatchLogs"
     actions   = ["logs:*"]
@@ -273,15 +293,6 @@ data "aws_iam_policy_document" "permissions" {
     sid       = "Acm"
     actions   = ["acm:*"]
     resources = ["*"] # certificate ARN includes a random ID assigned at creation, unknown ahead of time
-  }
-
-  # "*-secrets*" matches any PROJECT_NAME's own secret ("<project>-secrets",
-  # plus Secrets Manager's random ARN suffix). Region wildcarded for the
-  # same reason as the Eks/SSM statements above.
-  statement {
-    sid       = "SecretsManager"
-    actions   = ["secretsmanager:*"]
-    resources = ["arn:aws:secretsmanager:*:${local.account}:secret:*-secrets*"]
   }
 
   statement {

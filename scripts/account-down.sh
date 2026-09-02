@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Destroys account-global resources (lab-role, eks-access-identity,
+# Destroys account-global resources (root-domain, lab-role, eks-access-identity,
 # github-oidc, the shared secrets KMS key, in that sequence), then the
 # Account layer's own dedicated state bucket, then every project's now-dead
 # secrets/*/*.enc ciphertext. Destroys EVERY project's ability to
@@ -12,7 +12,7 @@ source "$REPO_ROOT/scripts/lib/confirm-destroy.sh"
 
 PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
 STATE_BUCKET="${PROJECT_NAME}-tf-state"
-PROJECT_REGION="${PROJECT_REGION:-eu-west-1}"
+source "$(dirname "${BASH_SOURCE[0]}")/lib/region.sh"
 
 confirm_destroy "$PROJECT_NAME"
 
@@ -71,6 +71,9 @@ cd "$REPO_ROOT/terraform/live/account"
 # re-resolves its data.aws_kms_alias/data.aws_iam_role lookups, aborting
 # mid-teardown). lab-role first (the only one with such lookups), the rest
 # in any order - mirrors account-up.sh's apply order, reversed.
+echo "Destroying root-domain ..."
+(cd "$REPO_ROOT/terraform/live/account/root-domain" && terragrunt destroy --non-interactive -auto-approve)
+
 echo "Destroying lab-role ..."
 (cd "$REPO_ROOT/terraform/live/account/lab-role" && terragrunt destroy --non-interactive -auto-approve)
 

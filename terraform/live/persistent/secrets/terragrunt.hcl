@@ -3,7 +3,7 @@ include "root" {
 }
 
 terraform {
-  source = "${get_repo_root()}/terraform/modules/secrets-manager-secret"
+  source = "${get_repo_root()}/terraform/modules/persistent-secrets"
 }
 
 locals {
@@ -11,10 +11,8 @@ locals {
 }
 
 inputs = {
-  name = "${local.project}-secrets"
-  secrets = {
-    postgres_app_password  = "${get_repo_root()}/secrets/${local.project}/postgres-app-password.enc"
-    root_domain            = "${get_repo_root()}/secrets/${local.project}/root-domain.enc"
-    grafana_admin_password = "${get_repo_root()}/secrets/${local.project}/grafana-admin-password.enc"
-  }
+  project                            = local.project
+  postgres_app_password_secret_path  = "${get_repo_root()}/secrets/${local.project}/postgres-app-password.enc"
+  grafana_admin_password_secret_path = "${get_repo_root()}/secrets/${local.project}/grafana-admin-password.enc"
+  argocd_admin_password_bcrypt_path  = "${get_repo_root()}/secrets/${local.project}/argocd-admin-password.bcrypt"
 }

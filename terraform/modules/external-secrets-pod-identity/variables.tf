@@ -3,8 +3,8 @@ variable "cluster_name" {
   type        = string
 }
 
-variable "secret_arn" {
-  description = "ARN of the Secrets Manager secret External Secrets Operator is allowed to read."
+variable "project" {
+  description = "PROJECT_NAME - used to build the SSM parameter ARNs External Secrets Operator is allowed to read."
   type        = string
 }
 

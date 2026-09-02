@@ -7,11 +7,29 @@ module "pod_identity" {
   service_account_namespace = var.service_account_namespace
 }
 
+data "aws_region" "current" {}
+data "aws_caller_identity" "current" {}
+
+# alias/lab-secrets - the same key that encrypts the committed .enc files
+# also encrypts these two SecureString parameters (docs/adr/0023).
+data "aws_kms_alias" "secrets" {
+  name = "alias/lab-secrets"
+}
+
 data "aws_iam_policy_document" "controller" {
   statement {
-    sid       = "AllowReadPostgresAppSecret"
-    actions   = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
-    resources = [var.secret_arn]
+    sid     = "AllowReadPlatformSecretParameters"
+    actions = ["ssm:GetParameter"]
+    resources = [
+      "arn:aws:ssm:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:parameter/${var.project}/persistent/postgres/app_password",
+      "arn:aws:ssm:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:parameter/${var.project}/persistent/grafana/admin_password",
+    ]
+  }
+
+  statement {
+    sid       = "AllowDecryptPlatformSecretParameters"
+    actions   = ["kms:Decrypt"]
+    resources = [data.aws_kms_alias.secrets.target_key_arn]
   }
 }
 

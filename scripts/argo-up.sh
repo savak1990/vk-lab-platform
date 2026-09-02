@@ -8,7 +8,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
-PROJECT_REGION="${PROJECT_REGION:-eu-west-1}"
+source "$REPO_ROOT/scripts/lib/region.sh"
 ARGOCD_CHART_VERSION="${ARGOCD_CHART_VERSION:-10.4.0}"
 TARGET_REVISION="${TARGET_REVISION:-main}"
 REPO_URL="${REPO_URL:-https://github.com/savak1990/vk-lab-platform}"
@@ -35,21 +35,25 @@ eks_output() {
   terragrunt --working-dir "$REPO_ROOT/terraform/live/cluster/eks" output -raw "$1"
 }
 
-acm_output() {
-  terragrunt --working-dir "$REPO_ROOT/terraform/live/bootstrap/acm" output -raw "$1"
-}
-
-route53_output() {
-  terragrunt --working-dir "$REPO_ROOT/terraform/live/bootstrap/route53" output -raw "$1"
+# The owning terragrunt unit is named in the failure message - a plain
+# ParameterNotFound doesn't say which unit should have created it, unlike
+# terragrunt output's own error. $PROJECT_REGION, not $ACCOUNT_MAIN_REGION -
+# every parameter read here is project-scoped, created by a unit that
+# applies in PROJECT_REGION (root.hcl's aws_region), not the account layer.
+ssm_output() {
+  # --with-decryption is a no-op on a plain String parameter, so this one
+  # helper serves both types without needing to know which is which.
+  aws ssm get-parameter --name "$1" --region "$PROJECT_REGION" --with-decryption --query 'Parameter.Value' --output text \
+    || { echo "ARGO-UP: missing SSM parameter $1 - has its owning terragrunt unit been applied?" >&2; exit 1; }
 }
 
 CLUSTER_NAME="$(eks_output cluster_name)"
-ACM_CERTIFICATE_ARN="$(acm_output certificate_arn)"
-VPC_ID="$(eks_output vpc_id)"
-NODE_SUBNET_ID="$(eks_output node_subnet_id)"
-# fqdn ("lab.<root-domain>") is sensitive output - never echo it, including
-# via a full hostname built from it (label DNS output by short name instead).
-LAB_FQDN="$(route53_output fqdn)"
+ACM_CERTIFICATE_ARN="$(ssm_output "/$PROJECT_NAME/bootstrap/acm/certificate_arn")"
+VPC_ID="$(ssm_output "/$PROJECT_NAME/persistent/vpc/vpc_id")"
+NODE_SUBNET_ID="$(ssm_output "/$PROJECT_NAME/cluster/eks/node_subnet_id")"
+# fqdn ("lab.<root-domain>") is sensitive - never echo it, including via a
+# full hostname built from it (label DNS output by short name instead).
+LAB_FQDN="$(ssm_output "/$PROJECT_NAME/bootstrap/route53/fqdn")"
 EKS_ACCESS_IDENTITY_ARN="$(aws iam get-role --role-name eks-access-identity --query Role.Arn --output text)"
 aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$PROJECT_REGION" --alias "$CLUSTER_NAME" \
   --role-arn "$EKS_ACCESS_IDENTITY_ARN" >/dev/null
@@ -174,8 +178,7 @@ if [ -n "$OLD_SNAPSHOTS" ]; then
   done
 fi
 
-ADMIN_PASSWORD_BCRYPT_HASH_PATH="$REPO_ROOT/secrets/${PROJECT_NAME}/argocd-admin-password.bcrypt"
-ADMIN_PASSWORD_BCRYPT_HASH="$(tr -d '[:space:]' < "$ADMIN_PASSWORD_BCRYPT_HASH_PATH")"
+ADMIN_PASSWORD_BCRYPT_HASH="$(ssm_output "/$PROJECT_NAME/persistent/argocd/admin_password_bcrypt")"
 
 helm upgrade --install argocd argo-cd \
   --repo https://argoproj.github.io/argo-helm \

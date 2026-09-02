@@ -139,3 +139,10 @@ module "eks" {
   # both cluster and node group roles, which attaches managed policies via
   # per-policy aws_iam_role_policy_attachment resources.
 }
+
+resource "aws_ssm_parameter" "node_subnet_id" {
+  name        = "/${var.project}/cluster/eks/node_subnet_id"
+  type        = "String"
+  value       = local.node_subnet_id
+  description = "The subnet this disposable EKS run's system/Karpenter node group is pinned to."
+}

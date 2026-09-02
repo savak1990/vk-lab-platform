@@ -1,4 +1,4 @@
-.PHONY: up down full-up full-down platform-up platform-down state-up state-down status account-up account-down bootstrap-up bootstrap-down secret-encrypt secret-decrypt generate-secrets persistent-up persistent-down clear-cache cluster-up cluster-down eks-kubeconfig argo-up argo-down
+.PHONY: up down full-up full-down platform-up platform-down state-up state-down status account-up account-down bootstrap-up bootstrap-down secret-encrypt secret-decrypt generate-secrets persistent-up persistent-down clear-cache cluster-up cluster-down eks-kubeconfig argo-up argo-down test
 
 .NOTPARALLEL:
 
@@ -150,6 +150,16 @@ eks-kubeconfig:
 ## whole platform is Synced/Healthy. Run after `make cluster-up`.
 argo-up:
 	./scripts/argo-up.sh
+
+## Runs the black-box E2E suite (tests/e2e) against the disposable cluster.
+## Depends on eks-kubeconfig so it works standalone, not just chained after
+## argo-up/up. Never wired into up/argo-up itself - run explicitly.
+## Usage: make test | make test-postgres | make test-grafana | make test-argocd
+test: eks-kubeconfig
+	go test ./tests/e2e/... -args --context=$(PROJECT_NAME)-eks
+
+test-%: eks-kubeconfig
+	go test ./tests/e2e/... -args --context=$(PROJECT_NAME)-eks --ginkgo.label-filter=$*
 
 ## Cascades away everything Argo CD manages (Karpenter, CNPG, EBS CSI,
 ## Postgres CRs, ...), then removes Argo CD itself - before

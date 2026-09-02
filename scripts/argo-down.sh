@@ -17,8 +17,8 @@ set -euo pipefail
 
 TIMEOUT="${ARGO_DOWN_TIMEOUT:-900s}"
 POLL_INTERVAL="${ARGO_DOWN_POLL_INTERVAL:-5}"
-PROJECT_REGION="${PROJECT_REGION:-eu-west-1}"
 PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
+source "$(dirname "${BASH_SOURCE[0]}")/lib/region.sh"
 BACKUP_TIMEOUT="${ARGO_DOWN_BACKUP_TIMEOUT:-120s}"
 SNAPSHOT_TAG_FILTERS=("Name=tag:Project,Values=$PROJECT_NAME" "Name=tag:Component,Values=postgres")
 

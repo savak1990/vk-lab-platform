@@ -1,12 +1,15 @@
-data "aws_kms_secrets" "domain" {
-  secret {
-    name    = "root_domain"
-    payload = filebase64(var.root_domain_secret_path)
-  }
+# root_domain is account-global, validated and written once by the
+# terraform/live/account/root-domain unit (docs/adr/0023) - no per-project
+# decryption/existence check here anymore. It's a SecureString, so this
+# read needs with_decryption (the data source's own default, set
+# explicitly since the value being decrypted is the point).
+data "aws_ssm_parameter" "root_domain" {
+  name            = "/account/root_domain"
+  with_decryption = true
 }
 
 locals {
-  root_domain = data.aws_kms_secrets.domain.plaintext["root_domain"]
+  root_domain = data.aws_ssm_parameter.root_domain.value
   fqdn        = "${var.subdomain}.${local.root_domain}"
 }
 
@@ -45,4 +48,21 @@ resource "aws_route53_record" "delegation" {
   type    = "NS"
   ttl     = 172800
   records = aws_route53_zone.this.name_servers
+}
+
+resource "aws_ssm_parameter" "subdomain" {
+  name        = "/${var.project}/bootstrap/route53/subdomain"
+  type        = "String"
+  value       = var.subdomain
+  description = "The subdomain this project delegated from the account's root domain, e.g. \"lab\" in lab.<root-domain>. Read back on later applies so a forgotten SUBDOMAIN re-export can't silently move the zone."
+}
+
+# SecureString: fqdn embeds root_domain (it's literally
+# "${subdomain}.${root_domain}"), so it carries the same sensitivity.
+resource "aws_ssm_parameter" "fqdn" {
+  name        = "/${var.project}/bootstrap/route53/fqdn"
+  type        = "SecureString"
+  key_id      = "alias/lab-secrets"
+  value       = local.fqdn
+  description = "This project's fully-qualified lab domain."
 }

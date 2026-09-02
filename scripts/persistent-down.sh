@@ -23,7 +23,7 @@ source "$REPO_ROOT/scripts/lib/confirm-destroy.sh"
 
 PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
 STATE_BUCKET="${PROJECT_NAME}-tf-state"
-PROJECT_REGION="${PROJECT_REGION:-eu-west-1}"
+source "$(dirname "${BASH_SOURCE[0]}")/lib/region.sh"
 
 confirm_destroy "$PROJECT_NAME"
 

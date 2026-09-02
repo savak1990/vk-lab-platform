@@ -31,4 +31,5 @@ inputs = {
   vpc_id                   = dependency.vpc.outputs.vpc_id
   control_plane_subnet_ids = dependency.vpc.outputs.public_subnet_ids
   public_subnet_ids_by_az  = dependency.vpc.outputs.public_subnet_ids_by_az
+  project                  = local.project
 }

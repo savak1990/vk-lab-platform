@@ -1,5 +1,5 @@
-variable "root_domain_secret_path" {
-  description = "Absolute path to the KMS-encrypted ciphertext file holding the root domain value (secrets/<project>/root-domain.enc)."
+variable "project" {
+  description = "PROJECT_NAME - used to build this project's SSM parameter paths."
   type        = string
 }
 

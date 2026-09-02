@@ -34,3 +34,10 @@ resource "aws_acm_certificate_validation" "this" {
     create = "10m"
   }
 }
+
+resource "aws_ssm_parameter" "certificate_arn" {
+  name        = "/${var.project}/bootstrap/acm/certificate_arn"
+  type        = "String"
+  value       = aws_acm_certificate_validation.this.certificate_arn
+  description = "This project's ACM certificate ARN for the lab domain."
+}

@@ -35,6 +35,7 @@ on:
           - down
           - argo-up
           - argo-down
+          - test
           - platform-up
           - platform-down
           - full-up
@@ -51,13 +52,14 @@ permissions:
   id-token: write
   contents: read
 
+env:
+  PROJECT_NAME: ${{ inputs.project_name }}
+  SUBDOMAIN: ${{ inputs.subdomain }}
+  PROJECT_REGION: ${{ inputs.region }}
+
 jobs:
-  run:
+  lifecycle:
     runs-on: ubuntu-latest
-    env:
-      PROJECT_NAME: ${{ inputs.project_name }}
-      SUBDOMAIN: ${{ inputs.subdomain }}
-      PROJECT_REGION: ${{ inputs.region }}
     steps:
       - uses: actions/checkout@v4
 
@@ -99,3 +101,26 @@ jobs:
         env:
           ROOT_DOMAIN: ${{ secrets.ROOT_DOMAIN }}
           CONFIRM_DESTROY: ${{ inputs.confirm_destroy }}
+
+  # Verifies the platform is actually usable, not just Synced/Healthy - runs
+  # after any target that leaves a disposable cluster up, using the same
+  # `make test` a developer runs locally. A separate job (its own runner,
+  # its own OIDC/kubeconfig setup) so it shows as its own status in the UI
+  # rather than as a step buried inside lifecycle's.
+  test:
+    needs: lifecycle
+    if: contains(fromJSON('["up", "argo-up", "platform-up", "full-up"]'), inputs.target)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ inputs.region }}
+
+      - run: make test

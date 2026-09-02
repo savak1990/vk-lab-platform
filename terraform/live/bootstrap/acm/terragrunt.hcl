@@ -19,4 +19,5 @@ dependency "route53" {
 inputs = {
   fqdn    = dependency.route53.outputs.fqdn
   zone_id = dependency.route53.outputs.zone_id
+  project = get_env("PROJECT_NAME", "vk-lab-platform")
 }

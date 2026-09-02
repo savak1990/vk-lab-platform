@@ -48,6 +48,14 @@ echo "Applying eks-access-identity ..."
 echo "Applying lab-role ..."
 (cd "$REPO_ROOT/terraform/live/account/lab-role" && terragrunt apply --non-interactive -auto-approve)
 
+# root-domain after lab-role (needs its new SSM write permissions) and kms
+# (decrypts root-domain.enc). Validates the root domain is actually a
+# reachable Route53 hosted zone before recording it - fails fast here
+# instead of much later inside a project's own bootstrap/route53 apply.
+# See docs/adr/0023.
+echo "Applying root-domain ..."
+(cd "$REPO_ROOT/terraform/live/account/root-domain" && terragrunt apply --non-interactive -auto-approve)
+
 # --- absorbed from the now-deleted scripts/github-vars-up.sh ---
 
 role_arn=$(aws iam get-role --role-name lab-role --query Role.Arn --output text)

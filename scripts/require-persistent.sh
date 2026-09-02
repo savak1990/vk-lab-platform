@@ -5,7 +5,7 @@ set -euo pipefail
 
 PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
 BUCKET="${PROJECT_NAME}-tf-state"
-PROJECT_REGION="${PROJECT_REGION:-eu-west-1}"
+source "$(dirname "${BASH_SOURCE[0]}")/lib/region.sh"
 
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT

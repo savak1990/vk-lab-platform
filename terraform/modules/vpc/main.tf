@@ -43,3 +43,10 @@ resource "aws_route_table_association" "public" {
   subnet_id      = each.value.id
   route_table_id = aws_route_table.public.id
 }
+
+resource "aws_ssm_parameter" "vpc_id" {
+  name        = "/${var.project}/persistent/vpc/vpc_id"
+  type        = "String"
+  value       = aws_vpc.this.id
+  description = "This project's VPC ID."
+}

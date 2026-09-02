@@ -19,16 +19,7 @@ dependency "eks" {
   mock_outputs_allowed_terraform_commands = ["validate", "plan", "destroy"]
 }
 
-dependency "secrets" {
-  config_path = "${get_repo_root()}/terraform/live/persistent/secrets"
-
-  mock_outputs = {
-    secret_arn = "arn:aws:secretsmanager:eu-west-1:000000000000:secret:mock-secrets"
-  }
-  mock_outputs_allowed_terraform_commands = ["validate", "plan", "destroy"]
-}
-
 inputs = {
   cluster_name = dependency.eks.outputs.cluster_name
-  secret_arn   = dependency.secrets.outputs.secret_arn
+  project      = get_env("PROJECT_NAME", "vk-lab-platform")
 }

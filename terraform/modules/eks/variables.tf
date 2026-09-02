@@ -31,3 +31,8 @@ variable "public_subnet_ids_by_az" {
   description = "AZ -> subnet ID map from the persistent vpc unit, used to pin the node group's subnet to var.availability_zone."
   type        = map(string)
 }
+
+variable "project" {
+  description = "PROJECT_NAME - used to build this project's SSM parameter path."
+  type        = string
+}

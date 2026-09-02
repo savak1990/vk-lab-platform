@@ -13,8 +13,8 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PROJECT_REGION="${PROJECT_REGION:-eu-west-1}"
 PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
+source "$(dirname "${BASH_SOURCE[0]}")/lib/region.sh"
 CLUSTER_NAME="${PROJECT_NAME}-eks"
 
 if aws eks describe-cluster --name "$CLUSTER_NAME" --region "$PROJECT_REGION" >/dev/null 2>&1; then

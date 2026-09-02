@@ -7,7 +7,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 UNIT_DIR="$REPO_ROOT/terraform/live/state"
 PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
 BUCKET="${PROJECT_NAME}-tf-state"
-PROJECT_REGION="${PROJECT_REGION:-eu-west-1}"
+source "$(dirname "${BASH_SOURCE[0]}")/lib/region.sh"
 
 cd "$UNIT_DIR"
 

@@ -20,7 +20,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
 SUBDOMAIN="${SUBDOMAIN:-lab}"
-PROJECT_REGION="${PROJECT_REGION:-eu-west-1}"
+source "$(dirname "${BASH_SOURCE[0]}")/lib/region.sh"
 STATE_BUCKET="${PROJECT_NAME}-tf-state"
 STATE_KEY="bootstrap/route53/terraform.tfstate"
 
