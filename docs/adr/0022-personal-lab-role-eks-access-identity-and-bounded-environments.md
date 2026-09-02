@@ -250,10 +250,13 @@ during this work's research; out of scope to reconcile here.
   "Do you want to perform these actions?" prompt in place (confirmed live,
   against `account-up.sh`'s equivalent single-unit `apply` calls, which had
   the same gap); `-auto-approve` is Terraform's own flag and the one that
-  actually suppresses it. Unlike `bootstrap-down.sh`/`state-down.sh`,
-  `persistent-down.sh` isn't gated by the ephemeral allow-list, since
-  `down-through-persistent` is meant to run ungated for every registered
-  combination; dispatching that workflow run is itself the confirmation step.
+  actually suppresses it. At the time of this decision, `persistent-down.sh`
+  wasn't gated by `CONFIRM_DESTROY` the way `bootstrap-down.sh`/
+  `state-down.sh` were - dispatching the workflow run was treated as the
+  confirmation step. This was later revisited: `persistent-down.sh` now
+  requires `CONFIRM_DESTROY` to match `PROJECT_NAME`, the same guard as
+  `bootstrap-down.sh`, since permanently deleting the VPC/Secrets Manager/
+  retained volumes warrants the same explicit confirmation.
 
 ## Amendment: hand-enumeration replaced with broad Allow + explicit Deny
 

@@ -8,21 +8,25 @@
 # creates them, the CSI driver does) - this script is where their deletion
 # is accounted for, since persistent-down is already the guarded,
 # rarely-run path for permanently deleting Persistent data. Guarded:
-# refuses while Disposable state exists, and verifies afterward that every
-# unit's state is actually empty.
-# Confirmation is terragrunt's own interactive destroy prompt below (typing
-# "yes") on a workstation; a non-interactive run (no TTY, e.g. lab.yml's
-# ungated platform-down target) skips straight to --non-interactive, since
-# dispatching that workflow run is itself the confirmation step. The
-# volume/snapshot lists are echoed before the prompt either way.
+# requires CONFIRM_DESTROY to match PROJECT_NAME exactly (same as
+# bootstrap-down.sh/account-down.sh), refuses while Disposable state
+# exists, and verifies afterward that every unit's state is actually
+# empty. On a workstation, terragrunt's own interactive "yes" prompt below
+# is a second, redundant check; a non-interactive run (no TTY, e.g.
+# lab.yml) skips straight to --non-interactive, since CONFIRM_DESTROY was
+# already checked above. The volume/snapshot lists are echoed before the
+# prompt either way.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$REPO_ROOT/scripts/lib/persistent-ebs-artifacts.sh"
+source "$REPO_ROOT/scripts/lib/confirm-destroy.sh"
 
 PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
 STATE_BUCKET="${PROJECT_NAME}-tf-state"
 PROJECT_REGION="${PROJECT_REGION:-eu-west-1}"
+
+confirm_destroy "$PROJECT_NAME"
 
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
@@ -104,12 +108,10 @@ cd "$REPO_ROOT/terraform/live/persistent"
 # If PROJECT_NAME/PROJECT_REGION/SUBDOMAIN differs from whatever this unit's
 # .terragrunt-cache was last built against, terraform will refuse with
 # "Backend configuration has changed" - run `make clear-cache` first in
-# that case. Unlike bootstrap-down.sh/account-down.sh, this isn't gated by
-# CONFIRM_DESTROY - lab.yml's platform-down target runs ungated, so
-# dispatching that workflow run is itself the confirmation step; a
-# workstation run still gets terragrunt's own interactive "yes" prompt via
-# the TTY check below. -auto-approve is what actually skips it -
-# --non-interactive alone doesn't (confirmed empirically).
+# that case. CONFIRM_DESTROY was already checked above; a workstation run
+# still gets terragrunt's own interactive "yes" prompt via the TTY check
+# below as a second, redundant confirmation. -auto-approve is what
+# actually skips it - --non-interactive alone doesn't (confirmed empirically).
 if [ -t 0 ]; then
   terragrunt run --all destroy
 else

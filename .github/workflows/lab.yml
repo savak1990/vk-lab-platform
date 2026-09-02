@@ -5,9 +5,9 @@ name: lab
 # by every project - its permission policy scopes by naming convention, not
 # a hand-enumerated per-combination list. `target` maps 1:1 onto a `make`
 # target - no remapping, no per-target gating; whatever safety behavior a
-# given target's script already has (bootstrap-down/account-down's
-# CONFIRM_DESTROY check) is unaffected by this workflow, just wired through
-# from confirm_destroy below.
+# given target's script already has (persistent-down/bootstrap-down/
+# account-down's CONFIRM_DESTROY check) is unaffected by this workflow,
+# just wired through from confirm_destroy below.
 on:
   workflow_dispatch:
     inputs:
@@ -41,7 +41,7 @@ on:
           - full-down
         default: up
       confirm_destroy:
-        description: "Only for full-down (which reaches bootstrap-down): type PROJECT_NAME exactly to confirm."
+        description: "For platform-down/full-down (which reach persistent-down/bootstrap-down): type PROJECT_NAME exactly to confirm."
         type: string
         default: ""
 

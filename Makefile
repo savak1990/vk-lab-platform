@@ -56,7 +56,7 @@ platform-up: clear-cache persistent-up cluster-up argo-up
 ## Bootstrap/State untouched. For an environment whose Bootstrap/State must
 ## survive (e.g. the personal lab) but whose Persistent layer (DNS zone,
 ## ACM cert, Secrets Manager) is meant to be torn down along with everything
-## above it.
+## above it. Reaches persistent-down, so requires CONFIRM_DESTROY=PROJECT_NAME.
 platform-down: clear-cache argo-down cluster-down persistent-down
 
 ## Reports which lifecycle layers currently have state in the shared bucket.
@@ -109,12 +109,13 @@ persistent-up:
 	./scripts/require-persistent-secrets.sh
 	cd terraform/live/persistent && terragrunt run --all --non-interactive -- apply -auto-approve
 
-## Destroys Persistent-lifecycle resources. Guarded, rarely-used - see constitution §17.
-## Also permanently deletes every retained EBS volume the ebs-retain
+## Destroys Persistent-lifecycle resources. Guarded (CONFIRM_DESTROY must
+## match PROJECT_NAME), rarely-used - see constitution §17. Also
+## permanently deletes every retained EBS volume the ebs-retain
 ## StorageClass created (spec 005) and every retained Postgres EBS
 ## snapshot (ADR 0013) - both listed before terragrunt's destroy prompt,
 ## since they're Persistent-lifecycle data outside any Terraform state.
-## Usage: make persistent-down
+## Usage: CONFIRM_DESTROY=vk-lab-platform make persistent-down
 persistent-down:
 	./scripts/persistent-down.sh
 
