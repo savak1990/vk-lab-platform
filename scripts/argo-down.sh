@@ -158,11 +158,47 @@ for app in $(kubectl get applications -n argocd -o jsonpath='{.items[*].metadata
   kubectl patch application "$app" -n argocd --type=merge -p '{"operation":null}' >/dev/null 2>&1
 done
 
-# Deleted early, not waited-on: external-dns is still running and has the
-# whole remaining cascade to reconcile the Route 53 records away. Add a
-# wait here only if a real `make down` ever leaves records behind.
 echo "ARGO-DOWN: deleting HTTPRoutes to trigger ExternalDNS record cleanup..."
 kubectl delete httproute -A --all >/dev/null 2>&1 || true
+
+# external-dns is not guaranteed to survive the Karpenter node drain below
+# (it is now pinned to node-type: system, but confirm rather than assume -
+# constitution S7: a controller must stay alive until what it manages is
+# actually cleaned up). Poll Route 53 directly for its own TXT ownership
+# records under the lab zone until none remain, instead of trusting timing.
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SUBDOMAIN="${SUBDOMAIN:-lab}"
+ROOT_DOMAIN="${ROOT_DOMAIN:-$("$REPO_ROOT/scripts/secret-decrypt.sh" root-domain)}"
+FQDN="${SUBDOMAIN}.${ROOT_DOMAIN}"
+ZONE_ID="$(aws route53 list-hosted-zones-by-name --dns-name "$FQDN" --region "$PROJECT_REGION" \
+  --query "HostedZones[?Name=='${FQDN}.'].Id" --output text 2>/dev/null || true)"
+if [ -z "$ZONE_ID" ] || [ "$ZONE_ID" = "None" ]; then
+    echo "ARGO-DOWN: WARNING - could not resolve hosted zone for $FQDN, skipping wait." >&2
+  else
+    DNS_WAIT_TIMEOUT="${ARGO_DOWN_DNS_TIMEOUT:-180}"
+    dns_elapsed=0
+    while true; do
+      # heritage=external-dns is the TXT registry's own marker (registry:
+      # txt in the Helm values) - matches only records it created, never
+      # NS/SOA or ACM's unrelated _acme-challenge validation TXT.
+      remaining_count="$(aws route53 list-resource-record-sets --hosted-zone-id "$ZONE_ID" \
+        --query 'ResourceRecordSets[].ResourceRecords[].Value' --output json 2>/dev/null \
+        | jq '[.[] | select(contains("heritage=external-dns"))] | length')"
+      remaining_count="${remaining_count:-0}"
+      if [ "$remaining_count" -eq 0 ]; then
+        echo "ARGO-DOWN: ExternalDNS-owned Route 53 records confirmed gone."
+        break
+      fi
+      if [ "$dns_elapsed" -ge "$DNS_WAIT_TIMEOUT" ]; then
+        echo "ARGO-DOWN: $remaining_count ExternalDNS-owned record(s) still present in $FQDN after ${DNS_WAIT_TIMEOUT}s - refusing to proceed." >&2
+        echo "ARGO-DOWN: check 'aws route53 list-resource-record-sets --hosted-zone-id $ZONE_ID' before retrying." >&2
+        exit 1
+      fi
+      echo "ARGO-DOWN: waiting on $remaining_count ExternalDNS-owned Route 53 record(s) to clear... (${dns_elapsed}s/${DNS_WAIT_TIMEOUT}s)"
+      sleep "$POLL_INTERVAL"
+      dns_elapsed=$((dns_elapsed + POLL_INTERVAL))
+    done
+  fi
 
 # The Service behind the NLB is a controller side effect, not an
 # Argo-applied resource - the cascade below doesn't wait on it before

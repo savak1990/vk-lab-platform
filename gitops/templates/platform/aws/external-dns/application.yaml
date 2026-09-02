@@ -5,9 +5,9 @@ metadata:
   name: external-dns
   namespace: argocd
   annotations:
-    # After envoy-gateway (wave -1), whose chart installs the Gateway API CRDs
-    # this controller's gateway-httproute source needs; before the HTTPRoutes
-    # (wave 2), so it outlives them on the reverse-order teardown.
+    # After envoy-gateway (wave -1), whose CRDs this needs. Wave order across
+    # sibling Applications does not guarantee teardown order (see
+    # argo-down.sh's explicit wait for the actual guarantee).
     argocd.argoproj.io/sync-wave: "0"
   finalizers:
     - resources-finalizer.argocd.argoproj.io
@@ -40,6 +40,8 @@ spec:
           name: external-dns
         # Pod Identity, not IRSA (terraform/modules/external-dns-pod-identity) -
         # no OIDC annotation needed on the ServiceAccount.
+        nodeSelector:
+          node-type: system
         resources:
           requests:
             cpu: 10m
