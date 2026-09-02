@@ -16,7 +16,7 @@ vpcId: ""
 # scripts/argo-up.sh usage comment for why.
 postgres:
   recoverySnapshotHandle: ""
-  storageSize: 10Gi
+  storageSize: 20Gi
 
 # Operator-configurable via {SPOT,ON_DEMAND}_KARPENTER_INSTANCE_TYPES
 # (comma-separated) and {SPOT,ON_DEMAND}_KARPENTER_CPU_LIMIT env vars on

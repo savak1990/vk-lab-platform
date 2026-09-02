@@ -11,11 +11,10 @@
 # requires CONFIRM_DESTROY to match PROJECT_NAME exactly (same as
 # bootstrap-down.sh/account-down.sh), refuses while Disposable state
 # exists, and verifies afterward that every unit's state is actually
-# empty. On a workstation, terragrunt's own interactive "yes" prompt below
-# is a second, redundant check; a non-interactive run (no TTY, e.g.
-# lab.yml) skips straight to --non-interactive, since CONFIRM_DESTROY was
-# already checked above. The volume/snapshot lists are echoed before the
-# prompt either way.
+# empty. terragrunt's own interactive "yes" prompt is skipped (--non-
+# interactive -auto-approve) since CONFIRM_DESTROY was already checked
+# above - same as bootstrap-down.sh. The volume/snapshot lists are still
+# echoed before destroying, either way.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -108,15 +107,11 @@ cd "$REPO_ROOT/terraform/live/persistent"
 # If PROJECT_NAME/PROJECT_REGION/SUBDOMAIN differs from whatever this unit's
 # .terragrunt-cache was last built against, terraform will refuse with
 # "Backend configuration has changed" - run `make clear-cache` first in
-# that case. CONFIRM_DESTROY was already checked above; a workstation run
-# still gets terragrunt's own interactive "yes" prompt via the TTY check
-# below as a second, redundant confirmation. -auto-approve is what
-# actually skips it - --non-interactive alone doesn't (confirmed empirically).
-if [ -t 0 ]; then
-  terragrunt run --all destroy
-else
-  terragrunt run --all --non-interactive -- destroy -auto-approve
-fi
+# that case. CONFIRM_DESTROY was already checked above, so terragrunt's own
+# interactive "yes" prompt would be redundant - skipped the same way
+# bootstrap-down.sh skips it. -auto-approve is what actually skips it -
+# --non-interactive alone doesn't (confirmed empirically).
+terragrunt run --all --non-interactive -- destroy -auto-approve
 
 for unit_prefix in persistent/vpc persistent/secrets; do
   if ! remaining=$(count_resources "$unit_prefix"); then
