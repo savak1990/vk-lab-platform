@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Generates any missing secrets/$PROJECT_NAME/{root-domain,postgres-app-password,
-# grafana-admin-password}.enc and argocd-admin-password.bcrypt. Requires
+# Generates any missing secrets/root-domain.enc and
+# secrets/$PROJECT_NAME/{postgres-app-password,grafana-admin-password}.enc
+# and argocd-admin-password.bcrypt. Requires
 # bootstrap (the KMS key) to already exist for PROJECT_NAME. Leaves any
 # secret that already exists untouched, rather than overwriting it -
 # postgres-app-password in particular must never be silently regenerated
@@ -27,17 +28,21 @@ PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
 SECRETS_DIR="$REPO_ROOT/secrets/$PROJECT_NAME"
 ROOT_DOMAIN="${ROOT_DOMAIN:-}"
 FIXED_TEST_PASSWORDS="${FIXED_TEST_PASSWORDS:-false}"
-PROJECT_REGION="${PROJECT_REGION:-eu-west-1}"
+source "$SCRIPT_DIR/lib/region.sh"
 
 random_password() {
   aws secretsmanager get-random-password --region "$PROJECT_REGION" --exclude-punctuation \
     --password-length 32 --output text --query RandomPassword
 }
 
+# root-domain is account-global, filed under secrets/ directly rather than
+# secrets/$PROJECT_NAME/ - see secret-encrypt.sh.
 generate_if_missing() {
   local name="$1" value="$2"
-  if [ -f "$SECRETS_DIR/$name.enc" ]; then
-    echo "Skipping $name - $SECRETS_DIR/$name.enc already exists"
+  local file="$REPO_ROOT/secrets/root-domain.enc"
+  [ "$name" = "root-domain" ] || file="$SECRETS_DIR/$name.enc"
+  if [ -f "$file" ]; then
+    echo "Skipping $name - $file already exists"
   else
     SECRET_NAME="$name" SECRET_VALUE="$value" "$SCRIPT_DIR/secret-encrypt.sh"
   fi

@@ -1,10 +1,10 @@
-# root_domain is account-global, validated and written once by the
-# terraform/live/account/root-domain unit (docs/adr/0023) - no per-project
-# decryption/existence check here anymore. It's a SecureString, so this
-# read needs with_decryption (the data source's own default, set
-# explicitly since the value being decrypted is the point).
+# root_domain is written by the account-level root-domain unit, which
+# applies in ACCOUNT_MAIN_REGION - not this unit's own PROJECT_REGION, so
+# the lookup must target that region explicitly rather than inherit the
+# provider's. It's a SecureString, so with_decryption is required.
 data "aws_ssm_parameter" "root_domain" {
   name            = "/account/root_domain"
+  region          = var.account_main_region
   with_decryption = true
 }
 

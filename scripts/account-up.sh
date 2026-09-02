@@ -70,12 +70,12 @@ echo "Set $GITHUB_REPO vars.AWS_ROLE_ARN = $role_arn"
 # project. Decrypted with the operator's own credentials, not a CI role's -
 # granting a GitHub Actions role KMS decrypt just to learn a non-secret
 # hostname was deliberately rejected.
-if [ -f "$REPO_ROOT/secrets/$PROJECT_NAME/root-domain.enc" ]; then
+if [ -f "$REPO_ROOT/secrets/root-domain.enc" ]; then
   "$REPO_ROOT/scripts/secret-decrypt.sh" root-domain | gh secret set ROOT_DOMAIN --repo "$GITHUB_REPO"
   echo "Set $GITHUB_REPO secrets.ROOT_DOMAIN"
 else
-  echo "secrets/$PROJECT_NAME/root-domain.enc not found - skipping secrets.ROOT_DOMAIN." >&2
-  echo "Re-run account-up after 'make bootstrap-up' has generated it." >&2
+  echo "secrets/root-domain.enc not found - skipping secrets.ROOT_DOMAIN." >&2
+  echo "Re-run account-up after generating it (make generate-secrets)." >&2
 fi
 
 echo "Still manual: create the ephemeral-teardown Environment (Settings > Environments) with a required reviewer - not scriptable via gh for this repo."

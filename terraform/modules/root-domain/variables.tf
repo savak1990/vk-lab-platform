@@ -1,5 +1,5 @@
 variable "root_domain_secret_path" {
-  description = "Absolute path to the KMS-encrypted ciphertext file holding the root domain value (secrets/<project>/root-domain.enc). Applied once, account-globally, even though the file lives under a project-named directory - no account-level secrets convention exists yet."
+  description = "Absolute path to the KMS-encrypted ciphertext file holding the root domain value (secrets/root-domain.enc) - account-global, not filed under a project directory."
   type        = string
 }
 

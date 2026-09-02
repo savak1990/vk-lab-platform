@@ -3,6 +3,11 @@ variable "project" {
   type        = string
 }
 
+variable "account_main_region" {
+  description = "ACCOUNT_MAIN_REGION - where /account/root_domain actually lives, independent of this unit's own provider region (PROJECT_REGION)."
+  type        = string
+}
+
 variable "subdomain" {
   description = "Subdomain delegated from the root domain for this platform, e.g. \"lab\" in lab.<root-domain>."
   type        = string
