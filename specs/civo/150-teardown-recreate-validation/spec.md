@@ -23,24 +23,32 @@ completed: null
 ## 1. Outcome and rationale
 
 The constitution §11 acceptance test passes on Civo end to end with
-recorded evidence, and a resource classification table with owner and
-destroy/retain policy exists for every Civo and AWS resource the target
-uses.
+recorded evidence. A resource classification table exists for every Civo
+and AWS resource the target uses. The table names the owner and the
+destroy/retain policy for each resource.
 
 ## 2. Scope and non-goals
 
-In scope: the runbook `tests/manual/civo-150-lifecycle.md`, execution,
-evidence, classification table, leak checks, cost record. Not in scope:
-code changes beyond small fixes discovered (those go to the owning spec).
+In scope:
+
+- The runbook `tests/manual/civo-150-lifecycle.md`.
+- Execution.
+- Evidence.
+- The classification table.
+- Leak checks.
+- The cost record.
+
+Not in scope: code changes beyond small fixes found during the run. Those
+fixes go to the owning spec.
 
 ## 3. Current state / evidence
 
-Existing AWS runbooks under `tests/manual/`; `argo-down.sh` gates; the
-`cluster-down.sh` leak sweep pattern.
+Existing AWS runbooks live under `tests/manual/`. `argo-down.sh` has gates.
+`cluster-down.sh` has the leak sweep pattern.
 
 ## 4. Design and contracts
 
-Classification table (filled during execution):
+Fill the classification table during execution:
 
 | Resource | Lifecycle | Owner | On `argo-down` | On `cluster-down` | On `persistent-down` | On `bootstrap-down` |
 |---|---|---|---|---|---|---|
@@ -57,11 +65,19 @@ Classification table (filled during execution):
 | SSM parameters | per layer | Terraform | — | cluster ones destroyed | persistent ones destroyed | bootstrap ones destroyed |
 | KMS key, OIDC, lab-role | account | Terraform | — | — | — | — (account-down only) |
 
-Steps: `PROVIDER=civo make full-up` → verify (Argo, Envoy TLS, DNS, ESO,
-CNPG, observability, autoscaler present) → write rows → `make down` →
-verify Civo listings (no cluster, no LB, artifact present, network and IP
-present) → verify Route 53 records gone → `make up` → verify rows and TLS
-reuse → `make down` → leak check → cost from the Civo dashboard.
+Steps:
+
+1. Run `PROVIDER=civo make full-up`.
+2. Verify that Argo, Envoy TLS, DNS, ESO, CNPG, observability, and the autoscaler are present.
+3. Write rows.
+4. Run `make down`.
+5. Verify the Civo listings: no cluster, no LB, artifact present, network and IP present.
+6. Verify that the Route 53 records are gone.
+7. Run `make up`.
+8. Verify the rows and the TLS reuse.
+9. Run `make down`.
+10. Run the leak check.
+11. Record the cost from the Civo dashboard.
 
 ## 5. Files/components affected
 
@@ -69,16 +85,16 @@ reuse → `make down` → leak check → cost from the Civo dashboard.
 
 ## 6. Implementation steps
 
-Run the runbook; record every check with command and result.
+Run the runbook. Record every check with its command and result.
 
 ## 7. Dependencies and blockers
 
-120, 110, 070, 130 done; 160 and 170 optional but expected in M1.
+120, 110, 070, 130 done. 160 and 170 are optional but expected in M1.
 
 ## 8. Acceptance criteria
 
-- All verifications pass; zero leaks in `civo` listings and AWS Route 53; cost recorded and compared to the model in `research.md`.
-- AWS project untouched during the run (record `make status` for aws before and after).
+- All verifications pass. There are zero leaks in the `civo` listings and in AWS Route 53. The cost is recorded and compared to the model in `research.md`.
+- The AWS project is untouched during the run. Record `make status` for aws before and after the run.
 
 ## 9. Validation
 
@@ -86,15 +102,15 @@ Real cloud, ~1 USD.
 
 ## 10. AWS regression protection
 
-AWS `make status` before/after unchanged; no AWS resources created except SSM/Route 53 records in the civo zone.
+AWS `make status` before and after the run is unchanged. No AWS resources are created except SSM/Route 53 records in the civo zone.
 
 ## 11. Rollout and rollback/recovery
 
-Validation only; `persistent-down` for civo cleans artifacts if needed.
+Validation only. `persistent-down` for civo cleans the artifacts if needed.
 
 ## 12. Risks and unresolved questions
 
-- Observability volumes with Delete reclaim must not leave orphans; verified by listing.
+- Observability volumes with Delete reclaim must not leave orphans. Verify this by listing.
 
 ## 13. Definition of done
 

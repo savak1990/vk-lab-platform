@@ -22,40 +22,46 @@ completed: null
 
 ## 1. Outcome and rationale
 
-The root CA key never enters the cluster: `argo-up` issues a short-lived
-intermediate per cluster (`pathlen:0`, allowed by the root's `pathlen:1` from CIVO-080) and the trust anchor stays the root. A
-cert-manager approval policy restricts which namespaces may request which
-CNs. Together they bound the blast radius of a `CIVO_TOKEN` compromise
-(ADR 0027) in time and in scope.
+The root CA key never enters the cluster. `argo-up` issues a short-lived
+intermediate per cluster (`pathlen:0`, allowed by the root's `pathlen:1`
+from CIVO-080). The trust anchor stays the root. A cert-manager approval
+policy restricts which namespaces may request which CNs. Together, they
+bound the blast radius of a `CIVO_TOKEN` compromise (ADR 0027) in time and
+in scope.
 
 ## 2. Scope and non-goals
 
-In scope: intermediate issuance in `argo-up` (using the decrypted root key
-in memory, 30-day validity, `pathlen:0`), `--intermediates` chain for the
-helper, approver-policy install and `CertificateRequestPolicy` objects,
-CRL note. Not in scope: HSM, OCSP.
+In scope:
+
+- Intermediate issuance in `argo-up` (using the decrypted root key in memory, 30-day validity, `pathlen:0`).
+- The `--intermediates` chain for the helper.
+- The approver-policy install and `CertificateRequestPolicy` objects.
+- A CRL note.
+
+Not in scope: HSM, OCSP.
 
 ## 3. Current state / evidence
 
-CIVO-085 places the root key in a Secret; Roles Anywhere validates chains
-to the anchor and accepts intermediates via the helper's `--intermediates`.
+CIVO-085 places the root key in a Secret. Roles Anywhere validates chains
+to the anchor. It accepts intermediates through the helper's
+`--intermediates`.
 
 ## 4. Design and contracts
 
-- `argo-up`: generate intermediate key in-cluster? No: generate the pair in memory on the operator/CI side, sign with the root, create the Secret with intermediate key+cert; root key is discarded from memory after signing.
-- Helper sidecar args add `--intermediates /ra/ca.crt` (cert-manager writes `ca.crt` for CA issuers).
-- CIVO-082's trust-policy condition `x509Issuer/CN` must change from the root CN to the intermediate CN (`<project>-civo-workload-ica`); Terraform variable, applied before the switch.
-- approver-policy: `CertificateRequestPolicy` allowing CN `<project>-civo-eso` only from namespace `external-secrets`, etc.; default deny.
-- Rotation: intermediate renewed on every `argo-up` if under 7 days left; runbook.
+- `argo-up` does not generate the intermediate key in-cluster. It generates the pair in memory on the operator/CI side. It signs the pair with the root. It creates the Secret with the intermediate key and cert. It discards the root key from memory after signing.
+- The helper sidecar args add `--intermediates /ra/ca.crt`. cert-manager writes `ca.crt` for CA issuers.
+- CIVO-082's trust-policy condition `x509Issuer/CN` must change from the root CN to the intermediate CN (`<project>-civo-workload-ica`). This is a Terraform variable. Apply it before the switch.
+- approver-policy: a `CertificateRequestPolicy` allows the CN `<project>-civo-eso` only from the namespace `external-secrets`, with similar rules for the other consumers. The default is deny.
+- Rotation: `argo-up` renews the intermediate on every run if under 7 days are left. Write a runbook.
 
 ## 5. Files/components affected
 
-`scripts/argo-up.sh`, `gitops/templates/platform/civo/identity/*`, `gitops/templates/shared/cert-manager/approver-policy.yaml`, helper template.
+`scripts/argo-up.sh`, `gitops/templates/platform/civo/identity/*`, `gitops/templates/shared/cert-manager/approver-policy.yaml`, the helper template.
 
 ## 6. Implementation steps
 
-1. Intermediate issuance and chain; positive/negative tests from CIVO-090 rerun.
-2. approver-policy; negative: Certificate with a foreign CN in the wrong namespace is denied.
+1. Implement the intermediate issuance and the chain. Rerun the positive and negative tests from CIVO-090.
+2. Install approver-policy. Run a negative test: a Certificate with a foreign CN in the wrong namespace is denied.
 
 ## 7. Dependencies and blockers
 
@@ -63,9 +69,9 @@ to the anchor and accepts intermediates via the helper's `--intermediates`.
 
 ## 8. Acceptance criteria
 
-- Root key absent from the cluster (`kubectl get secret` shows only the intermediate).
-- Roles Anywhere accepts the chain; denies a cert signed by an expired intermediate.
-- Policy denies out-of-namespace CNs.
+- The root key is absent from the cluster (`kubectl get secret` shows only the intermediate).
+- Roles Anywhere accepts the chain. It denies a cert signed by an expired intermediate.
+- The policy denies out-of-namespace CNs.
 
 ## 9. Validation
 

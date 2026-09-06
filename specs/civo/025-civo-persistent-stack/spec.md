@@ -23,78 +23,83 @@ completed: null
 ## 1. Outcome and rationale
 
 `PROVIDER=civo make persistent-up` creates the Civo network and a reserved
-IP for the `vk-civo-lab` project and the AWS `persistent/secrets` unit,
-skipping the VPC. `PROVIDER=civo make bootstrap-up` creates the state
-bucket and the `civo.<root-domain>` zone, skipping ACM. These are the
-persistent-lifecycle resources the disposable cluster attaches to.
+IP for the `vk-civo-lab` project. It also applies the AWS `persistent/secrets`
+unit. It skips the VPC. `PROVIDER=civo make bootstrap-up` creates the state
+bucket and the `civo.<root-domain>` zone. It skips ACM. These resources have
+the persistent lifecycle. The disposable cluster attaches to them.
 
 ## 2. Scope and non-goals
 
-In scope: `terraform/live/persistent-civo/{network,reserved-ip}`, modules
-`civo-network` and `civo-reserved-ip`, `root.hcl` provider/lifecycle
-changes, Make wiring for exclusions and the extra stack, `persistent-down`
-and `bootstrap-down` handling, guards. Not in scope: cluster (CIVO-030),
-Roles Anywhere unit (CIVO-082).
+The scope includes these items:
+
+- `terraform/live/persistent-civo/{network,reserved-ip}`;
+- the modules `civo-network` and `civo-reserved-ip`;
+- the `root.hcl` changes for the provider and the lifecycle;
+- the Make wiring for the exclusions and the extra stack;
+- the handling in `persistent-down` and `bootstrap-down`;
+- the guards.
+
+The scope does not include the cluster (CIVO-030) or the Roles Anywhere unit (CIVO-082).
 
 ## 3. Current state / evidence
 
-- `Makefile:104-107` `persistent-up` runs `terragrunt run --all` in `terraform/live/persistent` (units `vpc`, `secrets`).
-- `scripts/bootstrap-up.sh` runs `run --all` in `terraform/live/bootstrap` (units `route53`, `acm`).
-- `root.hcl:48` lifecycle lookup; `:51-68` provider generation; `:72-85` backend.
-- `scripts/persistent-down.sh:74,116` prefix checks; `scripts/bootstrap-down.sh:31`.
-- Civo provider: `CIVO_TOKEN` env; `civo_network`, `civo_reserved_ip` resources (research.md).
+- `Makefile:104-107` `persistent-up` runs `terragrunt run --all` in `terraform/live/persistent`. The units are `vpc` and `secrets`.
+- `scripts/bootstrap-up.sh` runs `run --all` in `terraform/live/bootstrap`. The units are `route53` and `acm`.
+- `root.hcl:48` contains the lifecycle lookup. Lines `:51-68` generate the provider. Lines `:72-85` set the backend.
+- `scripts/persistent-down.sh:74,116` contain the prefix checks. `scripts/bootstrap-down.sh:31` contains one more.
+- The Civo provider reads the `CIVO_TOKEN` environment variable. It supplies the `civo_network` and `civo_reserved_ip` resources (research.md).
 
 ## 4. Design and contracts
 
-- `root.hcl`: `lifecycle_class` lookup gains `"persistent-civo" = "persistent"`, `"cluster-civo" = "disposable"`; a `civo_region` local `"LON1"`; provider generation emits `provider "civo" { region = "LON1" }` in addition to `aws` when `path_parts[0]` starts with the civo stacks. Token from `CIVO_TOKEN` only.
-- Units: `persistent-civo/network` (`civo_network` named `${project}`), `persistent-civo/reserved-ip` (`civo_reserved_ip` named `${project}-ingress`; writes SSM `/${project}/persistent-civo/reserved-ip/address` and `/${project}/persistent-civo/network/id` as plain String).
-- Make: for civo, `persistent-up` = `run --all --queue-exclude-dir vpc` in `persistent` then `run --all` in `persistent-civo`; `persistent-down` reverse; `bootstrap-up` = `--queue-exclude-dir acm`. `--queue-exclude-dir` exists in Terragrunt 1.x (alias of `--filter`; takes a glob relative to the working dir); test whether `acm` or `./acm` matches under 1.1.3.
-- Guards: `persistent-down.sh` refuses while `cluster-civo/` state has resources; verifies `persistent/secrets` and both civo units empty after destroy; `bootstrap-down.sh` refuses on `persistent-civo/`.
-- Tags: `tags = "Project=${project} Lifecycle=persistent ManagedBy=terraform"` where the resource supports tags.
+- `root.hcl`: the `lifecycle_class` lookup gains `"persistent-civo" = "persistent"` and `"cluster-civo" = "disposable"`. A `civo_region` local holds `"LON1"`. When `path_parts[0]` starts with a civo stack name, the provider generation emits `provider "civo" { region = "LON1" }` in addition to `aws`. The token comes from `CIVO_TOKEN` only.
+- Units: `persistent-civo/network` creates a `civo_network` named `${project}`. `persistent-civo/reserved-ip` creates a `civo_reserved_ip` named `${project}-ingress`. The reserved-ip unit writes the SSM parameters `/${project}/persistent-civo/reserved-ip/address` and `/${project}/persistent-civo/network/id` as plain String.
+- Make: for civo, `persistent-up` runs `run --all --queue-exclude-dir vpc` in `persistent`. Then it runs `run --all` in `persistent-civo`. `persistent-down` runs the same steps in reverse order. `bootstrap-up` uses `--queue-exclude-dir acm`. The `--queue-exclude-dir` flag exists in Terragrunt 1.x. It is an alias of `--filter`. It takes a glob relative to the working directory. Test whether `acm` or `./acm` matches under 1.1.3.
+- Guards: `persistent-down.sh` refuses to run while the `cluster-civo/` state has resources. After the destroy, it checks that `persistent/secrets` and both civo units are empty. `bootstrap-down.sh` refuses to run when `persistent-civo/` exists.
+- Tags: set `tags = "Project=${project} Lifecycle=persistent ManagedBy=terraform"` on each resource that supports tags.
 
 ## 5. Files/components affected
 
-- `terraform/live/root.hcl` (edit), `terraform/live/persistent-civo/{network,reserved-ip}/terragrunt.hcl` (new), `terraform/modules/civo-network`, `terraform/modules/civo-reserved-ip` (new, with `versions.tf` pinning `civo/civo` and lock files).
-- `Makefile`, `scripts/bootstrap-up.sh`, `scripts/bootstrap-down.sh`, `scripts/persistent-down.sh`, `scripts/status.sh` (edit).
-- `terraform/modules/lab-role/main.tf`: SSM path allowance for `*/persistent-civo/*` (coordinate with CIVO-082).
-- State: new keys in `vk-civo-lab-tf-state`. No AWS project state touched.
+- Edit `terraform/live/root.hcl`. Add `terraform/live/persistent-civo/{network,reserved-ip}/terragrunt.hcl`. Add `terraform/modules/civo-network` and `terraform/modules/civo-reserved-ip`. Each new module has a `versions.tf` that pins `civo/civo`, and a lock file.
+- Edit `Makefile`, `scripts/bootstrap-up.sh`, `scripts/bootstrap-down.sh`, `scripts/persistent-down.sh`, and `scripts/status.sh`.
+- `terraform/modules/lab-role/main.tf`: add the SSM path allowance for `*/persistent-civo/*`. Coordinate this change with CIVO-082.
+- State: the change adds new keys in `vk-civo-lab-tf-state`. It does not touch the AWS project state.
 
 ## 6. Implementation steps
 
-1. Pin the Civo provider version in the modules; `terraform init` for lock files.
-2. Edit `root.hcl`; run `terragrunt hclfmt`, `validate` in both new units with `CIVO_TOKEN` set.
-3. Wire Make and scripts; keep aws branches literally unchanged (golden `make -n` from CIVO-010 re-run).
-4. `PROVIDER=civo make bootstrap-up` then `persistent-up` for real; verify SSM params and Civo dashboard.
-5. `PROVIDER=civo make persistent-down`; verify empty states; keep bootstrap up.
+1. Pin the Civo provider version in the modules. Run `terraform init` to create the lock files.
+2. Edit `root.hcl`. Set `CIVO_TOKEN`. Run `terragrunt hclfmt` and `validate` in both new units.
+3. Wire Make and the scripts. Keep the aws branches literally unchanged. Run the golden `make -n` from CIVO-010 again.
+4. Run `PROVIDER=civo make bootstrap-up`. Then run `persistent-up` against the real cloud. Check the SSM parameters and the Civo dashboard.
+5. Run `PROVIDER=civo make persistent-down`. Check that the states are empty. Keep the bootstrap up.
 
 ## 7. Dependencies and blockers
 
-CIVO-010 (PROVIDER, defaults, token helper); CIVO-015 (ADR 0025 declares the stack). Parallel: CIVO-050.
+CIVO-010 supplies PROVIDER, the defaults, and the token helper. CIVO-015 (ADR 0025) declares the stack. CIVO-050 can run in parallel.
 
 ## 8. Acceptance criteria
 
-- `PROVIDER=civo make bootstrap-up` creates `vk-civo-lab-tf-state`, zone `civo.<root-domain>` with NS delegation, no ACM.
-- `PROVIDER=civo make persistent-up` creates network and reserved IP; no VPC in the civo project; SSM params present.
-- `make persistent-up` (aws) unchanged: same units, same plan (no-op plan against the existing AWS project).
-- `persistent-down` refuses while `cluster-civo/` state exists (simulate by seeding an object) and cleans both civo units.
-- `terraform state` for the civo units contains no token or kubeconfig.
+- `PROVIDER=civo make bootstrap-up` creates `vk-civo-lab-tf-state` and the zone `civo.<root-domain>` with the NS delegation. It creates no ACM certificate.
+- `PROVIDER=civo make persistent-up` creates the network and the reserved IP. The civo project contains no VPC. The SSM parameters are present.
+- `make persistent-up` (aws) is unchanged. It uses the same units and the same plan. The plan against the existing AWS project is a no-op.
+- `persistent-down` refuses to run while the `cluster-civo/` state exists. Simulate this state by seeding an object. `persistent-down` cleans both civo units.
+- The `terraform state` for the civo units contains no token and no kubeconfig.
 
 ## 9. Validation
 
-Offline: `terraform fmt -check`, `terragrunt validate`, `tflint` if present, `make -n` golden. Real cloud: apply/destroy under the civo project; expected cost: reserved IP for minutes, cents.
+Offline: run `terraform fmt -check`, `terragrunt validate`, and `tflint` if present. Compare the `make -n` golden output. Real cloud: apply and destroy under the civo project. The expected cost is a reserved IP for minutes, cents.
 
 ## 10. AWS regression protection
 
-`make -n` golden diff; `terragrunt run --all plan` in `terraform/live/persistent` for the AWS project shows no changes; `root.hcl` changes are additive (new lookup keys, provider block only for civo paths).
+Compare the `make -n` golden diff. Run `terragrunt run --all plan` in `terraform/live/persistent` for the AWS project. The plan shows no changes. The `root.hcl` changes are additive. They add new lookup keys and a provider block only for civo paths.
 
 ## 11. Rollout and rollback/recovery
 
-Revert Make/root.hcl; `persistent-down` for civo removes resources. Reserved IP deletion releases the address (DNS must be re-pointed on recreate; ExternalDNS handles it).
+Revert Make and root.hcl. `persistent-down` for civo removes the resources. The deletion of the reserved IP releases the address. On recreate, DNS must point to the new address. ExternalDNS handles this.
 
 ## 12. Risks and unresolved questions
 
-- Terragrunt exclusion flag name for 1.1.3.
-- Reserved IP price (fill from spike).
+- The name of the Terragrunt exclusion flag for 1.1.3 is not confirmed.
+- The reserved IP price is unknown. Fill it in from the spike.
 
 ## 13. Definition of done
 

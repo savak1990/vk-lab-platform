@@ -1,8 +1,9 @@
 # Civo provider planning package
 
-Planning and specification location for adding Civo managed Kubernetes as a
-second execution target next to AWS/EKS. Implementation code does not live
-here; it lands in the normal repository locations named by each spec.
+This folder holds the planning and specification documents for adding Civo
+managed Kubernetes as a second execution target next to AWS/EKS.
+Implementation code does not live here. It lands in the normal repository
+locations that each spec names.
 
 Living high-level design: `docs/civo-high-level-design.md`.
 Baseline inspected: branch `main`, commit `cfbb59bd340b6356bad3fb2493b41fa3a337efe5`, 2026-09-06.
@@ -18,11 +19,11 @@ Baseline inspected: branch `main`, commit `cfbb59bd340b6356bad3fb2493b41fa3a337e
 
 ## Format note
 
-Specs in this folder use YAML front matter and a fixed 14-section body, as
-required by the planning brief. Other specs in `specs/` use Markdown
+Specs in this folder use YAML front matter and a fixed 14-section body. The
+planning brief requires this format. Other specs in `specs/` use Markdown
 bold-label headers. The folder name (`NNN-title`) and the `id` field are the
-stable identifiers; never renumber. Numbers step by ten; insert later work
-into gaps (`085-...`) without renumbering.
+stable identifiers. Never renumber them. Numbers step by ten. Insert later
+work into the gaps (`085-...`) without renumbering.
 
 ## Status protocol
 
@@ -37,31 +38,37 @@ into gaps (`085-...`) without renumbering.
 | `CANCELLED` | Abandoned or superseded; rationale and replacement kept |
 
 Flow: `DRAFT → READY → IN_PROGRESS → IN_REVIEW → DONE`. `BLOCKED` may
-interrupt anywhere and returns to `READY` or `IN_PROGRESS`. Review failures
-return to `IN_PROGRESS`. Reopening `DONE` needs a recorded reason.
+interrupt anywhere. It returns to `READY` or `IN_PROGRESS`. A review failure
+returns the spec to `IN_PROGRESS`. Reopening `DONE` needs a recorded reason.
 
-Priority: `P0` critical prerequisite or security/data-safety blocker for the
-milestone; `P1` required for the first viable Civo platform; `P2` follow-up;
-`P3` optional.
+Priority:
 
-Difficulty: `S` bounded local change; `M` several known components; `L`
-substantial cross-component or security/lifecycle reasoning; `XL` must be
-split (none remain).
+- `P0`: a critical prerequisite or a security/data-safety blocker for the milestone.
+- `P1`: required for the first viable Civo platform.
+- `P2`: a follow-up.
+- `P3`: optional.
 
-Model tier: `fast`, `standard`, `strongest`. Recommendation only; gates do
-not relax. No exact model names are mapped because none were verified in
-this environment.
+Difficulty:
+
+- `S`: a bounded local change.
+- `M`: several known components.
+- `L`: substantial cross-component or security/lifecycle reasoning.
+- `XL`: must be split (none remain).
+
+Model tier: `fast`, `standard`, `strongest`. This is a recommendation only.
+The gates do not relax. No exact model names are mapped, because none were
+verified in this environment.
 
 ## Implementation-session protocol
 
 1. Read this README, the HLD, `architecture.md` §Target, and the spec plus its `depends_on`.
-2. Check every `depends_on` is `DONE`; otherwise set `BLOCKED` with `blocked_by` and stop.
-3. Set `status: "IN_PROGRESS"`, `updated`, and add a status-history line.
-4. Implement only the spec's scope. Do not touch AWS behavior unless the spec says so; run the AWS regression gate the spec names.
-5. Run the validation section. Record commands and results (no secrets) under "Execution evidence".
-6. Set `IN_REVIEW`, open one PR mapped to the spec ID.
-7. On merge and gate pass, set `DONE`, `completed`, and re-check direct dependents' `blocked_by`.
-8. Update the index table below if status, priority, or dependencies changed.
+2. Check that every `depends_on` is `DONE`. Otherwise, set `BLOCKED` with `blocked_by` and stop.
+3. Set `status: "IN_PROGRESS"` and `updated`. Add a status-history line.
+4. Implement only the spec's scope. Do not touch AWS behavior unless the spec says so. Run the AWS regression gate that the spec names.
+5. Run the validation section. Record the commands and results (no secrets) under "Execution evidence".
+6. Set `IN_REVIEW`. Open one PR mapped to the spec ID.
+7. On merge and gate pass, set `DONE` and `completed`. Re-check the direct dependents' `blocked_by`.
+8. Update the index table below if the status, priority, or dependencies changed.
 
 ## Index
 
@@ -95,4 +102,4 @@ this environment.
 | CIVO-190 | [190-proxy-protocol-client-ip](190-proxy-protocol-client-ip/spec.md) | Proxy protocol and client IP | READY | P3 | S | fast | 060 | M2 |
 | CIVO-200 | [200-identity-hardening](200-identity-hardening/spec.md) | Intermediate CA and Certificate approval policy | READY | P2 | M | strongest | 085 | M2 |
 
-Headers in each `spec.md` are the source of truth; keep this table in sync.
+The headers in each `spec.md` are the source of truth. Keep this table in sync.

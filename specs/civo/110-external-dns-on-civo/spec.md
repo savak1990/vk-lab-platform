@@ -23,64 +23,64 @@ completed: null
 ## 1. Outcome and rationale
 
 `argo.civo.<root-domain>` and `grafana.civo.<root-domain>` resolve to the
-Civo reserved IP, written by ExternalDNS into the `civo.<root-domain>`
-zone with owner ID `vk-civo-lab`, and removed on `argo-down` before the
-controller is deleted. The AWS project's records in `lab.<root-domain>`
-are never touched.
+Civo reserved IP. ExternalDNS writes the records into the
+`civo.<root-domain>` zone with the owner ID `vk-civo-lab`. `argo-down`
+removes the records before the controller is deleted. The AWS project's
+records in `lab.<root-domain>` are never touched.
 
 ## 2. Scope and non-goals
 
-In scope: ExternalDNS Application civo branch (sidecar, owner ID, zone
-filter). Not in scope: TLS (CIVO-070).
+In scope: the civo branch of the ExternalDNS Application (the sidecar, the
+owner ID, the zone filter). Not in scope: TLS (CIVO-070).
 
 ## 3. Current state / evidence
 
-- `gitops/templates/platform/aws/external-dns/application.yaml:22-44`: `provider.name: aws`, `sources: [gateway-httproute]`, `domainFilters: [fqdn]`, `txtOwnerId: {{ .Values.project }}`, `policy: sync`, Pod Identity SA, `nodeSelector node-type: system`.
-- Role `${project}-ra-external_dns` scoped to the civo zone id (CIVO-082).
-- `argo-down.sh:169-201` polls Route 53 for `heritage=external-dns` records in the `${SUBDOMAIN}.${ROOT_DOMAIN}` zone: already project-aware via `SUBDOMAIN=civo`.
+- `gitops/templates/platform/aws/external-dns/application.yaml:22-44` sets `provider.name: aws`, `sources: [gateway-httproute]`, `domainFilters: [fqdn]`, `txtOwnerId: {{ .Values.project }}`, `policy: sync`, the Pod Identity SA, and `nodeSelector node-type: system`.
+- The role `${project}-ra-external_dns` is scoped to the civo zone id (CIVO-082).
+- `argo-down.sh:169-201` polls Route 53 for `heritage=external-dns` records in the `${SUBDOMAIN}.${ROOT_DOMAIN}` zone. This is already project-aware via `SUBDOMAIN=civo`.
 
 ## 4. Design and contracts
 
-- Move the Application to `shared/external-dns/application.yaml` with values: `txtOwnerId: {{ .Values.externalDns.txtOwnerId | default .Values.project }}`, `zoneIdFilters` optional, `nodeSelector` only when `capacity.systemNodeSelector` is set (aws), sidecar block when `awsIdentity.mode == rolesAnywhere`, `serviceAccount.annotations` only on aws.
-- On civo, HTTPRoute hostnames yield A records to the Service IP (reserved IP). With proxy protocol off, status carries an IP.
-- Owner ID on civo is `vk-civo-lab`; on aws unchanged (`vk-lab-platform`).
+- Move the Application to `shared/external-dns/application.yaml`. Its values are: `txtOwnerId: {{ .Values.externalDns.txtOwnerId | default .Values.project }}`; `zoneIdFilters` optional; `nodeSelector` only when `capacity.systemNodeSelector` is set (aws); the sidecar block when `awsIdentity.mode == rolesAnywhere`; `serviceAccount.annotations` only on aws.
+- On civo, the HTTPRoute hostnames yield A records to the Service IP (the reserved IP). With proxy protocol off, the status carries an IP.
+- The owner ID on civo is `vk-civo-lab`. On aws it is unchanged (`vk-lab-platform`).
 
 ## 5. Files/components affected
 
-`gitops/templates/platform/shared/external-dns/application.yaml` (moved + templated), `gitops/values.yaml`.
+`gitops/templates/platform/shared/external-dns/application.yaml` (moved and templated); `gitops/values.yaml`.
 
 ## 6. Implementation steps
 
-1. Template; golden aws diff empty.
-2. `PROVIDER=civo make up`; `dig argo.civo.<root-domain>` = reserved IP; TXT owner record present.
-3. `argo-down`: records gone before cascade (script gate).
-4. Cross-zone check: `aws route53 list-resource-record-sets` on the AWS lab zone unchanged before/after.
+1. Template the Application. The golden aws diff is empty.
+2. Run `PROVIDER=civo make up`. Check that `dig argo.civo.<root-domain>` returns the reserved IP. Check that the TXT owner record is present.
+3. Run `argo-down`. The records are gone before the cascade (the script gate).
+4. Cross-zone check: run `aws route53 list-resource-record-sets` on the AWS lab zone before and after. The output is unchanged.
 
 ## 7. Dependencies and blockers
 
-090 (sidecar), 060 (LB IP).
+090 (the sidecar), 060 (the LB IP).
 
 ## 8. Acceptance criteria
 
-- Records created and deleted with the civo owner ID only in the civo zone.
-- Role denies `ChangeResourceRecordSets` on the AWS lab zone (negative test with the `aws` CLI using the helper's credentials).
-- AWS golden diff empty.
+- Records are created and deleted with the civo owner ID, only in the civo zone.
+- The role denies `ChangeResourceRecordSets` on the AWS lab zone. This is a negative test with the `aws` CLI, using the helper's credentials.
+- The AWS golden diff is empty.
 
 ## 9. Validation
 
-Offline: golden diff. Real cloud: civo up/down (~0.2 USD); Route 53 API free.
+Offline: the golden diff. Real cloud: civo up/down (~0.2 USD). The Route 53 API is free.
 
 ## 10. AWS regression protection
 
-Template defaults reproduce the AWS file exactly (golden).
+The template defaults reproduce the AWS file exactly (golden).
 
 ## 11. Rollout and rollback/recovery
 
-Revert; stale records cleaned by `argo-down` gate or manually.
+Revert the change. The `argo-down` gate cleans stale records. Otherwise, clean them manually.
 
 ## 12. Risks and unresolved questions
 
-- `gateway-httproute` source needs the Gateway to publish addresses; verified in CIVO-060.
+- The `gateway-httproute` source needs the Gateway to publish addresses. This is verified in CIVO-060.
 
 ## 13. Definition of done
 

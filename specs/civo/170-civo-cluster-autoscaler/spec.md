@@ -23,29 +23,37 @@ completed: null
 ## 1. Outcome and rationale
 
 The Civo cluster autoscaler keeps the `workers` pool between 1 and 3 Large
-nodes, scaling up on pending pods and down on sustained underutilization,
-without Terraform fighting it. This keeps idle cost near one node (HLD §2).
+nodes. It scales up on pending pods. It scales down on sustained
+underutilization. Terraform does not fight it. This keeps the idle cost
+near one node (HLD §2).
 
 ## 2. Scope and non-goals
 
-In scope: install method, `--nodes=1:3:workers`, Terraform
-`ignore_changes`, a scale test, PodDisruptionBudget notes. Not in scope:
-multiple pools, spot-like capacity (Civo has none), Karpenter parity.
+In scope:
+
+- The install method.
+- `--nodes=1:3:workers`.
+- Terraform `ignore_changes`.
+- A scale test.
+- PodDisruptionBudget notes.
+
+Not in scope: multiple pools, spot-like capacity (Civo has none), Karpenter
+parity.
 
 ## 3. Current state / evidence
 
-- Autoscaler is a marketplace app (`civo-cluster-autoscaler`), config `--nodes=min:max:poolname`, runs in `kube-system`, default `1:10:workers`; no Terraform coordination documented (research.md).
-- `civo_kubernetes_cluster.applications` installs marketplace apps at creation; updates unsupported through Terraform.
-- Scale-down order documented by Civo; PDBs are honored by upstream cluster-autoscaler.
+- The autoscaler is a marketplace app (`civo-cluster-autoscaler`). Its config is `--nodes=min:max:poolname`. It runs in `kube-system`. The default is `1:10:workers`. No Terraform coordination is documented (research.md).
+- `civo_kubernetes_cluster.applications` installs marketplace apps at creation. Terraform does not support updates.
+- Civo documents the scale-down order. The upstream cluster-autoscaler honors PDBs.
 
 ## 4. Design and contracts
 
-- Install: prefer Argo-managed upstream `cluster-autoscaler` Helm chart with the `civo` cloud provider if the chart supports it for the pinned version; otherwise the marketplace app added to `applications` in CIVO-030's cluster resource with a documented `kubectl patch` of the Deployment args to `--nodes=1:3:workers` performed by `argo-up` (idempotent). Record which path was taken; Argo-managed is preferred for GitOps ownership.
-- Terraform: `lifecycle { ignore_changes = [pools[0].node_count] }` on `civo_kubernetes_cluster`.
+- Install: prefer the Argo-managed upstream `cluster-autoscaler` Helm chart with the `civo` cloud provider, if the chart supports it for the pinned version. Otherwise, add the marketplace app to `applications` in CIVO-030's cluster resource. In that case, `argo-up` performs a documented `kubectl patch` of the Deployment args to `--nodes=1:3:workers`. The patch is idempotent. Record which path was taken. Argo-managed is preferred for GitOps ownership.
+- Terraform: add `lifecycle { ignore_changes = [pools[0].node_count] }` on `civo_kubernetes_cluster`.
 - Values: `capacity.autoscaler: {min: 1, max: 3, pool: workers}`.
-- Credential: both the marketplace app and the upstream `civo` cloudprovider need a Civo API key as a Secret in `kube-system`. Use a **dedicated second API key** (Civo accounts may hold several), stored as `secrets/civo-autoscaler-token.enc` and delivered by `argo-up` (never the main token), so a Secret read in `kube-system` does not yield full account control. ADR 0028 must state this.
-- Civo docs recommend a minimum of 2 workers with the autoscaler; the spike/this spec verifies `min=1` is honored.
-- Observability: ServiceMonitor for the autoscaler metrics (gated to civo).
+- Credential: both the marketplace app and the upstream `civo` cloudprovider need a Civo API key as a Secret in `kube-system`. Use a **dedicated second API key** (Civo accounts may hold several). Store it as `secrets/civo-autoscaler-token.enc`. `argo-up` delivers it (never the main token). Then a Secret read in `kube-system` does not yield full account control. ADR 0028 must state this.
+- Civo docs recommend a minimum of 2 workers with the autoscaler. The spike and this spec verify that `min=1` is honored.
+- Observability: a ServiceMonitor for the autoscaler metrics (gated to civo).
 
 ## 5. Files/components affected
 
@@ -53,8 +61,8 @@ multiple pools, spot-like capacity (Civo has none), Karpenter parity.
 
 ## 6. Implementation steps
 
-1. Choose install path; apply.
-2. Scale test: deploy a burst Deployment requesting 3 GiB per replica × 4; observe nodes 1→3 within 10 min; delete; observe scale-down to 1 within the autoscaler's window (~10–15 min).
+1. Choose the install path. Apply it.
+2. Run the scale test. Deploy a burst Deployment that requests 3 GiB per replica × 4. Observe the nodes go 1→3 within 10 min. Delete the Deployment. Observe the scale-down to 1 within the autoscaler's window (~10–15 min).
 3. `terraform plan` shows no `node_count` drift.
 
 ## 7. Dependencies and blockers
@@ -63,13 +71,13 @@ multiple pools, spot-like capacity (Civo has none), Karpenter parity.
 
 ## 8. Acceptance criteria
 
-- Scale up to 3 and down to 1 observed and timed.
-- Plan clean after scaling.
-- Platform pods have PDBs or tolerate eviction (record any that block scale-down).
+- The scale up to 3 and the scale down to 1 are observed and timed.
+- The plan is clean after scaling.
+- Platform pods have PDBs or tolerate eviction. Record any pod that blocks scale-down.
 
 ## 9. Validation
 
-Real cloud: burst test (~0.2 USD).
+Real cloud: the burst test (~0.2 USD).
 
 ## 10. AWS regression protection
 
@@ -77,11 +85,11 @@ Not applicable (Civo-only files).
 
 ## 11. Rollout and rollback/recovery
 
-Remove the autoscaler; set `node_count` explicitly.
+Remove the autoscaler. Set `node_count` explicitly.
 
 ## 12. Risks and unresolved questions
 
-- Upstream chart `civo` provider support and version; fallback documented.
+- The upstream chart's `civo` provider support and version. The fallback is documented.
 
 ## 13. Definition of done
 

@@ -22,59 +22,61 @@ completed: null
 
 ## 1. Outcome and rationale
 
-On Civo, ESO syncs the Postgres app password and Grafana admin password
-from SSM into Kubernetes Secrets exactly as on AWS, authenticated through
-the sidecar instead of Pod Identity. The `ClusterSecretStore` and
-`ExternalSecret` manifests stay shared and unchanged.
+On Civo, ESO syncs the Postgres app password and the Grafana admin
+password from SSM into Kubernetes Secrets, exactly as on AWS. ESO
+authenticates through the sidecar instead of Pod Identity. The
+`ClusterSecretStore` and `ExternalSecret` manifests stay shared and
+unchanged.
 
 ## 2. Scope and non-goals
 
-In scope: civo branch of the ESO Application values (`extraContainers`,
-`extraVolumes`, env), least-privilege check. Not in scope: new secrets.
+In scope: the civo branch of the ESO Application values (`extraContainers`,
+`extraVolumes`, env), and the least-privilege check. Not in scope: new
+secrets.
 
 ## 3. Current state / evidence
 
-- `gitops/templates/platform/shared/external-secrets/secretstore.yaml` (hoisted in CIVO-050): `provider.aws.service: ParameterStore`, `region`, no `auth` → controller pod credentials via the SDK default chain (research.md).
-- ESO chart 2.9.0 `application.yaml` with `webhook.failurePolicy: Ignore`, SSA.
-- Role `${project}-ra-eso` allows `ssm:GetParameter` on the two parameter ARNs and `kms:Decrypt` with `EncryptionContext:PARAMETER_ARN` (CIVO-082).
+- `gitops/templates/platform/shared/external-secrets/secretstore.yaml` (hoisted in CIVO-050) sets `provider.aws.service: ParameterStore` and `region`. It has no `auth`. For that reason, the controller pod credentials come from the SDK default chain (research.md).
+- The ESO chart 2.9.0 `application.yaml` uses `webhook.failurePolicy: Ignore` and SSA.
+- The role `${project}-ra-eso` allows `ssm:GetParameter` on the two parameter ARNs. It allows `kms:Decrypt` with `EncryptionContext:PARAMETER_ARN` (CIVO-082).
 
 ## 4. Design and contracts
 
-- `gitops/templates/platform/civo/external-secrets/application-values.yaml` or a values block selected by `.Values.awsIdentity.mode == rolesAnywhere`: chart values `extraContainers: [ {{ include "platform.rolesAnywhereSidecar" (dict "consumer" "eso") }} ]`, `extraVolumes` for Secret `eso-ra-cert`, `extraEnv` with `AWS_EC2_METADATA_SERVICE_ENDPOINT` and `AWS_REGION`. If the chart lacks these keys for the controller Deployment, use the chart's `deploymentAnnotations`/`podSpec` overrides or a strategic-merge patch via Argo `kustomize` on the rendered chart; record the chosen path.
-- Only the controller needs credentials; webhook and cert-controller do not get the sidecar.
+- Use `gitops/templates/platform/civo/external-secrets/application-values.yaml`, or a values block selected by `.Values.awsIdentity.mode == rolesAnywhere`. The chart values are `extraContainers: [ {{ include "platform.rolesAnywhereSidecar" (dict "consumer" "eso") }} ]`, `extraVolumes` for the Secret `eso-ra-cert`, and `extraEnv` with `AWS_EC2_METADATA_SERVICE_ENDPOINT` and `AWS_REGION`. The chart may lack these keys for the controller Deployment. In that case, use the chart's `deploymentAnnotations`/`podSpec` overrides, or a strategic-merge patch via Argo `kustomize` on the rendered chart. Record the chosen path.
+- Only the controller needs credentials. The webhook and the cert-controller do not get the sidecar.
 
 ## 5. Files/components affected
 
-`gitops/templates/shared/external-secrets/application.yaml` (values conditional), `gitops/values.yaml`.
+`gitops/templates/shared/external-secrets/application.yaml` (the values are conditional); `gitops/values.yaml`.
 
 ## 6. Implementation steps
 
-1. Add the conditional values; golden aws diff empty.
-2. `PROVIDER=civo make up`; `kubectl get externalsecret -A`: both `SecretSynced`; Secrets contain the expected keys (values not printed).
-3. Rotate the SSM value in a test parameter and confirm refresh within `refreshInterval`.
-4. Negative: swap the sidecar `--role-arn` to the external-dns role → ESO `AccessDenied` on SSM (recorded), then restore.
+1. Add the conditional values. The golden aws diff is empty.
+2. Run `PROVIDER=civo make up`. Run `kubectl get externalsecret -A`. Both show `SecretSynced`. The Secrets contain the expected keys (do not print the values).
+3. Rotate the SSM value in a test parameter. Confirm the refresh within `refreshInterval`.
+4. Negative test: swap the sidecar `--role-arn` to the external-dns role. ESO gets `AccessDenied` on SSM (record this). Then restore the role.
 
 ## 7. Dependencies and blockers
 
-CIVO-090 (image, template).
+CIVO-090 (the image and the template).
 
 ## 8. Acceptance criteria
 
-- Both ExternalSecrets `Ready=True` on civo; CNPG and Grafana consume them later.
-- Cross-role negative test denied.
-- AWS golden diff empty; AWS ESO unchanged.
+- Both ExternalSecrets are `Ready=True` on civo. CNPG and Grafana consume them later.
+- The cross-role negative test is denied.
+- The AWS golden diff is empty. AWS ESO is unchanged.
 
 ## 9. Validation
 
-Offline: golden diff. Real cloud: civo (~cents).
+Offline: the golden diff. Real cloud: civo (~cents).
 
 ## 10. AWS regression protection
 
-Conditional values only when `awsIdentity.mode == rolesAnywhere`.
+The values are conditional. They apply only when `awsIdentity.mode == rolesAnywhere`.
 
 ## 11. Rollout and rollback/recovery
 
-Revert values; secrets remain as last synced.
+Revert the values. The secrets remain as last synced.
 
 ## 12. Risks and unresolved questions
 

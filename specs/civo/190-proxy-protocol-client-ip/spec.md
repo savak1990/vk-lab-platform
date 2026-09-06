@@ -22,25 +22,31 @@ completed: null
 
 ## 1. Outcome and rationale
 
-Envoy sees the real client IP on Civo, enabling per-client rate limits
-and accurate access logs, matching the AWS setup where the NLB sends
+Envoy sees the real client IP on Civo. This enables per-client rate limits
+and accurate access logs. This matches the AWS setup, where the NLB sends
 proxy protocol.
 
 ## 2. Scope and non-goals
 
-In scope: `kubernetes.civo.com/loadbalancer-enable-proxy-protocol: send-proxy-v2`, `ClientTrafficPolicy enableProxyProtocol: true` on civo, ExternalDNS handling of hostname-only status. Not in scope: WAF.
+In scope:
+
+- `kubernetes.civo.com/loadbalancer-enable-proxy-protocol: send-proxy-v2`.
+- `ClientTrafficPolicy enableProxyProtocol: true` on civo.
+- ExternalDNS handling of a hostname-only status.
+
+Not in scope: WAF.
 
 ## 3. Current state / evidence
 
-CCM README: with proxy protocol the Service status carries only a hostname
-(`<id>.lb.civo.com`); ExternalDNS then creates a CNAME rather than an A
-record; Let's Encrypt HTTP-01 still works through the hostname.
+CCM README: with proxy protocol, the Service status carries only a hostname
+(`<id>.lb.civo.com`). ExternalDNS then creates a CNAME rather than an A
+record. Let's Encrypt HTTP-01 still works through the hostname.
 
 ## 4. Design and contracts
 
-Values `envoyGateway.proxyProtocol: true` on civo adds the annotation and
-renders the ClientTrafficPolicy; ExternalDNS handles CNAME targets by
-default. Verify the reserved-IP annotation still applies.
+The value `envoyGateway.proxyProtocol: true` on civo adds the annotation
+and renders the ClientTrafficPolicy. ExternalDNS handles CNAME targets by
+default. Verify that the reserved-IP annotation still applies.
 
 ## 5. Files/components affected
 
@@ -48,8 +54,8 @@ default. Verify the reserved-IP annotation still applies.
 
 ## 6. Implementation steps
 
-1. Flip the value; sync; check Envoy access log `x-forwarded-for`/downstream address equals the client IP.
-2. Check DNS record type and TLS issuance still fine.
+1. Flip the value. Sync. Check that the Envoy access log `x-forwarded-for`/downstream address equals the client IP.
+2. Check that the DNS record type and the TLS issuance are still fine.
 
 ## 7. Dependencies and blockers
 
@@ -57,7 +63,7 @@ default. Verify the reserved-IP annotation still applies.
 
 ## 8. Acceptance criteria
 
-- Client IP visible in Envoy logs; DNS resolves; TLS renews.
+- The client IP is visible in the Envoy logs. DNS resolves. TLS renews.
 
 ## 9. Validation
 
@@ -65,7 +71,7 @@ Real cloud, cents.
 
 ## 10. AWS regression protection
 
-AWS already uses proxy protocol; values unchanged.
+AWS already uses proxy protocol. The values are unchanged.
 
 ## 11. Rollout and rollback/recovery
 
@@ -73,7 +79,7 @@ Flip the value back.
 
 ## 12. Risks and unresolved questions
 
-- Hostname-only status vs reserved IP interaction.
+- The interaction between the hostname-only status and the reserved IP.
 
 ## 13. Definition of done
 

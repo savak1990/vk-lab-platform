@@ -23,74 +23,75 @@ completed: null
 ## 1. Outcome and rationale
 
 A pinned `aws_signing_helper` container image is published from this repo
-to GHCR, and a reusable sidecar snippet turns a pod with a workload
-certificate into a pod with continuously refreshed AWS credentials via the
-SDK default chain. A test pod proves allow and deny paths end to end.
+to GHCR. A reusable sidecar snippet turns a pod with a workload certificate
+into a pod with continuously refreshed AWS credentials. The credentials
+arrive via the SDK default chain. A test pod proves the allow and deny
+paths end to end.
 
 ## 2. Scope and non-goals
 
-In scope: pinning the official image by digest, Helm named template for
-the sidecar, test pod manifest under `tests/manifests/civo-090/`. A
-repo-built image is a fallback only if the official image lacks a needed
-platform or version.
+In scope: pinning the official image by digest, a Helm named template for
+the sidecar, and the test pod manifest under `tests/manifests/civo-090/`.
+A repo-built image is a fallback only. Use it only if the official image
+lacks a needed platform or version.
 Not in scope: wiring into ESO/ExternalDNS (CIVO-100/110).
 
 ## 3. Current state / evidence
 
-- Official container image exists: `public.ecr.aws/rolesanywhere/credential-helper` (amd64/arm64, immutable `<version>-<platform>-<timestamp>` tags; https://github.com/aws/rolesanywhere-credential-helper/blob/main/docker_image_resources/README.md). No repo-built image is needed.
-- `serve` mode: `127.0.0.1:9911`, IMDSv2-compatible, refresh 5 min before expiry, reloads cert/key files, graceful SIGTERM.
-- SDKs: `AWS_EC2_METADATA_SERVICE_ENDPOINT=http://127.0.0.1:9911`.
-- Roles Anywhere outputs in SSM (CIVO-082); certs in Secrets (CIVO-085).
-- Repository rule: platform tooling images are allowed; business code is not.
+- The official container image exists: `public.ecr.aws/rolesanywhere/credential-helper` (amd64/arm64, immutable `<version>-<platform>-<timestamp>` tags; https://github.com/aws/rolesanywhere-credential-helper/blob/main/docker_image_resources/README.md). No repo-built image is needed.
+- `serve` mode listens on `127.0.0.1:9911`. It is IMDSv2-compatible. It refreshes 5 min before expiry. It reloads the cert/key files. It handles SIGTERM gracefully.
+- The SDKs use `AWS_EC2_METADATA_SERVICE_ENDPOINT=http://127.0.0.1:9911`.
+- The Roles Anywhere outputs are in SSM (CIVO-082). The certs are in Secrets (CIVO-085).
+- Repository rule: platform tooling images are allowed. Business code is not.
 
 ## 4. Design and contracts
 
 - Image: `public.ecr.aws/rolesanywhere/credential-helper@sha256:<digest>` for 1.8.5, recorded in `gitops/values.yaml`.
-- Helm named template `platform.rolesAnywhereSidecar` (in `gitops/templates/_helpers.tpl`): container `aws-signing-helper` with args `serve --certificate /ra/tls.crt --private-key /ra/tls.key --trust-anchor-arn ... --profile-arn ... --role-arn ... --session-duration 3600 --hop-limit 1 --port 9911 --region eu-west-1`, volume mount `/ra` from the consumer Secret (no `subPath`), `readOnlyRootFilesystem`, `runAsNonRoot`, requests 10m/16Mi; env for the main container: `AWS_EC2_METADATA_SERVICE_ENDPOINT=http://127.0.0.1:9911`, `AWS_REGION=eu-west-1`.
-- ARNs come from values populated by `argo-up` from SSM.
-- Endpoint isolation: localhost inside the pod network namespace only; `hop-limit 1`.
-- Test pod: image `amazon/aws-cli`, sidecar attached, runs `aws sts get-caller-identity`; second variant with a Certificate from a throwaway CA issuer (self-signed) expects failure.
+- The Helm named template `platform.rolesAnywhereSidecar` (in `gitops/templates/_helpers.tpl`) defines the container `aws-signing-helper`. The container args are `serve --certificate /ra/tls.crt --private-key /ra/tls.key --trust-anchor-arn ... --profile-arn ... --role-arn ... --session-duration 3600 --hop-limit 1 --port 9911 --region eu-west-1`. The container mounts `/ra` from the consumer Secret (no `subPath`). It sets `readOnlyRootFilesystem` and `runAsNonRoot`. It requests 10m/16Mi. The main container gets the env `AWS_EC2_METADATA_SERVICE_ENDPOINT=http://127.0.0.1:9911` and `AWS_REGION=eu-west-1`.
+- The ARNs come from values. `argo-up` populates the values from SSM.
+- Endpoint isolation: the endpoint is localhost inside the pod network namespace only, with `hop-limit 1`.
+- Test pod: image `amazon/aws-cli`, with the sidecar attached. It runs `aws sts get-caller-identity`. A second variant uses a Certificate from a throwaway CA issuer (self-signed). This variant expects failure.
 
 ## 5. Files/components affected
 
-`gitops/templates/_helpers.tpl`, `tests/manifests/civo-090/*.yaml`, `gitops/values.yaml` (`awsIdentity.rolesAnywhere.*`).
+`gitops/templates/_helpers.tpl`; `tests/manifests/civo-090/*.yaml`; `gitops/values.yaml` (`awsIdentity.rolesAnywhere.*`).
 
 ## 6. Implementation steps
 
-1. Pull the official image, verify `--version` = 1.8.5, record the digest.
-2. Add the helper template; render in a test pod; apply on civo.
-3. Positive: `get-caller-identity` returns the `eso` role ARN with source identity `CN=<project>-civo-eso`.
-4. Negative: wrong-CA cert → `AccessDeniedException`; expired cert → denied; wrong role ARN for the CN → denied.
-5. Reload: trigger a Certificate renewal; confirm the helper logs a reload and the next credential refresh succeeds without restart.
-6. Clean up test pods.
+1. Pull the official image. Verify that `--version` = 1.8.5. Record the digest.
+2. Add the helper template. Render it in a test pod. Apply the pod on civo.
+3. Positive test: `get-caller-identity` returns the `eso` role ARN with the source identity `CN=<project>-civo-eso`.
+4. Negative tests: a wrong-CA cert gives `AccessDeniedException`. An expired cert is denied. A wrong role ARN for the CN is denied.
+5. Reload test: trigger a Certificate renewal. Confirm that the helper logs a reload. Confirm that the next credential refresh succeeds without a restart.
+6. Clean up the test pods.
 
 ## 7. Dependencies and blockers
 
-082 (ARNs, roles), 085 (certs).
+082 (the ARNs and roles), 085 (the certs).
 
 ## 8. Acceptance criteria
 
-- Official image pinned by digest in values.
-- Positive and three negative tests recorded.
-- Credential refresh observed across one expiry boundary (session 900 s in the test to shorten the wait).
-- Reload without restart observed.
-- Sidecar snippet has no host network, no privileges, localhost only.
+- The official image is pinned by digest in values.
+- The positive test and the three negative tests are recorded.
+- A credential refresh is observed across one expiry boundary. The test uses a 900 s session to shorten the wait.
+- A reload without a restart is observed.
+- The sidecar snippet has no host network and no privileges. It is localhost only.
 
 ## 9. Validation
 
-Offline: image digest check. Real cloud: civo test pods (~cents); AWS STS free.
+Offline: the image digest check. Real cloud: civo test pods (~cents). AWS STS is free.
 
 ## 10. AWS regression protection
 
-Not applicable to the AWS cluster; the workflow has no AWS access.
+Not applicable to the AWS cluster. The workflow has no AWS access.
 
 ## 11. Rollout and rollback/recovery
 
-Remove the sidecar; consumers lose AWS access (fail closed).
+Remove the sidecar. The consumers lose AWS access (fail closed).
 
 ## 12. Risks and unresolved questions
 
-- Whether the ESO/external-dns charts allow `extraContainers` and `extraVolumes` (validated in 100/110; fallback: wrapper chart).
+- Do the ESO/external-dns charts allow `extraContainers` and `extraVolumes`? This is validated in 100/110. Fallback: a wrapper chart.
 
 ## 13. Definition of done
 

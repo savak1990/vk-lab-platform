@@ -22,61 +22,62 @@ completed: null
 
 ## 1. Outcome and rationale
 
-cert-manager runs on the Civo target (Gateway API HTTP-01 solver enabled)
-and is absent on AWS unless `certManager.enabled=true`. Both CIVO-070
-(public TLS) and CIVO-085 (workload identity certificates) need it, so it
-is its own small slice.
+cert-manager runs on the Civo target with the Gateway API HTTP-01 solver
+enabled. cert-manager is absent on AWS unless `certManager.enabled=true`.
+Both CIVO-070 (public TLS) and CIVO-085 (workload identity certificates)
+need it. For that reason, it is its own small slice.
 
 ## 2. Scope and non-goals
 
-In scope: the Application, CRDs, namespace, wave, ServiceMonitor gating.
-Not in scope: issuers and certificates (CIVO-070, CIVO-085).
+In scope: the Application, the CRDs, the namespace, the wave, and the
+ServiceMonitor gating. Not in scope: the issuers and the certificates
+(CIVO-070, CIVO-085).
 
 ## 3. Current state / evidence
 
 No cert-manager objects exist in `gitops/` (verified negative). ADR 0011
-rejects cert-manager for AWS; CIVO-015's ADR 0026 allows it on Civo.
+rejects cert-manager for AWS. CIVO-015's ADR 0026 allows it on Civo.
 
 ## 4. Design and contracts
 
-- `gitops/templates/platform/shared/cert-manager/application.yaml` gated by `{{- if .Values.certManager.enabled }}`; chart `cert-manager` from `https://charts.jetstack.io`, version pinned at implementation (latest 1.x); `crds.enabled: true`; `config.gatewayAPI.enabled: true` (current docs; https://cert-manager.io/docs/configuration/acme/http01/) or the key for the pinned version; `ServerSideApply=true`; wave -2 (before ESO/consumers, after Envoy chart CRDs at -1? — cert-manager must be Established before Certificates at wave 0; place at -3 and note that Gateway API CRDs come from Envoy Gateway at -1, so the HTTP-01 Gateway solver only needs the CRD at runtime, not at install).
+- `gitops/templates/platform/shared/cert-manager/application.yaml` is gated by `{{- if .Values.certManager.enabled }}`. The chart is `cert-manager` from `https://charts.jetstack.io`. Pin the version at implementation (latest 1.x). Set `crds.enabled: true`. Set `config.gatewayAPI.enabled: true` (current docs; https://cert-manager.io/docs/configuration/acme/http01/) or the key for the pinned version. Set `ServerSideApply=true`. Wave: the first candidate was -2 (before ESO/consumers, after the Envoy chart CRDs at -1). cert-manager must be Established before the Certificates at wave 0. Place it at -3. Note that the Gateway API CRDs come from Envoy Gateway at -1. The HTTP-01 Gateway solver needs that CRD only at runtime, not at install.
 - Resources: requests 50m/64Mi per component.
-- `certManager.enabled` default false; civo values true.
+- `certManager.enabled` defaults to false. The civo values set it to true.
 
 ## 5. Files/components affected
 
-New file above; `gitops/values.yaml`; monitors gating in CIVO-160.
+The new file above; `gitops/values.yaml`; the monitors gating in CIVO-160.
 
 ## 6. Implementation steps
 
-1. Add Application; golden aws diff empty (gated off).
-2. Render civo; `PROVIDER=civo make argo-up`; `kubectl get crd certificates.cert-manager.io` Established; webhook ready.
-3. Confirm the Gateway API feature flag by creating a throwaway `Issuer` with a `gatewayHTTPRoute` solver referencing the platform Gateway (dry-run accepted).
+1. Add the Application. The golden aws diff is empty (gated off).
+2. Render civo. Run `PROVIDER=civo make argo-up`. Check that `kubectl get crd certificates.cert-manager.io` shows Established. Check that the webhook is ready.
+3. Confirm the Gateway API feature flag. Create a throwaway `Issuer` with a `gatewayHTTPRoute` solver that references the platform Gateway. The dry-run must be accepted.
 
 ## 7. Dependencies and blockers
 
-CIVO-050 layout. Parallel with CIVO-060.
+The CIVO-050 layout. This spec runs in parallel with CIVO-060.
 
 ## 8. Acceptance criteria
 
-- On civo: cert-manager pods Ready; CRDs Established; Gateway API solver accepted.
-- On aws: no cert-manager objects; golden diff empty.
+- On civo: the cert-manager pods are Ready. The CRDs are Established. The Gateway API solver is accepted.
+- On aws: no cert-manager objects exist. The golden diff is empty.
 
 ## 9. Validation
 
-Offline: golden diff, kubeconform. Real cloud: civo (~cents).
+Offline: the golden diff and kubeconform. Real cloud: civo (~cents).
 
 ## 10. AWS regression protection
 
-Gated off by default; golden diff.
+The chart is gated off by default. The golden diff protects AWS.
 
 ## 11. Rollout and rollback/recovery
 
-Revert; Argo prunes. No data risk.
+Revert the change. Argo prunes the objects. There is no data risk.
 
 ## 12. Risks and unresolved questions
 
-- Flag name for Gateway API support varies by chart version; verify at pin time.
+- The flag name for Gateway API support varies by chart version. Verify it at pin time.
 
 ## 13. Definition of done
 

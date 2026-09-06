@@ -22,30 +22,41 @@ completed: null
 
 ## 1. Outcome and rationale
 
-Grafana at `grafana.civo.<root-domain>` shows cluster, CNPG, Envoy, and
-Argo dashboards with logs from Loki, on Civo volumes, with the same
-charts and retention as AWS. The Large pool has the headroom (HLD §2).
+Grafana at `grafana.civo.<root-domain>` shows the cluster, CNPG, Envoy, and
+Argo dashboards with logs from Loki. The stack runs on Civo volumes with the
+same charts and retention as AWS. The Large pool has the headroom (HLD §2).
 
 ## 2. Scope and non-goals
 
-In scope: hoisting the observability Applications with values for storage
-class, spot affinity, EKS-vs-k3s scrape targets, kubelet TLS, Karpenter
-gating; metrics-server on civo. Not in scope: Tempo/OTel (deferred ADR 0018),
-retention changes, Civo-specific dashboards.
+In scope: hoisting the observability Applications with values for these
+items:
+
+- storage class;
+- spot affinity;
+- EKS-vs-k3s scrape targets;
+- kubelet TLS;
+- Karpenter gating.
+
+Also in scope: metrics-server on civo. Not in scope: Tempo/OTel (deferred,
+ADR 0018), retention changes, Civo-specific dashboards.
 
 ## 3. Current state / evidence
 
-- `kube-prometheus-stack.yaml`: `storageClassName: ebs-delete` ×3; spot anti-affinity ×3; `kubeControllerManager/kubeScheduler/kubeEtcd/kubeProxy enabled: false` (EKS managed control plane); Grafana `existingSecret grafana-admin-credentials` (ESO).
+- `kube-prometheus-stack.yaml` has `storageClassName: ebs-delete` ×3 and spot anti-affinity ×3. It sets `kubeControllerManager/kubeScheduler/kubeEtcd/kubeProxy enabled: false` (EKS managed control plane). Grafana uses `existingSecret grafana-admin-credentials` (ESO).
 - `loki.yaml`: SingleBinary, filesystem, `ebs-delete`, spot affinity.
-- `metrics-server.yaml`: `--kubelet-insecure-tls`; Civo installs its own metrics-server by default (removed in CIVO-030).
-- `monitors.yaml`, `alerts.yaml`, `dashboards.yaml`: Karpenter entries.
+- `metrics-server.yaml` uses `--kubelet-insecure-tls`. Civo installs its own metrics-server by default (removed in CIVO-030).
+- `monitors.yaml`, `alerts.yaml`, `dashboards.yaml` contain Karpenter entries.
 
 ## 4. Design and contracts
 
-- Move observability files to `shared/observability/` with values: `storage.className`, `capacity.spotAvoidance` (affinity rendered only when true), `observability.controlPlaneScrapes` (aws false; civo: try true for `kubeProxy`, `kubeControllerManager`, `kubeScheduler`; k3s exposes these on the server node only when configured; record what actually works and set values accordingly; do not claim), `observability.kubeletInsecureTls` (aws true; civo test false first).
-- Karpenter ServiceMonitor, alert, dashboard gated on `.Values.target == "aws"`.
-- PVC sizes unchanged (10Gi/1Gi/1Gi/10Gi) on `civo-volume`; volumes have Delete reclaim and are removed with the cluster (verified in CIVO-150).
-- Resource requests recorded for CIVO-175.
+- Move the observability files to `shared/observability/` with these values:
+  - `storage.className`.
+  - `capacity.spotAvoidance`. The affinity is rendered only when this value is true.
+  - `observability.controlPlaneScrapes`. On aws this value is false. On civo, try true for `kubeProxy`, `kubeControllerManager`, `kubeScheduler`. k3s exposes these on the server node only when configured. Record what actually works and set the values accordingly. Do not claim.
+  - `observability.kubeletInsecureTls`. On aws this value is true. On civo, test false first.
+- Gate the Karpenter ServiceMonitor, alert, and dashboard on `.Values.target == "aws"`.
+- PVC sizes are unchanged (10Gi/1Gi/1Gi/10Gi) on `civo-volume`. The volumes have Delete reclaim. The volumes are removed with the cluster (verified in CIVO-150).
+- Record the resource requests for CIVO-175.
 
 ## 5. Files/components affected
 
@@ -53,9 +64,9 @@ retention changes, Civo-specific dashboards.
 
 ## 6. Implementation steps
 
-1. Template; golden aws diff empty.
-2. `PROVIDER=civo make up`; all pods Ready; Grafana login via ESO secret; dashboards load; Loki receives logs.
-3. Record node RAM usage with one node; confirm the cluster stays at 1–2 nodes.
+1. Template the files. The golden aws diff must be empty.
+2. Run `PROVIDER=civo make up`. All pods must be Ready. Log in to Grafana with the ESO secret. The dashboards must load. Loki must receive logs.
+3. Record the node RAM usage with one node. Confirm that the cluster stays at 1–2 nodes.
 
 ## 7. Dependencies and blockers
 
@@ -63,9 +74,9 @@ retention changes, Civo-specific dashboards.
 
 ## 8. Acceptance criteria
 
-- All observability pods Ready on civo; Grafana reachable via HTTPS (after 070) with CNPG and Argo dashboards populated.
-- Control-plane scrape results documented.
-- AWS golden diff empty.
+- All observability pods are Ready on civo. Grafana is reachable through HTTPS (after 070). The CNPG and Argo dashboards are populated.
+- The control-plane scrape results are documented.
+- The AWS golden diff is empty.
 
 ## 9. Validation
 
@@ -73,15 +84,15 @@ Offline: golden diff, kubeconform. Real cloud: civo (~0.2 USD incl. volumes for 
 
 ## 10. AWS regression protection
 
-Template defaults equal AWS files (golden).
+The template defaults equal the AWS files (golden).
 
 ## 11. Rollout and rollback/recovery
 
-Revert; Argo prunes; volumes deleted with PVCs.
+Revert the change. Argo prunes the resources. The volumes are deleted with the PVCs.
 
 ## 12. Risks and unresolved questions
 
-- RAM: full stack plus baseline may exceed one Large node; autoscaler (170) adds a second; acceptable per HLD.
+- RAM: the full stack plus the baseline may exceed one Large node. The autoscaler (170) adds a second node. This is acceptable per the HLD.
 
 ## 13. Definition of done
 

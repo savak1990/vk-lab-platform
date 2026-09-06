@@ -22,38 +22,43 @@ completed: null
 
 ## 1. Outcome and rationale
 
-A written report in `specs/civo/research.md` (section "Spike results")
-answering the questions that block CIVO-030 and CIVO-120, obtained from a
-real, short-lived Civo cluster. Planning cannot settle them from
-documentation.
+The outcome is a written report in `specs/civo/research.md` (section "Spike results").
+The report answers the questions that block CIVO-030 and CIVO-120.
+We get the answers from a real, short-lived Civo cluster.
+Planning cannot settle these questions from documentation.
 
 ## 2. Scope and non-goals
 
-In scope: one Medium k3s cluster in LON1 created and destroyed by hand or
-by throwaway Terraform in the scratch directory, never under
-`terraform/live/`. Not in scope: any repository code, Argo, or AWS changes.
+In scope: one Medium k3s cluster in LON1.
+We create and destroy the cluster by hand, or with throwaway Terraform in the scratch directory.
+We never put this Terraform under `terraform/live/`.
+Not in scope: any repository code, Argo, or AWS changes.
 
 ## 3. Current state / evidence
 
-Unverified items from `research.md`: VolumeSnapshot support on
-`csi.civo.com`; whether snapshots and volumes are account-level and survive
-cluster deletion; cross-cluster volume re-attachment; exact default
-application names; LB status IP vs hostname with and without reserved IP;
-ServiceAccount OIDC discovery reachability; measured allocatable on Large.
+The `research.md` file has these unverified items:
+
+- VolumeSnapshot support on `csi.civo.com`.
+- Whether snapshots and volumes are account-level and survive cluster deletion.
+- Cross-cluster volume re-attachment.
+- The exact default application names.
+- The LB status IP vs hostname, with and without a reserved IP.
+- ServiceAccount OIDC discovery reachability.
+- The measured allocatable on a Large node.
 
 ## 4. Design and contracts
 
-Checklist (each item records command, result, date):
+Checklist (for each item, record the command, the result, and the date):
 
-1. Create cluster with `applications` set to remove Traefik and metrics-server; list `kubectl get pods -A` to confirm; record the exact names that worked.
-2. `kubectl get sc,volumesnapshotclass`; attempt a `VolumeSnapshotClass` with driver `csi.civo.com` and a `VolumeSnapshot` of a 5 Gi PVC that has data; observe `readyToUse` and `civo volume` / API listing for a snapshot object.
-3. Delete the cluster; `civo volume ls` and any snapshot listing; note what survived and its billing state.
-4. Create a second cluster in the same network; try (a) `VolumeSnapshotContent` import by handle, (b) static PV with the retained volume ID; mount and verify data.
-5. Deploy a `Service type=LoadBalancer` with and without `kubernetes.civo.com/ipv4-address` (reserved IP); record status `ip`/`hostname`, firewall behavior, deletion time.
-6. Fetch `/.well-known/openid-configuration` and `/openid/v1/jwks` via the kubeconfig and anonymously; record.
-7. `kubectl describe node` on a Large node: allocatable CPU/memory.
-8. Note reserved IP and snapshot prices from the dashboard.
-9. Destroy everything; confirm `civo` listings are empty; record total cost.
+1. Create the cluster with `applications` set to remove Traefik and metrics-server. Run `kubectl get pods -A` to confirm the result. Record the exact names that worked.
+2. Run `kubectl get sc,volumesnapshotclass`. Create a `VolumeSnapshotClass` with driver `csi.civo.com`. Create a `VolumeSnapshot` of a 5 Gi PVC that has data. Observe `readyToUse`. Look for a snapshot object in `civo volume` and in the API listing.
+3. Delete the cluster. Run `civo volume ls` and any snapshot listing. Record what survived and its billing state.
+4. Create a second cluster in the same network. Try (a) a `VolumeSnapshotContent` import by handle. Try (b) a static PV with the retained volume ID. Mount the volume. Verify the data.
+5. Deploy a `Service type=LoadBalancer` with and without `kubernetes.civo.com/ipv4-address` (reserved IP). Record the status `ip`/`hostname`, the firewall behavior, and the deletion time.
+6. Fetch `/.well-known/openid-configuration` and `/openid/v1/jwks` through the kubeconfig and anonymously. Record the results.
+7. Run `kubectl describe node` on a Large node. Record the allocatable CPU and memory.
+8. Record the reserved IP price and the snapshot price from the dashboard.
+9. Destroy everything. Confirm that the `civo` listings are empty. Record the total cost.
 
 ## 5. Files/components affected
 
@@ -64,38 +69,46 @@ Checklist (each item records command, result, date):
 
 ## 6. Implementation steps
 
-Run the checklist in order; write results as you go; destroy at the end
-even on failure.
+1. Run the checklist in order.
+2. Write the results as you go.
+3. Destroy all resources at the end, also on failure.
 
 ## 7. Dependencies and blockers
 
-Needs the Civo API key on the workstation (`secrets/civo-token.enc` decrypt)
-and the `civo` CLI. No spec dependencies.
+The spike needs the Civo API key on the workstation (decrypt `secrets/civo-token.enc`).
+The spike needs the `civo` CLI.
+The spike has no spec dependencies.
 
 ## 8. Acceptance criteria
 
-- Every checklist item has a recorded result or an explicit "could not test" with reason.
-- The persistence decision in `decisions.md` is filled with option (a), (b), or (c) and evidence.
-- Default application names for CIVO-030 are recorded.
-- All spike resources deleted; cost recorded.
+- Every checklist item has a recorded result, or an explicit "could not test" with a reason.
+- The persistence decision in `decisions.md` has option (a), (b), or (c), with evidence.
+- The default application names for CIVO-030 are recorded.
+- All spike resources are deleted. The cost is recorded.
 
 ## 9. Validation
 
-Real cloud, throwaway, under 2 USD. Cleanup: `civo kubernetes remove`,
-`civo volume rm`, snapshot removal, network removal; verify with `civo ... ls`.
+The validation runs in the real cloud, on throwaway resources, for under 2 USD.
+Cleanup steps:
+
+1. Run `civo kubernetes remove`.
+2. Run `civo volume rm`.
+3. Remove the snapshots.
+4. Remove the network.
+5. Verify the cleanup with `civo ... ls`.
 
 ## 10. AWS regression protection
 
-Not applicable; no AWS resources or repository code touched.
+Not applicable. The spike touches no AWS resources and no repository code.
 
 ## 11. Rollout and rollback/recovery
 
-None; results are documentation.
+None. The results are documentation.
 
 ## 12. Risks and unresolved questions
 
-- Snapshot objects may exist only in-cluster; then option (b) or (c) applies.
-- Reserved-IP annotation may require the IP to be in the same network.
+- Snapshot objects may exist only in the cluster. In that case, option (b) or (c) applies.
+- The reserved-IP annotation may require the IP to be in the same network.
 
 ## 13. Definition of done
 

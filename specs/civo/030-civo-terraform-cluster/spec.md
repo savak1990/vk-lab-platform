@@ -23,74 +23,75 @@ completed: null
 ## 1. Outcome and rationale
 
 `PROVIDER=civo make cluster-up` creates a k3s cluster in the persistent Civo
-network with one `g4s.kube.large` pool, no Traefik, no Civo metrics-server,
-a firewall allowing 6443 and LB ports, and writes the values later stages
-need to SSM. `cluster-down` destroys it without touching persistent units.
+network. The cluster has one `g4s.kube.large` pool, no Traefik, and no Civo
+metrics-server. A firewall permits port 6443 and the LB ports. The stack
+writes the values that later stages need to SSM. `cluster-down` destroys the
+cluster and does not touch the persistent units.
 
 ## 2. Scope and non-goals
 
-In scope: `terraform/live/cluster-civo/{network,k8s}`, modules
-`civo-network` (firewall part) and `civo-k8s`, SSM outputs, region
-constant. Not in scope: autoscaler (CIVO-170), scripts (CIVO-040), any
-in-cluster resource.
+In scope: `terraform/live/cluster-civo/{network,k8s}`, the modules
+`civo-network` (firewall part) and `civo-k8s`, the SSM outputs, and the region
+constant. Not in scope: the autoscaler (CIVO-170), the scripts (CIVO-040), and
+any in-cluster resource.
 
 ## 3. Current state / evidence
 
-- `terraform/live/cluster/eks/terragrunt.hcl:13-22` shows the cross-stack dependency pattern with `get_repo_root()`; the same pattern reads `persistent-civo/network` here.
-- Civo resource schema in `research.md`: `firewall_id` required; one `pools` block; `applications` string; `write_kubeconfig` default false; `kubeconfig` sensitive attribute.
-- Default apps to remove: names from CIVO-020.
-- `modules/eks/main.tf:159-164` writes `node_subnet_id` to SSM; mirror for `cluster_id`, `firewall_id`, `api_endpoint`.
+- `terraform/live/cluster/eks/terragrunt.hcl:13-22` shows the cross-stack dependency pattern with `get_repo_root()`. The same pattern reads `persistent-civo/network` here.
+- `research.md` records the Civo resource schema: `firewall_id` is required; there is one `pools` block; `applications` is a string; `write_kubeconfig` defaults to false; `kubeconfig` is a sensitive attribute.
+- The default apps to remove have the names from CIVO-020.
+- `modules/eks/main.tf:159-164` writes `node_subnet_id` to SSM. Mirror this for `cluster_id`, `firewall_id`, and `api_endpoint`.
 
 ## 4. Design and contracts
 
-- `cluster-civo/network`: two firewalls in the persistent network, both `create_default_rules = false`: `${project}-k8s` (ingress tcp 6443 from `0.0.0.0/0`, since GitHub runners have no fixed IP; egress all) attached to the cluster, and `${project}-lb` (ingress tcp 80 and 443 from `0.0.0.0/0`) used only by the LB via `kubernetes.civo.com/firewall-id`. Outputs to SSM `/${project}/cluster-civo/network/cluster_firewall_id` and `/lb_firewall_id`.
-- `cluster-civo/k8s`: `civo_kubernetes_cluster` name `${project}`, `cluster_type = "k3s"`, `cni = "flannel"`, `kubernetes_version` pinned to a version verified in the spike, `network_id` from persistent, `firewall_id` from network unit, `pools = [{ label = "workers", size = "g4s.kube.large", node_count = 1 }]`, `applications = "-Traefik-v2-nodeport,-metrics-server"` (names are case-sensitive and must match `civo kubernetes applications ls`; the spike records the exact strings), `write_kubeconfig = false`, `tags = "Project=${project} Lifecycle=disposable ManagedBy=terraform"`. `lifecycle { ignore_changes = [pools[0].node_count] }` is added by CIVO-170; here `node_count` is authoritative. Outputs `cluster_id`, `api_endpoint` to SSM.
-- Region constant `LON1` in `root.hcl` (`civo_region`) and `scripts/lib/region.sh` (`CIVO_REGION`); never derived.
-- Kubeconfig is fetched by scripts (CIVO-040), never stored in state.
+- `cluster-civo/network` creates two firewalls in the persistent network. Both have `create_default_rules = false`. The firewall `${project}-k8s` permits ingress tcp 6443 from `0.0.0.0/0`, because GitHub runners have no fixed IP, and permits all egress. The cluster uses this firewall. The firewall `${project}-lb` permits ingress tcp 80 and 443 from `0.0.0.0/0`. Only the LB uses this firewall, via `kubernetes.civo.com/firewall-id`. The unit writes the outputs to SSM `/${project}/cluster-civo/network/cluster_firewall_id` and `/lb_firewall_id`.
+- `cluster-civo/k8s` creates a `civo_kubernetes_cluster` with the name `${project}`. It sets `cluster_type = "k3s"`, `cni = "flannel"`, and `kubernetes_version` pinned to a version that the spike verified. It reads `network_id` from the persistent unit and `firewall_id` from the network unit. It sets `pools = [{ label = "workers", size = "g4s.kube.large", node_count = 1 }]`. It sets `applications = "-Traefik-v2-nodeport,-metrics-server"`. The names are case-sensitive and must match `civo kubernetes applications ls`. The spike records the exact strings. It sets `write_kubeconfig = false` and `tags = "Project=${project} Lifecycle=disposable ManagedBy=terraform"`. CIVO-170 adds `lifecycle { ignore_changes = [pools[0].node_count] }`. In this spec, `node_count` is authoritative. The unit writes the outputs `cluster_id` and `api_endpoint` to SSM.
+- The region constant `LON1` lives in `root.hcl` (`civo_region`) and in `scripts/lib/region.sh` (`CIVO_REGION`). Never derive it.
+- The scripts (CIVO-040) fetch the kubeconfig. Never store the kubeconfig in state.
 
 ## 5. Files/components affected
 
-- `terraform/live/cluster-civo/network/terragrunt.hcl`, `.../k8s/terragrunt.hcl` (new), `terraform/modules/civo-k8s` (new), `terraform/modules/civo-network` (firewall added).
-- `terraform/live/root.hcl` (`civo_region`), `scripts/lib/region.sh` (`CIVO_REGION`).
-- `terraform/modules/lab-role/main.tf`: SSM `*/cluster-civo/*` (coordinate with CIVO-082).
-- State keys `cluster-civo/network`, `cluster-civo/k8s` in the civo bucket.
+- `terraform/live/cluster-civo/network/terragrunt.hcl` and `.../k8s/terragrunt.hcl` (new), `terraform/modules/civo-k8s` (new), and `terraform/modules/civo-network` (firewall added).
+- `terraform/live/root.hcl` (`civo_region`) and `scripts/lib/region.sh` (`CIVO_REGION`).
+- `terraform/modules/lab-role/main.tf`: the SSM path `*/cluster-civo/*`. Coordinate this with CIVO-082.
+- The state keys `cluster-civo/network` and `cluster-civo/k8s` in the civo bucket.
 
 ## 6. Implementation steps
 
-1. Write modules with `versions.tf` (Terraform `= 1.15.9`, `civo/civo` pinned), variables, outputs, lock files.
-2. Write terragrunt units with `dependency` blocks on `persistent-civo/network` (mock outputs allowed for validate/plan/destroy, same as `cluster/eks`).
-3. `terragrunt run --all plan` with `CIVO_TOKEN`; then `PROVIDER=civo make cluster-up` (Make wiring from CIVO-010 points at `cluster-civo`).
-4. Verify: `civo kubernetes show`, no Traefik/metrics-server pods, firewall rules, SSM params.
-5. `terragrunt run --all destroy` via `make cluster-down` (script branch lands in CIVO-040; until then, use the Make target's terragrunt call directly and record it).
+1. Write the modules with `versions.tf` (Terraform `= 1.15.9`, `civo/civo` pinned), variables, outputs, and lock files.
+2. Write the terragrunt units with `dependency` blocks on `persistent-civo/network`. Mock outputs are permitted for validate, plan, and destroy, the same as in `cluster/eks`.
+3. Run `terragrunt run --all plan` with `CIVO_TOKEN`. Then run `PROVIDER=civo make cluster-up`. The Make wiring from CIVO-010 points at `cluster-civo`.
+4. Verify the result: run `civo kubernetes show`, check that there are no Traefik or metrics-server pods, check the firewall rules, and check the SSM params.
+5. Run `terragrunt run --all destroy` via `make cluster-down`. The script branch lands in CIVO-040. Until then, use the terragrunt call of the Make target directly, and record it.
 
 ## 7. Dependencies and blockers
 
-CIVO-025 network id; CIVO-020 app names and version. Parallel: CIVO-040 can be drafted against this spec's outputs.
+CIVO-025 supplies the network id. CIVO-020 supplies the app names and the version. In parallel, you can draft CIVO-040 against the outputs of this spec.
 
 ## 8. Acceptance criteria
 
-- Cluster ready in under 10 minutes; `kubectl get pods -A` shows no Traefik and no metrics-server.
-- Cluster firewall exposes only 6443 on nodes; LB firewall exposes only 80/443 on the LB IP (nmap or `nc` check on both).
-- `terraform state pull | jq '.resources[].instances[].attributes.kubeconfig'` is empty/null for the k8s unit (the key may exist; the value must be empty).
-- SSM params present under `/vk-civo-lab/cluster-civo/...`.
-- Destroy leaves the network and reserved IP intact; `civo volume ls` unchanged.
+- The cluster is ready in under 10 minutes. `kubectl get pods -A` shows no Traefik and no metrics-server.
+- The cluster firewall exposes only 6443 on the nodes. The LB firewall exposes only 80/443 on the LB IP. Check both with nmap or `nc`.
+- `terraform state pull | jq '.resources[].instances[].attributes.kubeconfig'` is empty/null for the k8s unit. The key may exist, but the value must be empty.
+- The SSM params are present under `/vk-civo-lab/cluster-civo/...`.
+- The destroy leaves the network and the reserved IP intact. `civo volume ls` is unchanged.
 
 ## 9. Validation
 
-Offline: fmt, validate, plan with mocks. Real cloud: one create/destroy cycle; cost: Large node for under an hour (~0.06 USD).
+Offline: fmt, validate, and plan with mocks. Real cloud: one create/destroy cycle. Cost: one Large node for under an hour (~0.06 USD).
 
 ## 10. AWS regression protection
 
-No AWS Terraform changed except `root.hcl` additive locals and `lab-role` SSM path; `terragrunt run --all plan` in `terraform/live/cluster` for the AWS project must show no changes.
+No AWS Terraform changes, except the additive locals in `root.hcl` and the `lab-role` SSM path. `terragrunt run --all plan` in `terraform/live/cluster` for the AWS project must show no changes.
 
 ## 11. Rollout and rollback/recovery
 
-Destroy is the rollback. Nothing persistent is created here.
+The destroy is the rollback. This spec creates nothing persistent.
 
 ## 12. Risks and unresolved questions
 
-- Provider `applications` removal semantics; verified in spike.
-- Cluster version availability per region.
+- The provider `applications` removal semantics. The spike verified them.
+- The cluster version availability per region.
 
 ## 13. Definition of done
 

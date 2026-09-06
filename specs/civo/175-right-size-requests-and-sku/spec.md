@@ -22,28 +22,35 @@ completed: null
 
 ## 1. Outcome and rationale
 
-Requests and limits for every platform pod reflect measured usage so the
-idle cluster fits one Large node where possible, and the cost model is
-updated with real numbers and a decision on RAM-optimized SKUs. The user
-expects CPU waste and memory pressure; data decides.
+Requests and limits for every platform pod reflect measured usage. Then the
+idle cluster fits one Large node where possible. The cost model is updated
+with real numbers and a decision on RAM-optimized SKUs. The user expects
+CPU waste and memory pressure. Data decides.
 
 ## 2. Scope and non-goals
 
-In scope: Prometheus queries over 7 days, a requests/limits table, values
-changes in shared charts (applies to AWS too, through the same values),
-SKU comparison, `research.md` cost update. Not in scope: changing the
-pool SKU in Terraform (a separate one-line change once decided).
+In scope:
+
+- Prometheus queries over 7 days.
+- A requests/limits table.
+- Values changes in shared charts. These apply to AWS too, through the same values.
+- An SKU comparison.
+- The `research.md` cost update.
+
+Not in scope: changing the pool SKU in Terraform. That is a separate
+one-line change once decided.
 
 ## 3. Current state / evidence
 
-Current requests: Argo CD from `argo-up.sh`, CNPG 250m/256Mi, others chart
-defaults. Allocatable: Large ~5.9 GiB. Cost model in `research.md`.
+Current requests: Argo CD from `argo-up.sh`; CNPG 250m/256Mi; others use
+chart defaults. Allocatable: Large ~5.9 GiB. The cost model is in
+`research.md`.
 
 ## 4. Design and contracts
 
 - Queries: p95 `container_memory_working_set_bytes` and `rate(container_cpu_usage_seconds_total)` per pod over 7 days.
-- Rule: request = p95 + 20%; memory limit = 2× request or chart guidance; CPU limits omitted.
-- SKU table: Large (4/8) vs RAM-opt Small (2/16) with measured memory need; decide by `nodes needed × price`.
+- Rule: request = p95 + 20%. Memory limit = 2× request or chart guidance. CPU limits are omitted.
+- SKU table: Large (4/8) vs RAM-opt Small (2/16) with the measured memory need. Decide by `nodes needed × price`.
 
 ## 5. Files/components affected
 
@@ -51,9 +58,9 @@ defaults. Allocatable: Large ~5.9 GiB. Cost model in `research.md`.
 
 ## 6. Implementation steps
 
-1. Collect metrics; fill the table.
-2. Apply values; golden aws diff shows only the intended request changes; sync on both providers.
-3. Observe node count for 48 h; update the cost model.
+1. Collect the metrics. Fill the table.
+2. Apply the values. The golden aws diff shows only the intended request changes. Sync on both providers.
+3. Observe the node count for 48 h. Update the cost model.
 
 ## 7. Dependencies and blockers
 
@@ -61,8 +68,8 @@ defaults. Allocatable: Large ~5.9 GiB. Cost model in `research.md`.
 
 ## 8. Acceptance criteria
 
-- Table committed; no pod OOMKilled over 48 h after the change; idle node count recorded.
-- SKU decision recorded in `decisions.md`.
+- The table is committed. No pod is OOMKilled over 48 h after the change. The idle node count is recorded.
+- The SKU decision is recorded in `decisions.md`.
 
 ## 9. Validation
 
@@ -70,15 +77,15 @@ Real cloud observation on civo; AWS sync check.
 
 ## 10. AWS regression protection
 
-Request changes apply to AWS intentionally; verify no scheduling failures on the AWS system node.
+The request changes apply to AWS intentionally. Verify that there are no scheduling failures on the AWS system node.
 
 ## 11. Rollout and rollback/recovery
 
-Revert values.
+Revert the values.
 
 ## 12. Risks and unresolved questions
 
-- Karpenter on AWS may consolidate differently after request changes; observe.
+- Karpenter on AWS may consolidate differently after the request changes. Observe it.
 
 ## 13. Definition of done
 
