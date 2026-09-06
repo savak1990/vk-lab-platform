@@ -37,6 +37,7 @@ HTTP-01; LON1; full observability in M1; AWS behavior unchanged.
 | Reserved IP | use (stable DNS) vs rely on LB IP | use | small monthly cost, price unverified | high | 025, 060 | no |
 | Object-store credential source | Terraform `civo_object_store_credential` (keys in state) vs manual creation + `secret-encrypt.sh` | Terraform, state exposure accepted for the lab | manual path avoids state exposure at the cost of a ceremony | high | 180 | no |
 | Object-store minimum size | accept 500 GB (~5.43 USD/month) vs no backups | accept | only persistence option on Civo | high | 180 | no |
+| Civo autoscaler credential | (a) run it with the account key in `kube-system`; (b) fixed pool, no credential; (c) find a second or scoped key | (b) for M1; revisit in M2 after the research in CIVO-170 §12 | (a) puts full account control in the cluster; (b) fixes cost and node count; (c) is undocumented today | high | 170, 175 | no |
 | CI provider runs | enable `PROVIDER=civo` in `lab.yml` now vs later | now, guarded by an environment and concurrency group | token exposure surface in CI | high | 140 | no |
 | Intermediate CA | M1 vs later | later (CIVO-200) | time-bounded blast radius vs extra issuance step | medium | 200 | no |
 

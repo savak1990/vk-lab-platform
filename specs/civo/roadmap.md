@@ -5,8 +5,8 @@
 | Milestone | Goal | Specs | Exit criterion |
 |---|---|---|---|
 | M0 Foundations | Operator surface, governance, feasibility facts | 010, 015, 020 | AWS unchanged; ADRs merged; spike report answers persistence and default-app questions |
-| M1 Viable Civo platform | `PROVIDER=civo make full-up` brings up Argo, Envoy with TLS, DNS, ESO, CNPG with object-store persistence, observability, autoscaler; `make down`/`up` preserves data; CI can run it | 025–170, 180 | CIVO-150 lifecycle validation passes; idle cost recorded |
-| M2 Hardening and optimization | Right-sizing, client IP, identity hardening | 175, 190, 200 | each spec's DoD |
+| M1 Viable Civo platform | `PROVIDER=civo make full-up` brings up Argo, Envoy with TLS, DNS, ESO, CNPG with persistent backups, and observability on a fixed node pool; `make down`/`up` preserves data; CI can run it | 025–160, 180 | CIVO-150 lifecycle validation passes; idle cost recorded |
+| M2 Hardening and optimization | Autoscaler after the API-key research, right-sizing, client IP, identity hardening | 170, 175, 190, 200 | each spec's DoD |
 
 ## Dependency graph
 

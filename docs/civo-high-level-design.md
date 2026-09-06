@@ -23,7 +23,7 @@ Civo is a Kubernetes target, not a migration off AWS services.
 | Civo project identity | `PROVIDER=civo` defaults `PROJECT_NAME=vk-civo-lab` and `SUBDOMAIN=civo`: own state bucket `vk-civo-lab-tf-state`, own zone `civo.<root-domain>`, own SSM prefix. Only the account layer is shared with the AWS project | 2026-09-06 |
 | Stage model | Identical on both providers: `account-up` → `bootstrap-up` → `persistent-up` → `cluster-up` → `argo-up` (and the reverse) | 2026-09-06 |
 | Cost target on Civo | 60–80 USD/month idle, all-in (nodes, LB, CNPG volume). Soft ceiling; bursts allowed. Review note 2026-09-06: with the full observability profile the expected M1 idle is closer to 100 USD (2 Large nodes) until CIVO-175 right-sizes | 2026-09-06 |
-| Node plan | One `g4s.kube.large` pool (4 vCPU / 8 GB), Civo cluster autoscaler 1–3 nodes in M1 | 2026-09-06 |
+| Node plan | One `g4s.kube.large` pool (4 vCPU / 8 GB), fixed node count in M1. The cluster autoscaler moves to M2 (P3) because a personal Civo account has one API key, and the autoscaler would place that account-wide key in the cluster | 2026-09-06 |
 | AWS workload identity from Civo | IAM Roles Anywhere; no long-lived AWS keys in workloads | 2026-09-06 |
 | CA topology (M1) | Single offline CA: certificate committed, key KMS-encrypted in `secrets/` | 2026-09-06 |
 | Civo API token | KMS-encrypted in repo (`secrets/civo-token.enc`), decrypted at run time, masked in CI; no GitHub secret, no SSM copy | 2026-09-06 |
@@ -155,7 +155,8 @@ subtrees; shared components read only the contract values.
 |---|---|---|---|
 | 2026-09-06 | `PROVIDER` variable on existing targets | Constitution §17: one command pair per lifecycle class; spec 027 reached the same conclusion with `TARGET` | `make civo-up` family |
 | 2026-09-06 | `PROVIDER` is an operator input, not an ADR 0024 per-layer constant | It selects a stack directory; only the Civo region is a real constant | five-site declaration of PROVIDER |
-| 2026-09-06 | One Large pool, autoscaler 1–3, soft 60–80 USD idle target | Memory is the blocker; 3 mediums cannot host observability; idle expected at 1–2 nodes (56–100 USD) | 3 × Medium fixed (78 USD, ~7.8 GiB); RAM-optimized Small (78 USD per node) |
+| 2026-09-06 | One Large pool, fixed count in M1, soft 60–80 USD idle target | Memory is the blocker; three Medium nodes cannot host observability | 3 × Medium fixed (78 USD, ~7.8 GiB); RAM-optimized Small (78 USD per node) |
+| 2026-09-06 | Cluster autoscaler deferred to M2 at P3 | Civo issues one API key per personal account; the autoscaler needs that account-wide key in `kube-system`, where a Secret reader gains full account control. Research recorded in CIVO-170 §12 | running it in M1 and accepting the exposure |
 | 2026-09-06 | Right-sizing spec (CIVO-175) revisits requests/limits and memory-optimized SKUs | CPU is wasted on this workload; measured data first | deciding SKU now |
 | 2026-09-06 | Roles Anywhere with a single offline CA | Free; external CA allowed; Private CA costs 50 USD/month; no Civo ServiceAccount OIDC issuer documented for web-identity federation | AWS Private CA; static AWS keys; web identity |
 | 2026-09-06 | Civo token KMS-encrypted in repo | One secrets mechanism; CI already has KMS via OIDC; masked with `::add-mask::` | GitHub environment secret; SSM copy |
