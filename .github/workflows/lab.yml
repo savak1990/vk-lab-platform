@@ -59,6 +59,7 @@ env:
 jobs:
   lifecycle:
     runs-on: ubuntu-latest
+    timeout-minutes: 120 # full-up/full-down can run close to/over an hour; caps a hung step well short of the 4h role session
     steps:
       - uses: actions/checkout@v4
 
@@ -106,6 +107,7 @@ jobs:
     needs: lifecycle
     if: contains(fromJSON('["up", "argo-up", "platform-up", "full-up"]'), inputs.target)
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
 
@@ -117,5 +119,6 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: eu-west-1
+          role-duration-seconds: 14400 # was previously omitted here, silently defaulting to 3600s unlike the lifecycle job
 
       - run: make test

@@ -66,6 +66,17 @@ data "aws_iam_policy_document" "permissions" {
     resources = ["*"]
   }
 
+  # cluster-down.sh's post-destroy leak sweep has called
+  # resourcegroupstaggingapi:GetResources since it was written, with no
+  # grant for it here - failures were silently swallowed by the script's
+  # own `|| true`, so the NLB/target-group leak check has never actually
+  # run. No resource-level scoping exists for this action.
+  statement {
+    sid       = "ResourceTaggingApiReadOnly"
+    actions   = ["tag:GetResources"]
+    resources = ["*"]
+  }
+
   # This project's own dedicated state bucket - not shared with CI. Covers
   # both bucket-level (CreateBucket, PutBucketVersioning, ...) and
   # object-level actions; no Deny on weakening protections since IAM can't
@@ -159,9 +170,14 @@ data "aws_iam_policy_document" "permissions" {
   # cross "/" but only once matched from where it's placed in the pattern.
   # The per-EC2NodeClass UUID segment is unknowable at commit time, so this
   # is scoped by Karpenter's own path prefix instead of the full path.
+  # ListInstanceProfiles (path-prefix enumeration, unlike
+  # ListInstanceProfilesForRole above which requires already knowing the
+  # role name) is what cluster-down.sh's leak sweep needs to discover an
+  # orphaned profile in the first place, before it can call the two cleanup
+  # actions below on it.
   statement {
     sid       = "KarpenterOrphanedInstanceProfileCleanup"
-    actions   = ["iam:RemoveRoleFromInstanceProfile", "iam:DeleteInstanceProfile"]
+    actions   = ["iam:ListInstanceProfiles", "iam:GetInstanceProfile", "iam:RemoveRoleFromInstanceProfile", "iam:DeleteInstanceProfile"]
     resources = ["arn:aws:iam::${local.account}:instance-profile/karpenter/*"]
   }
 

@@ -1,0 +1,149 @@
+name: lifecycle-test
+
+# On-demand full-lifecycle validation (constitution §11, spec 014, spec 020):
+# full-up -> test -> full-down against an isolated project/subdomain, always
+# torn down even on failure. Isolation is by PROJECT_NAME/SUBDOMAIN (ADR
+# 0026), not a separate terraform/live/ci/ tree - a deliberate, documented
+# deviation from spec 020 Requirement 2, reusing lab.yml's existing
+# per-project isolation instead of building a second state hierarchy.
+on:
+  workflow_dispatch:
+    inputs:
+      project_name:
+        description: "PROJECT_NAME for this run - use a name distinct from your personal lab's."
+        type: string
+        default: vk-lab-ci
+      subdomain:
+        description: "SUBDOMAIN for this run - must be unique per project (scripts/require-unique-subdomain.sh enforces this)."
+        type: string
+        default: ci
+      confirm_destroy:
+        description: "Type the project_name above exactly - full-down requires this to reach persistent-down/bootstrap-down."
+        type: string
+        default: ""
+
+run-name: "lifecycle-test (${{ inputs.project_name }})"
+
+# Same group expression lab.yml uses. Isolation here is by PROJECT_NAME, not
+# a separate state tree, so a run against the same project_name from either
+# workflow must queue rather than race the same S3 state - a distinct group
+# name would defeat that.
+concurrency:
+  group: lab-${{ inputs.project_name }}
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  PROJECT_NAME: ${{ inputs.project_name }}
+  SUBDOMAIN: ${{ inputs.subdomain }}
+  # Known credentials for debugging a failed run (logging into ArgoCD/Grafana
+  # as test/test rather than digging a generated password out of a torn-down
+  # cluster), and a prerequisite if this workflow later grows a mode=resilience
+  # recreate cycle (spec 020) - a fresh runner regenerating a random
+  # postgres-app-password would desync from a snapshot-recovered database
+  # (generate-secrets.sh's own warning, ADR 0014). Accepted exposure: ArgoCD/
+  # Grafana admin password is the literal string "test", reachable over public
+  # HTTPS at argo.<subdomain>.<root-domain> for this run's ~1.5h - see ADR 0026.
+  FIXED_TEST_PASSWORDS: "true"
+
+jobs:
+  up:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.15.9"
+          terraform_wrapper: false
+
+      - name: Set up Terragrunt
+        run: |
+          TG_VERSION=1.1.3
+          curl -sSL -o terragrunt_linux_amd64 "https://github.com/gruntwork-io/terragrunt/releases/download/v${TG_VERSION}/terragrunt_linux_amd64"
+          curl -sSL -o SHA256SUMS "https://github.com/gruntwork-io/terragrunt/releases/download/v${TG_VERSION}/SHA256SUMS"
+          grep " terragrunt_linux_amd64$" SHA256SUMS | sha256sum -c -
+          chmod +x terragrunt_linux_amd64
+          sudo mv terragrunt_linux_amd64 /usr/local/bin/terragrunt
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: "v4.1.4"
+
+      # Not needed by lab.yml's `up`/`down` targets since they never reach a
+      # fresh bootstrap-up/argo-up on a from-scratch project in the same run
+      # the way this workflow's full-up does.
+      - name: Install dig and htpasswd
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq dnsutils apache2-utils
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: eu-west-1
+          role-duration-seconds: 14400
+
+      - run: make full-up
+
+  test:
+    needs: up
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: eu-west-1
+          role-duration-seconds: 14400
+
+      - run: make test
+
+  # Always runs, even if `up` or `test` failed or the run was cancelled - a
+  # separate job with its own if: always(), not an always()-guarded step
+  # inside `up`, because a step-level always() does not run once the runner
+  # itself is torn down by a cancellation (the reason the failure-path
+  # question at the start of this workflow's design was decided this way).
+  down:
+    needs: [up, test]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.15.9"
+          terraform_wrapper: false
+
+      - name: Set up Terragrunt
+        run: |
+          TG_VERSION=1.1.3
+          curl -sSL -o terragrunt_linux_amd64 "https://github.com/gruntwork-io/terragrunt/releases/download/v${TG_VERSION}/terragrunt_linux_amd64"
+          curl -sSL -o SHA256SUMS "https://github.com/gruntwork-io/terragrunt/releases/download/v${TG_VERSION}/SHA256SUMS"
+          grep " terragrunt_linux_amd64$" SHA256SUMS | sha256sum -c -
+          chmod +x terragrunt_linux_amd64
+          sudo mv terragrunt_linux_amd64 /usr/local/bin/terragrunt
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: "v4.1.4"
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: eu-west-1
+          role-duration-seconds: 14400
+
+      - run: make full-down
+        env:
+          CONFIRM_DESTROY: ${{ inputs.confirm_destroy }}
