@@ -57,6 +57,7 @@ Each ADR has the status Proposed until the PR merges. The ADR contents are:
 - **0026 Envoy-terminated TLS with cert-manager on Civo.** This ADR answers the reasons of ADR 0011. The platform persists the TLS Secret across down/up (SSM SecureString). CI uses LE staging. Together these two measures mitigate the rate limit. Civo has no ACM and no NLB. Invariant 10 gets a Civo variant. ADR 0011 stays unchanged for AWS.
 - **0027 IAM Roles Anywhere with an offline CA.** The trust anchor comes from an external CA. M1 uses a single CA. The trust policies are CN-conditioned. A helper sidecar provides the credentials. The ADR states the blast radius explicitly: `lab-role` `kms:*` on `alias/lab-secrets` and `CIVO_TOKEN` → cluster-admin → CA key Secret → every role. The ADR lists the mitigations and the intermediate-CA follow-up (CIVO-200).
 - **0028 Civo API token handling.** The token is a static key. KMS encrypts it at `secrets/civo-token.enc`. Scripts decrypt it at run time. CI masks it. To rotate the token, regenerate it, re-encrypt it, and commit the file. The invariant 4 text (AWS credentials) is not violated. The ADR acknowledges the principle. The ADR evaluates a JWT exchange and rejects it, because it still depends on a key.
+- **0029 Logical dumps to S3 as the single PostgreSQL backup mechanism.** Replaces ADR 0013's EBS VolumeSnapshot recovery on both targets. Civo cannot snapshot or clone volumes, and CNPG offers no way to add a sidecar to its instance pods, so physical backups from Civo would need a permanent AWS key. A dump job from an image this repository owns uses `credential_process` on Civo and Pod Identity on AWS. States the accepted loss of point-in-time recovery and the retention window. AWS migrates in CIVO-185, not in M1.
 
 Constitution §20 "Civo execution target" gives a variant for each of these sections:
 
@@ -76,7 +77,7 @@ For `architecture.md`, do these three changes:
 
 ## 5. Files/components affected
 
-- `docs/adr/0025-…md`, `0026-…md`, `0027-…md`, `0028-…md` (new).
+- `docs/adr/0025-…md`, `0026-…md`, `0027-…md`, `0028-…md`, `0029-…md` (new).
 - `specs/000-constitution/spec.md` (add §20; do not change §18).
 - `docs/architecture.md` (§10a, the §5 tree, and the Kafka/Tempo/Secrets Manager/argocd-bootstrap fixes).
 - `CLAUDE.md` (the project purpose line, the VPC line in the lifecycle list, the repository layout, and the workload identity line).

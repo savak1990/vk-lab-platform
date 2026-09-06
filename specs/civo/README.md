@@ -98,7 +98,8 @@ verified in this environment.
 | CIVO-160 | [160-observability-on-civo](160-observability-on-civo/spec.md) | Observability stack on Civo | READY | P1 | M | standard | 050, 100 | M1 |
 | CIVO-170 | [170-civo-cluster-autoscaler](170-civo-cluster-autoscaler/spec.md) | Cluster autoscaler 1–3 on the Large pool | READY | P3 | S | standard | 030 | M2 |
 | CIVO-175 | [175-right-size-requests-and-sku](175-right-size-requests-and-sku/spec.md) | Right-size requests/limits, re-evaluate SKU | READY | P2 | M | standard | 160, 170 | M2 |
-| CIVO-180 | [180-cnpg-backups-object-store](180-cnpg-backups-object-store/spec.md) | Civo Object Store, backup credentials, barman-cloud plugin | READY | P1 | M | standard | 025, 100 | M1 |
+| CIVO-180 | [180-cnpg-backups-object-store](180-cnpg-backups-object-store/spec.md) | Shared logical backup and restore jobs with an S3 bucket | READY | P1 | M | standard | 082, 085, 100 | M1 |
+| CIVO-185 | [185-aws-logical-backup-migration](185-aws-logical-backup-migration/spec.md) | Migrate the AWS target to the shared logical backups | READY | P2 | M | strongest | 120, 180 | M2 |
 | CIVO-190 | [190-proxy-protocol-client-ip](190-proxy-protocol-client-ip/spec.md) | Proxy protocol and client IP | READY | P3 | S | fast | 060 | M2 |
 | CIVO-200 | [200-identity-hardening](200-identity-hardening/spec.md) | Intermediate CA and Certificate approval policy | READY | P2 | M | strongest | 085 | M2 |
 

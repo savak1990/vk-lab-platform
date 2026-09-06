@@ -6,7 +6,7 @@
 |---|---|---|---|
 | M0 Foundations | Operator surface, governance, feasibility facts | 010, 015, 020 | AWS unchanged; ADRs merged; spike report answers persistence and default-app questions |
 | M1 Viable Civo platform | `PROVIDER=civo make full-up` brings up Argo, Envoy with TLS, DNS, ESO, CNPG with persistent backups, and observability on a fixed node pool; `make down`/`up` preserves data; CI can run it | 025–160, 180 | CIVO-150 lifecycle validation passes; idle cost recorded |
-| M2 Hardening and optimization | Autoscaler after the API-key research, right-sizing, client IP, identity hardening | 170, 175, 190, 200 | each spec's DoD |
+| M2 Hardening and optimization | AWS moves to the shared backups, autoscaler after the API-key research, right-sizing, client IP, identity hardening | 170, 175, 185, 190, 200 | each spec's DoD |
 
 ## Dependency graph
 
@@ -39,11 +39,14 @@ flowchart TD
   060 --> 070[070 LE TLS]
   065 --> 070
   110 --> 070
-  025 --> 180[180 Object store + plugin]
+  082 --> 180[180 Backup jobs + S3]
+  085 --> 180
   100 --> 180
   050 --> 120[120 CNPG persistence]
   100 --> 120
   180 --> 120
+  120 --> 185[185 AWS migration]
+  180 --> 185
   045 --> 130[130 e2e]
   060 --> 130
   045 --> 140
@@ -61,7 +64,7 @@ flowchart TD
 
 ## Critical path
 
-015 → 010 → 025 → 030 → 040 → 045 (with 050) → 065 → 085 (with 080) → 090 → 100 → 180 → 120 → 150.
+015 → 010 → 025 → 030 → 040 → 045 (with 050) → 065 → 080 → 082 → 085 → 090 → 100 → 180 → 120 → 150.
 
 Parallel tracks once 045/050 land: ingress (060 → 070), identity (080 → 082 →
 090 → 110), observability (160), tests (130), CI (140), autoscaler (170).
@@ -95,8 +98,8 @@ Parallel tracks once 045/050 land: ingress (060 → 070), identity (080 → 082 
 | DNS ownership, TXT owner IDs | 110, ADR 0002 note |
 | Certificate flows separated (TLS vs workload identity) | 070 vs 085 |
 | Storage verification list | 020, 120, 180 |
-| CNPG sizing, backups, restore | 180 (store, credentials), 120 (backups, restore drill) |
-| Capacity comparison, fixed capacity allowed, autoscaler separate | 030, 170, 175 |
+| CNPG sizing, backups, restore | 180 (bucket, jobs, IAM), 120 (cycle proof), 185 (AWS migration) |
+| Capacity comparison, fixed capacity allowed, autoscaler separate | 030 (fixed pool), 170 (deferred), 175 |
 | Identity chain items 1–9 | 080 (2), 082 (1, 8), 085 (3, 4), 090 (6, 7, 9), 085/090 (5) |
 | Civo token handling | 010, 040, 140, ADR 0028 |
 | Destruction classification and recovery | 040, 045, 150 |

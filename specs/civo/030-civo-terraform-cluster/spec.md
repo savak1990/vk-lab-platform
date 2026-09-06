@@ -23,7 +23,7 @@ completed: null
 ## 1. Outcome and rationale
 
 `PROVIDER=civo make cluster-up` creates a k3s cluster in the persistent Civo
-network. The cluster has one `g4s.kube.large` pool, no Traefik, and no Civo
+network. The cluster has one pool of three `g4s.kube.medium` nodes, no Traefik, and no Civo
 metrics-server. A firewall permits port 6443 and the LB ports. The stack
 writes the values that later stages need to SSM. `cluster-down` destroys the
 cluster and does not touch the persistent units.
@@ -45,7 +45,7 @@ any in-cluster resource.
 ## 4. Design and contracts
 
 - `cluster-civo/network` creates two firewalls in the persistent network. Both have `create_default_rules = false`. The firewall `${project}-k8s` permits ingress tcp 6443 from `0.0.0.0/0`, because GitHub runners have no fixed IP, and permits all egress. The cluster uses this firewall. The firewall `${project}-lb` permits ingress tcp 80 and 443 from `0.0.0.0/0`. Only the LB uses this firewall, via `kubernetes.civo.com/firewall-id`. The unit writes the outputs to SSM `/${project}/cluster-civo/network/cluster_firewall_id` and `/lb_firewall_id`.
-- `cluster-civo/k8s` creates a `civo_kubernetes_cluster` with the name `${project}`. It sets `cluster_type = "k3s"`, `cni = "flannel"`, and `kubernetes_version` pinned to a version that the spike verified. It reads `network_id` from the persistent unit and `firewall_id` from the network unit. It sets `pools = [{ label = "workers", size = "g4s.kube.large", node_count = 1 }]`. It sets `applications = "-Traefik-v2-nodeport,-metrics-server"`. The names are case-sensitive and must match `civo kubernetes applications ls`. The spike records the exact strings. It sets `write_kubeconfig = false` and `tags = "Project=${project} Lifecycle=disposable ManagedBy=terraform"`. CIVO-170 adds `lifecycle { ignore_changes = [pools[0].node_count] }`. In this spec, `node_count` is authoritative. The unit writes the outputs `cluster_id` and `api_endpoint` to SSM.
+- `cluster-civo/k8s` creates a `civo_kubernetes_cluster` with the name `${project}`. It sets `cluster_type = "k3s"`, `cni = "flannel"`, and `kubernetes_version` pinned to a version that the spike verified. It reads `network_id` from the persistent unit and `firewall_id` from the network unit. It sets `pools = [{ label = "workers", size = "g4s.kube.medium", node_count = 3 }]`. Three Medium nodes give about 7.8 GiB of allocatable memory for 65.19 USD per month, which is more memory inside the budget than one Large node gives. It sets `applications = "-Traefik-v2-nodeport,-metrics-server"`. The names are case-sensitive and must match `civo kubernetes applications ls`. The spike records the exact strings. It sets `write_kubeconfig = false` and `tags = "Project=${project} Lifecycle=disposable ManagedBy=terraform"`. CIVO-170 adds `lifecycle { ignore_changes = [pools[0].node_count] }`. In this spec, `node_count` is authoritative. The unit writes the outputs `cluster_id` and `api_endpoint` to SSM.
 - The region constant `LON1` lives in `root.hcl` (`civo_region`) and in `scripts/lib/region.sh` (`CIVO_REGION`). Never derive it.
 - The scripts (CIVO-040) fetch the kubeconfig. Never store the kubeconfig in state.
 
@@ -96,6 +96,8 @@ The destroy is the rollback. This spec creates nothing persistent.
 - The provider `applications` removal semantics. The spike verified them.
 - The cluster version availability per region.
 
+- A single pod cannot exceed about 2.6 GiB on a Medium node. Prometheus is the pod most likely to approach that ceiling. CIVO-160 sets its limits accordingly and CIVO-175 measures the real figure.
+
 ## 13. Definition of done
 
 - [ ] Acceptance criteria and AWS no-op plan recorded
@@ -106,3 +108,6 @@ The destroy is the rollback. This spec creates nothing persistent.
 
 - 2026-09-06 — created as DRAFT.
 - 2026-09-06 — approved for development by the user; promoted to READY (dependencies still gate the start).
+
+- 2026-09-06 — user decision: the fixed pool is three `g4s.kube.medium` nodes rather than one `g4s.kube.large`. With the autoscaler deferred to M2, three Medium nodes give more allocatable memory inside the cost target and allow rescheduling.
+

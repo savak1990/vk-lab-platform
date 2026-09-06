@@ -1,16 +1,16 @@
 ---
 id: "CIVO-180"
-title: "Civo Object Store, backup credentials, and the barman-cloud plugin for CNPG"
+title: "Shared logical backup and restore jobs with an S3 bucket"
 status: "READY"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
 difficulty: "M"
 recommended_model_tier: "standard"
-model_rationale: "Known barman-cloud pattern; credential handling and state exposure are the design points"
+model_rationale: "A container image, a CronJob, a bucket and two IAM policies; the credential path is already decided"
 effort_estimate: "One session (4–6 h)"
 estimate_confidence: "medium"
-depends_on: ["CIVO-025", "CIVO-100"]
+depends_on: ["CIVO-082", "CIVO-085", "CIVO-100"]
 blocked_by: []
 supersedes: []
 created: "2026-09-06"
@@ -18,92 +18,119 @@ updated: "2026-09-06"
 completed: null
 ---
 
-# CIVO-180 — CNPG backups to object storage
+# CIVO-180 — Shared logical backup and restore jobs
 
 ## 1. Outcome and rationale
 
-A Civo Object Store bucket exists for the project, its access keys reach
-the cluster as a Kubernetes Secret through SSM and ESO, and the CNPG
-barman-cloud plugin plus an `ObjectStore` CR are installed. This is the
-persistence mechanism for CNPG on Civo (CIVO-120), because the Civo CSI
-driver cannot snapshot or clone volumes.
+A daily `CronJob` dumps the PostgreSQL database and uploads it to an S3
+bucket. A restore `Job` loads the newest dump into an empty database.
+Both run from one image that this repository builds. The same manifests
+work on AWS and on Civo, because the only difference is how the pod
+obtains AWS credentials.
+
+The Civo CSI driver cannot snapshot or clone volumes, so the AWS
+snapshot flow (ADR 0013) cannot be mirrored. Logical dumps to S3 cost
+about 0.25 USD per month, need no permanent credential, and give one
+mechanism for both providers.
 
 ## 2. Scope and non-goals
 
 In scope:
-- `terraform/live/persistent-civo/object-store` with `civo_object_store` and `civo_object_store_credential`.
-- SSM `SecureString` parameters for the access key and secret key.
-- ESO `ExternalSecret cnpg-backup-s3` in `cnpg-system`.
-- The barman-cloud plugin Application (shared, gated by `postgres.backup.enabled`) and the `ObjectStore` CR on Civo.
+- An S3 bucket in the AWS persistent stack, with a lifecycle rule that expires old dumps.
+- One container image with `pg_dump`, `psql`, `pg_restore`, the AWS CLI and `aws_signing_helper`.
+- A `CronJob` for the daily dump and a `Job` template for restore.
+- IAM for both providers: a Pod Identity role on AWS and a Roles Anywhere role on Civo.
+- Verification on Civo, including one dump and one restore.
 
 Not in scope:
-- The CNPG `Cluster`, scheduled backups, teardown backup, and restore drill (CIVO-120).
-- AWS S3 as the store: CNPG pods cannot host the Roles Anywhere sidecar, and a static AWS key is forbidden by constitution §5.
+- The CNPG `Cluster` on Civo and the two-cycle data proof (CIVO-120).
+- Switching the AWS target off EBS snapshots (CIVO-185).
+- Point-in-time recovery. Logical dumps restore to the moment of the dump.
 
 ## 3. Current state / evidence
 
-- The CNPG operator uses the 0.29.0 chart. The barman-cloud plugin `ObjectStore` uses `s3Credentials` secret refs (research.md).
-- CNPG pods cannot run the Roles Anywhere sidecar. So AWS S3 through Roles Anywhere is not available in-pod.
-- Civo Object Store: S3-compatible, static access keys, 500 GB increments (price to confirm).
+- CNPG on AWS backs up with `Backup method: volumeSnapshot` to EBS, driven by `scripts/argo-down.sh:54-113` and `scripts/argo-up.sh:167-197`.
+- `csi.civo.com` advertises no snapshot or clone capability, so neither snapshots nor CNPG's PVC-datasource recovery work on Civo. See `research.md`.
+- The database password already reaches the cluster as Secret `lab-postgres-app` through External Secrets.
+- CIVO-085 issues short-lived certificates from the project CA. CIVO-082 creates one Roles Anywhere role for each consumer.
+- The credential helper supports `credential-process`, which the AWS CLI reads from an AWS config file. A pod that owns its image needs no sidecar.
 
 ## 4. Design and contracts
 
-- Bucket: `civo_object_store` named `${project}-cnpg`, minimum size 500 GB (Civo sizes in 500 GB steps, about 5.43 USD per month at the 2026-09-06 price), region `LON1`.
-- Credential: `civo_object_store_credential` for the bucket. The access key and secret key land in Terraform state as sensitive values. This is accepted for the lab because the state bucket is per project, encrypted, and access-controlled; `decisions.md` records the trade-off. Alternative if the user prefers: create the credential by hand and commit it with `scripts/secret-encrypt.sh` as `secrets/<project>/cnpg-s3-access-key.enc` and `cnpg-s3-secret-key.enc`.
-- SSM: `/${project}/persistent-civo/object-store/access_key_id` and `/secret_access_key` as `SecureString` with `alias/lab-secrets`; `/endpoint` and `/bucket` as `String`.
-- IAM: the `${project}-ra-eso` role gains `ssm:GetParameter` on the two new parameter ARNs (CIVO-082 variable list).
-- ESO: `ExternalSecret cnpg-backup-s3` in `cnpg-system` with keys `ACCESS_KEY_ID` and `ACCESS_SECRET_KEY`.
-- Plugin: the barman-cloud plugin Helm chart or manifest as a shared Application at wave -1 next to the CNPG operator, gated by `postgres.backup.enabled`.
-- `ObjectStore civo-object-store` in `cnpg-system`: `endpointURL` from values, `destinationPath: s3://${bucket}/${project}/`, `s3Credentials` referencing the Secret, `retentionPolicy: 14d`.
+- Bucket: `terraform/live/persistent/backups` creates `${project}-backups` with SSE-S3, a full public access block, and a lifecycle rule that expires objects under `postgres/` after 14 days. Lifecycle class persistent. The bucket serves both providers of that project.
+- Image `images/pg-backup`: a Debian base with the PostgreSQL client matching the server major version, the AWS CLI, and the pinned `aws_signing_helper` binary. It runs as a non-root user.
+- Credentials on AWS: a Pod Identity association binds the ServiceAccount `postgres-backup` in `cnpg-system` to a role that allows `s3:PutObject`, `s3:GetObject`, `s3:ListBucket` and `s3:DeleteObject` on `${project}-backups/postgres/*`. The AWS CLI uses the default chain and needs no configuration.
+- Credentials on Civo: the pod mounts the certificate Secret `pgbackup-ra-cert` and an AWS config file from a ConfigMap. The config file sets `credential_process = /usr/local/bin/aws_signing_helper credential-process ...` with the trust anchor, profile and role ARNs from values. `AWS_CONFIG_FILE` points at the mount. No sidecar runs, so the Job terminates cleanly.
+- `CronJob postgres-backup` in `cnpg-system`, schedule `0 3 * * *`, `concurrencyPolicy: Forbid`, `backoffLimit: 2`. It runs `pg_dump --format=custom --no-owner --no-privileges` and pipes the output to `aws s3 cp - s3://${bucket}/postgres/${cluster}-$(date -u +%Y%m%dT%H%M%SZ).dump`.
+- Teardown: `argo-down` creates a one-off Job from the CronJob with `kubectl create job --from=cronjob/postgres-backup`, then waits with `kubectl wait --for=condition=complete --timeout=600s`. A failure or a timeout exits non-zero and leaves the cluster running, unless `CI_TEARDOWN_ALLOW_DATA_LOSS=1` is set.
+- Restore: a `Job postgres-restore` carries the Argo hook `PostSync` on the Postgres Application. It counts tables in the target schema. When the count is zero and a dump exists, it downloads the newest object and runs `pg_restore`. When the count is not zero it exits successfully without touching data. This makes the restore idempotent across re-syncs.
+- Values: `postgres.backup.enabled`, `postgres.backup.bucket`, `postgres.backup.schedule`, `postgres.backup.retentionDays`, `awsIdentity.mode` selects the credential path.
 
 ## 5. Files/components affected
 
-`terraform/live/persistent-civo/object-store` *(proposed)* if Terraform supports it, else a manual step with an SSM record; `gitops/templates/platform/civo/postgres/backup.yaml`; an ESO ExternalSecret; the `lab-role` SSM path is already covered.
+- `terraform/live/persistent/backups/terragrunt.hcl` and `terraform/modules/s3-backups` (new).
+- `terraform/modules/pg-backup-pod-identity` (new, AWS) and the `pgbackup` consumer in `terraform/modules/rolesanywhere` (CIVO-082 variable list).
+- `images/pg-backup/Dockerfile` and a build workflow (new).
+- `gitops/templates/platform/shared/postgres/backup-cronjob.yaml` and `restore-job.yaml` (new).
+- `gitops/templates/platform/civo/postgres/aws-config.yaml` (ConfigMap, new).
+- `scripts/argo-down.sh` (teardown job gate), `gitops/values.yaml`.
 
 ## 6. Implementation steps
 
-1. Add the Terraform unit and module; apply with `PROVIDER=civo make persistent-up`; confirm the bucket and SSM parameters.
-2. Add the IAM statement to the ESO role; re-apply the bootstrap unit.
-3. Add the `ExternalSecret`, the plugin Application, and the `ObjectStore` CR; run `make gitops-check` (AWS golden diff empty).
-4. `PROVIDER=civo make up`; confirm the Secret synced and the `ObjectStore` shows `Ready`.
-5. Upload and delete a test object with the credential from a pod to prove access.
+1. Add the bucket module and unit. Apply with `make persistent-up` for the Civo project.
+2. Add the `pgbackup` consumer to the Roles Anywhere module and re-apply the bootstrap unit.
+3. Add the certificate for `pgbackup` to CIVO-085's list.
+4. Build and push the image. Pin it by digest in values.
+5. Add the CronJob, the restore Job and the ConfigMap. Run `make gitops-check`; the AWS golden diff must stay empty while `postgres.backup.enabled` is false on AWS.
+6. On Civo, run the CronJob once by hand. Confirm the object appears in S3.
+7. Drop the database contents in a scratch copy and run the restore Job. Confirm the row counts match.
+8. Add the teardown gate to `argo-down` and confirm it fails closed when the job fails.
 
 ## 7. Dependencies and blockers
 
-CIVO-025 (`persistent-civo` stack), CIVO-100 (ESO on Civo).
+CIVO-082 supplies the role, CIVO-085 the certificate, CIVO-100 the database password. CIVO-120 consumes this spec.
 
 ## 8. Acceptance criteria
 
-- Bucket exists; credential works from inside the cluster; `ObjectStore` is `Ready`.
-- Keys are never in Git, Argo manifests, or logs.
-- AWS golden diff empty; no plugin or `ObjectStore` on AWS while `postgres.backup.enabled` is false.
-- Bucket survives `cluster-down`; `persistent-down` deletes it only with confirmation.
+- A dump lands in S3 from a Civo pod using temporary credentials only. `aws sts get-caller-identity` inside the pod returns the `pgbackup` role.
+- The restore Job loads a dump into an empty database and exits successfully without changes when the database already has tables.
+- The lifecycle rule removes dumps older than 14 days.
+- The teardown gate fails closed on a failed dump.
+- No permanent AWS key exists anywhere in the repository, the cluster or SSM.
+- The AWS golden diff is empty.
 
 ## 9. Validation
 
-Offline: Terraform fmt and validate, golden diff. Real cloud: bucket minimum billing during the test (about 0.18 USD per day).
+Offline: `docker build`, `helm template`, the golden diff. Real cloud:
+one Civo cluster, one bucket. Storage cost about 0.25 USD per month.
+Request cost is negligible at one dump per day.
 
 ## 10. AWS regression protection
 
-Civo-only files.
+The AWS target keeps EBS snapshots until CIVO-185. The new manifests
+render only when `postgres.backup.enabled` is true, which stays false on
+AWS in this spec. The golden diff proves it.
 
 ## 11. Rollout and rollback/recovery
 
-Destroy the unit with `persistent-down`. Deleting the bucket deletes all backups; the script requires confirmation.
+Revert the manifests to stop backing up. The bucket and its contents
+survive, because it belongs to the persistent stack. `persistent-down`
+empties and deletes it after a confirmation.
 
 ## 12. Risks and unresolved questions
 
-- The Civo Terraform provider's object-store credential resource attributes; confirm at implementation.
-- Whether the 500 GB minimum is acceptable at about 5.43 USD per month; the user decides in `decisions.md`.
+- The dump duration for 20 GiB sets the teardown timeout. Measure once and adjust.
+- `pg_dump` and the server major version must match. Pin the image to the CNPG image's major version.
+- A logical dump restores to the moment of the dump. Anything written after the last dump and before a teardown failure is lost. The teardown gate exists precisely to bound that window.
 
 ## 13. Definition of done
 
-- [ ] Evidence incl. restore; index updated; status `DONE`
+- [ ] Bucket, image, CronJob, restore Job and IAM in place
+- [ ] Dump and restore verified on Civo with evidence
+- [ ] Teardown gate verified
+- [ ] Index updated; status `DONE`
 
 ## 14. Execution evidence and status history
 
-- 2026-09-06 — created as DRAFT.
-- 2026-09-06 — approved for development by the user; promoted to READY (dependencies still gate the start).
-
-- 2026-09-06 — repurposed from P2 restore drill to the P1 M1 persistence prerequisite after the kubernetes-architect review; CIVO-120 now depends on this spec.
-
+- 2026-09-06 — created as DRAFT (Civo Object Store and barman plugin).
+- 2026-09-06 — user decision: replaced the Civo Object Store and barman-cloud design with shared logical dumps to S3. The Civo Object Store bills for a 500 GB minimum, about 5.43 USD per month, while S3 bills for bytes stored, about 0.25 USD per month. Logical dumps also avoid a permanent AWS key, because this repository owns the job image and can use `credential-process`.

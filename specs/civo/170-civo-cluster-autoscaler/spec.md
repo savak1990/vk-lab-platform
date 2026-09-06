@@ -22,8 +22,8 @@ completed: null
 
 ## 1. Outcome and rationale
 
-The Civo cluster autoscaler keeps the `workers` pool between 1 and 3
-Large nodes. It adds a node when pods stay pending. It removes a node
+The Civo cluster autoscaler keeps the `workers` pool between 2 and 5
+Medium nodes. It adds a node when pods stay pending. It removes a node
 after sustained underutilization. This keeps the idle cost near one node.
 
 This work is deferred to milestone M2 at priority P3. The reason is a
@@ -35,7 +35,7 @@ runs a fixed node count instead.
 In scope:
 
 - The install method.
-- `--nodes=1:3:workers`.
+- `--nodes=2:5:workers`.
 - Terraform `ignore_changes`.
 - A scale test.
 - PodDisruptionBudget notes.
@@ -51,9 +51,9 @@ parity.
 
 ## 4. Design and contracts
 
-- Install: prefer the Argo-managed upstream `cluster-autoscaler` Helm chart with the `civo` cloud provider, if the chart supports it for the pinned version. Otherwise, add the marketplace app to `applications` in CIVO-030's cluster resource. In that case, `argo-up` performs a documented `kubectl patch` of the Deployment args to `--nodes=1:3:workers`. The patch is idempotent. Record which path was taken. Argo-managed is preferred for GitOps ownership.
+- Install: prefer the Argo-managed upstream `cluster-autoscaler` Helm chart with the `civo` cloud provider, if the chart supports it for the pinned version. Otherwise, add the marketplace app to `applications` in CIVO-030's cluster resource. In that case, `argo-up` performs a documented `kubectl patch` of the Deployment args to `--nodes=2:5:workers`. The patch is idempotent. Record which path was taken. Argo-managed is preferred for GitOps ownership.
 - Terraform: add `lifecycle { ignore_changes = [pools[0].node_count] }` on `civo_kubernetes_cluster`.
-- Values: `capacity.autoscaler: {min: 1, max: 3, pool: workers}`.
+- Values: `capacity.autoscaler: {min: 2, max: 5, pool: workers}`.
 - Credential: both the marketplace app and the upstream `civo` cloudprovider need a Civo API key as a Secret in `kube-system`. Use a **dedicated second API key** (Civo accounts may hold several). Store it as `secrets/civo-autoscaler-token.enc`. `argo-up` delivers it (never the main token). Then a Secret read in `kube-system` does not yield full account control. ADR 0028 must state this.
 - Civo docs recommend a minimum of 2 workers with the autoscaler. The spike and this spec verify that `min=1` is honored.
 - Observability: a ServiceMonitor for the autoscaler metrics (gated to civo).
@@ -61,7 +61,7 @@ parity.
 **Review amendments (2026-09-06, kubernetes-architect):**
 - Install path: the upstream `cluster-autoscaler` Helm chart supports `cloudProvider: civo` with `autoscalingGroups: [{name: workers, minSize: 1, maxSize: 3}]` and a Secret `civo-api-access` (`secretKeyRefNameOverride`). Use it as an Argo Application; `argo-up` creates the Secret from the dedicated key like the CA Secret. The marketplace app is the fallback.
 - Scale-down blockers to remove on Civo: CNPG `spec.enablePDB: false` (CIVO-120); `--skip-nodes-with-system-pods=false` or move external-dns out of `kube-system` (it has no PDB); annotate pods with `emptyDir` scratch (`cluster-autoscaler.kubernetes.io/safe-to-evict-local-volumes`) or set `--skip-nodes-with-local-storage=false`.
-- Acceptance adds: after the burst test, the cluster returns to one node within the scale-down window with the platform pods running.
+- Acceptance adds: after the burst test, the cluster returns to two nodes within the scale-down window with the platform pods running.
 
 ## 5. Files/components affected
 

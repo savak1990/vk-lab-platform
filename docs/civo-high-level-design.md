@@ -23,7 +23,7 @@ Civo is a Kubernetes target, not a migration off AWS services.
 | Civo project identity | `PROVIDER=civo` defaults `PROJECT_NAME=vk-civo-lab` and `SUBDOMAIN=civo`: own state bucket `vk-civo-lab-tf-state`, own zone `civo.<root-domain>`, own SSM prefix. Only the account layer is shared with the AWS project | 2026-09-06 |
 | Stage model | Identical on both providers: `account-up` → `bootstrap-up` → `persistent-up` → `cluster-up` → `argo-up` (and the reverse) | 2026-09-06 |
 | Cost target on Civo | 60–80 USD/month idle, all-in (nodes, LB, CNPG volume). Soft ceiling; bursts allowed. Review note 2026-09-06: with the full observability profile the expected M1 idle is closer to 100 USD (2 Large nodes) until CIVO-175 right-sizes | 2026-09-06 |
-| Node plan | One `g4s.kube.large` pool (4 vCPU / 8 GB), fixed node count in M1. The cluster autoscaler moves to M2 (P3) because a personal Civo account has one API key, and the autoscaler would place that account-wide key in the cluster | 2026-09-06 |
+| Node plan | One fixed pool of three `g4s.kube.medium` nodes (2 vCPU / 4 GB each, about 7.8 GiB allocatable). The cluster autoscaler moves to M2 (P3) because a personal Civo account has one API key, and the autoscaler would place that account-wide key in the cluster | 2026-09-06 |
 | AWS workload identity from Civo | IAM Roles Anywhere; no long-lived AWS keys in workloads | 2026-09-06 |
 | CA topology (M1) | Single offline CA: certificate committed, key KMS-encrypted in `secrets/` | 2026-09-06 |
 | Civo API token | KMS-encrypted in repo (`secrets/civo-token.enc`), decrypted at run time, masked in CI; no GitHub secret, no SSM copy | 2026-09-06 |
@@ -40,7 +40,7 @@ Civo is a Kubernetes target, not a migration off AWS services.
 |---|---|---|---|
 | Account (shared, once per AWS account, free) | `account-up/down` | KMS key, GitHub OIDC, `lab-role`, `eks-access-identity`, `root-domain` | Unchanged. `lab-role` gains scoped Roles Anywhere and IAM permissions. Civo has no account-level Terraform object; the API key is a manual one-time step |
 | Bootstrap (per project, cheap, rarely destroyed) | `bootstrap-up/down` | Route 53 `lab.<root-domain>` zone, ACM certificate | Route 53 `civo.<root-domain>` zone (ACM unit excluded), plus `bootstrap/rolesanywhere`: trust anchor from the committed CA cert, profile, one IAM role per consumer |
-| Persistent (data layer, survives `down`) | `persistent-up/down` | VPC, SSM secrets | SSM secrets (VPC unit excluded), plus `persistent-civo`: Civo network (free), reserved IP (stable LB address), and the Object Store holding CNPG backups (see §4.3) |
+| Persistent (data layer, survives `down`) | VPC, SSM secrets, S3 backup bucket | SSM secrets and the S3 backup bucket (VPC unit excluded), plus `persistent-civo`: Civo network (free) and reserved IP (stable LB address). See §4.3 |
 | Cluster (disposable) | `cluster-up/down` | EKS, system node group, Pod Identity roles, Karpenter IAM | `cluster-civo`: cluster firewall (6443) and LB firewall (80/443), k3s cluster with one Large pool, default Traefik and metrics-server removed, kubeconfig never stored in state |
 | Argo (reconcile) | `argo-up/down` | Argo CD via script, root Application with `target=aws` | Same script, Civo branch: kubeconfig from the Civo CLI, CA key decrypted into the cert-manager issuer Secret, `target=civo` |
 
@@ -89,19 +89,25 @@ because CNPG pods cannot host the sidecar.
 
 ```mermaid
 flowchart LR
-  PG[CNPG cluster<br/>civo-volume, 1 instance] -->|WAL archive + daily ScheduledBackup<br/>barman-cloud plugin| OS[Civo Object Store<br/>persistent-civo, 14d retention]
-  AD[argo-down] -->|on-demand Backup, wait completed| OS
-  AU[argo-up] -->|newest backup exists?| OS
-  OS -->|bootstrap.recovery from ObjectStore| PG
+  PG[CNPG cluster<br/>civo-volume, 1 instance, disposable] -->|daily CronJob: pg_dump| S3[S3 bucket<br/>AWS persistent stack, 14d lifecycle]
+  AD[argo-down] -->|one-off Job from the CronJob<br/>wait, fail closed| S3
+  AU[argo-up] -->|PostSync restore Job<br/>only when the schema is empty| PG
+  S3 --> AU
 ```
 
-Decided 2026-09-06 after review: the Civo CSI driver `csi.civo.com`
-advertises no snapshot or clone capability in its source, so the AWS
-snapshot flow (ADR 0013) cannot be mirrored. Persistence on Civo is
-barman-cloud backups in a Civo Object Store (CIVO-180, CIVO-120). The
-Civo volume itself is disposable. Object-store credentials are static
-Civo keys delivered through SSM and ESO; the store costs about 5.43 USD
-per month at the 500 GB minimum.
+Decided 2026-09-06: persistence is a logical dump to S3, shared by both
+providers. The Civo CSI driver `csi.civo.com` advertises no snapshot or
+clone capability, so the AWS snapshot flow (ADR 0013) cannot be
+mirrored, and CNPG's PVC-datasource recovery clones a volume, which Civo
+also cannot do. The Civo Object Store bills a 500 GB minimum, about
+5.43 USD per month, while S3 bills bytes stored, about 0.25 USD.
+
+The backup job runs from an image this repository builds, so it needs no
+sidecar: on Civo the AWS CLI reads `credential_process` and calls the
+signing helper directly, and on AWS it uses Pod Identity. No permanent
+AWS key exists anywhere. The trade is point-in-time recovery, which
+logical dumps do not provide. CIVO-185 moves the AWS target onto the
+same mechanism after Civo proves it.
 
 ### 4.4 State layout
 
@@ -140,7 +146,7 @@ What the shared GitOps tree needs from any provider, and where it comes from.
 | Secrets | yes | ESO → SSM | same, via sidecar | unchanged manifests |
 | Schedulable capacity | yes | Karpenter NodePools | fixed pool + autoscaler | `capacity.spotAvoidance`, `postgres.nodeSelector` |
 | GitOps | yes | Argo CD by script | same | `target` |
-| PostgreSQL | yes | CNPG + EBS snapshots | CNPG + barman backups in Civo Object Store | `postgres.*` |
+| PostgreSQL | yes | CNPG + EBS snapshots today, logical dumps after CIVO-185 | CNPG + logical dumps to S3 | `postgres.*` |
 | Observability | optional | full stack | full stack, k3s scrape targets | `observability.*` |
 | Policies | optional | none | none | — |
 
@@ -155,7 +161,8 @@ subtrees; shared components read only the contract values.
 |---|---|---|---|
 | 2026-09-06 | `PROVIDER` variable on existing targets | Constitution §17: one command pair per lifecycle class; spec 027 reached the same conclusion with `TARGET` | `make civo-up` family |
 | 2026-09-06 | `PROVIDER` is an operator input, not an ADR 0024 per-layer constant | It selects a stack directory; only the Civo region is a real constant | five-site declaration of PROVIDER |
-| 2026-09-06 | One Large pool, fixed count in M1, soft 60–80 USD idle target | Memory is the blocker; three Medium nodes cannot host observability | 3 × Medium fixed (78 USD, ~7.8 GiB); RAM-optimized Small (78 USD per node) |
+| 2026-09-06 | Fixed pool of three Medium nodes, soft 60–80 USD target | With the autoscaler deferred, three Medium nodes give 7.8 GiB inside the budget while one Large gives 5.9 GiB; two Large nodes would cost about 100 USD | 1 × Large (56 USD, 5.9 GiB, trimmed observability); 2 × Large (100 USD, over target) |
+| 2026-09-06 | Logical dumps to S3 as the single backup mechanism for both providers | Civo cannot snapshot or clone volumes; S3 bills bytes stored rather than a 500 GB minimum; an image we own needs no sidecar and no permanent key. Trade: no point-in-time recovery | barman to Civo Object Store (5.43 USD/month); barman to S3 with a permanent IAM user key |
 | 2026-09-06 | Cluster autoscaler deferred to M2 at P3 | Civo issues one API key per personal account; the autoscaler needs that account-wide key in `kube-system`, where a Secret reader gains full account control. Research recorded in CIVO-170 §12 | running it in M1 and accepting the exposure |
 | 2026-09-06 | Right-sizing spec (CIVO-175) revisits requests/limits and memory-optimized SKUs | CPU is wasted on this workload; measured data first | deciding SKU now |
 | 2026-09-06 | Roles Anywhere with a single offline CA | Free; external CA allowed; Private CA costs 50 USD/month; no Civo ServiceAccount OIDC issuer documented for web-identity federation | AWS Private CA; static AWS keys; web identity |
@@ -173,7 +180,7 @@ subtrees; shared components read only the contract values.
 | Question | Blocks | Resolved by |
 |---|---|---|
 | Can a retained Civo volume be re-attached to a new cluster in the same network? | none (experiment only) | CIVO-020 spike |
-| Is the 500 GB object-store minimum (~5.43 USD/month) acceptable? | CIVO-180 | user |
+| Does the dump and restore of 20 GiB fit the teardown timeout? | CIVO-180 | measured in CIVO-120 |
 | Exact default application names to remove (`traefik2-nodeport`, `metrics-server`)? | CIVO-030 | CIVO-020 spike |
 | Does Civo expose a ServiceAccount OIDC issuer (would allow web identity instead of Roles Anywhere)? | none (Roles Anywhere stays) | CIVO-020 spike, recheck |
 | Reserved IP price | cost model precision | CIVO-025 |

@@ -25,7 +25,7 @@ states it; **low** = inferred, needs the spike.
 | Short-lived tokens | `POST /v2/auth/exchange` converts the API key to a JWT (access, refresh, id token); OAuth client apps (auth-code, client-credentials) registered through support. All paths still need the static key | https://www.civo.com/api | high |
 | ServiceAccount OIDC issuer | No documentation of a public or configurable issuer/JWKS for managed k3s. Web-identity federation to AWS unverified | negative search | low — spike recheck |
 | Pricing (USD/month, uniform across regions, no tax stated) | Standard: XS 5.43, S 10.86, Medium (2 vCPU/4 GB) 21.73, Large (4 vCPU/8 GB) 43.45. RAM-optimized Small (2 vCPU/16 GB) 78.21. LB 10.86 per 10 000 concurrent requests. Block storage 0.11 per GB. Egress and ingress free | https://www.civo.com/pricing | high |
-| Object store | Sized in 500 GB increments, hourly billing; 0.01086 USD/GB/month → ~5.43 USD/month at the 500 GB minimum | https://www.civo.com/pricing, https://www.civo.com/docs/object-stores | medium |
+| Object store | Sized in 500 GB increments, billed on allocated size, not usage: "You can size an object store in 500GB increments" and "the price ... will change depending on the size of the object store you create". About 5.43 USD/month at the 500 GB minimum. Rejected in favour of S3 | https://www.civo.com/docs/object-stores/create-an-object-store, https://www.civo.com/pricing | high |
 
 ## AWS
 
@@ -41,25 +41,47 @@ states it; **low** = inferred, needs the spike.
 | ESO AWS auth | Controller pod credentials via the AWS SDK default chain (env, shared config, IMDS/container endpoint), IRSA `jwt`, static `secretRef`, `role`/`additionalRoles` chaining, EKS Pod Identity | https://external-secrets.io/latest/provider/aws-access/ | high |
 | ExternalDNS AWS auth | AWS SDK for Go v2 default chain; static file, IRSA, Pod Identity, node role. Flags `--txt-owner-id`, `--domain-filter`, `--zone-id-filter`, `--policy` | https://kubernetes-sigs.github.io/external-dns/latest/docs/tutorials/aws/ | high |
 | cert-manager Route53 | Ambient SDK chain or `secretRef`, or `serviceAccountRef` web identity. Not needed: HTTP-01 through Gateway API avoids AWS credentials | https://cert-manager.io/docs/configuration/acme/dns01/route53/ | high |
-| CNPG barman plugin | `ObjectStore` with `s3Credentials` secret refs; recovery via `bootstrap.recovery.source` + `externalClusters[].plugin`. CNPG's only PVC-source recovery (`volumeSnapshots.storage.kind: PersistentVolumeClaim`) sets `DataSource` on a new PVC, i.e. a CSI clone, which Civo lacks; no documented adoption of a pre-existing PVC | https://cloudnative-pg.io/plugin-barman-cloud/docs/usage/, https://github.com/cloudnative-pg/cloudnative-pg/blob/main/config/crd/bases/postgresql.cnpg.io_clusters.yaml | high |
+| CNPG physical backups | Barman runs in a sidecar the plugin injects into the instance pod; `instanceSidecarConfiguration` exposes environment variables and resources, and CNPG has no supported way to add a container of your own. Roles Anywhere therefore has nowhere to run, so physical backups from Civo would need a permanent AWS key. Recovery always creates a new cluster: "recovery is not performed in-place on an existing cluster" | https://cloudnative-pg.io/plugin-barman-cloud/docs/next/concepts/, https://cloudnative-pg.io/docs/devel/recovery/ | high |
 
 ## Cost model (USD/month, 2026-09-06 prices, no tax, region-uniform)
 
-Civo, one Large pool, autoscaler 1–3, LB, 20 GB CNPG volume:
+Civo, one fixed pool of three `g4s.kube.medium` nodes, one load balancer,
+a 20 GiB CNPG volume and the observability volumes:
 
-| Nodes running | Nodes | LB | Volume | Total |
-|---|---|---|---|---|
-| 1 (expected idle) | 43.45 | 10.86 | 2.20 | 56.51 |
-| 2 | 86.90 | 10.86 | 2.20 | 99.96 |
-| 3 (burst) | 130.35 | 10.86 | 2.20 | 143.41 |
+| Item | Quantity | Cost |
+|---|---|---|
+| Nodes | 3 × Medium at 21.73 | 65.19 |
+| Load balancer | 1 | 10.86 |
+| CNPG volume | 20 GiB at 0.11 | 2.20 |
+| Observability volumes | 22 GiB at 0.11 (Prometheus 10, Loki 10, Grafana 1, Alertmanager 1) | 2.42 |
+| **Civo total** | | **80.67** |
 
-Observability volumes on Civo (Prometheus 10 Gi, Alertmanager 1 Gi, Grafana 1 Gi, Loki 10 Gi) add ~2.42. Reserved IP: price unknown, expected a few USD. Civo snapshots: priced as storage, expected < 3 for two retained 20 GB snapshots.
+That sits at the top of the 60 to 80 USD target. The volume sizes are the
+adjustment knob: halving the Prometheus and Loki claims saves 1.10 and
+brings the total to 79.57. CIVO-175 measures real usage and revisits both
+the volumes and the node size.
 
-Retained AWS while Civo runs: Route 53 zone ~0.50 plus queries; SSM standard parameters free; KMS key ~1.00; S3 state cents; Roles Anywhere free. GitHub OIDC free.
+Retained AWS costs while Civo runs:
 
-AWS costs that disappear when running Civo instead of EKS: EKS control plane ~73, NLB ~16–22, EC2 system node ~25, Karpenter nodes variable, EBS ~2–4.
+| Item | Cost |
+|---|---|
+| Route 53 hosted zone | 0.50 plus queries |
+| KMS key | 1.00 |
+| S3 backup bucket, about 5 GiB of dumps | 0.25 |
+| SSM Advanced parameter for the TLS Secret | 0.05 |
+| SSM Standard parameters, Roles Anywhere, GitHub OIDC | 0.00 |
+| **AWS total** | **about 1.80** |
 
-Uncertainties: reserved IP price; object store price; whether allocatable memory on Large matches the documented ~5.9 GiB after CCM/CSI pods; whether idle really holds at 1 node with observability enabled (measured in CIVO-175).
+Allocatable memory: about 2.6 GiB per Medium node, 7.8 GiB across three.
+A single pod cannot exceed 2.6 GiB, which constrains Prometheus.
+
+AWS costs that disappear when Civo replaces EKS: control plane about 73,
+NLB about 16 to 22, the system node about 25, Karpenter nodes variable,
+EBS about 2 to 4.
+
+Uncertainties: the reserved IP price is not published; the measured
+allocatable figure after the cloud controller and CSI pods start; whether
+the observability stack fits three Medium nodes at the planned limits.
 
 ## Later experiments (bounded, not run in planning)
 

@@ -1,6 +1,6 @@
 ---
 id: "CIVO-120"
-title: "CloudNativePG on Civo with persistence through object-store backups"
+title: "CloudNativePG on Civo with data surviving make down and make up"
 status: "READY"
 priority: "P1"
 milestone: "M1"
@@ -23,25 +23,21 @@ completed: null
 ## 1. Outcome and rationale
 
 A single-instance CNPG cluster runs on Civo storage with the app password
-from ESO. Rows written before `make down` are present after `make up`.
-Persistence comes from barman-cloud backups in the Civo Object Store
-(CIVO-180), not from volume snapshots. The Civo CSI driver
-(`csi.civo.com`) has no snapshot or clone capability, so the snapshot
-path used on AWS (ADR 0013) cannot work on Civo.
+from External Secrets. Rows written before `make down` are present after
+`make up`. The data of record lives in S3 as a logical dump, written by
+the shared backup job from CIVO-180. The Civo volume is disposable.
 
 ## 2. Scope and non-goals
 
 In scope:
-- CNPG `Cluster` values for Civo.
-- The barman-cloud plugin `ObjectStore` reference, WAL archiving, and a daily `ScheduledBackup`.
-- The `argo-down` Civo branch: an on-demand `Backup` that must complete before teardown.
-- The `argo-up` Civo branch: bootstrap by `recovery` from the object store when a backup exists, else `initdb`.
-- One restore drill into a scratch namespace.
+- CNPG `Cluster` values for the Civo target.
+- Wiring the shared backup and restore jobs into `argo-down` and `argo-up`.
+- Two full down and up cycles that carry real rows.
 
 Not in scope:
-- Object store provisioning and credential delivery (CIVO-180).
-- Replicas. `instances: 1` is explicit. A second instance doubles volume and RAM cost and gives no protection across cluster deletion.
-- Retained-volume rebinding. The spike may test it as an experiment. It is undocumented in CNPG and is not a supported path.
+- The bucket, the image, the CronJob, the restore Job and the IAM roles (CIVO-180).
+- Switching the AWS target to the same mechanism (CIVO-185).
+- Replicas. `instances: 1` is explicit. A second instance doubles the volume and the memory cost and protects nothing across cluster deletion.
 
 ## 3. Current state / evidence
 
@@ -52,14 +48,12 @@ Not in scope:
 
 ## 4. Design and contracts
 
-- Storage: `storageClass: civo-volume`, 20 Gi, reclaim `Delete`. The volume is disposable. The data of record lives in the object store.
-- No `nodeSelector` on Civo. `priorityClassName: postgres-critical`, requests 250m/256Mi, `wal_level` logical.
-- `spec.enablePDB: false` on Civo (values-driven). CNPG creates a PDB even for one instance, and that PDB blocks the cluster autoscaler from removing the node (CIVO-170).
-- Backups: the barman-cloud plugin (installed with the CNPG operator in CIVO-180) with `plugins[0].name: barman-cloud.cloudnative-pg.io` and `parameters.barmanObjectName: civo-object-store`. WAL archiving on. `ScheduledBackup` daily at 03:00 UTC, `method: plugin`. Retention 14 days, set on the `ObjectStore`.
-- `argo-down` Civo branch: create `Backup lab-postgres-teardown-<epoch>` with `method: plugin`, poll `.status.phase` until `completed`, timeout 300 s. On `failed` or timeout the script exits non-zero and leaves the cluster running (fail closed), unless `CI_TEARDOWN_ALLOW_DATA_LOSS=1` is set (CIVO-140).
-- `argo-up` Civo branch: query the object store for the newest completed backup (barman `list-backups` through a short `Job`, or the plugin's status on a previous run recorded in SSM `/${project}/persistent/civo/postgres/last_backup_id`). When one exists, set `postgres.recoverySource: object-store`; the `Cluster` template renders `bootstrap.recovery.source: civo-object-store` with `externalClusters[0].plugin.parameters.barmanObjectName`. When none exists, render `initdb`.
-- Recovery bootstrap uses the same `ObjectStore`, so the restored cluster continues to archive WAL to the same path with a new timeline. Barman keeps the old timeline for point-in-time recovery inside the retention window.
-- Values: `postgres.backup.enabled` (aws false in M1, civo true), `postgres.recoverySource` (`snapshot` on aws, `object-store` on civo, `none`).
+- Storage: `storageClass: civo-volume`, 20 Gi, reclaim `Delete`. The volume dies with the cluster by design.
+- No `nodeSelector` on Civo. It keeps `priorityClassName: postgres-critical`, requests 250m and 256Mi, and `wal_level` logical for future change data capture.
+- `spec.enablePDB: false` on Civo, set through values. CNPG creates a PodDisruptionBudget even for one instance, and that budget blocks a node from draining. This matters when the autoscaler lands in M2 (CIVO-170); with a fixed pool it is harmless but consistent.
+- Bootstrap is always `initdb`. The cluster starts empty on every `make up`, and the restore Job from CIVO-180 loads the newest dump when the schema is empty. There is no recovery bootstrap and no snapshot handle.
+- `argo-down` Civo branch: run the teardown dump gate from CIVO-180 before the cascade. On failure it exits non-zero and leaves the cluster running, unless `CI_TEARDOWN_ALLOW_DATA_LOSS=1` is set.
+- `argo-up` needs no backup logic. The restore Job runs as a `PostSync` hook once the Postgres Application is healthy, and decides for itself whether to load a dump.
 
 ## 5. Files/components affected
 
@@ -67,29 +61,26 @@ Not in scope:
 
 ## 6. Implementation steps
 
-1. Confirm CIVO-180 delivered the `ObjectStore` CR and the `cnpg-backup-s3` Secret.
-2. Template the `Cluster`; run `make gitops-check`. The AWS golden diff must be empty.
-3. `PROVIDER=civo make up`. Write test rows through the e2e Postgres test or `psql`.
-4. Confirm the first scheduled backup and WAL archiving complete (`kubectl get backup`, object store listing).
-5. `make down`. Confirm the teardown `Backup` completed, the cluster is gone, and the object store holds the backup.
-6. `make up`. Confirm the rows are present and `argo-up` selected the newest backup.
-7. Repeat steps 5 and 6 once.
-8. Failure paths: a failed teardown `Backup` exits non-zero and leaves the cluster (fail closed); a bogus recovery source fails visibly with no silent `initdb`.
-9. Restore drill: bootstrap a second `Cluster` from the object store in namespace `cnpg-restore-test`, compare row counts, delete it.
-10. `persistent-down` Civo branch lists the object store contents and deletes the bucket only with confirmation.
+1. Confirm CIVO-180 delivered the bucket, the image, the CronJob and the restore Job.
+2. Template the `Cluster` with values. Run `make gitops-check`; the AWS golden diff must be empty.
+3. Run `PROVIDER=civo make up`. Write test rows through the end-to-end Postgres test or `psql`.
+4. Run `make down`. Confirm the teardown dump completed and the object is in S3.
+5. Run `make up`. Confirm the restore Job loaded the dump and the rows are present.
+6. Repeat steps 4 and 5 once more.
+7. Re-sync Argo without a teardown. Confirm the restore Job exits successfully and changes nothing, because the schema is not empty.
+8. Failure paths: a failed teardown dump exits non-zero and leaves the cluster; a corrupt or missing dump fails the restore Job visibly instead of leaving an empty database that looks healthy.
 
 ## 7. Dependencies and blockers
 
-CIVO-050 (layout), CIVO-100 (app password Secret through ESO), CIVO-180 (object store, credentials, plugin). CIVO-020 no longer gates this spec: the CSI capability list settles the snapshot question without a cluster.
+CIVO-050 provides the layout, CIVO-100 the database password, CIVO-180 the bucket and the jobs.
 
 ## 8. Acceptance criteria
 
-- Rows survive two down/up cycles.
-- Teardown `Backup` completes within 300 s; retention keeps 14 days; storage cost recorded.
-- Fail-closed behaviors verified.
-- Restore drill succeeds with a matching row count.
-- `cluster-down` never touches the object store; `persistent-down` deletes it only with confirmation.
-- AWS golden diff empty; one AWS down/up cycle still restores from the EBS snapshot after the merge.
+- Rows survive two down and up cycles.
+- A re-sync without a teardown does not touch existing data.
+- The teardown gate fails closed on a failed dump.
+- `cluster-down` never touches the bucket. `persistent-down` empties it only after a confirmation.
+- The AWS golden diff is empty, and one AWS down and up cycle still restores from its EBS snapshot.
 
 ## 9. Validation
 
@@ -105,9 +96,9 @@ Data risk: yes. Test with disposable data only. Rollback: revert the change. The
 
 ## 12. Risks and unresolved questions
 
-- The barman-cloud plugin version must match the CNPG operator 0.29.0 chart; confirm at implementation.
-- Backup duration for 20 Gi over the Civo network sets the `argo-down` timeout; measure once and adjust.
-- Static-PV rebinding of a retained Civo volume is an optional spike experiment only. Do not build on it.
+- The dump and restore duration for a 20 GiB volume sets the teardown timeout. Measure once and adjust.
+- A logical dump restores to the moment of the dump. Rows written after the last dump and before an unplanned cluster loss are gone. The teardown gate bounds that window for planned teardowns; the daily schedule bounds it otherwise.
+- The restore Job must detect an empty schema reliably. Counting tables in the application schema is the chosen test.
 
 ## 13. Definition of done
 
@@ -120,4 +111,6 @@ Data risk: yes. Test with disposable data only. Rollback: revert the change. The
 - 2026-09-06 — created as BLOCKED on CIVO-020.
 
 - 2026-09-06 — kubernetes-architect review: `csi.civo.com` advertises no `CREATE_DELETE_SNAPSHOT` or `CLONE_VOLUME` capability (https://github.com/civo/civo-csi/blob/master/pkg/driver/controller_server.go). Snapshot and PVC-datasource recovery dropped; redesigned around object-store backups; blocker removed; status READY with new dependency CIVO-180.
+
+- 2026-09-06 — user decision: persistence moves from object-store barman backups to shared logical dumps in S3. The Civo Object Store bills a 500 GB minimum; S3 bills bytes stored. This spec now depends on CIVO-180 for the mechanism.
 
