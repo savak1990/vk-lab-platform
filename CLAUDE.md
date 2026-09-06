@@ -254,9 +254,17 @@ worst-case budget inside `ARGO_UP_WATCH_SECONDS`.
 A hook is the exception, not the rule. Reserve it for the one class retry cannot
 fix: a consumer controller that wedges permanently after a single failed attempt
 and needs a pod restart. When one is needed, give it
-`hook-delete-policy: BeforeHookCreation,HookSucceeded` — a failed Job persists,
+`hook-delete-policy: BeforeHookCreation` — and only that. A failed Job persists,
 Job specs are immutable, and a retried sync would otherwise recreate it into
-`AlreadyExists`. Do not add a bespoke gate per dependency.
+`AlreadyExists`; `BeforeHookCreation` alone covers that, and is also Argo's
+default. Never add `HookSucceeded`: it deletes the hook when the *sync*
+completes, not when the hook does, so a teardown that deletes the Application
+mid-sync tears the hook down at that same moment — Argo stamps a
+`deletionTimestamp` on it but can leave its own `hook-finalizer` behind. The
+unreapable object then holds the sync operation open indefinitely, and Argo
+processes no deletion finalizer — the root Application's included — while an
+operation is in flight, so the whole cascade teardown deadlocks. Do not add a
+bespoke gate per dependency.
 
 `SkipDryRunOnMissingResource=true` does not help here — it skips the server
 dry-run, not the real apply, which still fails with `no matches for kind`.

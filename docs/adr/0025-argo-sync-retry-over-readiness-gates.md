@@ -87,6 +87,14 @@ where retry provably cannot help.
    immutable, and without this a retried sync recreates it into `AlreadyExists`,
    making retry spin without ever re-running the probe.
 
+   *Amended 2026-09-06: `HookSucceeded` is dropped; `BeforeHookCreation` alone
+   satisfies the `AlreadyExists` reasoning above and is Argo's default.
+   `HookSucceeded` deletes the hook when the sync completes rather than when the
+   hook does, so a teardown deleting the Application mid-sync races that cleanup.
+   A hook left holding `argocd.argoproj.io/hook-finalizer` is unreapable and pins
+   the sync operation open, which blocks every deletion finalizer including the
+   root Application's — see ADR 0012 for the teardown precondition this created.*
+
 4. **`argo-up.sh` fails fast on an exhausted retry budget.** It previously polled
    only `sync.status`/`health.status` and would have burned its full watch on a
    dead sync. It now also reads `operationState.phase`; a `Failed`/`Error` phase
