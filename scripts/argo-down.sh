@@ -44,6 +44,31 @@ if ! kubectl cluster-info --request-timeout=5s >/dev/null 2>&1; then
   exit 1
 fi
 
+# Disarming automated sync is the first thing done to a reachable cluster:
+# everything below takes minutes, and a commit landing on the tracked
+# branch inside that window starts a sync whose hooks then deadlock the
+# cascade. Clearing spec.operation only drops a queued operation - one the
+# controller already picked up is aborted by setting its status phase to
+# Terminating, the same thing Argo's own terminate-op does.
+DISARMED=0
+for app in $(kubectl get applications -n argocd -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
+  kubectl patch application "$app" -n argocd --type=merge -p '{"spec":{"syncPolicy":{"automated":null}}}' >/dev/null
+  kubectl patch application "$app" -n argocd --type=merge -p '{"operation":null}' >/dev/null 2>&1
+  if [ "$(kubectl get application "$app" -n argocd -o jsonpath='{.status.operationState.phase}' 2>/dev/null)" = "Running" ]; then
+    echo "ARGO-DOWN: aborting in-flight sync operation on application/$app..."
+    kubectl patch application "$app" -n argocd --type=merge \
+      -p '{"status":{"operationState":{"phase":"Terminating"}}}' >/dev/null 2>&1 || true
+  fi
+  DISARMED=$((DISARMED + 1))
+done
+
+# Every exit path below this point leaves GitOps disarmed, so say so - an
+# operator who stops here on a backup failure would otherwise have no way
+# to know the cluster's reconciliation is off.
+if [ "$DISARMED" -gt 0 ]; then
+  echo "ARGO-DOWN: automated sync disarmed on $DISARMED Application(s) - re-arm with 'make argo-up' if you stop here."
+fi
+
 # Forces a cold VolumeSnapshot backup of Postgres before the cluster (and
 # with it, the live EBS volume) gets torn down below - this is the only
 # thing that survives a cluster-down/cluster-up cycle now that the
@@ -146,17 +171,16 @@ report_remaining() {
   remaining="$(kubectl get applications -n argocd -o json 2>/dev/null \
     | jq -r '[.items[].metadata.name] | join(", ")')"
   echo "ARGO-DOWN: applications remaining: ${remaining:-none}"
+  # Argo never processes a deletion finalizer while a sync operation is in
+  # flight, so a root still Running here means deadlocked, not draining -
+  # the one fact that distinguishes the two, printed instead of dug for.
+  local op
+  op="$(kubectl get application root -n argocd \
+    -o jsonpath='{.status.operationState.phase} - {.status.operationState.message}' 2>/dev/null || true)"
+  if [ -n "${op% - *}" ]; then
+    echo "ARGO-DOWN: root sync operation: $op"
+  fi
 }
-
-# A child stuck retrying a doomed sync (selfHeal) never finishes an
-# operation, and Argo won't prune a child mid-operation - wedging the
-# cascade below. Disarming automated sync stops new ones; clearing any
-# in-flight operation (e.g. waiting on a DaemonSet health check that will
-# never pass once nodes start draining) aborts the one already stuck.
-for app in $(kubectl get applications -n argocd -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
-  kubectl patch application "$app" -n argocd --type=merge -p '{"spec":{"syncPolicy":{"automated":null}}}' >/dev/null
-  kubectl patch application "$app" -n argocd --type=merge -p '{"operation":null}' >/dev/null 2>&1
-done
 
 echo "ARGO-DOWN: deleting HTTPRoutes to trigger ExternalDNS record cleanup..."
 kubectl delete httproute -A --all >/dev/null 2>&1 || true
@@ -228,6 +252,21 @@ if [ -n "$nlb_svc_before" ]; then
 else
   echo "ARGO-DOWN: no NLB Service present in envoy namespace - nothing to wait on."
 fi
+
+# Argo stamps a deletionTimestamp on a hook Job it is done with, but can
+# leave its own hook-finalizer behind. The unreaped Job then holds the sync
+# operation Running forever, and no finalizer - including root's - is ever
+# processed while an operation is in flight: a closed deadlock the cascade
+# below cannot break out of, only time out on.
+kubectl get jobs -A -o json 2>/dev/null \
+  | jq -r '.items[]? | select((.metadata.finalizers // []) | index("argocd.argoproj.io/hook-finalizer"))
+      | "\(.metadata.namespace) \(.metadata.name)"' \
+  | while read -r hook_ns hook_name; do
+      [ -n "$hook_name" ] || continue
+      echo "ARGO-DOWN: releasing orphaned Argo hook finalizer on job/$hook_name (namespace $hook_ns)..."
+      kubectl patch job "$hook_name" -n "$hook_ns" --type=merge \
+        -p '{"metadata":{"finalizers":[]}}' >/dev/null 2>&1 || true
+    done
 
 if kubectl get application root -n argocd >/dev/null 2>&1; then
   echo "ARGO-DOWN: deleting root Application (cascade=foreground, waits for Karpenter/CNPG/etc. to fully drain)..."
