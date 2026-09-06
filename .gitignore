@@ -40,5 +40,10 @@ secrets/*/*
 .vscode/
 .idea/
 
-# Claude Code local state: permissions, worktrees, session data - all machine-specific
-.claude/
+# Claude Code local state: permissions, worktrees, session data - all machine-specific.
+# The directory contents are ignored rather than the directory itself: git cannot
+# re-include a file whose parent directory is excluded, and settings.json must be
+# tracked so the destructive-action policy reaches a cloud session's checkout and
+# every fresh clone, neither of which sees a machine-local settings file.
+.claude/*
+!.claude/settings.json

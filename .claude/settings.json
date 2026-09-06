@@ -1,0 +1,53 @@
+{
+  "permissions": {
+    "deny": [
+      "Bash(make account-down*)",
+      "Bash(make bootstrap-down*)",
+      "Bash(make state-down*)",
+      "Bash(make full-down*)",
+      "Bash(*account-down.sh*)",
+      "Bash(*account-state-down.sh*)",
+      "Bash(*bootstrap-down.sh*)",
+      "Bash(*state-down.sh*)",
+      "Bash(aws s3 rb*)",
+      "Bash(aws s3api delete-bucket*)",
+      "Bash(aws s3api delete-objects*)",
+      "Bash(aws s3api put-bucket-versioning*)",
+      "Bash(aws kms schedule-key-deletion*)",
+      "Bash(aws kms disable-key*)",
+      "Bash(aws kms delete-alias*)",
+      "Bash(aws secretsmanager delete-secret*)",
+      "Bash(aws route53 delete-hosted-zone*)",
+      "Bash(aws acm delete-certificate*)",
+      "Bash(aws ec2 delete-volume*)",
+      "Bash(aws ec2 delete-snapshot*)",
+      "Bash(aws ec2 run-instances*)",
+      "Bash(aws iam delete-*)",
+      "Bash(aws iam create-*)",
+      "Bash(aws iam attach-*)",
+      "Bash(aws iam put-*)",
+      "Bash(aws configure*)",
+      "Bash(git push --force*)",
+      "Bash(git push -f*)"
+    ],
+    "ask": [
+      "Bash(make persistent-down*)",
+      "Bash(make platform-down*)",
+      "Bash(*persistent-down.sh*)",
+      "Bash(make full-up*)",
+      "Bash(make platform-up*)",
+      "Bash(make account-up*)",
+      "Bash(make bootstrap-up*)",
+      "Bash(make persistent-up*)",
+      "Bash(*account-up.sh*)",
+      "Bash(*account-state-up.sh*)",
+      "Bash(*bootstrap-up.sh*)",
+      "Bash(*state-up.sh*)",
+      "Bash(gh workflow run*)",
+      "Bash(gh api -X POST*)",
+      "Bash(gh api --method POST*)",
+      "Bash(terraform destroy*)",
+      "Bash(terragrunt destroy*)"
+    ]
+  }
+}

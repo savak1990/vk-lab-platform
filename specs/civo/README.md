@@ -1,0 +1,98 @@
+# Civo provider planning package
+
+Planning and specification location for adding Civo managed Kubernetes as a
+second execution target next to AWS/EKS. Implementation code does not live
+here; it lands in the normal repository locations named by each spec.
+
+Living high-level design: `docs/civo-high-level-design.md`.
+Baseline inspected: branch `main`, commit `cfbb59bd340b6356bad3fb2493b41fa3a337efe5`, 2026-09-06.
+
+## Reading order
+
+1. `docs/civo-high-level-design.md` — constraints, stage model, decisions.
+2. `architecture.md` — current AWS flow, coupling inventory, target design, change map.
+3. `research.md` — verified capabilities, prices, uncertainties.
+4. `decisions.md` — accepted constraints, proposed ADRs, open decisions.
+5. `roadmap.md` — milestones, dependency graph, first PRs, coverage.
+6. The spec you were asked to implement, plus its `depends_on` specs.
+
+## Format note
+
+Specs in this folder use YAML front matter and a fixed 14-section body, as
+required by the planning brief. Other specs in `specs/` use Markdown
+bold-label headers. The folder name (`NNN-title`) and the `id` field are the
+stable identifiers; never renumber. Numbers step by ten; insert later work
+into gaps (`085-...`) without renumbering.
+
+## Status protocol
+
+| Status | Meaning |
+|---|---|
+| `DRAFT` | Specification incomplete, unapproved, or design unresolved |
+| `READY` | Fully specified, required decisions approved, hard dependencies `DONE`, no active blocker |
+| `IN_PROGRESS` | An authorized implementer started the bounded work |
+| `BLOCKED` | Needs a named decision, capability, prerequisite, or unfinished hard dependency; `blocked_by` names it |
+| `IN_REVIEW` | Implementation and checks complete, awaiting review/integration |
+| `DONE` | Acceptance criteria and gates passed, evidence recorded, reviewed and integrated |
+| `CANCELLED` | Abandoned or superseded; rationale and replacement kept |
+
+Flow: `DRAFT → READY → IN_PROGRESS → IN_REVIEW → DONE`. `BLOCKED` may
+interrupt anywhere and returns to `READY` or `IN_PROGRESS`. Review failures
+return to `IN_PROGRESS`. Reopening `DONE` needs a recorded reason.
+
+Priority: `P0` critical prerequisite or security/data-safety blocker for the
+milestone; `P1` required for the first viable Civo platform; `P2` follow-up;
+`P3` optional.
+
+Difficulty: `S` bounded local change; `M` several known components; `L`
+substantial cross-component or security/lifecycle reasoning; `XL` must be
+split (none remain).
+
+Model tier: `fast`, `standard`, `strongest`. Recommendation only; gates do
+not relax. No exact model names are mapped because none were verified in
+this environment.
+
+## Implementation-session protocol
+
+1. Read this README, the HLD, `architecture.md` §Target, and the spec plus its `depends_on`.
+2. Check every `depends_on` is `DONE`; otherwise set `BLOCKED` with `blocked_by` and stop.
+3. Set `status: "IN_PROGRESS"`, `updated`, and add a status-history line.
+4. Implement only the spec's scope. Do not touch AWS behavior unless the spec says so; run the AWS regression gate the spec names.
+5. Run the validation section. Record commands and results (no secrets) under "Execution evidence".
+6. Set `IN_REVIEW`, open one PR mapped to the spec ID.
+7. On merge and gate pass, set `DONE`, `completed`, and re-check direct dependents' `blocked_by`.
+8. Update the index table below if status, priority, or dependencies changed.
+
+## Index
+
+| ID | Folder | Title | Status | Pri | Diff | Tier | Depends on | Milestone |
+|---|---|---|---|---|---|---|---|---|
+| CIVO-010 | [010-provider-command-surface](010-provider-command-surface/spec.md) | `PROVIDER` operator input and Make dispatch | READY | P1 | S | standard | — | M0 |
+| CIVO-015 | [015-governance-adrs-constitution](015-governance-adrs-constitution/spec.md) | ADRs 0025–0028, constitution §20, architecture §10a | READY | P0 | M | strongest | — | M0 |
+| CIVO-020 | [020-civo-feasibility-spike](020-civo-feasibility-spike/spec.md) | Throwaway-cluster feasibility spike and report | READY | P0 | M | standard | — | M0 |
+| CIVO-025 | [025-civo-persistent-stack](025-civo-persistent-stack/spec.md) | `persistent-civo` network and reserved IP | DRAFT | P1 | S | standard | 010, 015 | M1 |
+| CIVO-030 | [030-civo-terraform-cluster](030-civo-terraform-cluster/spec.md) | `cluster-civo` firewall and k3s cluster | DRAFT | P1 | M | standard | 010, 015, 020, 025 | M1 |
+| CIVO-040 | [040-civo-cluster-scripts](040-civo-cluster-scripts/spec.md) | Cluster scripts, kubeconfig, guards, leak sweep | DRAFT | P1 | M | standard | 030 | M1 |
+| CIVO-045 | [045-argo-scripts-civo-branches](045-argo-scripts-civo-branches/spec.md) | `argo-up`/`argo-down` Civo branches | DRAFT | P1 | M | standard | 040, 050 | M1 |
+| CIVO-050 | [050-gitops-civo-target-baseline](050-gitops-civo-target-baseline/spec.md) | Hoist portable components; `target: civo` tree; golden AWS render | DRAFT | P1 | M | standard | 010 | M1 |
+| CIVO-060 | [060-civo-ingress-envoy-lb](060-civo-ingress-envoy-lb/spec.md) | Civo LB via Envoy Service, Gateway 80/443 | DRAFT | P1 | M | standard | 045 | M1 |
+| CIVO-065 | [065-cert-manager-install](065-cert-manager-install/spec.md) | cert-manager install behind a toggle | DRAFT | P1 | S | standard | 050 | M1 |
+| CIVO-070 | [070-letsencrypt-http01-tls](070-letsencrypt-http01-tls/spec.md) | Let's Encrypt HTTP-01 TLS at Envoy, Secret persistence | DRAFT | P1 | M | standard | 060, 065, 110 | M1 |
+| CIVO-080 | [080-rolesanywhere-ca-ceremony](080-rolesanywhere-ca-ceremony/spec.md) | Offline CA ceremony and committed material | DRAFT | P0 | M | strongest | 015 | M1 |
+| CIVO-082 | [082-rolesanywhere-terraform](082-rolesanywhere-terraform/spec.md) | Trust anchor, profile, roles, lab-role additions | DRAFT | P0 | M | strongest | 080 | M1 |
+| CIVO-085 | [085-workload-certificate-issuance](085-workload-certificate-issuance/spec.md) | CA issuer Secret at argo-up, per-consumer Certificates | DRAFT | P0 | M | strongest | 045, 050, 065, 080 | M1 |
+| CIVO-090 | [090-credential-helper-sidecar](090-credential-helper-sidecar/spec.md) | Credential helper image and sidecar pattern | DRAFT | P0 | M | standard | 082, 085 | M1 |
+| CIVO-100 | [100-eso-on-civo](100-eso-on-civo/spec.md) | External Secrets on Civo via sidecar | DRAFT | P1 | S | standard | 090 | M1 |
+| CIVO-110 | [110-external-dns-on-civo](110-external-dns-on-civo/spec.md) | ExternalDNS on Civo via sidecar | DRAFT | P1 | S | standard | 090, 060 | M1 |
+| CIVO-120 | [120-cnpg-on-civo-persistence](120-cnpg-on-civo-persistence/spec.md) | CNPG on Civo with persistence across down/up | BLOCKED | P1 | L | strongest | 020, 050, 100 | M1 |
+| CIVO-130 | [130-e2e-tests-civo](130-e2e-tests-civo/spec.md) | E2E suite on Civo | DRAFT | P1 | M | standard | 045, 060 | M1 |
+| CIVO-140 | [140-ci-workflow-civo](140-ci-workflow-civo/spec.md) | `lab.yml` provider input, token decrypt, concurrency, cleanup | DRAFT | P1 | M | standard | 045, 015 | M1 |
+| CIVO-150 | [150-teardown-recreate-validation](150-teardown-recreate-validation/spec.md) | Full lifecycle validation on Civo | DRAFT | P1 | M | strongest | 120, 110, 070, 130 | M1 |
+| CIVO-160 | [160-observability-on-civo](160-observability-on-civo/spec.md) | Observability stack on Civo | DRAFT | P1 | M | standard | 050, 100 | M1 |
+| CIVO-170 | [170-civo-cluster-autoscaler](170-civo-cluster-autoscaler/spec.md) | Cluster autoscaler 1–3 on the Large pool | DRAFT | P1 | S | standard | 030 | M1 |
+| CIVO-175 | [175-right-size-requests-and-sku](175-right-size-requests-and-sku/spec.md) | Right-size requests/limits, re-evaluate SKU | DRAFT | P2 | M | standard | 160, 170 | M2 |
+| CIVO-180 | [180-cnpg-backups-object-store](180-cnpg-backups-object-store/spec.md) | CNPG backups to object storage | DRAFT | P2 | M | standard | 120 | M2 |
+| CIVO-190 | [190-proxy-protocol-client-ip](190-proxy-protocol-client-ip/spec.md) | Proxy protocol and client IP | DRAFT | P3 | S | fast | 060 | M2 |
+| CIVO-200 | [200-identity-hardening](200-identity-hardening/spec.md) | Intermediate CA and Certificate approval policy | DRAFT | P2 | M | strongest | 085 | M2 |
+
+Headers in each `spec.md` are the source of truth; keep this table in sync.
