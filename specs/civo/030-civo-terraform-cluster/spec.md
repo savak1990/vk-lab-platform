@@ -43,8 +43,8 @@ in-cluster resource.
 
 ## 4. Design and contracts
 
-- `cluster-civo/network`: `civo_firewall` `${project}-k8s` in the persistent network, `create_default_rules = false`; ingress tcp 6443 from `0.0.0.0/0` (GitHub runners have no fixed IP; accepted, documented), tcp 80 and 443 from `0.0.0.0/0` for the LB firewall reuse, egress all. Output `firewall_id` to SSM `/${project}/cluster-civo/network/firewall_id`.
-- `cluster-civo/k8s`: `civo_kubernetes_cluster` name `${project}`, `cluster_type = "k3s"`, `cni = "flannel"`, `kubernetes_version` pinned to a version verified in the spike, `network_id` from persistent, `firewall_id` from network unit, `pools = [{ label = "workers", size = "g4s.kube.large", node_count = 1 }]`, `applications = "-<traefik-name>,-<metrics-server-name>"`, `write_kubeconfig = false`, `tags = "Project=${project} Lifecycle=disposable ManagedBy=terraform"`. `lifecycle { ignore_changes = [pools[0].node_count] }` is added by CIVO-170; here `node_count` is authoritative. Outputs `cluster_id`, `api_endpoint` to SSM.
+- `cluster-civo/network`: two firewalls in the persistent network, both `create_default_rules = false`: `${project}-k8s` (ingress tcp 6443 from `0.0.0.0/0`, since GitHub runners have no fixed IP; egress all) attached to the cluster, and `${project}-lb` (ingress tcp 80 and 443 from `0.0.0.0/0`) used only by the LB via `kubernetes.civo.com/firewall-id`. Outputs to SSM `/${project}/cluster-civo/network/cluster_firewall_id` and `/lb_firewall_id`.
+- `cluster-civo/k8s`: `civo_kubernetes_cluster` name `${project}`, `cluster_type = "k3s"`, `cni = "flannel"`, `kubernetes_version` pinned to a version verified in the spike, `network_id` from persistent, `firewall_id` from network unit, `pools = [{ label = "workers", size = "g4s.kube.large", node_count = 1 }]`, `applications = "-Traefik-v2-nodeport,-metrics-server"` (names are case-sensitive and must match `civo kubernetes applications ls`; the spike records the exact strings), `write_kubeconfig = false`, `tags = "Project=${project} Lifecycle=disposable ManagedBy=terraform"`. `lifecycle { ignore_changes = [pools[0].node_count] }` is added by CIVO-170; here `node_count` is authoritative. Outputs `cluster_id`, `api_endpoint` to SSM.
 - Region constant `LON1` in `root.hcl` (`civo_region`) and `scripts/lib/region.sh` (`CIVO_REGION`); never derived.
 - Kubeconfig is fetched by scripts (CIVO-040), never stored in state.
 
@@ -70,8 +70,8 @@ CIVO-025 network id; CIVO-020 app names and version. Parallel: CIVO-040 can be d
 ## 8. Acceptance criteria
 
 - Cluster ready in under 10 minutes; `kubectl get pods -A` shows no Traefik and no metrics-server.
-- Firewall attached; port 6443 reachable; ports other than 80/443/6443 closed from the Internet (nmap or `nc` check).
-- `terraform state pull | grep -c kubeconfig` = 0 for the k8s unit.
+- Cluster firewall exposes only 6443 on nodes; LB firewall exposes only 80/443 on the LB IP (nmap or `nc` check on both).
+- `terraform state pull | jq '.resources[].instances[].attributes.kubeconfig'` is empty/null for the k8s unit (the key may exist; the value must be empty).
 - SSM params present under `/vk-civo-lab/cluster-civo/...`.
 - Destroy leaves the network and reserved IP intact; `civo volume ls` unchanged.
 

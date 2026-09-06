@@ -23,7 +23,7 @@ completed: null
 ## 1. Outcome and rationale
 
 The root CA key never enters the cluster: `argo-up` issues a short-lived
-intermediate per cluster and the trust anchor stays the root. A
+intermediate per cluster (`pathlen:0`, allowed by the root's `pathlen:1` from CIVO-080) and the trust anchor stays the root. A
 cert-manager approval policy restricts which namespaces may request which
 CNs. Together they bound the blast radius of a `CIVO_TOKEN` compromise
 (ADR 0027) in time and in scope.
@@ -44,6 +44,7 @@ to the anchor and accepts intermediates via the helper's `--intermediates`.
 
 - `argo-up`: generate intermediate key in-cluster? No: generate the pair in memory on the operator/CI side, sign with the root, create the Secret with intermediate key+cert; root key is discarded from memory after signing.
 - Helper sidecar args add `--intermediates /ra/ca.crt` (cert-manager writes `ca.crt` for CA issuers).
+- CIVO-082's trust-policy condition `x509Issuer/CN` must change from the root CN to the intermediate CN (`<project>-civo-workload-ica`); Terraform variable, applied before the switch.
 - approver-policy: `CertificateRequestPolicy` allowing CN `<project>-civo-eso` only from namespace `external-secrets`, etc.; default deny.
 - Rotation: intermediate renewed on every `argo-up` if under 7 days left; runbook.
 

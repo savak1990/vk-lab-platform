@@ -43,6 +43,8 @@ multiple pools, spot-like capacity (Civo has none), Karpenter parity.
 - Install: prefer Argo-managed upstream `cluster-autoscaler` Helm chart with the `civo` cloud provider if the chart supports it for the pinned version; otherwise the marketplace app added to `applications` in CIVO-030's cluster resource with a documented `kubectl patch` of the Deployment args to `--nodes=1:3:workers` performed by `argo-up` (idempotent). Record which path was taken; Argo-managed is preferred for GitOps ownership.
 - Terraform: `lifecycle { ignore_changes = [pools[0].node_count] }` on `civo_kubernetes_cluster`.
 - Values: `capacity.autoscaler: {min: 1, max: 3, pool: workers}`.
+- Credential: both the marketplace app and the upstream `civo` cloudprovider need a Civo API key as a Secret in `kube-system`. Use a **dedicated second API key** (Civo accounts may hold several), stored as `secrets/civo-autoscaler-token.enc` and delivered by `argo-up` (never the main token), so a Secret read in `kube-system` does not yield full account control. ADR 0028 must state this.
+- Civo docs recommend a minimum of 2 workers with the autoscaler; the spike/this spec verifies `min=1` is honored.
 - Observability: ServiceMonitor for the autoscaler metrics (gated to civo).
 
 ## 5. Files/components affected

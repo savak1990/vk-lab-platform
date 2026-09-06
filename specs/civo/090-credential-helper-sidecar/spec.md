@@ -29,13 +29,15 @@ SDK default chain. A test pod proves allow and deny paths end to end.
 
 ## 2. Scope and non-goals
 
-In scope: Dockerfile, GitHub workflow to build/push on tag, Helm named
-template for the sidecar, test pod manifest under `tests/manifests/civo-090/`.
+In scope: pinning the official image by digest, Helm named template for
+the sidecar, test pod manifest under `tests/manifests/civo-090/`. A
+repo-built image is a fallback only if the official image lacks a needed
+platform or version.
 Not in scope: wiring into ESO/ExternalDNS (CIVO-100/110).
 
 ## 3. Current state / evidence
 
-- No official helper container image; binaries with SHA-256 for Linux x86-64 and aarch64, version 1.8.5 (research.md).
+- Official container image exists: `public.ecr.aws/rolesanywhere/credential-helper` (amd64/arm64, immutable `<version>-<platform>-<timestamp>` tags; https://github.com/aws/rolesanywhere-credential-helper/blob/main/docker_image_resources/README.md). No repo-built image is needed.
 - `serve` mode: `127.0.0.1:9911`, IMDSv2-compatible, refresh 5 min before expiry, reloads cert/key files, graceful SIGTERM.
 - SDKs: `AWS_EC2_METADATA_SERVICE_ENDPOINT=http://127.0.0.1:9911`.
 - Roles Anywhere outputs in SSM (CIVO-082); certs in Secrets (CIVO-085).
@@ -43,8 +45,7 @@ Not in scope: wiring into ESO/ExternalDNS (CIVO-100/110).
 
 ## 4. Design and contracts
 
-- `images/aws-signing-helper/Dockerfile`: `FROM scratch` or distroless static; download the pinned binary for the build arch, verify SHA-256, `USER 65532`, entrypoint `aws_signing_helper`.
-- `.github/workflows/images.yml`: on push of tag `aws-signing-helper-v1.8.5-*` build multi-arch and push `ghcr.io/<owner>/aws-signing-helper:1.8.5`; `permissions: packages: write`; no AWS or Civo credentials.
+- Image: `public.ecr.aws/rolesanywhere/credential-helper@sha256:<digest>` for 1.8.5, recorded in `gitops/values.yaml`.
 - Helm named template `platform.rolesAnywhereSidecar` (in `gitops/templates/_helpers.tpl`): container `aws-signing-helper` with args `serve --certificate /ra/tls.crt --private-key /ra/tls.key --trust-anchor-arn ... --profile-arn ... --role-arn ... --session-duration 3600 --hop-limit 1 --port 9911 --region eu-west-1`, volume mount `/ra` from the consumer Secret (no `subPath`), `readOnlyRootFilesystem`, `runAsNonRoot`, requests 10m/16Mi; env for the main container: `AWS_EC2_METADATA_SERVICE_ENDPOINT=http://127.0.0.1:9911`, `AWS_REGION=eu-west-1`.
 - ARNs come from values populated by `argo-up` from SSM.
 - Endpoint isolation: localhost inside the pod network namespace only; `hop-limit 1`.
@@ -52,11 +53,11 @@ Not in scope: wiring into ESO/ExternalDNS (CIVO-100/110).
 
 ## 5. Files/components affected
 
-`images/aws-signing-helper/Dockerfile`, `.github/workflows/images.yml`, `gitops/templates/_helpers.tpl`, `tests/manifests/civo-090/*.yaml`, `gitops/values.yaml` (`awsIdentity.rolesAnywhere.*`).
+`gitops/templates/_helpers.tpl`, `tests/manifests/civo-090/*.yaml`, `gitops/values.yaml` (`awsIdentity.rolesAnywhere.*`).
 
 ## 6. Implementation steps
 
-1. Build the image locally; run `--version`; push via the workflow.
+1. Pull the official image, verify `--version` = 1.8.5, record the digest.
 2. Add the helper template; render in a test pod; apply on civo.
 3. Positive: `get-caller-identity` returns the `eso` role ARN with source identity `CN=<project>-civo-eso`.
 4. Negative: wrong-CA cert → `AccessDeniedException`; expired cert → denied; wrong role ARN for the CN → denied.
@@ -69,7 +70,7 @@ Not in scope: wiring into ESO/ExternalDNS (CIVO-100/110).
 
 ## 8. Acceptance criteria
 
-- Image published, pinned by digest in values.
+- Official image pinned by digest in values.
 - Positive and three negative tests recorded.
 - Credential refresh observed across one expiry boundary (session 900 s in the test to shorten the wait).
 - Reload without restart observed.
@@ -77,7 +78,7 @@ Not in scope: wiring into ESO/ExternalDNS (CIVO-100/110).
 
 ## 9. Validation
 
-Offline: `docker build`, `hadolint`, `actionlint`. Real cloud: civo test pods (~cents); AWS STS free.
+Offline: image digest check. Real cloud: civo test pods (~cents); AWS STS free.
 
 ## 10. AWS regression protection
 

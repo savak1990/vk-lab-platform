@@ -22,7 +22,7 @@ Civo is a Kubernetes target, not a migration off AWS services.
 | Operator surface | `PROVIDER=aws\|civo` on the existing `make` targets; default `aws`; no new lifecycle commands | 2026-09-06 |
 | Civo project identity | `PROVIDER=civo` defaults `PROJECT_NAME=vk-civo-lab` and `SUBDOMAIN=civo`: own state bucket `vk-civo-lab-tf-state`, own zone `civo.<root-domain>`, own SSM prefix. Only the account layer is shared with the AWS project | 2026-09-06 |
 | Stage model | Identical on both providers: `account-up` → `bootstrap-up` → `persistent-up` → `cluster-up` → `argo-up` (and the reverse) | 2026-09-06 |
-| Cost target on Civo | 60–80 USD/month idle, all-in (nodes, LB, CNPG volume). Soft ceiling; bursts allowed | 2026-09-06 |
+| Cost target on Civo | 60–80 USD/month idle, all-in (nodes, LB, CNPG volume). Soft ceiling; bursts allowed. Review note 2026-09-06: with the full observability profile the expected M1 idle is closer to 100 USD (2 Large nodes) until CIVO-175 right-sizes | 2026-09-06 |
 | Node plan | One `g4s.kube.large` pool (4 vCPU / 8 GB), Civo cluster autoscaler 1–3 nodes in M1 | 2026-09-06 |
 | AWS workload identity from Civo | IAM Roles Anywhere; no long-lived AWS keys in workloads | 2026-09-06 |
 | CA topology (M1) | Single offline CA: certificate committed, key KMS-encrypted in `secrets/` | 2026-09-06 |
@@ -173,7 +173,8 @@ subtrees; shared components read only the contract values.
 | Exact default application names to remove (`traefik2-nodeport`, `metrics-server`)? | CIVO-030 | CIVO-020 spike |
 | Does Civo expose a ServiceAccount OIDC issuer (would allow web identity instead of Roles Anywhere)? | none (Roles Anywhere stays) | CIVO-020 spike, recheck |
 | Reserved IP price | cost model precision | CIVO-025 |
-| Helm chart support for `extraContainers` in ESO 2.9.0 and external-dns 1.21.1 | CIVO-090 | CIVO-090 validation |
+| Helm chart support for `extraContainers` in ESO 2.9.0 and external-dns 1.21.1 | none | verified 2026-09-06: both charts expose `extraContainers`/`extraVolumes`; re-check at pinned versions |
+| Civo autoscaler needs an API key in-cluster | CIVO-170 | dedicated second API key, ADR 0028 |
 
 ## 8. Where things live
 

@@ -42,7 +42,7 @@ Terraform (CIVO-082), in-cluster issuer (CIVO-085).
 
 ## 4. Design and contracts
 
-- `scripts/civo-ca-init.sh` *(new)*: refuses if `civo-ca-cert.pem` exists unless `ROTATE=1`; generates an EC P-256 key with `openssl` in a `mktemp -d` directory (`umask 077`), self-signed cert `CN=<project>-civo-workload-ca`, `O=<project>`, validity 5 years, `basicConstraints=critical,CA:true,pathlen:0`, `keyUsage=critical,keyCertSign,cRLSign`; writes the cert to `secrets/<project>/civo-ca-cert.pem`; pipes the key PEM through `scripts/secret-encrypt.sh` as `SECRET_NAME=civo-ca-key`; shreds the temp dir; prints the fingerprint only.
+- `scripts/civo-ca-init.sh` *(new)*: refuses if `civo-ca-cert.pem` exists unless `ROTATE=1`; generates an EC P-256 key with `openssl` in a `mktemp -d` directory (`umask 077`), self-signed cert `CN=<project>-civo-workload-ca`, `O=<project>`, validity 5 years, `basicConstraints=critical,CA:true,pathlen:1` (pathlen 1, not 0, so CIVO-200 can chain one intermediate under this root without a CA rotation; RFC 5280 §4.2.1.9), `keyUsage=critical,keyCertSign,cRLSign`; writes the cert to `secrets/<project>/civo-ca-cert.pem`; pipes the key PEM through `scripts/secret-encrypt.sh` as `SECRET_NAME=civo-ca-key`; removes the temp dir (`rm -P` on macOS, `shred` where available); prints the fingerprint only.
 - `secrets/README.md`: the `.pem` is public material (a certificate), the only non-`.enc` file allowed; explains why.
 - Rotation runbook (in the spec and README): generate a new pair with `ROTATE=1` into `civo-ca-cert-next.pem`; CIVO-082 adds a second trust anchor; CIVO-085 switches the issuer; remove the old anchor after all certs (24 h) expired; delete old files.
 - Revocation runbook: disable the trust anchor (`aws rolesanywhere disable-trust-anchor`) stops new sessions immediately; existing sessions expire within their duration (1 h default in CIVO-090).
@@ -63,7 +63,7 @@ CIVO-015 (ADR 0027 accepted). No cloud beyond KMS encrypt.
 
 ## 8. Acceptance criteria
 
-- Certificate has `CA:true`, `pathlen:0`, `keyCertSign`, SHA-256, EC P-256, 5-year validity, CN as specified.
+- Certificate has `CA:true`, `pathlen:1`, `keyCertSign`, SHA-256, EC P-256, 5-year validity, CN as specified.
 - `git grep -l "BEGIN EC PRIVATE KEY"` returns nothing; `.gitignore` blocks `*.key`.
 - Script refuses to overwrite without `ROTATE=1`.
 - Runbooks present.

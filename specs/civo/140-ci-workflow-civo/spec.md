@@ -46,8 +46,9 @@ scope: PR validation workflows (spec 019), Kind CI (spec 024).
 - `env: PROVIDER: ${{ inputs.provider }}`; `run-name` includes provider.
 - Steps: install `civo` CLI pinned with checksum (like Terragrunt); the `make` step relies on scripts calling `civo_token`; no explicit token step is needed, but a pre-step calls `civo_token >/dev/null` once so the mask registers before any output.
 - `concurrency: group: lab-${{ inputs.project_name }}-${{ inputs.provider }}`, `cancel-in-progress: false`.
-- Cleanup: `if: failure() && contains(fromJSON('["up","platform-up","full-up"]'), inputs.target)` → `make down` with the same env (best effort, logged).
-- `test` job: `needs: lifecycle`, same provider env; `make test`.
+- Cleanup: `if: failure() && contains(fromJSON('["up","platform-up","full-up"]'), inputs.target)` → `make down` with `CI_TEARDOWN_ALLOW_DATA_LOSS=1` so CIVO-045/120's fail-closed CNPG rule does not leave a billing cluster behind; on a second failure fall back to `make cluster-down` alone. Logged.
+- `test` job: `needs: lifecycle`, same provider env; calls `civo_token` again first because `::add-mask::` is per job; `make test`.
+- Masking must be emitted to the step's stdout directly, never inside a `$(...)` capture.
 - Secrets: none added; `permissions` unchanged.
 
 ## 5. Files/components affected

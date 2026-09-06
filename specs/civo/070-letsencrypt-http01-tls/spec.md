@@ -43,9 +43,9 @@ DNS-01.
 ## 4. Design and contracts
 
 - `gitops/templates/platform/civo/tls/issuers.yaml`: `ClusterIssuer letsencrypt-staging` and `letsencrypt-prod`, ACME HTTP-01 solver `gatewayHTTPRoute` with `parentRefs` to `platform-gateway` (namespace `envoy`), account email from values (non-secret).
-- `Certificate platform-public` in namespace `envoy`: `dnsNames: [argo.<fqdn>, grafana.<fqdn>]`, `secretName: platform-public-tls`, issuer from `.Values.tls.issuer` (staging in CI, prod on the workstation), `privateKey.rotationPolicy: Always`.
+- `Certificate platform-public` in namespace `envoy`: `dnsNames: [argo.<fqdn>, grafana.<fqdn>]`, `secretName: platform-public-tls`, issuer from `.Values.tls.issuer` (staging in CI, prod on the workstation), `privateKey: {algorithm: ECDSA, size: 256, rotationPolicy: Always}` (ECDSA keeps chain + key under the 4 KB SSM Standard limit; RSA-2048 would not).
 - Gateway HTTPS listener `certificateRefs: [platform-public-tls]`; HTTP listener keeps the ACME solver route and an `HTTPRoute` redirect filter for everything else.
-- Persistence: `argo-down` civo branch exports `platform-public-tls` (`tls.crt`, `tls.key`) to SSM SecureString `/${project}/persistent/civo/tls/platform-public` (KMS `alias/lab-secrets`) before the cascade; `argo-up` civo branch re-creates the Secret from SSM before installing the root Application when present and not expired within 15 days. cert-manager adopts an existing Secret whose key matches and renews on schedule instead of ordering. The Secret is untracked by Argo (`argocd.argoproj.io/sync-options: Prune=false` is not needed since Argo never owns it).
+- Persistence: `argo-down` civo branch exports `platform-public-tls` as **two** SSM SecureStrings `/${project}/persistent/civo/tls/platform-public/crt` and `/key` (Standard tier, 4 KB each; KMS `alias/lab-secrets`) plus a String `/annotations` carrying the Secret's `cert-manager.io/*` annotations (`issuer-name`, `issuer-kind`, `issuer-group`, `certificate-name`, `common-name`, `alt-names`) before the cascade. `argo-up` re-creates the Secret with those annotations before the root Application when present and not expiring within 15 days. cert-manager reissues when issuer annotations mismatch `issuerRef` or the key algorithm mismatches spec (`IncorrectIssuer`, `SecretPrivateKeyMismatchesSpec` policy checks), so annotations and ECDSA spec must round-trip exactly. The Secret is untracked by Argo.
 - `lab-role` and the operator already have KMS and SSM permissions under `*/persistent/*`.
 
 ## 5. Files/components affected
@@ -67,7 +67,8 @@ DNS-01.
 
 - `curl https://argo.civo.<root-domain>` succeeds with a trusted chain (prod) or a staging chain (CI).
 - HTTP on 80 redirects to HTTPS except `/.well-known/acme-challenge/*`.
-- Down/up cycle: no new ACME order; Secret restored; serial unchanged.
+- Down/up cycle: no new ACME order (`kubectl get order -A` empty, `CertificateRequest` count unchanged); Secret restored with annotations; serial unchanged.
+- Each SSM value under 4 KB (Standard tier); no Advanced-tier parameter created.
 - SSM parameter is `SecureString`; no key material in Argo, Git, or logs.
 - AWS: golden diff empty; no cert-manager or issuers on AWS.
 

@@ -39,7 +39,7 @@ rejects cert-manager for AWS; CIVO-015's ADR 0026 allows it on Civo.
 
 ## 4. Design and contracts
 
-- `gitops/templates/platform/shared/cert-manager/application.yaml` gated by `{{- if .Values.certManager.enabled }}`; chart `cert-manager` from `https://charts.jetstack.io`, version pinned at implementation (latest 1.x); `crds.enabled: true`; `config.enableGatewayAPI: true` (or the flag name for the pinned version); `ServerSideApply=true`; wave -2 (before ESO/consumers, after Envoy chart CRDs at -1? — cert-manager must be Established before Certificates at wave 0; place at -3 and note that Gateway API CRDs come from Envoy Gateway at -1, so the HTTP-01 Gateway solver only needs the CRD at runtime, not at install).
+- `gitops/templates/platform/shared/cert-manager/application.yaml` gated by `{{- if .Values.certManager.enabled }}`; chart `cert-manager` from `https://charts.jetstack.io`, version pinned at implementation (latest 1.x); `crds.enabled: true`; `config.gatewayAPI.enabled: true` (current docs; https://cert-manager.io/docs/configuration/acme/http01/) or the key for the pinned version; `ServerSideApply=true`; wave -2 (before ESO/consumers, after Envoy chart CRDs at -1? — cert-manager must be Established before Certificates at wave 0; place at -3 and note that Gateway API CRDs come from Envoy Gateway at -1, so the HTTP-01 Gateway solver only needs the CRD at runtime, not at install).
 - Resources: requests 50m/64Mi per component.
 - `certManager.enabled` default false; civo values true.
 

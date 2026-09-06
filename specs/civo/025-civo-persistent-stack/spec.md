@@ -48,7 +48,7 @@ Roles Anywhere unit (CIVO-082).
 
 - `root.hcl`: `lifecycle_class` lookup gains `"persistent-civo" = "persistent"`, `"cluster-civo" = "disposable"`; a `civo_region` local `"LON1"`; provider generation emits `provider "civo" { region = "LON1" }` in addition to `aws` when `path_parts[0]` starts with the civo stacks. Token from `CIVO_TOKEN` only.
 - Units: `persistent-civo/network` (`civo_network` named `${project}`), `persistent-civo/reserved-ip` (`civo_reserved_ip` named `${project}-ingress`; writes SSM `/${project}/persistent-civo/reserved-ip/address` and `/${project}/persistent-civo/network/id` as plain String).
-- Make: for civo, `persistent-up` = `run --all --queue-exclude-dir vpc` in `persistent` then `run --all` in `persistent-civo`; `persistent-down` reverse; `bootstrap-up` = `--queue-exclude-dir acm`. Terragrunt 1.1.3 flag name to be confirmed at implementation (`--queue-exclude-dir` or `--exclude-dir`).
+- Make: for civo, `persistent-up` = `run --all --queue-exclude-dir vpc` in `persistent` then `run --all` in `persistent-civo`; `persistent-down` reverse; `bootstrap-up` = `--queue-exclude-dir acm`. `--queue-exclude-dir` exists in Terragrunt 1.x (alias of `--filter`; takes a glob relative to the working dir); test whether `acm` or `./acm` matches under 1.1.3.
 - Guards: `persistent-down.sh` refuses while `cluster-civo/` state has resources; verifies `persistent/secrets` and both civo units empty after destroy; `bootstrap-down.sh` refuses on `persistent-civo/`.
 - Tags: `tags = "Project=${project} Lifecycle=persistent ManagedBy=terraform"` where the resource supports tags.
 
