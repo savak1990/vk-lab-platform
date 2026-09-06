@@ -1,7 +1,7 @@
 ---
 id: "CIVO-175"
 title: "Right-size requests and limits from measured usage; re-evaluate memory-optimized SKUs"
-status: "DRAFT"
+status: "READY"
 priority: "P2"
 milestone: "M2"
 type: "implementation"
@@ -87,3 +87,4 @@ Revert values.
 ## 14. Execution evidence and status history
 
 - 2026-09-06 — created as DRAFT.
+- 2026-09-06 — approved for development by the user; promoted to READY (dependencies still gate the start).

@@ -1,7 +1,7 @@
 ---
 id: "CIVO-180"
 title: "CNPG backups to object storage with a restore drill"
-status: "DRAFT"
+status: "READY"
 priority: "P2"
 milestone: "M2"
 type: "implementation"
@@ -86,3 +86,4 @@ Remove the backup config; data unaffected.
 ## 14. Execution evidence and status history
 
 - 2026-09-06 — created as DRAFT.
+- 2026-09-06 — approved for development by the user; promoted to READY (dependencies still gate the start).

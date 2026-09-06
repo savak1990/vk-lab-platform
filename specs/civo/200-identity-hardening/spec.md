@@ -1,7 +1,7 @@
 ---
 id: "CIVO-200"
 title: "Identity hardening: per-cluster intermediate CA and Certificate approval policy"
-status: "DRAFT"
+status: "READY"
 priority: "P2"
 milestone: "M2"
 type: "implementation"
@@ -89,3 +89,4 @@ Revert to the single-CA issuer.
 ## 14. Execution evidence and status history
 
 - 2026-09-06 — created as DRAFT.
+- 2026-09-06 — approved for development by the user; promoted to READY (dependencies still gate the start).

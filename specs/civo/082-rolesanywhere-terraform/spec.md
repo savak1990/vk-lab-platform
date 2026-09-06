@@ -1,7 +1,7 @@
 ---
 id: "CIVO-082"
 title: "Roles Anywhere Terraform: trust anchor, profile, per-consumer roles, lab-role additions"
-status: "DRAFT"
+status: "READY"
 priority: "P0"
 milestone: "M1"
 type: "implementation"
@@ -96,3 +96,4 @@ Guarded unit; AWS plan unchanged; `lab-role` additions are additive statements.
 ## 14. Execution evidence and status history
 
 - 2026-09-06 — created as DRAFT.
+- 2026-09-06 — approved for development by the user; promoted to READY (dependencies still gate the start).

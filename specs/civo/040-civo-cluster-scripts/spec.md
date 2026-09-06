@@ -1,7 +1,7 @@
 ---
 id: "CIVO-040"
 title: "Cluster scripts for Civo: cluster-down, kubeconfig, status, guards, leak sweep"
-status: "DRAFT"
+status: "READY"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -102,3 +102,4 @@ Revert scripts. No data risk; `cluster-down` never touches persistent units (sep
 ## 14. Execution evidence and status history
 
 - 2026-09-06 — created as DRAFT.
+- 2026-09-06 — approved for development by the user; promoted to READY (dependencies still gate the start).

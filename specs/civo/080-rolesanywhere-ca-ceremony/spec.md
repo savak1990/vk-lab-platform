@@ -1,7 +1,7 @@
 ---
 id: "CIVO-080"
 title: "Offline CA ceremony: generate, encrypt, commit, rotate"
-status: "DRAFT"
+status: "READY"
 priority: "P0"
 milestone: "M1"
 type: "implementation"
@@ -91,3 +91,4 @@ Deleting the two files and rotating equals rollback; nothing depends on them unt
 ## 14. Execution evidence and status history
 
 - 2026-09-06 — created as DRAFT.
+- 2026-09-06 — approved for development by the user; promoted to READY (dependencies still gate the start).

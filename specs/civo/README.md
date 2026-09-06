@@ -29,7 +29,7 @@ into gaps (`085-...`) without renumbering.
 | Status | Meaning |
 |---|---|
 | `DRAFT` | Specification incomplete, unapproved, or design unresolved |
-| `READY` | Fully specified, required decisions approved, hard dependencies `DONE`, no active blocker |
+| `READY` | Approved for development; no active blocker. An implementer may start only when every `depends_on` is `DONE` (checked at session start) |
 | `IN_PROGRESS` | An authorized implementer started the bounded work |
 | `BLOCKED` | Needs a named decision, capability, prerequisite, or unfinished hard dependency; `blocked_by` names it |
 | `IN_REVIEW` | Implementation and checks complete, awaiting review/integration |

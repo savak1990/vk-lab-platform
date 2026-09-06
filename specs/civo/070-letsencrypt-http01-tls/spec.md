@@ -1,7 +1,7 @@
 ---
 id: "CIVO-070"
 title: "Public TLS at Envoy with Let's Encrypt HTTP-01 and Secret persistence across down/up"
-status: "DRAFT"
+status: "READY"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -96,3 +96,4 @@ Revert; delete the SSM parameter to force a fresh order. Data risk: none.
 ## 14. Execution evidence and status history
 
 - 2026-09-06 — created as DRAFT.
+- 2026-09-06 — approved for development by the user; promoted to READY (dependencies still gate the start).

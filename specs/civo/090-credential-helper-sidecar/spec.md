@@ -1,7 +1,7 @@
 ---
 id: "CIVO-090"
 title: "Credential helper image and sidecar pattern with positive and negative authorization tests"
-status: "DRAFT"
+status: "READY"
 priority: "P0"
 milestone: "M1"
 type: "implementation"
@@ -98,3 +98,4 @@ Remove the sidecar; consumers lose AWS access (fail closed).
 ## 14. Execution evidence and status history
 
 - 2026-09-06 — created as DRAFT.
+- 2026-09-06 — approved for development by the user; promoted to READY (dependencies still gate the start).

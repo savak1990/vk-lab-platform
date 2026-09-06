@@ -1,7 +1,7 @@
 ---
 id: "CIVO-140"
 title: "lab.yml provider input, Civo token decrypt with masking, concurrency, cleanup-on-failure"
-status: "DRAFT"
+status: "READY"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -95,3 +95,4 @@ Revert the workflow.
 ## 14. Execution evidence and status history
 
 - 2026-09-06 — created as DRAFT.
+- 2026-09-06 — approved for development by the user; promoted to READY (dependencies still gate the start).

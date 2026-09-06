@@ -1,7 +1,7 @@
 ---
 id: "CIVO-190"
 title: "Proxy protocol on the Civo LB for client IP preservation"
-status: "DRAFT"
+status: "READY"
 priority: "P3"
 milestone: "M2"
 type: "implementation"
@@ -82,3 +82,4 @@ Flip the value back.
 ## 14. Execution evidence and status history
 
 - 2026-09-06 — created as DRAFT.
+- 2026-09-06 — approved for development by the user; promoted to READY (dependencies still gate the start).

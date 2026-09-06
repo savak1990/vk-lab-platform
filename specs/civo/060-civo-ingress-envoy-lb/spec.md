@@ -1,7 +1,7 @@
 ---
 id: "CIVO-060"
 title: "Civo ingress: Envoy Service LoadBalancer with Civo annotations and Gateway listeners 80/443"
-status: "DRAFT"
+status: "READY"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -93,3 +93,4 @@ Revert; Argo reconciles. No data risk.
 ## 14. Execution evidence and status history
 
 - 2026-09-06 — created as DRAFT.
+- 2026-09-06 — approved for development by the user; promoted to READY (dependencies still gate the start).

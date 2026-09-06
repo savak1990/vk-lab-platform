@@ -1,7 +1,7 @@
 ---
 id: "CIVO-025"
 title: "persistent-civo stack: Civo network and reserved IP, with additive persistent-up dispatch"
-status: "DRAFT"
+status: "READY"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -105,3 +105,4 @@ Revert Make/root.hcl; `persistent-down` for civo removes resources. Reserved IP 
 ## 14. Execution evidence and status history
 
 - 2026-09-06 — created as DRAFT.
+- 2026-09-06 — approved for development by the user; promoted to READY (dependencies still gate the start).

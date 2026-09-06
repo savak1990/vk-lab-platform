@@ -1,7 +1,7 @@
 ---
 id: "CIVO-085"
 title: "Workload certificate issuance: CA issuer Secret at argo-up, per-consumer Certificates, RBAC, rotation"
-status: "DRAFT"
+status: "READY"
 priority: "P0"
 milestone: "M1"
 type: "implementation"
@@ -94,3 +94,4 @@ Delete the CA Secret and Certificates; consumers lose AWS access (fail closed). 
 ## 14. Execution evidence and status history
 
 - 2026-09-06 — created as DRAFT.
+- 2026-09-06 — approved for development by the user; promoted to READY (dependencies still gate the start).

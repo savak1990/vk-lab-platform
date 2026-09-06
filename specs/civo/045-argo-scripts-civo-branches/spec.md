@@ -1,7 +1,7 @@
 ---
 id: "CIVO-045"
 title: "argo-up and argo-down Civo branches"
-status: "DRAFT"
+status: "READY"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -102,3 +102,4 @@ Revert scripts. Fail-closed rule on civo CNPG teardown prevents silent data loss
 ## 14. Execution evidence and status history
 
 - 2026-09-06 — created as DRAFT.
+- 2026-09-06 — approved for development by the user; promoted to READY (dependencies still gate the start).

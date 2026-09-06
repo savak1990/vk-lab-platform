@@ -1,7 +1,7 @@
 ---
 id: "CIVO-170"
 title: "Civo cluster autoscaler on the Large pool, 1 to 3 nodes"
-status: "DRAFT"
+status: "READY"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -88,3 +88,4 @@ Remove the autoscaler; set `node_count` explicitly.
 ## 14. Execution evidence and status history
 
 - 2026-09-06 — created as DRAFT.
+- 2026-09-06 — approved for development by the user; promoted to READY (dependencies still gate the start).

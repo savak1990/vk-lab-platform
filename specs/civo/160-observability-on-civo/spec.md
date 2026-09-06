@@ -1,7 +1,7 @@
 ---
 id: "CIVO-160"
 title: "Observability stack on Civo: kube-prometheus-stack, Loki, Alloy, metrics-server on civo storage with k3s scrape targets"
-status: "DRAFT"
+status: "READY"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -90,3 +90,4 @@ Revert; Argo prunes; volumes deleted with PVCs.
 ## 14. Execution evidence and status history
 
 - 2026-09-06 — created as DRAFT.
+- 2026-09-06 — approved for development by the user; promoted to READY (dependencies still gate the start).

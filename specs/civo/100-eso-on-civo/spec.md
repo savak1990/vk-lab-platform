@@ -1,7 +1,7 @@
 ---
 id: "CIVO-100"
 title: "External Secrets on Civo via the Roles Anywhere sidecar"
-status: "DRAFT"
+status: "READY"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -87,3 +87,4 @@ Revert values; secrets remain as last synced.
 ## 14. Execution evidence and status history
 
 - 2026-09-06 — created as DRAFT.
+- 2026-09-06 — approved for development by the user; promoted to READY (dependencies still gate the start).

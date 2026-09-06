@@ -1,7 +1,7 @@
 ---
 id: "CIVO-050"
 title: "GitOps baseline for target=civo: hoist portable components, values-driven provider differences, golden AWS render"
-status: "DRAFT"
+status: "READY"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -103,3 +103,4 @@ Revert the PR; Argo reconciles back. No data risk (no CNPG Cluster change on aws
 ## 14. Execution evidence and status history
 
 - 2026-09-06 — created as DRAFT.
+- 2026-09-06 — approved for development by the user; promoted to READY (dependencies still gate the start).

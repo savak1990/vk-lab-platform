@@ -1,7 +1,7 @@
 ---
 id: "CIVO-150"
 title: "Full lifecycle validation on Civo: create, write, destroy, verify, recreate, verify, destroy, no leaks"
-status: "DRAFT"
+status: "READY"
 priority: "P1"
 milestone: "M1"
 type: "validation"
@@ -103,3 +103,4 @@ Validation only; `persistent-down` for civo cleans artifacts if needed.
 ## 14. Execution evidence and status history
 
 - 2026-09-06 — created as DRAFT. Not run.
+- 2026-09-06 — approved for development by the user; promoted to READY (dependencies still gate the start).
