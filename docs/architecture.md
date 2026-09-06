@@ -1854,7 +1854,7 @@ All implementation specifications must preserve the following:
 21. `make up` never creates Persistent resources implicitly; `make down` never destroys Persistent or Bootstrap resources. Removing those is a separate, explicitly-confirmed command (§21a).
 22. Exactly one GitHub OIDC provider exists per account, created once by `make account-up` in the account layer (§17a, ADR 0021); every consumer gets its own role trusting it, never its own provider.
 23. A cluster's Kubernetes access is an explicit, per-cluster grant (EKS access entries), never implied by which principal happened to run `terraform apply` (§17a, §34, ADR 0022).
-24. An IAM policy's resource scope is never widened to match a runtime workflow input; a new environment combination gets its own committed ARNs, added deliberately, never accepted as free text (ADR 0022).
+24. An IAM policy's resource scope is never widened to match a runtime workflow input. `lab-role` is shared across projects and scopes by naming convention (`*-tf-state`, `cluster/*-eks`, `role/*-eks-*`, `parameter/*/{bootstrap,persistent,cluster}/*`), so a new project name needs no IAM change and no apply; what guards which values reach those wildcards is validation, not enumeration (`scripts/lib/require-valid-project-name.sh`) — ADR 0022 as amended, ADR 0021.
 23. No workflow, module, or spec hardcodes an account ID, role ARN, or domain value — forking requires only account bootstrap plus the configuration values in §24a, never a source change. The AWS region is the one deliberate exception: the platform targets `eu-west-1` only, declared once per layer and never derived from an environment variable or a workflow input (ADR 0024, spec 031).
 
 ---
@@ -1987,11 +1987,15 @@ Every AWS resource this repository's Terraform creates must be identifiable as p
 Minimum tag set, applied to every Terraform-managed resource:
 
 ```text
-Project     = vk-lab-platform
+Project     = <PROJECT_NAME>   # default vk-lab-platform; free-form per project
 Scope       = platform
 Lifecycle   = state | bootstrap | persistent | disposable
 ManagedBy   = terraform
 ```
+
+`Project` carries the project name the stack was applied under, not a fixed
+literal — it is what distinguishes two concurrently-live projects' resources in
+one account, and what `make clusters` filters on.
 
 `Project` and `Scope` exist specifically so that, looking at any resource in the AWS account, it is unambiguous that it belongs to this platform and not to a business/application service — reinforcing §2's repository-scope boundary at the infrastructure level, not only in source control.
 

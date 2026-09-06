@@ -2,8 +2,9 @@ name: lab
 
 # Manually triggered only - this starts/stops real, billable AWS
 # infrastructure. The assumed role (lab-role) is account-global and shared
-# by every project - its permission policy scopes by naming convention, not
-# a hand-enumerated per-combination list. `target` maps 1:1 onto a `make`
+# by every project - its permission policy scopes by naming convention, so
+# an arbitrary project_name needs no IAM change; the Makefile validates the
+# name into the shape those wildcards already match. `target` maps 1:1 onto a `make`
 # target - no remapping, no per-target gating; whatever safety behavior a
 # given target's script already has (persistent-down/bootstrap-down/
 # account-down's CONFIRM_DESTROY check) is unaffected by this workflow,
@@ -12,14 +13,12 @@ on:
   workflow_dispatch:
     inputs:
       project_name:
-        description: PROJECT_NAME
-        type: choice
-        options: [vk-lab-platform]
+        description: "PROJECT_NAME: lowercase alphanumeric/hyphen, max 23 chars. A new name creates a wholly separate cluster and state bucket."
+        type: string
         default: vk-lab-platform
       subdomain:
-        description: SUBDOMAIN
-        type: choice
-        options: [lab]
+        description: "SUBDOMAIN: must be unique per project - two projects sharing one subdomain collide on the same Route53 zone."
+        type: string
         default: lab
       target:
         description: make target
@@ -42,6 +41,12 @@ on:
         default: ""
 
 run-name: "lab: ${{ inputs.target }} (${{ inputs.project_name }})"
+
+# Different projects are independent stacks and may run in parallel; two runs
+# against the same project would race on its Terraform state, so they queue.
+concurrency:
+  group: lab-${{ inputs.project_name }}
+  cancel-in-progress: false
 
 permissions:
   id-token: write

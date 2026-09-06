@@ -6,10 +6,12 @@ ADR 0022.
 
 > **Scope amendment (ADR 0022):** the two workflows became dashboards rather
 > than fixed single-purpose triggers. `lab-up.yml`/`lab-down.yml` take
-> `project_name`/`subdomain` as bounded `type: choice` inputs
-> (exactly one option today, `vk-lab-platform`/`lab` — a second
-> registered combination needs a second option plus its own role's ARNs,
-> added together, deliberately, never accepted as free text — see the ADR for
+> `project_name`/`subdomain` as free-form `type: string` inputs
+> (defaulting to `vk-lab-platform`/`lab`; any valid name creates a wholly
+> separate cluster and state bucket, needing no IAM change because `lab-role`
+> is shared and scopes by naming convention — the name is instead validated
+> into that shape by `scripts/lib/require-valid-project-name.sh`. This
+> reverses the original `type: choice` decision; see ADR 0022's amendment for
 > why), plus a `depth` selector. `lab-up.yml`'s depth reaches `full-up`
 > (State → Bootstrap → Persistent → up), not just `up`; `lab-down.yml`'s
 > reaches `down-through-persistent` and `full-down`. `full-down` is gated,

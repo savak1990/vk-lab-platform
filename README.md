@@ -58,8 +58,43 @@ make full-up            # from nothing: bootstrap-up -> persistent-up -> up
 make full-down          # the exact reverse of full-up (rarely used - each
                          # step keeps its own guard/confirmation)
 
-make status             # reports which layers currently have state in the shared bucket
+make status             # reports which layers currently have state, for THIS PROJECT_NAME
+make clusters           # lists every platform cluster live in the account, ALL projects
 ```
+
+### Running more than one lab
+
+`PROJECT_NAME` and `SUBDOMAIN` are the only two identity variables; everything
+else is derived (`<project>-tf-state`, `<project>-eks`, `secrets/<project>/`,
+`/<project>/...` SSM paths, `<subdomain>.<root-domain>`). Both are free-form
+inputs on `lab.yml` and plain env vars locally, so a second lab is:
+
+```sh
+PROJECT_NAME=vk-lab-two SUBDOMAIN=two make full-up
+```
+
+That is the whole sequence — `bootstrap-up` creates the new project's state
+bucket and generates its secrets (real random passwords) before anything needs
+them. Do **not** run `make generate-secrets` first: that target forces
+`FIXED_TEST_PASSWORDS=true` and writes publicly-known `"test"` passwords, and is
+only for throwaway CI environments.
+
+No IAM change is needed — `lab-role` is shared and scopes by naming convention.
+Two rules the tooling enforces for you:
+
+- **`PROJECT_NAME`**: lowercase letters, digits and hyphens, starting and ending
+  alphanumeric, at most 23 characters. The charset is S3's (via
+  `<project>-tf-state`); the length is what IAM's 64-char role-name cap leaves
+  after the EKS module's `<cluster>-system-ng-` prefix and the provider's
+  26-char suffix. `scripts/lib/require-valid-project-name.sh` refuses anything
+  else before a single resource is created. Note `<project>-tf-state` must also
+  be unique across *all* AWS accounts, which cannot be checked ahead of time.
+- **`SUBDOMAIN`**: must differ per project. Two projects sharing one would
+  contend for the same Route 53 zone; `scripts/require-unique-subdomain.sh`
+  refuses before any apply.
+
+Run `make clear-cache` when switching between projects in one checkout — every
+composite target already does.
 
 - **Account** — the shared secrets KMS key (`alias/lab-secrets`), the
   shared `lab-role` every project's GitHub Actions run assumes (scoped by

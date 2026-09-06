@@ -51,22 +51,15 @@ for prefix in bootstrap persistent cluster; do
   fi
 done
 
-# Argo CD isn't Terraform-managed (ADR 0012), so its state can't be read
-# from Terraform state like the layers above - this checks the live
-# cluster instead, and only attempts to if the disposable EKS cluster
-# actually has Terraform state to read a cluster_name from.
+# Only attempted if the disposable EKS cluster actually has Terraform state
+# to read a cluster_name from.
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$REPO_ROOT/scripts/lib/argo-state.sh"
 CLUSTER_NAME="$(terragrunt --working-dir "$REPO_ROOT/terraform/live/cluster/eks" output -raw cluster_name 2>/dev/null || true)"
 
 if [ -z "$CLUSTER_NAME" ]; then
   printf '%-13s unknown  (cluster not up)\n' "argo:"
-elif ! aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$LAB_REGION" --alias "$CLUSTER_NAME" >/dev/null 2>&1 \
-  || ! kubectl cluster-info --request-timeout=5s >/dev/null 2>&1; then
-  printf '%-13s unknown  (cluster unreachable)\n' "argo:"
-elif ! kubectl get application root -n argocd >/dev/null 2>&1; then
-  printf '%-13s absent   (not installed, or torn down by argo-down)\n' "argo:"
 else
-  SYNC_HEALTH="$(kubectl get application root -n argocd -o jsonpath='{.status.sync.status}/{.status.health.status}' 2>/dev/null)"
-  APP_COUNT="$(kubectl get applications -n argocd --no-headers 2>/dev/null | wc -l | tr -d ' ')"
-  printf '%-13s present  (root %s, %s Application(s) managed)\n' "argo:" "${SYNC_HEALTH:-unknown}" "$APP_COUNT"
+  ARGO_ACCESS_ROLE_ARN="$(argo_access_role_arn)"
+  printf '%-13s %s\n' "argo:" "$(argo_state "$CLUSTER_NAME" "$(mktemp)")"
 fi

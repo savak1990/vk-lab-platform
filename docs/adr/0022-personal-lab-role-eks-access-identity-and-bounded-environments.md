@@ -7,6 +7,14 @@
 > input is gone and the environment is bounded by `PROJECT_NAME` alone. The
 > bounded-environment decision itself is unchanged and still binding.
 
+> **Note (2026-09-06):** the bounded-environment decision is itself now
+> superseded in part. `project_name`/`subdomain` are free-form `type: string`
+> inputs, not `type: choice` dropdowns; validation, not enumeration, guards
+> which values reach `lab-role`'s naming-convention wildcards. See
+> *Amendment: free-form project names* at the end of this ADR. Everything else
+> here — the shared role, `eks-access-identity`, and the destroy guards —
+> stands.
+
 ## Status
 
 Accepted
@@ -151,6 +159,12 @@ access no longer depends on which of the two principals happened to create it.
 call both gained `--role-arn <eks-access-identity ARN>`.
 
 ### Bounded environment choices, not free text, not runtime policy rewrites
+
+> **Amended — superseded in part.** `project_name` and `subdomain` are now
+> free-form `type: string` inputs on `lab.yml`. The section below is retained
+> for the reasoning it records; see *Amendment: free-form project names* at the
+> end of this ADR for what replaced it and why. `region` was separately fixed to
+> a hardcoded constant by ADR 0024, so it is no longer an input at all.
 
 `lab-up.yml`/`lab-down.yml` take `project_name`/`subdomain`/`region` as
 `workflow_dispatch` `type: choice` inputs. Exactly one option exists in each
@@ -324,3 +338,56 @@ rather than providing the confirmation it exists to require.
 
 **e. Granting this role `kms:Decrypt` for `ROOT_DOMAIN`.** Rejected - reverses
 ADR 0007 alternative (c) for the same reason it was rejected there.
+
+---
+
+## Amendment: free-form project names
+
+This ADR originally rejected free-text `project_name`/`subdomain` inputs. That
+rejection no longer holds, and the workflow now accepts both as `type: string`.
+
+**The original reasoning.** An IAM policy's resource ARNs are static strings
+baked in at Terraform-apply time, so a policy cannot expand to match an
+arbitrary runtime value without either staying narrow (making the input
+decorative) or broadening to match anything. Enumerating the permitted
+combinations in a dropdown was the way to keep the policy honest.
+
+**What changed.** ADR 0021 split the account-global resources into their own
+layer and, with them, replaced the per-project `personal-lab-role` with a single
+`lab-role` shared by every project. A shared role cannot enumerate per-project
+ARNs by construction, so its policy was rewritten to scope by *naming
+convention*: `arn:aws:s3:::*-tf-state`, `cluster/*-eks`, `role/*-eks-*`,
+`parameter/*/{bootstrap,persistent,cluster}/*`. Those wildcards are already in
+place and are already what any project's run authenticates against.
+
+**Why this does not violate architecture invariant 24.** The invariant protects
+the property that *an IAM policy's resource scope is never widened to match a
+runtime workflow input*. Accepting free text widens nothing — not one ARN in
+`terraform/modules/lab-role` changes, and no apply is needed to register a new
+name. The wildcards were widened because the role became shared across projects,
+not to accommodate an input. What changes is only the mechanism guarding which
+values reach those wildcards: **validation replaces enumeration**.
+
+`scripts/lib/require-valid-project-name.sh` is that validation, and it is
+deliberately in the Makefile path rather than the workflow YAML so a local
+`PROJECT_NAME=foo make up` is guarded identically to CI. It constrains the name
+to the shape the wildcards already assume — `^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`,
+at most 23 characters. Both bounds are derived, not chosen: the charset is S3's
+(the tightest consumer, via `${PROJECT_NAME}-tf-state`), and the length is what
+IAM's 64-character role-name cap leaves after the EKS module's
+`${cluster}-system-ng-` prefix and the provider's 26-character unique suffix.
+
+**Subdomain collisions remain guarded separately.** `SUBDOMAIN` is free-form for
+the same reason but is not covered by name validation: the collision it can
+cause is semantic, not syntactic. Two projects sharing one subdomain would
+target the same Route 53 zone name. `scripts/require-unique-subdomain.sh`
+refuses that before any apply, and `aws_route53_record.delegation` carries no
+`allow_overwrite`, so even a bypassed apply errors rather than hijacking the
+first project's delegation.
+
+**Two claims elsewhere in this ADR are already stale**, independent of this
+amendment: `personal-lab-role` no longer exists (ADR 0021 replaced it with the
+shared account-global `lab-role`), and `scripts/lib/ephemeral-confirm.sh`'s
+`EPHEMERAL_PROJECTS` allow-list was replaced by
+`scripts/lib/confirm-destroy.sh`, an unconditional `CONFIRM_DESTROY` check that
+applies uniformly to every project.

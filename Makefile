@@ -1,4 +1,4 @@
-.PHONY: up down full-up full-down platform-up platform-down state-up state-down status account-up account-down bootstrap-up bootstrap-down secret-encrypt secret-decrypt generate-secrets persistent-up persistent-down clear-cache cluster-up cluster-down eks-kubeconfig test-kubeconfig argo-up argo-down test
+.PHONY: up down full-up full-down platform-up platform-down state-up state-down status clusters require-valid-project-name account-up account-down bootstrap-up bootstrap-down secret-encrypt secret-decrypt generate-secrets persistent-up persistent-down clear-cache cluster-up cluster-down eks-kubeconfig test-kubeconfig argo-up argo-down test
 
 .NOTPARALLEL:
 
@@ -20,11 +20,11 @@ export SUBDOMAIN ?= lab
 ## Fails fast (naming `make persistent-up`) if Persistent doesn't exist yet -
 ## never creates it (constitution §17). For a from-scratch environment use
 ## `make full-up`.
-up: clear-cache cluster-up argo-up
+up: require-valid-project-name clear-cache cluster-up argo-up
 
 ## Tears down Argo CD then the cluster. Does NOT touch Persistent or
 ## Bootstrap - use `make persistent-down`/`make bootstrap-down` for those.
-down: clear-cache argo-down cluster-down
+down: require-valid-project-name clear-cache argo-down cluster-down
 
 ## Brings up the entire platform from nothing: Bootstrap (state bucket +
 ## DNS zone + ACM cert) -> Persistent (VPC + Secrets Manager) -> cluster ->
@@ -32,29 +32,33 @@ down: clear-cache argo-down cluster-down
 ## (see persistent-up); root-domain.enc is generated from $ROOT_DOMAIN if
 ## set and missing, otherwise it must already exist - it's a real domain,
 ## never randomly generated.
-full-up: clear-cache bootstrap-up persistent-up cluster-up argo-up
+full-up: require-valid-project-name clear-cache bootstrap-up persistent-up cluster-up argo-up
 
 ## Tears down the entire platform: Argo CD -> cluster -> Persistent ->
 ## Bootstrap (DNS zone + ACM cert, then this project's own state bucket).
 ## Rarely used - persistent-down/bootstrap-down each keep their own guards
 ## (CONFIRM_DESTROY for bootstrap-down).
-full-down: clear-cache argo-down cluster-down persistent-down bootstrap-down
+full-down: require-valid-project-name clear-cache argo-down cluster-down persistent-down bootstrap-down
 
 ## Brings up Persistent + the disposable cluster + Argo CD onto an existing
 ## State/Bootstrap layer. For cluster+Argo only (Persistent already up) use
 ## `make up`; for everything from scratch use `make full-up`.
-platform-up: clear-cache persistent-up cluster-up argo-up
+platform-up: require-valid-project-name clear-cache persistent-up cluster-up argo-up
 
 ## Tears down Argo CD -> cluster -> Persistent, stopping there. Leaves
 ## Bootstrap/State untouched. For an environment whose Bootstrap/State must
 ## survive (e.g. the personal lab) but whose Persistent layer (DNS zone,
 ## ACM cert, Secrets Manager) is meant to be torn down along with everything
 ## above it. Reaches persistent-down, so requires CONFIRM_DESTROY=PROJECT_NAME.
-platform-down: clear-cache argo-down cluster-down persistent-down
+platform-down: require-valid-project-name clear-cache argo-down cluster-down persistent-down
 
 ## Reports which lifecycle layers currently have state in the shared bucket.
 status:
 	./scripts/status.sh
+
+## Lists every platform cluster live in the AWS account, across all projects.
+clusters:
+	./scripts/clusters.sh
 
 ## Creates this project's own state bucket directly. Usually invoked via
 ## `make bootstrap-up`, not directly - kept as its own target for manual/
@@ -185,6 +189,12 @@ argo-down:
 ## over from a different PROJECT_NAME/SUBDOMAIN bakes its old backend
 ## config into the cached working directory, which then makes terraform
 ## refuse to proceed ("Backend configuration has changed").
+## Rejects a PROJECT_NAME whose derived resource names would be invalid.
+## A prerequisite of every composite target, so CI and a local
+## `PROJECT_NAME=foo make up` are guarded identically.
+require-valid-project-name:
+	@bash -c 'source scripts/lib/require-valid-project-name.sh; require_valid_project_name "$$PROJECT_NAME"'
+
 clear-cache:
 	find terraform/live -type d -name .terragrunt-cache -prune -exec rm -rf {} +
 
