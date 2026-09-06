@@ -23,8 +23,6 @@ spec:
           value: {{ .Values.target | quote }}
         - name: project
           value: {{ .Values.project | quote }}
-        - name: region
-          value: {{ .Values.region | quote }}
         - name: vpcId
           value: {{ .Values.vpcId | quote }}
         - name: postgres.recoverySnapshotHandle

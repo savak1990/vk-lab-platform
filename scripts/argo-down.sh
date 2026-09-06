@@ -27,12 +27,12 @@ CLUSTER_NAME="${PROJECT_NAME}-eks"
 # Absence is checked against the AWS API, not kubectl - a describe-cluster
 # 404 is proof the cluster is gone (safe to skip), whereas a kubectl failure
 # only proves this shell has no working kubeconfig, never proof of absence.
-if ! aws eks describe-cluster --name "$CLUSTER_NAME" --region "$PROJECT_REGION" >/dev/null 2>&1; then
+if ! aws eks describe-cluster --name "$CLUSTER_NAME" --region "$LAB_REGION" >/dev/null 2>&1; then
   echo "ARGO-DOWN: cluster $CLUSTER_NAME does not exist - nothing to cascade, skipping."
   exit 0
 fi
 
-aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$PROJECT_REGION" --alias "$CLUSTER_NAME" \
+aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$LAB_REGION" --alias "$CLUSTER_NAME" \
   --role-arn "$(aws iam get-role --role-name eks-access-identity --query Role.Arn --output text)" >/dev/null
 kubectl config set-context --current --namespace=default >/dev/null
 
@@ -96,7 +96,7 @@ EOF
   # prune time would miscount "newest 2" and delete the wrong one. Count
   # everything tagged, regardless of state.
   echo "ARGO-DOWN: pruning old Postgres EBS snapshots (keeping newest 2)..."
-  if ! OLD_SNAPSHOTS="$(aws ec2 describe-snapshots --region "$PROJECT_REGION" --owner-ids self \
+  if ! OLD_SNAPSHOTS="$(aws ec2 describe-snapshots --region "$LAB_REGION" --owner-ids self \
     --filters "${SNAPSHOT_TAG_FILTERS[@]}" \
     --query 'sort_by(Snapshots,&StartTime)[:-2].SnapshotId' --output text)"; then
     echo "ARGO-DOWN: failed to list Postgres EBS snapshots for pruning - aborting." >&2
@@ -104,7 +104,7 @@ EOF
   fi
   if [ -n "$OLD_SNAPSHOTS" ] && [ "$OLD_SNAPSHOTS" != "None" ]; then
     for snapshot_id in $OLD_SNAPSHOTS; do
-      aws ec2 delete-snapshot --region "$PROJECT_REGION" --snapshot-id "$snapshot_id"
+      aws ec2 delete-snapshot --region "$LAB_REGION" --snapshot-id "$snapshot_id"
       echo "ARGO-DOWN: pruned old snapshot $snapshot_id"
     done
   fi
@@ -170,7 +170,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SUBDOMAIN="${SUBDOMAIN:-lab}"
 ROOT_DOMAIN="$("$REPO_ROOT/scripts/secret-decrypt.sh" root-domain)"
 FQDN="${SUBDOMAIN}.${ROOT_DOMAIN}"
-ZONE_ID="$(aws route53 list-hosted-zones-by-name --dns-name "$FQDN" --region "$PROJECT_REGION" \
+ZONE_ID="$(aws route53 list-hosted-zones-by-name --dns-name "$FQDN" --region "$LAB_REGION" \
   --query "HostedZones[?Name=='${FQDN}.'].Id" --output text 2>/dev/null || true)"
 if [ -z "$ZONE_ID" ] || [ "$ZONE_ID" = "None" ]; then
     echo "ARGO-DOWN: WARNING - could not resolve hosted zone for $FQDN, skipping wait." >&2

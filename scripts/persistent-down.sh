@@ -42,7 +42,7 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 count_resources() {
   local prefix="$1"
   local keys
-  if ! keys=$(aws s3api list-objects-v2 --bucket "$STATE_BUCKET" --prefix "$prefix/" --region "$PROJECT_REGION" \
+  if ! keys=$(aws s3api list-objects-v2 --bucket "$STATE_BUCKET" --prefix "$prefix/" --region "$LAB_REGION" \
     --query "Contents[?ends_with(Key, 'terraform.tfstate')].Key" --output text); then
     echo "Failed to list s3://$STATE_BUCKET/$prefix/ - aborting rather than treating this as 'no resources'." >&2
     return 1
@@ -55,7 +55,7 @@ count_resources() {
   if [ -n "$keys" ] && [ "$keys" != "None" ]; then
     local key count
     for key in $keys; do
-      if ! aws s3api get-object --bucket "$STATE_BUCKET" --key "$key" --region "$PROJECT_REGION" "$TMP_DIR/state.json" >/dev/null; then
+      if ! aws s3api get-object --bucket "$STATE_BUCKET" --key "$key" --region "$LAB_REGION" "$TMP_DIR/state.json" >/dev/null; then
         echo "Failed to read state object $key - aborting rather than treating this as 'no resources'." >&2
         return 1
       fi
@@ -104,7 +104,7 @@ echo "This is expected to run essentially never."
 
 cd "$REPO_ROOT/terraform/live/persistent"
 
-# If PROJECT_NAME/PROJECT_REGION/SUBDOMAIN differs from whatever this unit's
+# If PROJECT_NAME/SUBDOMAIN differs from whatever this unit's
 # .terragrunt-cache was last built against, terraform will refuse with
 # "Backend configuration has changed" - run `make clear-cache` first in
 # that case. CONFIRM_DESTROY was already checked above, so terragrunt's own
@@ -140,7 +140,7 @@ failed_volumes=()
 # is bash-4+ only; no other script here assumes a non-default bash.
 while read -r volume_id; do
   [ -z "$volume_id" ] && continue
-  if aws ec2 delete-volume --region "$PROJECT_REGION" --volume-id "$volume_id"; then
+  if aws ec2 delete-volume --region "$LAB_REGION" --volume-id "$volume_id"; then
     echo "Deleted retained volume $volume_id"
   else
     echo "Failed to delete retained volume $volume_id" >&2
@@ -174,7 +174,7 @@ fi
 failed_snapshots=()
 while read -r snapshot_id; do
   [ -z "$snapshot_id" ] && continue
-  if aws ec2 delete-snapshot --region "$PROJECT_REGION" --snapshot-id "$snapshot_id"; then
+  if aws ec2 delete-snapshot --region "$LAB_REGION" --snapshot-id "$snapshot_id"; then
     echo "Deleted Postgres snapshot $snapshot_id"
   else
     echo "Failed to delete Postgres snapshot $snapshot_id" >&2

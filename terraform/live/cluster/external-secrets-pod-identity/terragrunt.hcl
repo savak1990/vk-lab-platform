@@ -20,7 +20,6 @@ dependency "eks" {
 }
 
 inputs = {
-  cluster_name        = dependency.eks.outputs.cluster_name
-  project             = get_env("PROJECT_NAME", "vk-lab-platform")
-  account_main_region = get_env("ACCOUNT_MAIN_REGION", "eu-west-1")
+  cluster_name = dependency.eks.outputs.cluster_name
+  project      = get_env("PROJECT_NAME", "vk-lab-platform")
 }

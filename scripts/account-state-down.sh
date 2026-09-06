@@ -12,7 +12,7 @@ GITHUB_REPO_OWNER="${GITHUB_REPO%%/*}"
 BUCKET="${GITHUB_REPO_OWNER}-account-state"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/region.sh"
 
-if ! aws s3api head-bucket --bucket "$BUCKET" --region "$ACCOUNT_MAIN_REGION" 2>/dev/null; then
+if ! aws s3api head-bucket --bucket "$BUCKET" --region "$LAB_REGION" 2>/dev/null; then
   echo "s3://$BUCKET does not exist. Nothing to do."
   exit 0
 fi
@@ -27,13 +27,13 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 # never deleted. "account" is the only other prefix that can ever exist in
 # this bucket (account-down.sh's own terragrunt destroy should have already
 # emptied it); refuse rather than assume if it hasn't.
-keys=$(aws s3api list-objects-v2 --bucket "$BUCKET" --prefix "account/" --region "$ACCOUNT_MAIN_REGION" \
+keys=$(aws s3api list-objects-v2 --bucket "$BUCKET" --prefix "account/" --region "$LAB_REGION" \
   --query "Contents[?ends_with(Key, 'terraform.tfstate')].Key" --output text)
 
 total=0
 if [ -n "$keys" ] && [ "$keys" != "None" ]; then
   for key in $keys; do
-    aws s3api get-object --bucket "$BUCKET" --key "$key" --region "$ACCOUNT_MAIN_REGION" "$TMP_DIR/state.json" >/dev/null
+    aws s3api get-object --bucket "$BUCKET" --key "$key" --region "$LAB_REGION" "$TMP_DIR/state.json" >/dev/null
     count=$(jq '.resources | length' "$TMP_DIR/state.json")
     total=$((total + count))
   done
@@ -46,9 +46,9 @@ fi
 
 echo "Permanently deleting s3://$BUCKET and every version it holds."
 
-aws s3api list-object-versions --bucket "$BUCKET" --region "$ACCOUNT_MAIN_REGION" \
+aws s3api list-object-versions --bucket "$BUCKET" --region "$LAB_REGION" \
   --output json --query '{Objects: Versions[].{Key:Key,VersionId:VersionId}}' > "$TMP_DIR/versions.json"
-aws s3api list-object-versions --bucket "$BUCKET" --region "$ACCOUNT_MAIN_REGION" \
+aws s3api list-object-versions --bucket "$BUCKET" --region "$LAB_REGION" \
   --output json --query '{Objects: DeleteMarkers[].{Key:Key,VersionId:VersionId}}' > "$TMP_DIR/markers.json"
 
 for f in versions markers; do
@@ -57,11 +57,11 @@ for f in versions markers; do
   while [ "$offset" -lt "$total" ]; do
     jq -c --argjson offset "$offset" '{Objects: .Objects[$offset:($offset+1000)], Quiet:true}' "$TMP_DIR/$f.json" > "$TMP_DIR/${f}_batch.json"
     if jq -e '.Objects | length > 0' "$TMP_DIR/${f}_batch.json" >/dev/null; then
-      aws s3api delete-objects --bucket "$BUCKET" --region "$ACCOUNT_MAIN_REGION" --delete "file://$TMP_DIR/${f}_batch.json"
+      aws s3api delete-objects --bucket "$BUCKET" --region "$LAB_REGION" --delete "file://$TMP_DIR/${f}_batch.json"
     fi
     offset=$((offset + 1000))
   done
 done
 
-aws s3api delete-bucket --bucket "$BUCKET" --region "$ACCOUNT_MAIN_REGION"
+aws s3api delete-bucket --bucket "$BUCKET" --region "$LAB_REGION"
 echo "Deleted s3://$BUCKET."

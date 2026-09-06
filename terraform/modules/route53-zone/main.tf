@@ -1,10 +1,5 @@
-# root_domain is written by the account-level root-domain unit, which
-# applies in ACCOUNT_MAIN_REGION - not this unit's own PROJECT_REGION, so
-# the lookup must target that region explicitly rather than inherit the
-# provider's.
 data "aws_ssm_parameter" "root_domain" {
-  name   = "/account/root_domain"
-  region = var.account_main_region
+  name = "/account/root_domain"
 }
 
 locals {
@@ -56,9 +51,8 @@ resource "aws_ssm_parameter" "subdomain" {
   description = "The subdomain this project delegated from the account's root domain, e.g. \"lab\" in lab.<root-domain>. Read back on later applies so a forgotten SUBDOMAIN re-export can't silently move the zone."
 }
 
-# Plain String, same rationale as root_domain (root-domain module): private/
-# hygiene data, not a credential, and this also avoids the cross-region
-# SecureString/KMS-key coupling when PROJECT_REGION != ACCOUNT_MAIN_REGION.
+# Plain String, same rationale as root_domain (root-domain module):
+# private/hygiene data, not a credential.
 resource "aws_ssm_parameter" "fqdn" {
   name        = "/${var.project}/bootstrap/route53/fqdn"
   type        = "String"

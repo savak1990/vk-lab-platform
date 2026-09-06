@@ -17,8 +17,8 @@ PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/region.sh"
 CLUSTER_NAME="${PROJECT_NAME}-eks"
 
-if aws eks describe-cluster --name "$CLUSTER_NAME" --region "$PROJECT_REGION" >/dev/null 2>&1; then
-  aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$PROJECT_REGION" --alias "$CLUSTER_NAME" \
+if aws eks describe-cluster --name "$CLUSTER_NAME" --region "$LAB_REGION" >/dev/null 2>&1; then
+  aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$LAB_REGION" --alias "$CLUSTER_NAME" \
     --role-arn "$(aws iam get-role --role-name eks-access-identity --query Role.Arn --output text)" >/dev/null
   kubectl config set-context --current --namespace=default >/dev/null
 
@@ -41,17 +41,17 @@ fi
 cd "$REPO_ROOT/terraform/live/cluster" && terragrunt run --all --non-interactive -- destroy -auto-approve
 
 echo "CLUSTER-DOWN: destroy complete - checking for leaked disposable-lifecycle AWS resources..."
-LEAKED_INSTANCES="$(aws ec2 describe-instances --region "$PROJECT_REGION" \
+LEAKED_INSTANCES="$(aws ec2 describe-instances --region "$LAB_REGION" \
   --filters "Name=tag:Project,Values=$PROJECT_NAME" "Name=tag:Lifecycle,Values=disposable" "Name=instance-state-name,Values=running,pending,stopping,stopped" \
   --query 'Reservations[].Instances[].InstanceId' --output text 2>/dev/null || true)"
-LEAKED_VOLUMES="$(aws ec2 describe-volumes --region "$PROJECT_REGION" \
+LEAKED_VOLUMES="$(aws ec2 describe-volumes --region "$LAB_REGION" \
   --filters "Name=tag:Project,Values=$PROJECT_NAME" "Name=tag:Lifecycle,Values=disposable" "Name=status,Values=available" \
   --query 'Volumes[].VolumeId' --output text 2>/dev/null || true)"
 # NLBs/ENIs/security groups created by aws-load-balancer-controller aren't
 # Terraform-tracked, so the destroy above never touches them - tag-based
 # lookup is the only way to catch one stranded by the same cluster-already-
 # unreachable condition argo-down.sh warns about.
-LEAKED_NLBS="$(aws resourcegroupstaggingapi get-resources --region "$PROJECT_REGION" \
+LEAKED_NLBS="$(aws resourcegroupstaggingapi get-resources --region "$LAB_REGION" \
   --tag-filters "Key=Project,Values=$PROJECT_NAME" "Key=Lifecycle,Values=disposable" \
   --resource-type-filters elasticloadbalancing:loadbalancer elasticloadbalancing:targetgroup \
   --query 'ResourceTagMappingList[].ResourceARN' --output text 2>/dev/null || true)"

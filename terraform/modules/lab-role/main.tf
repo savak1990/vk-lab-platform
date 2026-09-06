@@ -84,10 +84,10 @@ data "aws_iam_policy_document" "permissions" {
     ]
     # "*-eks" matches any PROJECT_NAME's cluster ("<project>-eks") - no
     # per-project apply needed to grant this role a new project's cluster.
-    # Region wildcarded too: this role is applied once, in account-up's own
-    # region, but must authorize clusters created in any REGION a project
-    # chooses - a literal ${local.region} here would silently deny every
-    # other region.
+    # Region stays wildcarded: narrowing it buys no containment while
+    # ec2/logs/acm below are granted on "*", and an account-wide
+    # aws:RequestedRegion Deny would brick IAM/STS/Route 53, which send no
+    # such condition key.
     resources = [
       "arn:aws:eks:*:${local.account}:cluster/*-eks",
       "arn:aws:eks:*:${local.account}:nodegroup/*-eks/*/*",
@@ -229,9 +229,8 @@ data "aws_iam_policy_document" "permissions" {
   # this AWS-owned public parameter (no account ID in its ARN) instead of a
   # pinned AMI ID - kept narrow (unlike the rest of this policy) since it's
   # the one SSM access this role has at all; no reason to open Parameter
-  # Store more broadly for a single, known, read-only lookup. Region
-  # wildcarded: this role is applied once, in account-up's own region, but
-  # a project's cluster (and its AMI lookup) can be in any region.
+  # Store more broadly for a single, known, read-only lookup. Region stays
+  # wildcarded for the same reason as the EKS statement above.
   statement {
     sid       = "EksAmiSsmParameter"
     actions   = ["ssm:GetParameter"]

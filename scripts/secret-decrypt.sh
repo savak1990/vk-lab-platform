@@ -20,7 +20,7 @@ fi
 test -f "$SECRET_FILE" || { echo "$SECRET_FILE does not exist"; exit 1; }
 
 aws kms decrypt \
-  --region "$ACCOUNT_MAIN_REGION" \
+  --region "$LAB_REGION" \
   --ciphertext-blob "fileb://$SECRET_FILE" \
   --output text \
   --query Plaintext | base64 --decode

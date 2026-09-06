@@ -21,11 +21,6 @@ on:
         type: choice
         options: [lab]
         default: lab
-      region:
-        description: PROJECT_REGION
-        type: choice
-        options: [eu-west-1]
-        default: eu-west-1
       target:
         description: make target
         type: choice
@@ -55,7 +50,6 @@ permissions:
 env:
   PROJECT_NAME: ${{ inputs.project_name }}
   SUBDOMAIN: ${{ inputs.subdomain }}
-  PROJECT_REGION: ${{ inputs.region }}
 
 jobs:
   lifecycle:
@@ -91,7 +85,7 @@ jobs:
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
-          aws-region: ${{ inputs.region }}
+          aws-region: eu-west-1
           role-duration-seconds: 14400 # full-up/full-down can run close to/over an hour; matches the role's own max_session_duration
 
       - run: make ${{ inputs.target }}
@@ -117,6 +111,6 @@ jobs:
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
-          aws-region: ${{ inputs.region }}
+          aws-region: eu-west-1
 
       - run: make test

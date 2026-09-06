@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Creates the State layer's bucket. Idempotent: safe to re-run.
-# BUCKET/PROJECT_REGION must match terraform/live/root.hcl's locals if ever changed.
+# BUCKET must match terraform/live/root.hcl's locals if ever changed.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -21,7 +21,7 @@ if [ -f terragrunt.hcl.orig ]; then
   rm -rf .terragrunt-cache terraform.tfstate terraform.tfstate.backup
 fi
 
-if aws s3api head-bucket --bucket "$BUCKET" --region "$PROJECT_REGION" 2>/dev/null; then
+if aws s3api head-bucket --bucket "$BUCKET" --region "$LAB_REGION" 2>/dev/null; then
   echo "State bucket s3://$BUCKET already exists - applying terraform/live/state normally."
   terragrunt apply -auto-approve -input=false
   exit 0
@@ -31,7 +31,7 @@ echo "State bucket does not exist yet - bootstrapping in two phases."
 echo "Phase 1: temporary local backend, so this unit's own state has somewhere to live before the bucket exists."
 
 # A cache left over from an earlier run (different backend config, a prior
-# attempt against a different PROJECT_NAME/PROJECT_REGION, etc.) bakes its old
+# attempt against a different PROJECT_NAME, etc.) bakes its old
 # backend into the cached working directory, which then makes `terraform
 # init` refuse to proceed here ("Backend configuration changed"). Clear it
 # unconditionally so phase 1 always starts from a clean local state.

@@ -10,7 +10,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/region.sh"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
-keys=$(aws s3api list-objects-v2 --bucket "$BUCKET" --prefix "persistent/" --region "$PROJECT_REGION" \
+keys=$(aws s3api list-objects-v2 --bucket "$BUCKET" --prefix "persistent/" --region "$LAB_REGION" \
   --query "Contents[?ends_with(Key, 'terraform.tfstate')].Key" --output text)
 
 total=0
@@ -19,7 +19,7 @@ total=0
 # empty - so this must be checked explicitly.
 if [ -n "$keys" ] && [ "$keys" != "None" ]; then
   for key in $keys; do
-    aws s3api get-object --bucket "$BUCKET" --key "$key" --region "$PROJECT_REGION" "$TMP_DIR/state.json" >/dev/null
+    aws s3api get-object --bucket "$BUCKET" --key "$key" --region "$LAB_REGION" "$TMP_DIR/state.json" >/dev/null
     count=$(jq '.resources | length' "$TMP_DIR/state.json")
     total=$((total + count))
   done

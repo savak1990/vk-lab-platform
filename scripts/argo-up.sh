@@ -35,11 +35,8 @@ eks_output() {
   terragrunt --working-dir "$REPO_ROOT/terraform/live/cluster/eks" output -raw "$1"
 }
 
-# One batched get-parameters call, not five round trips - $PROJECT_REGION,
-# not $ACCOUNT_MAIN_REGION, since every parameter read here is
-# project-scoped, created by a unit that applies in PROJECT_REGION
-# (root.hcl's aws_region), not the account layer. --with-decryption is a
-# no-op on the plain String ones, so this serves both types uniformly.
+# One batched get-parameters call, not five round trips. --with-decryption
+# is a no-op on the plain String ones, so this serves both types uniformly.
 # Bash 3.2 compatible (no associative arrays) - linear scan over 5 items.
 SSM_NAMES=(
   "/$PROJECT_NAME/bootstrap/acm/certificate_arn"
@@ -53,7 +50,7 @@ SSM_BATCH_VALUES=()
 while IFS=$'\t' read -r name value; do
   SSM_BATCH_NAMES+=("$name")
   SSM_BATCH_VALUES+=("$value")
-done < <(aws ssm get-parameters --region "$PROJECT_REGION" --with-decryption \
+done < <(aws ssm get-parameters --region "$LAB_REGION" --with-decryption \
   --names "${SSM_NAMES[@]}" --query 'Parameters[].[Name,Value]' --output text)
 
 # The owning terragrunt unit is named in the failure message - a plain
@@ -76,7 +73,7 @@ NODE_SUBNET_ID="$(ssm_output "/$PROJECT_NAME/cluster/eks/node_subnet_id")"
 # full hostname built from it (label DNS output by short name instead).
 LAB_FQDN="$(ssm_output "/$PROJECT_NAME/bootstrap/route53/fqdn")"
 EKS_ACCESS_IDENTITY_ARN="$(aws iam get-role --role-name eks-access-identity --query Role.Arn --output text)"
-aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$PROJECT_REGION" --alias "$CLUSTER_NAME" \
+aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$LAB_REGION" --alias "$CLUSTER_NAME" \
   --role-arn "$EKS_ACCESS_IDENTITY_ARN" >/dev/null
 kubectl config set-context --current --namespace=default >/dev/null
 
@@ -167,7 +164,7 @@ fi
 # apply time, so there's nothing for Terraform state to track (ADR 0013).
 # A probe error (creds/network) aborts loudly rather than silently
 # falling through to a fresh initdb over a good snapshot.
-if ! SNAPSHOTS_JSON="$(aws ec2 describe-snapshots --region "$PROJECT_REGION" --owner-ids self \
+if ! SNAPSHOTS_JSON="$(aws ec2 describe-snapshots --region "$LAB_REGION" --owner-ids self \
   --filters "${SNAPSHOT_TAG_FILTERS[@]}" "Name=status,Values=completed" \
   --query 'sort_by(Snapshots,&StartTime)' --output json)"; then
   echo "ARGO-UP: failed to query AWS for existing Postgres snapshots - aborting rather than risking a false 'fresh start'." >&2
@@ -185,7 +182,7 @@ fi
 # a new snapshot). Re-queried without the status=completed filter, unlike
 # the discovery query above - a still-pending snapshot must still count
 # toward "newest 2" or this miscounts and prunes the wrong one.
-if ! ALL_SNAPSHOTS_JSON="$(aws ec2 describe-snapshots --region "$PROJECT_REGION" --owner-ids self \
+if ! ALL_SNAPSHOTS_JSON="$(aws ec2 describe-snapshots --region "$LAB_REGION" --owner-ids self \
   --filters "${SNAPSHOT_TAG_FILTERS[@]}" \
   --query 'sort_by(Snapshots,&StartTime)' --output json)"; then
   echo "ARGO-UP: failed to query AWS for Postgres snapshots to prune - aborting." >&2
@@ -194,7 +191,7 @@ fi
 OLD_SNAPSHOTS="$(echo "$ALL_SNAPSHOTS_JSON" | jq -r '.[:-2][].SnapshotId')"
 if [ -n "$OLD_SNAPSHOTS" ]; then
   for snapshot_id in $OLD_SNAPSHOTS; do
-    aws ec2 delete-snapshot --region "$PROJECT_REGION" --snapshot-id "$snapshot_id"
+    aws ec2 delete-snapshot --region "$LAB_REGION" --snapshot-id "$snapshot_id"
     echo "ARGO-UP: pruned old snapshot $snapshot_id"
   done
 fi
@@ -233,7 +230,6 @@ helm upgrade --install root-application "$REPO_ROOT/gitops/bootstrap" \
   --server-side=true --force-conflicts \
   --set target=aws \
   --set project="$PROJECT_NAME" \
-  --set region="$PROJECT_REGION" \
   --set vpcId="$VPC_ID" \
   --set repoURL="$REPO_URL" \
   --set targetRevision="$TARGET_REVISION" \

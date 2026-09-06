@@ -3,6 +3,7 @@
 # Terraform created under PROJECT_NAME (default vk-lab-platform).
 target: aws
 project: vk-lab-platform
+# Fixed, not an operator knob - the two AWS controllers below need a literal.
 region: eu-west-1
 # Set by scripts/argo-up.sh from the eks Terraform unit's vpc_id output -
 # lets aws-load-balancer-controller skip IMDS-based VPC discovery.

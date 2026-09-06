@@ -32,13 +32,13 @@ for prefix in persistent cluster; do
   # An empty prefix makes list-objects-v2's JMESPath filter evaluate
   # against null, which --output text renders as the literal string
   # "None" - not empty - so this must be checked explicitly.
-  keys=$(aws s3api list-objects-v2 --bucket "$STATE_BUCKET" --prefix "$prefix/" --region "$PROJECT_REGION" \
+  keys=$(aws s3api list-objects-v2 --bucket "$STATE_BUCKET" --prefix "$prefix/" --region "$LAB_REGION" \
     --query "Contents[?ends_with(Key, 'terraform.tfstate')].Key" --output text)
 
   total=0
   if [ -n "$keys" ] && [ "$keys" != "None" ]; then
     for key in $keys; do
-      aws s3api get-object --bucket "$STATE_BUCKET" --key "$key" --region "$PROJECT_REGION" "$TMP_DIR/state.json" >/dev/null
+      aws s3api get-object --bucket "$STATE_BUCKET" --key "$key" --region "$LAB_REGION" "$TMP_DIR/state.json" >/dev/null
       count=$(jq '.resources | length' "$TMP_DIR/state.json")
       total=$((total + count))
     done
@@ -54,7 +54,7 @@ echo "Destroying Bootstrap-lifecycle stack for $PROJECT_NAME: Route53 zone + ACM
 
 cd "$REPO_ROOT/terraform/live/bootstrap"
 
-# If PROJECT_NAME/PROJECT_REGION differs from whatever this unit's .terragrunt-cache
+# If PROJECT_NAME differs from whatever this unit's .terragrunt-cache
 # was last built against, terraform will refuse with "Backend configuration
 # has changed" - run `make clear-cache` first in that case.
 #

@@ -10,11 +10,8 @@ module "pod_identity" {
 data "aws_region" "current" {}
 data "aws_caller_identity" "current" {}
 
-# alias/lab-secrets lives in ACCOUNT_MAIN_REGION, not this unit's own
-# PROJECT_REGION - same reasoning as route53-zone's root_domain lookup.
 data "aws_kms_alias" "secrets" {
-  name   = "alias/lab-secrets"
-  region = var.account_main_region
+  name = "alias/lab-secrets"
 }
 
 locals {

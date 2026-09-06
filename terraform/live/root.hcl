@@ -3,20 +3,13 @@
 # remote_state backend (native lockfile locking; no DynamoDB table needed).
 
 locals {
-  # Overridable via env vars so CI/integration runs can use a disposable
-  # name/region instead of the personal lab's.
+  # Overridable via env var so CI/integration runs can use a disposable
+  # name instead of the personal lab's.
   project = get_env("PROJECT_NAME", "vk-lab-platform")
 
-  # The account layer's units (kms, lab-role, github-oidc,
-  # eks-access-identity - the "account"/"account-state" raw_class below) are
-  # account-global and applied once, in one fixed region - ACCOUNT_MAIN_REGION,
-  # independent of whatever PROJECT_REGION a given project uses for its own
-  # cluster/state bucket. The shared KMS key in particular only exists in
-  # this one region: secret-encrypt.sh/secret-decrypt.sh call it directly
-  # under this same var, so a project run under a different PROJECT_REGION (e.g.
-  # tests/manual/016's region-portability phase) still resolves the same key.
-  account_main_region = get_env("ACCOUNT_MAIN_REGION", "eu-west-1")
-  project_region      = get_env("PROJECT_REGION", "eu-west-1")
+  # The platform targets exactly one region. Deliberately a constant, not an
+  # env var: a second region was never made to work and is not supported.
+  aws_region = "eu-west-1"
 
   # The account layer's own state (the shared lab-role/kms/github-oidc/
   # eks-access-identity units) must never live in any one project's own
@@ -40,17 +33,11 @@ locals {
   # both route to the account-global bucket, never a project's own.
   state_bucket = contains(["account", "account-state"], local.raw_class) ? local.account_state_bucket : "${local.project}-tf-state"
 
-  # Same account-vs-project split as state_bucket above: the account
-  # layer's units apply in ACCOUNT_MAIN_REGION regardless of PROJECT_REGION.
-  aws_region = contains(["account", "account-state"], local.raw_class) ? local.account_main_region : local.project_region
-
   # Used by the eks unit for node group placement, pinning it to one fixed
-  # AZ. Derived from PROJECT_REGION (not hardcoded) so switching PROJECT_REGION doesn't pin
-  # the node group to a zone that doesn't exist in the new region - "a" is
-  # present in every AWS region's standard zone-letter set. Name kept as
-  # "postgres_az" despite having no Postgres-specific caller (ADR 0013 moved
-  # Postgres off Terraform-owned storage) - not renamed for its one caller.
-  postgres_az = "${local.project_region}a"
+  # AZ. Retained EBS volumes are AZ-bound, so this pin is what lets them
+  # rebind across make down/make up. Name kept as "postgres_az" despite
+  # having no Postgres-specific caller - not renamed for its one caller.
+  postgres_az = "${local.aws_region}a"
 
   # "account"/"account-state" are a scope, not a lifecycle class: their
   # resources are account-global rather than per-project, but they're still

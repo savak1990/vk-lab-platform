@@ -29,10 +29,3 @@ resource "aws_ssm_parameter" "root_domain" {
   value       = local.root_domain
   description = "Account-global root domain every project's lab subdomain delegates from."
 }
-
-resource "aws_ssm_parameter" "main_account_region" {
-  name        = "/account/main_account_region"
-  type        = "String"
-  value       = var.main_account_region
-  description = "Account-global region the account lifecycle (kms/lab-role/root-domain) applies in."
-}

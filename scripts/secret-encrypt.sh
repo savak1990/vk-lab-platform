@@ -31,7 +31,7 @@ trap 'rm -f "$TMP"' EXIT
 
 printf '%s' "$VALUE" | aws kms encrypt \
   --key-id "$KMS_KEY" \
-  --region "$ACCOUNT_MAIN_REGION" \
+  --region "$LAB_REGION" \
   --plaintext fileb:///dev/stdin \
   --output text \
   --query CiphertextBlob | base64 --decode > "$TMP"

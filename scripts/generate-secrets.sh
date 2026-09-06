@@ -31,7 +31,7 @@ FIXED_TEST_PASSWORDS="${FIXED_TEST_PASSWORDS:-false}"
 source "$SCRIPT_DIR/lib/region.sh"
 
 random_password() {
-  aws secretsmanager get-random-password --region "$PROJECT_REGION" --exclude-punctuation \
+  aws secretsmanager get-random-password --region "$LAB_REGION" --exclude-punctuation \
     --password-length 32 --output text --query RandomPassword
 }
 
