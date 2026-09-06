@@ -22,11 +22,7 @@ completed: null
 
 ## 1. Outcome and rationale
 
-A pinned `aws_signing_helper` container image is published from this repo
-to GHCR. A reusable sidecar snippet turns a pod with a workload certificate
-into a pod with continuously refreshed AWS credentials. The credentials
-arrive via the SDK default chain. A test pod proves the allow and deny
-paths end to end.
+The official `aws_signing_helper` container image is pinned by digest, and a reusable sidecar snippet turns a pod with a workload certificate into a pod with continuously refreshed AWS credentials through the SDK default chain. A test pod proves the allow and deny paths end to end.
 
 ## 2. Scope and non-goals
 

@@ -49,6 +49,9 @@ any in-cluster resource.
 - The region constant `LON1` lives in `root.hcl` (`civo_region`) and in `scripts/lib/region.sh` (`CIVO_REGION`). Never derive it.
 - The scripts (CIVO-040) fetch the kubeconfig. Never store the kubeconfig in state.
 
+**Review amendments (2026-09-06, kubernetes-architect):**
+- Default application names: the Civo marketplace manifests use `traefik2-nodeport` and `metrics-server` (https://github.com/civo/kubernetes-marketplace). The CLI removes by that `name`. Use `applications = "-traefik2-nodeport,-metrics-server"` unless the spike records different strings.
+
 ## 5. Files/components affected
 
 - `terraform/live/cluster-civo/network/terragrunt.hcl` and `.../k8s/terragrunt.hcl` (new), `terraform/modules/civo-k8s` (new), and `terraform/modules/civo-network` (firewall added).

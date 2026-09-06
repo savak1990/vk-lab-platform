@@ -1,17 +1,17 @@
 ---
 id: "CIVO-120"
-title: "CloudNativePG on Civo with data surviving make down / make up"
-status: "BLOCKED"
+title: "CloudNativePG on Civo with persistence through object-store backups"
+status: "READY"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
 difficulty: "L"
 recommended_model_tier: "strongest"
-model_rationale: "Data-safety path across cluster destruction; the mechanism depends on spike results and must be reasoned through with failure modes"
+model_rationale: "Data-safety path across cluster destruction; backup and restore must be reasoned through with failure modes"
 effort_estimate: "One to two sessions (6–10 h) including two full down/up cycles"
-estimate_confidence: "low"
-depends_on: ["CIVO-020", "CIVO-050", "CIVO-100"]
-blocked_by: ["CIVO-020"]
+estimate_confidence: "medium"
+depends_on: ["CIVO-050", "CIVO-100", "CIVO-180"]
+blocked_by: []
 supersedes: []
 created: "2026-09-06"
 updated: "2026-09-06"
@@ -22,19 +22,26 @@ completed: null
 
 ## 1. Outcome and rationale
 
-A single-instance CNPG cluster runs on Civo storage. It uses the app
-password from ESO. Rows written before `make down` are present after
-`make up`. Persistence on Civo must be proven against real account
-resources. Do not assume it from a surviving PVC.
+A single-instance CNPG cluster runs on Civo storage with the app password
+from ESO. Rows written before `make down` are present after `make up`.
+Persistence comes from barman-cloud backups in the Civo Object Store
+(CIVO-180), not from volume snapshots. The Civo CSI driver
+(`csi.civo.com`) has no snapshot or clone capability, so the snapshot
+path used on AWS (ADR 0013) cannot work on Civo.
 
 ## 2. Scope and non-goals
 
-In scope: the CNPG `Cluster` values for civo, the persistence mechanism
-chosen by CIVO-020, the `argo-up`/`argo-down` civo persistence functions,
-and the recovery template. Not in scope: backups to object storage
-(CIVO-180) and replicas. Replicas are explicitly `instances: 1`. A second
-instance doubles the volume and the RAM. It gives no protection across
-cluster deletion.
+In scope:
+- CNPG `Cluster` values for Civo.
+- The barman-cloud plugin `ObjectStore` reference, WAL archiving, and a daily `ScheduledBackup`.
+- The `argo-down` Civo branch: an on-demand `Backup` that must complete before teardown.
+- The `argo-up` Civo branch: bootstrap by `recovery` from the object store when a backup exists, else `initdb`.
+- One restore drill into a scratch namespace.
+
+Not in scope:
+- Object store provisioning and credential delivery (CIVO-180).
+- Replicas. `instances: 1` is explicit. A second instance doubles volume and RAM cost and gives no protection across cluster deletion.
+- Retained-volume rebinding. The spike may test it as an experiment. It is undocumented in CNPG and is not a supported path.
 
 ## 3. Current state / evidence
 
@@ -45,13 +52,14 @@ cluster deletion.
 
 ## 4. Design and contracts
 
-The mechanism depends on the CIVO-020 result:
-
-- **(a) VolumeSnapshot** (preferred): `civo/postgres/volumesnapshotclass.yaml` (`driver csi.civo.com`, `deletionPolicy Retain`). The `Cluster` on civo uses `storageClass: civo-volume`, no nodeSelector, and `backup.volumeSnapshot.className: civo-postgres-snapshot`. `recovered-snapshot.yaml` is templated by `.Values.storage.snapshotDriver`. The `argo-down` civo branch runs the same Backup. It prunes via the Civo API/CLI and keeps the newest 2. `argo-up` discovers the newest handle via the Civo API.
-- **(b) Retained volume**: the StorageClass `civo-retain` (`reclaimPolicy Retain`). `argo-down` records the volume ID to SSM `/${project}/persistent/civo/postgres/volume_id`. `argo-up` renders a static `PV` bound by `volumeHandle` and a pre-bound PVC name. CNPG's `Cluster` adopts that PVC (`storage.pvcTemplate` or recovery from an existing PVC per the CNPG docs). The volume lives in the persistent Civo network.
-- **(c) Object store backup**: CIVO-180 becomes P1. This spec bootstraps from the latest backup.
-
-Common to all options: `instances: 1`, 20 Gi, the `postgres-critical` PriorityClass, requests 250m/256Mi, and `wal_level` logical kept for future CDC.
+- Storage: `storageClass: civo-volume`, 20 Gi, reclaim `Delete`. The volume is disposable. The data of record lives in the object store.
+- No `nodeSelector` on Civo. `priorityClassName: postgres-critical`, requests 250m/256Mi, `wal_level` logical.
+- `spec.enablePDB: false` on Civo (values-driven). CNPG creates a PDB even for one instance, and that PDB blocks the cluster autoscaler from removing the node (CIVO-170).
+- Backups: the barman-cloud plugin (installed with the CNPG operator in CIVO-180) with `plugins[0].name: barman-cloud.cloudnative-pg.io` and `parameters.barmanObjectName: civo-object-store`. WAL archiving on. `ScheduledBackup` daily at 03:00 UTC, `method: plugin`. Retention 14 days, set on the `ObjectStore`.
+- `argo-down` Civo branch: create `Backup lab-postgres-teardown-<epoch>` with `method: plugin`, poll `.status.phase` until `completed`, timeout 300 s. On `failed` or timeout the script exits non-zero and leaves the cluster running (fail closed), unless `CI_TEARDOWN_ALLOW_DATA_LOSS=1` is set (CIVO-140).
+- `argo-up` Civo branch: query the object store for the newest completed backup (barman `list-backups` through a short `Job`, or the plugin's status on a previous run recorded in SSM `/${project}/persistent/civo/postgres/last_backup_id`). When one exists, set `postgres.recoverySource: object-store`; the `Cluster` template renders `bootstrap.recovery.source: civo-object-store` with `externalClusters[0].plugin.parameters.barmanObjectName`. When none exists, render `initdb`.
+- Recovery bootstrap uses the same `ObjectStore`, so the restored cluster continues to archive WAL to the same path with a new timeline. Barman keeps the old timeline for point-in-time recovery inside the retention window.
+- Values: `postgres.backup.enabled` (aws false in M1, civo true), `postgres.recoverySource` (`snapshot` on aws, `object-store` on civo, `none`).
 
 ## 5. Files/components affected
 
@@ -59,25 +67,29 @@ Common to all options: `instances: 1`, 20 Gi, the `postgres-critical` PriorityCl
 
 ## 6. Implementation steps
 
-1. Unblock: read the spike section in `research.md`. Pick (a), (b), or (c). Update §4 and `decisions.md`.
-2. Template the Cluster. The golden aws diff is empty.
-3. Run `PROVIDER=civo make up`. Write test rows via the e2e Postgres test or `psql`.
-4. Run `make down`. Verify that the snapshot/volume exists in the Civo account. Verify that the cluster is gone. Note the billing.
-5. Run `make up`. Verify the rows. Verify that `argo-up` picked the newest artifact. Verify that pruning keeps 2.
-6. Failure paths: when the Backup fails, `argo-down` exits non-zero and leaves the cluster (fail closed). With a bogus handle, `argo-up` fails recovery visibly, with no silent `initdb`.
-7. `persistent-down` civo: it lists and deletes the retained artifacts, with confirmation.
+1. Confirm CIVO-180 delivered the `ObjectStore` CR and the `cnpg-backup-s3` Secret.
+2. Template the `Cluster`; run `make gitops-check`. The AWS golden diff must be empty.
+3. `PROVIDER=civo make up`. Write test rows through the e2e Postgres test or `psql`.
+4. Confirm the first scheduled backup and WAL archiving complete (`kubectl get backup`, object store listing).
+5. `make down`. Confirm the teardown `Backup` completed, the cluster is gone, and the object store holds the backup.
+6. `make up`. Confirm the rows are present and `argo-up` selected the newest backup.
+7. Repeat steps 5 and 6 once.
+8. Failure paths: a failed teardown `Backup` exits non-zero and leaves the cluster (fail closed); a bogus recovery source fails visibly with no silent `initdb`.
+9. Restore drill: bootstrap a second `Cluster` from the object store in namespace `cnpg-restore-test`, compare row counts, delete it.
+10. `persistent-down` Civo branch lists the object store contents and deletes the bucket only with confirmation.
 
 ## 7. Dependencies and blockers
 
-Blocked by CIVO-020 (the mechanism). Needs 050 (the layout) and 100 (the app password Secret).
+CIVO-050 (layout), CIVO-100 (app password Secret through ESO), CIVO-180 (object store, credentials, plugin). CIVO-020 no longer gates this spec: the CSI capability list settles the snapshot question without a cluster.
 
 ## 8. Acceptance criteria
 
-- Rows survive one down/up cycle. A second cycle also passes.
-- Artifact retention: the newest 2 are kept. Older artifacts are pruned. Costs are recorded.
-- The fail-closed behaviors are verified.
-- `cluster-down` never deletes the artifact. `persistent-down` deletes it, with confirmation.
-- The AWS golden diff is empty. AWS down/up still restores (one AWS cycle after merge).
+- Rows survive two down/up cycles.
+- Teardown `Backup` completes within 300 s; retention keeps 14 days; storage cost recorded.
+- Fail-closed behaviors verified.
+- Restore drill succeeds with a matching row count.
+- `cluster-down` never touches the object store; `persistent-down` deletes it only with confirmation.
+- AWS golden diff empty; one AWS down/up cycle still restores from the EBS snapshot after the merge.
 
 ## 9. Validation
 
@@ -93,8 +105,9 @@ Data risk: yes. Test with disposable data only. Rollback: revert the change. The
 
 ## 12. Risks and unresolved questions
 
-- A Civo snapshot restore into a new cluster may require the same region and the same network. The spike answers this.
-- CNPG adoption of a pre-existing PVC in option (b) needs the exact CNPG API path. Check the version 0.29.0 chart/operator docs at implementation.
+- The barman-cloud plugin version must match the CNPG operator 0.29.0 chart; confirm at implementation.
+- Backup duration for 20 Gi over the Civo network sets the `argo-down` timeout; measure once and adjust.
+- Static-PV rebinding of a retained Civo volume is an optional spike experiment only. Do not build on it.
 
 ## 13. Definition of done
 
@@ -105,3 +118,6 @@ Data risk: yes. Test with disposable data only. Rollback: revert the change. The
 ## 14. Execution evidence and status history
 
 - 2026-09-06 — created as BLOCKED on CIVO-020.
+
+- 2026-09-06 — kubernetes-architect review: `csi.civo.com` advertises no `CREATE_DELETE_SNAPSHOT` or `CLONE_VOLUME` capability (https://github.com/civo/civo-csi/blob/master/pkg/driver/controller_server.go). Snapshot and PVC-datasource recovery dropped; redesigned around object-store backups; blocker removed; status READY with new dependency CIVO-180.
+

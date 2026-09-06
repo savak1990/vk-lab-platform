@@ -55,6 +55,11 @@ Not in scope:
 - On civo, `argo-up` waits after the root sync until the Service has an ingress IP equal to the reserved IP. The timeout is 300 s. Then `argo-up` runs the DNS wait. The DNS records exist only after CIVO-110. Until then, `argo-up` skips the DNS wait on civo and writes a log line.
 - The golden AWS render must stay an empty diff.
 
+**Review amendments (2026-09-06, kubernetes-architect):**
+- Set `hostname` on the HTTPS listener (for example `*.civo.<root-domain>` from values) so SNI matching is explicit; Envoy Gateway's cert-manager task shows this pattern.
+- AWS annotations stay a literal block guarded by target inside the shared file (see CIVO-050 amendment); Civo annotations come from values.
+- Until the first certificate exists, the HTTPS listener reports `ResolvedRefs=False` while HTTP:80 still programs. Add an Argo health override for `Gateway` that treats a missing certificate Secret as Progressing, or set `cert-manager.io/issue-temporary-certificate: "true"` on the `Certificate` (CIVO-070), so `argo-up` does not time out on first bring-up.
+
 ## 5. Files/components affected
 
 - `gitops/templates/platform/shared/envoy-gateway/gateway.yaml` (moved + templated).

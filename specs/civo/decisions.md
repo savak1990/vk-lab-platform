@@ -30,11 +30,13 @@ HTTP-01; LON1; full observability in M1; AWS behavior unchanged.
 
 | Decision | Options | Recommendation | Trade-offs | Reversible | Affected specs | Blocks READY |
 |---|---|---|---|---|---|---|
-| Persistence mechanism on Civo | (a) CSI VolumeSnapshot Retain, mirrors ADR 0013; (b) retained volume rebound by ID in persistent network; (c) barman backups to object store | (a) if the spike proves account-level snapshots survive cluster deletion; else (b) | (a) simplest parity; (b) ties data to one region/network and needs static PV handling; (c) needs object-store credentials and restore drills | medium | 120, 150, 180 | yes (120) |
+| Persistence mechanism on Civo | (a) CSI VolumeSnapshot; (b) retained volume rebind; (c) barman backups to object store | **Decided 2026-09-06: (c).** `csi.civo.com` advertises no snapshot or clone capability (https://github.com/civo/civo-csi/blob/master/pkg/driver/controller_server.go), so (a) is impossible and CNPG's PVC-datasource recovery (which clones) is too | (c) needs static object-store keys (state exposure accepted, or manual encrypt) and a 500 GB minimum bucket | medium | 120, 150, 180 | no |
 | Default application removal names | `-traefik2-nodeport`, `-metrics-server` vs Terraform `applications` semantics | confirm in spike | wrong names silently leave Traefik installed on 80/443 | high | 030 | yes (030) |
 | Proxy protocol / client IP | on (hostname-only status, external-dns CNAME) vs off | off in M1 | client IP lost at Envoy in M1 | high | 060, 190 | no |
 | ESO/external-dns sidecar injection | chart `extraContainers` vs Kustomize patch vs wrapper chart | `extraContainers` if the pinned charts support it | if unsupported, a small wrapper is needed | high | 090, 100, 110 | no (validated in 090) |
 | Reserved IP | use (stable DNS) vs rely on LB IP | use | small monthly cost, price unverified | high | 025, 060 | no |
+| Object-store credential source | Terraform `civo_object_store_credential` (keys in state) vs manual creation + `secret-encrypt.sh` | Terraform, state exposure accepted for the lab | manual path avoids state exposure at the cost of a ceremony | high | 180 | no |
+| Object-store minimum size | accept 500 GB (~5.43 USD/month) vs no backups | accept | only persistence option on Civo | high | 180 | no |
 | CI provider runs | enable `PROVIDER=civo` in `lab.yml` now vs later | now, guarded by an environment and concurrency group | token exposure surface in CI | high | 140 | no |
 | Intermediate CA | M1 vs later | later (CIVO-200) | time-bounded blast radius vs extra issuance step | medium | 200 | no |
 

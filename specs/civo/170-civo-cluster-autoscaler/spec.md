@@ -55,6 +55,11 @@ parity.
 - Civo docs recommend a minimum of 2 workers with the autoscaler. The spike and this spec verify that `min=1` is honored.
 - Observability: a ServiceMonitor for the autoscaler metrics (gated to civo).
 
+**Review amendments (2026-09-06, kubernetes-architect):**
+- Install path: the upstream `cluster-autoscaler` Helm chart supports `cloudProvider: civo` with `autoscalingGroups: [{name: workers, minSize: 1, maxSize: 3}]` and a Secret `civo-api-access` (`secretKeyRefNameOverride`). Use it as an Argo Application; `argo-up` creates the Secret from the dedicated key like the CA Secret. The marketplace app is the fallback.
+- Scale-down blockers to remove on Civo: CNPG `spec.enablePDB: false` (CIVO-120); `--skip-nodes-with-system-pods=false` or move external-dns out of `kube-system` (it has no PDB); annotate pods with `emptyDir` scratch (`cluster-autoscaler.kubernetes.io/safe-to-evict-local-volumes`) or set `--skip-nodes-with-local-storage=false`.
+- Acceptance adds: after the burst test, the cluster returns to one node within the scale-down window with the platform pods running.
+
 ## 5. Files/components affected
 
 `terraform/modules/civo-k8s/main.tf`, `gitops/templates/platform/civo/autoscaler/*.yaml` or `argo-up` patch step, `gitops/values.yaml`.

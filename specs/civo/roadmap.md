@@ -5,8 +5,8 @@
 | Milestone | Goal | Specs | Exit criterion |
 |---|---|---|---|
 | M0 Foundations | Operator surface, governance, feasibility facts | 010, 015, 020 | AWS unchanged; ADRs merged; spike report answers persistence and default-app questions |
-| M1 Viable Civo platform | `PROVIDER=civo make full-up` brings up Argo, Envoy with TLS, DNS, ESO, CNPG with persistence, observability, autoscaler; `make down`/`up` preserves data; CI can run it | 025–170 | CIVO-150 lifecycle validation passes; idle cost recorded |
-| M2 Hardening and optimization | Right-sizing, backups, client IP, identity hardening | 175, 180, 190, 200 | each spec's DoD |
+| M1 Viable Civo platform | `PROVIDER=civo make full-up` brings up Argo, Envoy with TLS, DNS, ESO, CNPG with object-store persistence, observability, autoscaler; `make down`/`up` preserves data; CI can run it | 025–170, 180 | CIVO-150 lifecycle validation passes; idle cost recorded |
+| M2 Hardening and optimization | Right-sizing, client IP, identity hardening | 175, 190, 200 | each spec's DoD |
 
 ## Dependency graph
 
@@ -39,9 +39,11 @@ flowchart TD
   060 --> 070[070 LE TLS]
   065 --> 070
   110 --> 070
-  020 --> 120[120 CNPG persistence]
-  050 --> 120
+  025 --> 180[180 Object store + plugin]
+  100 --> 180
+  050 --> 120[120 CNPG persistence]
   100 --> 120
+  180 --> 120
   045 --> 130[130 e2e]
   060 --> 130
   045 --> 140
@@ -53,14 +55,13 @@ flowchart TD
   130 --> 150
   160 --> 175[175 right-size]
   170 --> 175
-  120 --> 180[180 backups]
   060 --> 190[190 proxy protocol]
   085 --> 200[200 identity hardening]
 ```
 
 ## Critical path
 
-015 → 010 → 025 → 030 → 040 → 045 (with 050) → 065 → 085 (with 080) → 090 → 100 → 120 → 150.
+015 → 010 → 025 → 030 → 040 → 045 (with 050) → 065 → 085 (with 080) → 090 → 100 → 180 → 120 → 150.
 
 Parallel tracks once 045/050 land: ingress (060 → 070), identity (080 → 082 →
 090 → 110), observability (160), tests (130), CI (140), autoscaler (170).
@@ -69,7 +70,7 @@ Parallel tracks once 045/050 land: ingress (060 → 070), identity (080 → 082 
 
 1. **PR 1 — CIVO-010 + design docs.** `PROVIDER` operator input, civo defaults for project and subdomain, Make dispatch with AWS path unchanged; adds `docs/civo-high-level-design.md`, `docs/aws-platform-design.md`, `docs/argocd-design.md`, `docs/architecture-review-2026-09-06.md`, and `specs/civo/`. AWS regression: `make -n up` output identical; scripts unchanged for aws.
 2. **PR 2 — CIVO-015.** ADRs 0025–0028, constitution §20, architecture §10a, documentation fixes from the review, `CLAUDE.md` updates, spec 027 superseded. No code.
-3. **PR 3 — CIVO-020 report + CIVO-080 CA ceremony script.** Spike findings written into `research.md` and the spec; CA generation script and README exception, no cloud resources created by the PR itself (the spike cluster is created and destroyed manually during the spike session).
+3. **PR 3 — CIVO-020 report + CIVO-080 CA ceremony script.** Spike findings written into `research.md` and the spec; CA generation script and README exception, no cloud resources created by the PR itself (the spike cluster is created and destroyed manually during the spike session). The snapshot questions are already settled by the CSI source; the spike now confirms default-app names, allocatable memory, LB behavior, and object-store pricing.
 
 ## Requirement coverage
 
@@ -93,8 +94,8 @@ Parallel tracks once 045/050 land: ingress (060 → 070), identity (080 → 082 
 | Ingress verification list | 060, 190 |
 | DNS ownership, TXT owner IDs | 110, ADR 0002 note |
 | Certificate flows separated (TLS vs workload identity) | 070 vs 085 |
-| Storage verification list | 020, 120 |
-| CNPG sizing, backups, restore | 120, 180 |
+| Storage verification list | 020, 120, 180 |
+| CNPG sizing, backups, restore | 180 (store, credentials), 120 (backups, restore drill) |
 | Capacity comparison, fixed capacity allowed, autoscaler separate | 030, 170, 175 |
 | Identity chain items 1–9 | 080 (2), 082 (1, 8), 085 (3, 4), 090 (6, 7, 9), 085/090 (5) |
 | Civo token handling | 010, 040, 140, ADR 0028 |

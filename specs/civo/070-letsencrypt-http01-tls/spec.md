@@ -54,6 +54,13 @@ Not in scope: the workload identity certs (CIVO-085) and DNS-01.
 - Persistence: before the cascade, the `argo-down` civo branch exports `platform-public-tls` as **two** SSM SecureStrings, `/${project}/persistent/civo/tls/platform-public/crt` and `/key` (Standard tier, 4 KB each; KMS `alias/lab-secrets`). It also exports a String `/annotations` that carries the Secret's `cert-manager.io/*` annotations (`issuer-name`, `issuer-kind`, `issuer-group`, `certificate-name`, `common-name`, `alt-names`). `argo-up` re-creates the Secret with those annotations before the root Application. It does this only when the parameters are present and the certificate does not expire within 15 days. cert-manager reissues when the issuer annotations mismatch `issuerRef` or the key algorithm mismatches the spec (the `IncorrectIssuer` and `SecretPrivateKeyMismatchesSpec` policy checks). For that reason, the annotations and the ECDSA spec must round-trip exactly. Argo does not track the Secret.
 - `lab-role` and the operator already have KMS and SSM permissions under `*/persistent/*`.
 
+**Review amendments (2026-09-06, kubernetes-architect):**
+- Import guard: re-import the Secret only when the certificate's renewal time (`renewBefore`, default two thirds of the 90-day duration) has not passed. A cert past its renewal time triggers an order on import; count it against the 5-per-week duplicate limit.
+- Import `tls.crt` and `tls.key` from the same issuance. A mismatched pair triggers `SecretPublicKeysDiffer` and a reissue.
+- Restore the Secret before the `Certificate` exists (cert-manager backup guidance), which the `argo-up` ordering already guarantees.
+- Set `cert-manager.io/issue-temporary-certificate: "true"` on the `Certificate` so the HTTPS listener resolves during the first order (see CIVO-060 amendment).
+- The redirect `HTTPRoute` must carry no path match; the ACME solver route's exact match `/.well-known/acme-challenge/<token>` then wins by Gateway API precedence.
+
 ## 5. Files/components affected
 
 `gitops/templates/platform/civo/tls/{issuers,certificate}.yaml`; `shared/envoy-gateway/gateway.yaml` (the listener certificateRefs come from values); `gitops/values.yaml`; `scripts/argo-up.sh`; `scripts/argo-down.sh`.

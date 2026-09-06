@@ -58,6 +58,9 @@ ADR 0018), retention changes, Civo-specific dashboards.
 - PVC sizes are unchanged (10Gi/1Gi/1Gi/10Gi) on `civo-volume`. The volumes have Delete reclaim. The volumes are removed with the cluster (verified in CIVO-150).
 - Record the resource requests for CIVO-175.
 
+**Review amendments (2026-09-06, kubernetes-architect):**
+- Keep `kubeControllerManager`, `kubeScheduler`, `kubeEtcd`, and `kubeProxy` scrapes disabled on Civo. Managed k3s binds these to localhost on control-plane hosts outside the pool and ships no Services for them. Kubelet, cAdvisor, and node-exporter are the realistic targets. Do not spend time on the alternative.
+
 ## 5. Files/components affected
 
 `gitops/templates/platform/shared/observability/*.yaml` (moved + templated), `gitops/values.yaml`.

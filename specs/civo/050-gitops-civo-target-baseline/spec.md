@@ -52,6 +52,12 @@ and observability on civo (CIVO-160).
 - `.Values.target` permits the values `aws|civo|local`. A `fail` in `_helpers.tpl` rejects all other values.
 - Golden render: `scripts/gitops-render-check.sh` *(new)* renders `gitops/` and `gitops/bootstrap/` with `--set target=aws`. It also renders once with `postgres.recoverySnapshotHandle=snap-x`. The script strips the `# Source:` lines. It sorts the documents by kind/name. It compares the result with a committed baseline under `tests/golden/gitops-aws/`. A regeneration of the baseline is an explicit, reviewed action.
 
+**Review amendments (2026-09-06, kubernetes-architect):**
+- The golden check must compare objects, not text. `helm template` output includes template comments and quoting differences (`"external"` vs `external`) that change when literals become values. Normalize each document with `yq -P 'sort_keys(..)'` (or split with `kubectl-slice` and compare with `dyff`) before the diff.
+- The `fail` for an unknown `.Values.target` must live in a template that always renders (for example `templates/_validate.yaml` with a guarded `{{- include }}`), not only in a helper that a matching file includes; otherwise an unknown target renders an empty chart without error.
+- Keep the AWS EnvoyProxy annotations as a target-conditional literal block inside the shared file (they embed `{{ .Values.envoyGateway.nlbSubnetIds }}`), or render values through `tpl`. CIVO-060 follows this rule.
+- Keep the external-snapshotter CRDs and controller gated to `aws`. No snapshot-capable driver exists on Civo, and the `VolumeSnapshotContent` client-side-apply exception plus the root `ignoreDifferences` entry apply to AWS only.
+
 ## 5. Files/components affected
 
 - `gitops/values.yaml`, `gitops/bootstrap/values.yaml`, `gitops/bootstrap/templates/root-application.yaml` (new parameters).

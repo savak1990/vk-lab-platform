@@ -44,6 +44,9 @@ rejects cert-manager for AWS. CIVO-015's ADR 0026 allows it on Civo.
 - Resources: requests 50m/64Mi per component.
 - `certManager.enabled` defaults to false. The civo values set it to true.
 
+**Review amendments (2026-09-06, kubernetes-architect):**
+- Add a `PreSync` hook Job on the consumers' Applications (or on the cert-manager Application's dependents) that waits for `certificates.cert-manager.io` to report `Established`, per this repository's rule that sync waves do not gate CRD readiness across Applications.
+
 ## 5. Files/components affected
 
 The new file above; `gitops/values.yaml`; the monitors gating in CIVO-160.

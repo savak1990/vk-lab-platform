@@ -40,8 +40,8 @@ Civo is a Kubernetes target, not a migration off AWS services.
 |---|---|---|---|
 | Account (shared, once per AWS account, free) | `account-up/down` | KMS key, GitHub OIDC, `lab-role`, `eks-access-identity`, `root-domain` | Unchanged. `lab-role` gains scoped Roles Anywhere and IAM permissions. Civo has no account-level Terraform object; the API key is a manual one-time step |
 | Bootstrap (per project, cheap, rarely destroyed) | `bootstrap-up/down` | Route 53 `lab.<root-domain>` zone, ACM certificate | Route 53 `civo.<root-domain>` zone (ACM unit excluded), plus `bootstrap/rolesanywhere`: trust anchor from the committed CA cert, profile, one IAM role per consumer |
-| Persistent (data layer, survives `down`) | `persistent-up/down` | VPC, SSM secrets | SSM secrets (VPC unit excluded), plus `persistent-civo`: Civo network (free) and reserved IP (stable LB address). Retained CNPG data lives as Civo snapshots or a retained volume (see §4.3) |
-| Cluster (disposable) | `cluster-up/down` | EKS, system node group, Pod Identity roles, Karpenter IAM | `cluster-civo`: firewall + k3s cluster with one Large pool, default Traefik and metrics-server removed, kubeconfig never stored in state |
+| Persistent (data layer, survives `down`) | `persistent-up/down` | VPC, SSM secrets | SSM secrets (VPC unit excluded), plus `persistent-civo`: Civo network (free), reserved IP (stable LB address), and the Object Store holding CNPG backups (see §4.3) |
+| Cluster (disposable) | `cluster-up/down` | EKS, system node group, Pod Identity roles, Karpenter IAM | `cluster-civo`: cluster firewall (6443) and LB firewall (80/443), k3s cluster with one Large pool, default Traefik and metrics-server removed, kubeconfig never stored in state |
 | Argo (reconcile) | `argo-up/down` | Argo CD via script, root Application with `target=aws` | Same script, Civo branch: kubeconfig from the Civo CLI, CA key decrypted into the cert-manager issuer Secret, `target=civo` |
 
 Composite targets are unchanged: `up`, `down`, `platform-up/down`,
@@ -89,16 +89,19 @@ because CNPG pods cannot host the sidecar.
 
 ```mermaid
 flowchart LR
-  AD[argo-down] -->|CNPG Backup, method volumeSnapshot| VS[VolumeSnapshot<br/>csi.civo.com, Retain]
-  VS -->|survives cluster delete| ACC[Civo account snapshot]
-  AU[argo-up] -->|discover newest via civo CLI| ACC
-  ACC -->|VolumeSnapshotContent + recovery bootstrap| PG[CNPG cluster]
+  PG[CNPG cluster<br/>civo-volume, 1 instance] -->|WAL archive + daily ScheduledBackup<br/>barman-cloud plugin| OS[Civo Object Store<br/>persistent-civo, 14d retention]
+  AD[argo-down] -->|on-demand Backup, wait completed| OS
+  AU[argo-up] -->|newest backup exists?| OS
+  OS -->|bootstrap.recovery from ObjectStore| PG
 ```
 
-This mirrors ADR 0013. It depends on the feasibility spike confirming that
-Civo CSI snapshots exist at account level and survive cluster deletion. If
-not, the fallback is a retained volume rebound by ID inside the persistent
-Civo network, then barman backups to a Civo Object Store.
+Decided 2026-09-06 after review: the Civo CSI driver `csi.civo.com`
+advertises no snapshot or clone capability in its source, so the AWS
+snapshot flow (ADR 0013) cannot be mirrored. Persistence on Civo is
+barman-cloud backups in a Civo Object Store (CIVO-180, CIVO-120). The
+Civo volume itself is disposable. Object-store credentials are static
+Civo keys delivered through SSM and ESO; the store costs about 5.43 USD
+per month at the 500 GB minimum.
 
 ### 4.4 State layout
 
@@ -137,7 +140,7 @@ What the shared GitOps tree needs from any provider, and where it comes from.
 | Secrets | yes | ESO → SSM | same, via sidecar | unchanged manifests |
 | Schedulable capacity | yes | Karpenter NodePools | fixed pool + autoscaler | `capacity.spotAvoidance`, `postgres.nodeSelector` |
 | GitOps | yes | Argo CD by script | same | `target` |
-| PostgreSQL | yes | CNPG + EBS snapshots | CNPG + Civo snapshots/volume | `postgres.*` |
+| PostgreSQL | yes | CNPG + EBS snapshots | CNPG + barman backups in Civo Object Store | `postgres.*` |
 | Observability | optional | full stack | full stack, k3s scrape targets | `observability.*` |
 | Policies | optional | none | none | — |
 
@@ -168,8 +171,8 @@ subtrees; shared components read only the contract values.
 
 | Question | Blocks | Resolved by |
 |---|---|---|
-| Do Civo CSI VolumeSnapshots exist at account level and survive cluster deletion? | CIVO-120 | CIVO-020 spike |
-| Can a retained Civo volume be re-attached to a new cluster in the same network? | CIVO-120 fallback | CIVO-020 spike |
+| Can a retained Civo volume be re-attached to a new cluster in the same network? | none (experiment only) | CIVO-020 spike |
+| Is the 500 GB object-store minimum (~5.43 USD/month) acceptable? | CIVO-180 | user |
 | Exact default application names to remove (`traefik2-nodeport`, `metrics-server`)? | CIVO-030 | CIVO-020 spike |
 | Does Civo expose a ServiceAccount OIDC issuer (would allow web identity instead of Roles Anywhere)? | none (Roles Anywhere stays) | CIVO-020 spike, recheck |
 | Reserved IP price | cost model precision | CIVO-025 |

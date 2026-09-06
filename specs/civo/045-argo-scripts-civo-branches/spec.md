@@ -69,6 +69,11 @@ Not in scope:
 - `argo-down.sh` on civo does the existence proof with `cluster_exists`. The CNPG backup step calls `civo_backup()` (CIVO-120). Until CIVO-120 lands, the step fails closed with a clear message if a CNPG cluster exists. The step does not skip. The Route 53 wait is unchanged (the AWS credentials are present). The LB wait is unchanged. The script filters `TERMINATING_KINDS` to the kinds that are present (`kubectl api-resources`).
 - All added lines are `if [ "$PROVIDER" = civo ]` branches. The aws path stays literally the same.
 
+**Review amendments (2026-09-06, kubernetes-architect):**
+- The Civo branch of the Service address check reads `status.loadBalancer.ingress[0].ip`, not `.hostname` (hostname appears only with proxy protocol).
+- The `argo-down` Civo backup step calls `civo_backup()` from CIVO-120: an on-demand CNPG `Backup` with `method: plugin` to the object store, waited to `completed`. No snapshot logic on Civo.
+- The LoadBalancer Service wait stays as is: the Civo CCM uses the standard `service.kubernetes.io/load-balancer-cleanup` finalizer, and the CCM runs in `kube-system` outside the Argo cascade.
+
 ## 5. Files/components affected
 
 `scripts/argo-up.sh`, `scripts/argo-down.sh`, `scripts/lib/provider.sh`.

@@ -60,6 +60,11 @@ Checklist (for each item, record the command, the result, and the date):
 8. Record the reserved IP price and the snapshot price from the dashboard.
 9. Destroy everything. Confirm that the `civo` listings are empty. Record the total cost.
 
+**Review amendments (2026-09-06, kubernetes-architect):**
+- Drop item 4(a) (`VolumeSnapshotContent` import) and the `VolumeSnapshotClass` part of item 2. The `csi.civo.com` driver source lists no snapshot capability, so the question is settled without a cluster.
+- Item 4(b) (static PV rebind of a retained volume) stays as an optional experiment. The result informs no M1 spec.
+- Add: record the Civo Object Store price and minimum size in the dashboard, and the exact strings shown by `civo kubernetes applications ls` for the default apps (expected `traefik2-nodeport` and `metrics-server`).
+
 ## 5. Files/components affected
 
 - `specs/civo/research.md` (new section).
