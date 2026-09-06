@@ -59,14 +59,10 @@ make account-up       # run once per AWS account, from a workstation
 make account-down     # guarded (CONFIRM_DESTROY=<PROJECT_NAME>), expected to run essentially never
 ```
 
-This layer applies in `ACCOUNT_MAIN_REGION` (defaults `eu-west-1`,
-`terraform/live/root.hcl`'s `account_main_region` local), independent of
-whatever `PROJECT_REGION` any given project uses — the secrets KMS key created here
-only exists in that one region. `scripts/secret-encrypt.sh`/`secret-decrypt.sh`
-read the same variable directly (not `PROJECT_REGION`) for their `aws kms`
-calls, so a project running under a different `PROJECT_REGION` still resolves the
-same key. Only set `ACCOUNT_MAIN_REGION` explicitly if `account-up` was run
-against a non-default region — every other command leaves it at the default.
+This layer applies in the platform's single region, `eu-west-1`
+(`terraform/live/root.hcl`'s `aws_region` local) — the same region every
+project's own layers apply in, so the secrets KMS key created here is always
+reachable from them. The region is not configurable; see ADR 0024.
 
 `make account-up` also sets `lab.yml`'s `vars.AWS_ROLE_ARN` (from `lab-role`'s
 own ARN — set once, ever, never per-project). Re-running is a no-op

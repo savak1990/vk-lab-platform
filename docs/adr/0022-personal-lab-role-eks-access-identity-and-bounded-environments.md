@@ -1,5 +1,12 @@
 # ADR 0022: Personal-lab OIDC role, EKS access identity, and bounded-environment lifecycle workflows
 
+> **Note (2026-09-05):** every mention of `PROJECT_REGION` below — as a
+> workflow input, as half of a registered `PROJECT_NAME`/`PROJECT_REGION`
+> combination, and in the `AWS_ROLE_ARN`/`AWS_REGION` delivery path — is
+> superseded by ADR 0024. The platform targets one fixed region; the workflow
+> input is gone and the environment is bounded by `PROJECT_NAME` alone. The
+> bounded-environment decision itself is unchanged and still binding.
+
 ## Status
 
 Accepted

@@ -25,9 +25,14 @@ under it. And two operator inputs, `SUBDOMAIN` and `ACCOUNT_MAIN_REGION`,
 were re-read fresh from env vars on every apply/script run with no
 persistence: a forgotten re-export of a non-default value silently reverts
 to the default, which for `SUBDOMAIN` risks Terraform planning to move the
-entire delegated zone/certificate to a different fqdn. `PROJECT_REGION` has
+entire delegated zone/certificate to a different fqdn. `PROJECT_REGION` had
 the same env-var-only shape but a materially different risk profile — see
-below for why it's deliberately left unpersisted.
+below for why it was deliberately left unpersisted.
+
+> **Superseded in part by ADR 0024.** Both region variables are gone: the
+> platform now targets one fixed region declared per layer. The region
+> paragraphs below are retained as the reasoning that led there, not as a
+> description of current behaviour.
 
 A research finding during planning matters for scope: `fqdn`, `vpc_id`,
 `node_subnet_id`, `acm_certificate_arn` are consumed at Argo CD repo-server
@@ -80,7 +85,6 @@ segment tells you directly whether a parameter survives teardown.
 | Value | Written by | SSM path |
 |---|---|---|
 | `root_domain` | `terraform/live/account/root-domain` | `/account/root_domain` |
-| `main_account_region` | `terraform/live/account/root-domain` | `/account/main_account_region` |
 | `subdomain` | `terraform/live/bootstrap/route53` | `/<project>/bootstrap/route53/subdomain` |
 | `fqdn` | `terraform/live/bootstrap/route53` | `/<project>/bootstrap/route53/fqdn` |
 | `acm_certificate_arn` | `terraform/live/bootstrap/acm` | `/<project>/bootstrap/acm/certificate_arn` |
@@ -90,9 +94,10 @@ segment tells you directly whether a parameter survives teardown.
 | `argocd_admin_password_bcrypt` | `terraform/live/persistent/secrets` | `/<project>/persistent/argocd/admin_password_bcrypt` |
 | `node_subnet_id` | `terraform/live/cluster/eks` | `/<project>/cluster/eks/node_subnet_id` |
 
-`root_domain`/`main_account_region` are the only two with no project
-segment, matching their account-global scope — the same reasoning `kms`/
-`lab-role` already use.
+`root_domain` is the only one with no project segment, matching its
+account-global scope — the same reasoning `kms`/`lab-role` already use.
+(`main_account_region`, originally written alongside it, was removed by
+ADR 0024.)
 
 **`root_domain` moves to account-up.** A new `terraform/modules/root-domain`
 module decrypts `secrets/<project>/root-domain.enc` (the committed file
@@ -147,15 +152,18 @@ read the recorded `subdomain` parameter — querying it in `project_region`,
 where that parameter actually lives, since `project_region` is supplied by
 the operator/Makefile, not itself being discovered — and prefers it over
 `get_env("SUBDOMAIN", "lab")`, falling back to the env var only on the very
-first apply. `ACCOUNT_MAIN_REGION` is needed by shell scripts, not other
-Terraform modules, so `scripts/lib/region.sh` centralizes the same pattern:
-read `/account/main_account_region` (querying it in the region it's assumed
-to already live in — itself defaulted from the env var — since that
-parameter is written by a unit that applies in `ACCOUNT_MAIN_REGION`), fall
-back to the env var if `ParameterNotFound`, abort loudly on any other AWS
-error (auth, throttling) — a blanket fallback would silently swallow those
-too, and region is exactly the kind of value where a silent wrong answer is
-worse than a loud failure.
+first apply.
+
+**Correction (ADR 0024).** This ADR originally also described
+`scripts/lib/region.sh` reading `/account/main_account_region` from SSM,
+falling back to the env var on `ParameterNotFound` and aborting loudly on any
+other AWS error. That mechanism was reverted shortly afterwards without this
+ADR being updated — it hit the same circularity described for
+`PROJECT_REGION` below, since a parameter recording a region necessarily lives
+in that region. `scripts/lib/region.sh` never self-discovered anything
+thereafter, and the parameter had no readers at all. ADR 0024 deletes both the
+parameter and the variables. The drift between this paragraph and the code is
+itself part of ADR 0024's rationale.
 
 `PROJECT_REGION` cannot be persisted the same way: a parameter recording it
 would itself live in `PROJECT_REGION`, so discovering it via SSM is
@@ -228,7 +236,11 @@ the two password parameter ARNs, plus `kms:Decrypt` on `alias/lab-secrets`
   otherwise-real problems: `root-domain`'s apply no longer depends on
   `alias/lab-secrets` existing first, and it sidesteps the cross-region
   SecureString/KMS-key coupling below for `fqdn` specifically.
-- **Known limitation, deferred:** the two ESO-consumed passwords are still
+- **Known limitation, deferred — closed by policy in ADR 0024**, which fixed
+  the platform at a single region so the two regions below can no longer
+  differ. Not fixed, only made unreachable: spec 031 adopts it and it returns
+  unchanged if region portability is ever revived. Original text follows.
+  The two ESO-consumed passwords are still
   SecureString parameters written in `PROJECT_REGION`, encrypted with
   `alias/lab-secrets`, which exists only in `ACCOUNT_MAIN_REGION` — AWS
   requires an SSM SecureString's KMS key to be in the same region as the

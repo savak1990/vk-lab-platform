@@ -121,86 +121,52 @@ Merge the redesign to `main`, then:
     refuses. Do not actually run `account-down` for real in this test pass;
     it destroys every project in the account.
 
-## Phase 7 — Region-portability of the shared role and KMS key
+## Phase 7 — IAM self-protection: the shared role can't escalate itself
 
-The shared `lab-role`'s permission policy is applied once, in
-`ACCOUNT_MAIN_REGION`, but must authorize a project's resources in *any*
-`PROJECT_REGION` — its EKS/SSM/Secrets Manager resource ARNs are wildcarded on
-region (`arn:aws:eks:*:...`, not `arn:aws:eks:eu-west-1:...`) specifically
-for this. The shared `alias/lab-secrets` KMS key, unlike the role, isn't
-region-portable — it only exists in `ACCOUNT_MAIN_REGION` — so
-`secret-encrypt`/`secret-decrypt`/`generate-secrets` must keep resolving it
-there even while `PROJECT_REGION` (this project's own region) changes.
-
-23. Leave `ACCOUNT_MAIN_REGION` unset (defaults `eu-west-1`, matching
-    wherever `account-up` actually ran). Pick a second region (e.g.
-    `us-east-1`) and a throwaway `PROJECT_NAME` (e.g. `vk-lab-region-test`).
-    `PROJECT_REGION=us-east-1 PROJECT_NAME=vk-lab-region-test ROOT_DOMAIN=<domain>
-    make generate-secrets` — confirm this succeeds: `generate-secrets`
-    calls `secret-encrypt.sh`, which must resolve `alias/lab-secrets` under
-    `ACCOUNT_MAIN_REGION` (still `eu-west-1`), not the `PROJECT_REGION=us-east-1`
-    this command was invoked with. Then `PROJECT_REGION=us-east-1
-    PROJECT_NAME=vk-lab-region-test make bootstrap-up` (a different
-    `SUBDOMAIN` too, to avoid the uniqueness guard) — confirm this project's
-    own state bucket and Route53/ACM units apply in `us-east-1`
-    (`PROJECT_REGION`), while `secret-decrypt.sh`/`secret-encrypt.sh` calls
-    anywhere in this flow still succeed against `eu-west-1`
-    (`ACCOUNT_MAIN_REGION`).
-24. `PROJECT_REGION=us-east-1 PROJECT_NAME=vk-lab-region-test make persistent-up
-    cluster-up`. Confirm the cluster actually comes up — this is the real
-    test that `lab-role`'s EKS/SSM-AMI-lookup/Secrets-Manager statements
-    aren't silently denying every action outside `account-up`'s own region.
-25. `PROJECT_REGION=us-east-1 PROJECT_NAME=vk-lab-region-test CONFIRM_DESTROY=vk-lab-region-test
-    make full-down` to tear it down again (no `account-down` needed — the
-    shared role/KMS survive, only this throwaway project's own resources
-    are destroyed).
-
-## Phase 8 — IAM self-protection: the shared role can't escalate itself
-
-26. Via `aws iam simulate-principal-policy` against `lab-role`: confirm
+23. Via `aws iam simulate-principal-policy` against `lab-role`: confirm
     `iam:PutRolePolicy`/`iam:AttachRolePolicy`/`iam:DeleteRole` all evaluate
     to `explicitDeny` when the resource ARN is `lab-role`'s own ARN or
     `eks-access-identity`'s ARN (the `DenySelfAndAccessIdentityIamRoleMutation`
     statement) — confirms the role can create/manage `*-eks-*` project
     roles but never modify itself or `eks-access-identity`, even though both
     match a broad `iam:*`-shaped Allow elsewhere in the same policy.
-27. Also confirm `kms:ScheduleKeyDeletion`/`kms:DisableKey`/`kms:DeleteImportedKeyMaterial`
+24. Also confirm `kms:ScheduleKeyDeletion`/`kms:DisableKey`/`kms:DeleteImportedKeyMaterial`
     against `alias/lab-secrets`'s key ARN evaluate to `implicitDeny` (or
     `explicitDeny` via `DenySharedKmsKeyDestruction`) — the shared key is
     never destroyable by any per-project operation, only `account-down`.
-28. Confirm `s3:DeleteBucket` against **this project's own** state bucket
+25. Confirm `s3:DeleteBucket` against **this project's own** state bucket
     ARN evaluates to `allowed` (no permanent Deny — ephemeral projects must
     be fully destroyable, unlike the KMS key above).
 
-## Phase 9 — Fault injection: does a mistake still let you shut down?
+## Phase 8 — Fault injection: does a mistake still let you shut down?
 
-29. Temporarily break `argo-down.sh` (e.g. exit 1 partway) and run
+26. Temporarily break `argo-down.sh` (e.g. exit 1 partway) and run
     `make down` locally — confirm `cluster-down.sh` refuses per ADR 0012
     rather than deleting the cluster out from under Argo CD. Revert the
     break.
-30. Temporarily point `AWS_ROLE_ARN` at a nonexistent ARN and dispatch
+27. Temporarily point `AWS_ROLE_ARN` at a nonexistent ARN and dispatch
     `lab.yml` with `target=up` — confirm `configure-aws-credentials` fails
     cleanly at the auth step, before any AWS resource is touched.
-31. Delete `eks-access-identity` (`terraform destroy` on that unit only)
+28. Delete `eks-access-identity` (`terraform destroy` on that unit only)
     and run `make cluster-up` — confirm `require-persistent.sh`'s existence
     check fails fast with "Run 'make account-up' first". Re-run
     `make account-up` to restore it.
 
-## Phase 10 — Operator-identity edge case (unchanged by this redesign)
+## Phase 9 — Operator-identity edge case (unchanged by this redesign)
 
-32. Switch your local AWS auth from a plain IAM user to an SSO session (or
+29. Switch your local AWS auth from a plain IAM user to an SSO session (or
     vice versa) and re-run `make account-up`. Confirm the plan shows
     `eks-access-identity`'s `OperatorWorkstation` trust statement's
     principal updated to the new identity's *role* ARN.
-33. Before re-running `make account-up` in step 32, confirm `kubectl` fails
+30. Before re-running `make account-up` in step 29, confirm `kubectl` fails
     with `Unauthorized` under the new identity (stale trust principal) —
     then confirm it works again immediately after the re-apply.
 
 ## Out of scope for this test plan
 
 - Registering a second, permanently-dispatchable `PROJECT_NAME` dropdown
-  entry for `vk-lab-ci` — Phase 7 above proves the shared role/KMS already
-  support any `PROJECT_NAME`/`PROJECT_REGION` mechanically; wiring a permanent
+  entry for `vk-lab-ci` — the shared role scopes by naming convention, so it
+  already supports any `PROJECT_NAME` mechanically; wiring a permanent
   second dropdown option is a separate, smaller follow-up.
 - Numeric per-PR ephemeral clusters — a stated future idea, not yet
   designed; a full EKS cluster per PR was flagged as likely the wrong tool

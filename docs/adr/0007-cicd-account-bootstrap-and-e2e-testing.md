@@ -1,5 +1,10 @@
 # ADR 0007: CI/CD account bootstrap, fork configurability, and Go/Ginkgo E2E testing
 
+> **Note (2026-09-05):** "Fork configurability" item 3 below is superseded by
+> ADR 0024. `AWS_REGION` is no longer a GitHub variable — the platform targets
+> one fixed region, written literally in the workflow. Item 2 (`AWS_ROLE_ARN`)
+> and the provider/role split are unchanged and still binding.
+
 > **Note (2026-08-28):** every spec number below predates a later renumber.
 > The OIDC provider is now spec 015, not spec 001, and lives in
 > `terraform/live/account/` applied by `make account-up`, not in the Bootstrap

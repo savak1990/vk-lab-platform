@@ -12,8 +12,8 @@ nested inside it, for the same reason `terraform/live/state/` sits outside
 (`scripts/account-down.sh`) must never discover this unit and try to destroy
 the very bucket its own Terraform state lives in.
 
-Like every unit under `account/`, this bucket lives in `ACCOUNT_MAIN_REGION`
-(defaults `eu-west-1`), not whatever `PROJECT_REGION` a project happens to be using.
+Like every unit under `account/`, this bucket lives in the platform's single
+region, `eu-west-1` (ADR 0024).
 
 ## Usage
 

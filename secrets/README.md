@@ -10,10 +10,9 @@ Each file here is one value — a runtime secret or a piece of non-secret
 private configuration (like the root domain, constitution §14) — encrypted
 independently with the shared, account-global secrets KMS key
 (`alias/lab-secrets`, created once by `make account-up` — not per-project).
-That key lives in one fixed region, `ACCOUNT_MAIN_REGION` (defaults
-`eu-west-1`) — `make secret-encrypt`/`secret-decrypt`/`generate-secrets` all
-call it under that variable, independent of whatever `PROJECT_REGION` the current
-`PROJECT_NAME` uses for its own cluster/state bucket.
+That key lives in the platform's single region, `eu-west-1` — the same region
+everything else applies in, so `make secret-encrypt`/`secret-decrypt`/
+`generate-secrets` always resolve it (ADR 0024).
 
 Files live under a per-project directory, `secrets/<PROJECT_NAME>/<name>.enc`
 (`PROJECT_NAME` defaults to `vk-lab-platform`), so a different `PROJECT_NAME`
