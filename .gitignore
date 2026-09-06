@@ -33,6 +33,7 @@ secrets/*/*
 !secrets/*/*.enc
 !secrets/*/*.bcrypt
 !secrets/root-domain.enc
+!secrets/civo-token.enc
 !secrets/README.md
 
 # Editors
