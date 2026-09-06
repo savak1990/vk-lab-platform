@@ -44,6 +44,26 @@ spec:
             memory: 128Mi
           limits:
             memory: 256Mi
+  # The chart's keepTLSSecret reuse branch calls `lookup`, which is always nil
+  # under client-side rendering, so every render mints a fresh CA. Unignored,
+  # selfHeal rewrites the caBundle while the running pod serves the old cert.
+  ignoreDifferences:
+    - group: ""
+      kind: Secret
+      name: aws-load-balancer-tls
+      namespace: kube-system
+      jsonPointers:
+        - /data
+    - group: admissionregistration.k8s.io
+      kind: MutatingWebhookConfiguration
+      name: aws-load-balancer-webhook
+      jqPathExpressions:
+        - .webhooks[].clientConfig.caBundle
+    - group: admissionregistration.k8s.io
+      kind: ValidatingWebhookConfiguration
+      name: aws-load-balancer-webhook
+      jqPathExpressions:
+        - .webhooks[].clientConfig.caBundle
   destination:
     server: https://kubernetes.default.svc
     # kube-system, matching karpenter/ebs-csi-driver - not `envoy`, which
