@@ -6,8 +6,8 @@ ADR 0022.
 
 > **Scope amendment (ADR 0022):** the two workflows became dashboards rather
 > than fixed single-purpose triggers. `lab-up.yml`/`lab-down.yml` take
-> `project_name`/`subdomain`/`region` as bounded `type: choice` inputs
-> (exactly one option today, `vk-lab-platform`/`lab`/`eu-west-1` — a second
+> `project_name`/`subdomain` as bounded `type: choice` inputs
+> (exactly one option today, `vk-lab-platform`/`lab` — a second
 > registered combination needs a second option plus its own role's ARNs,
 > added together, deliberately, never accepted as free text — see the ADR for
 > why), plus a `depth` selector. `lab-up.yml`'s depth reaches `full-up`
@@ -73,7 +73,7 @@ Excludes: any PR-triggered validation workflow (`validate.yml`), the Atlantis PR
 3. These workflows operate on the **personal** lab's persistent/disposable state, not CI's isolated `ci/persistent`/`ci/cluster` state (constitution §11) — the OIDC role they assume MUST be scoped to the personal-lab Terraform state paths, distinct from spec 020's CI-scoped role and from spec 018's per-stack Atlantis roles.
 4. Triggering MUST NOT be automatic on every push or PR — these workflows start/stop real, billable infrastructure and MUST require an explicit human action (`workflow_dispatch`, optionally gated by a GitHub Environment with required reviewers) rather than firing on routine repository activity.
 5. `make down` runs (whether local or via `lab-down.yml`) MUST still respect every postcondition and safety check spec 014 already defines — this spec adds a trigger, not a second implementation of shutdown logic.
-6. `AWS_ROLE_ARN` and `AWS_REGION` MUST be supplied to these workflows as GitHub Environment/repository variables, never hardcoded (constitution §19) — this is what lets a fork owner point `lab-up.yml`/`lab-down.yml` at their own account/role/region with zero source-code changes.
+6. `AWS_ROLE_ARN` MUST be supplied to these workflows as a GitHub Environment/repository variable, never hardcoded (constitution §19) — this is what lets a fork owner point the lifecycle workflow at their own account and role with zero source-code changes. The AWS region is the deliberate exception (ADR 0024): it is written literally in the workflow, is not an input, and is not a GitHub variable.
 7. This spec MUST create only its own role, trusting the one OIDC provider spec 015 already created. It MUST NOT create a second OIDC provider.
 
 ## Implementation hints

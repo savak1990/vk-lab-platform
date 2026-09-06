@@ -946,8 +946,8 @@ Helm and GitOps configuration contain references to secret resources, never plai
 
 The GitHub OIDC provider (`token.actions.githubusercontent.com`) is
 account-level, region-agnostic AWS IAM infrastructure: AWS permits exactly
-one such provider per provider URL per account, and the same provider
-authenticates GitHub Actions runs deploying into any AWS region. It is
+one such provider per provider URL per account, and the provider is not
+bound to the region the stacks it authenticates deploy into. It is
 created exactly once, by `make account-up` (spec 015), and is never recreated
 or destroyed by `make up`/`make down`/`make bootstrap-down` — it is
 foundational, essentially-permanent account infrastructure (ADR 0007).
@@ -969,7 +969,7 @@ one GitHub OIDC provider (spec 015, account layer, created once)
         │
         ├── personal-lab role (spec 016) — "normal deploy"
         │     hand-enumerated, no service wildcards, scoped to exactly one
-        │     registered PROJECT_NAME/PROJECT_REGION combination's state and AWS
+        │     registered PROJECT_NAME's state and AWS
         │     resources — never a service the workstation/GitHub distinction
         │     could touch outside it (ADR 0022)
         │
@@ -1201,7 +1201,7 @@ make full-down         the exact reverse of full-up — tears down the entire pl
 
 `make state-up`/`make state-down` still exist as their own targets (per-project state bucket create/destroy), but nothing in the normal flow calls them directly — `bootstrap-up`/`bootstrap-down` call them internally as their first/last step. The Account layer has its own separate dedicated state bucket, created/destroyed the same way by `scripts/account-state-up.sh`/`scripts/account-state-down.sh`, called internally by `account-up`/`account-down`.
 
-The Account layer applies in `ACCOUNT_MAIN_REGION` (`terraform/live/root.hcl`'s `account_main_region` local, defaults `eu-west-1`), independent of any project's own `PROJECT_REGION` — the shared secrets KMS key created there only exists in that one region. `scripts/secret-encrypt.sh`/`secret-decrypt.sh` read `ACCOUNT_MAIN_REGION` directly for their `aws kms` calls (not `PROJECT_REGION`), so `make secret-encrypt`/`secret-decrypt`/`generate-secrets` resolve the same key regardless of which `PROJECT_REGION` the current `PROJECT_NAME` runs in — see `tests/manual/016-lab-up-down.md` Phase 7 for the test that would otherwise miss this.
+The Account layer applies in the platform's single region, `eu-west-1` (`terraform/live/root.hcl`'s `aws_region` local), the same region every project's own layers apply in — so the shared secrets KMS key created there is always co-regional with the parameters it encrypts (ADR 0024; spec 031 records what a second region would cost).
 
 `make up`/`make down` compose `cluster-up`/`argo-up` and `argo-down`/`cluster-down` respectively (ADR 0012, spec 006-1) — `argo-down`'s Argo-driven cascade must complete before `cluster-down` touches the EKS cluster, since only Argo/Karpenter's own controllers can clean up the AWS resources they provisioned outside Terraform.
 
@@ -1356,18 +1356,24 @@ Postconditions must be verified.
 # 24a. Fork Configurability
 
 A forked repository must be runnable against the fork owner's own AWS
-account and domain with **zero source-code changes**. Constitution §19 is
-the binding statement of the required setup steps and the GitHub
-variable/secret contract — this section only adds the rationale: this is
-what makes the repository genuinely forkable rather than personally-owned
-infrastructure with a public mirror.
+account and domain with **zero source-code changes, in `eu-west-1`**.
+Constitution §19 is the binding statement of the required setup steps and
+the GitHub variable/secret contract — this section only adds the rationale:
+this is what makes the repository genuinely forkable rather than
+personally-owned infrastructure with a public mirror.
 
-`AWS_ROLE_ARN` and `AWS_REGION` are configuration, not credentials — plain
-GitHub variables are appropriate. `ROOT_DOMAIN` is private/hygiene data
+`AWS_ROLE_ARN` is configuration, not a credential — a plain GitHub variable
+is appropriate. `ROOT_DOMAIN` is private/hygiene data
 (§12, §18) decrypted in-workflow from the committed `secrets/root-domain.enc`
 (§18's "GitHub Actions' path to the domain value"), never a hardcoded value
 in workflow YAML, Terraform, Helm values, or documentation (constitution
 §19, ADR 0007, ADR 0023).
+
+The AWS region is deliberately *not* forkable configuration. The platform
+targets `eu-west-1` and nothing else; a fork owner wanting a different region
+edits the five per-layer constants named in constitution §19 (ADR 0024).
+Running a cluster in a region other than the account's own is a
+designed-but-deferred capability — spec 031.
 
 ---
 
@@ -1737,7 +1743,7 @@ make up
 make down
 ```
 
-GitHub (`lab.yml` takes bounded `PROJECT_NAME`/`SUBDOMAIN`/`PROJECT_REGION` choice
+GitHub (`lab.yml` takes bounded `PROJECT_NAME`/`SUBDOMAIN` choice
 inputs plus a `target` selector enumerating only the composite `make` targets
 (individual-phase targets like `bootstrap-up`/`cluster-up` are workstation-only,
 not dispatchable), plus a `confirm_destroy` free-text input wired to
@@ -1849,7 +1855,7 @@ All implementation specifications must preserve the following:
 22. Exactly one GitHub OIDC provider exists per account, created once by `make account-up` in the account layer (§17a, ADR 0021); every consumer gets its own role trusting it, never its own provider.
 23. A cluster's Kubernetes access is an explicit, per-cluster grant (EKS access entries), never implied by which principal happened to run `terraform apply` (§17a, §34, ADR 0022).
 24. An IAM policy's resource scope is never widened to match a runtime workflow input; a new environment combination gets its own committed ARNs, added deliberately, never accepted as free text (ADR 0022).
-23. No workflow, module, or spec hardcodes an account ID, role ARN, region, or domain value — forking requires only account bootstrap plus the configuration values in §24a, never a source change.
+23. No workflow, module, or spec hardcodes an account ID, role ARN, or domain value — forking requires only account bootstrap plus the configuration values in §24a, never a source change. The AWS region is the one deliberate exception: the platform targets `eu-west-1` only, declared once per layer and never derived from an environment variable or a workflow input (ADR 0024, spec 031).
 
 ---
 

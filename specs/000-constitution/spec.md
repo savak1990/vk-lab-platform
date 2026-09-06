@@ -348,8 +348,10 @@ A successful `local` run is never a substitute for the `aws`-target full lifecyc
 
 ## 19. Fork Configurability
 
-A forked copy of this repository MUST be runnable against the fork owner's own AWS account and domain with zero source-code changes. The only setup steps a fork owner needs are: run account bootstrap (§17's `make bootstrap-up`, creating the account-level GitHub OIDC provider per §5) once against their own AWS account, generate/commit their own `secrets/root-domain.enc` (§14, §5), and set `AWS_ROLE_ARN` and `AWS_REGION` as GitHub Environment/repository variables.
+A forked copy of this repository MUST be runnable against the fork owner's own AWS account and domain with zero source-code changes, in the platform's single fixed region `eu-west-1`. The only setup steps a fork owner needs are: run account bootstrap (§17's `make bootstrap-up`, creating the account-level GitHub OIDC provider per §5) once against their own AWS account, generate/commit their own `secrets/root-domain.enc` (§14, §5), and set `AWS_ROLE_ARN` as a GitHub Environment/repository variable. Deploying into any other region is a deliberate source change, not a configuration step — see ADR 0024 and spec 031.
 
-`AWS_ROLE_ARN` and `AWS_REGION` are configuration, not credentials. `ROOT_DOMAIN` is private/hygiene data (§14); GitHub Actions workflows decrypt the committed `secrets/root-domain.enc` ciphertext directly, the same mechanism workstation/local use relies on (ADR 0023 superseded the earlier separate-GitHub-secret path — see ADR 0007).
+`AWS_ROLE_ARN` is configuration, not a credential. `ROOT_DOMAIN` is private/hygiene data (§14); GitHub Actions workflows decrypt the committed `secrets/root-domain.enc` ciphertext directly, the same mechanism workstation/local use relies on (ADR 0023 superseded the earlier separate-GitHub-secret path — see ADR 0007). `AWS_REGION` is no longer a fork-configuration variable (ADR 0024).
 
-No workflow, module, or spec MUST hardcode an AWS account ID, IAM role ARN, AWS region, or domain value (see ADR 0007).
+No workflow, module, or spec MUST hardcode an AWS account ID, IAM role ARN, or domain value (see ADR 0007).
+
+The AWS region is the single deliberate exception. The platform targets exactly one region, `eu-west-1`. That value MUST be declared once per layer — `terraform/live/root.hcl`'s `aws_region` local, `scripts/lib/region.sh`, `gitops/values.yaml`, the `Makefile`, and `.github/workflows/lab.yml` — and every downstream consumer MUST derive it from its own layer's declaration. It MUST NOT be re-derived from an environment variable, a workflow input, a `get_env` default, or ambient AWS CLI/SDK region resolution (ADR 0024).
