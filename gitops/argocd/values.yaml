@@ -1,0 +1,29 @@
+# Values for Argo CD's own Helm release, applied by scripts/argo-up.sh. Not part
+# of the `gitops` chart Argo renders - Helm only reads values.yaml at a chart
+# root, so this subdirectory is invisible to it.
+configs:
+  cm:
+    # Argo ships no health check for Gateway API, so a Gateway with
+    # Programmed=False and no NLB behind it still rolls up as Healthy.
+    resource.customizations.health.gateway.networking.k8s.io_Gateway: |
+      local hs = {}
+      hs.status = "Progressing"
+      hs.message = "Waiting for Accepted and Programmed"
+      if obj.status ~= nil and obj.status.conditions ~= nil then
+        local ready = 0
+        for _, c in ipairs(obj.status.conditions) do
+          if c.type == "Accepted" or c.type == "Programmed" then
+            if c.status == "False" then
+              hs.status = "Degraded"
+              hs.message = c.type .. ": " .. (c.message or c.reason or "")
+              return hs
+            end
+            if c.status == "True" then ready = ready + 1 end
+          end
+        end
+        if ready == 2 then
+          hs.status = "Healthy"
+          hs.message = "Accepted and Programmed"
+        end
+      end
+      return hs

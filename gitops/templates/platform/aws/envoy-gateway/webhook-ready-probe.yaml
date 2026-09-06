@@ -53,12 +53,13 @@ metadata:
   name: envoy-gateway-webhook-probe
   namespace: envoy
   annotations:
-    # Runs between aws-load-balancer-controller (wave -5) and envoy-gateway
-    # (wave -1): the controller Deployment reporting Available doesn't mean
-    # its mutating webhook is serving a cert that matches its own caBundle
-    # yet - only an actual admission call proves that.
+    # The LBC Deployment reporting Available doesn't mean its mutating webhook
+    # serves a cert matching its own caBundle yet - only an admission call
+    # proves that, and envoy-gateway wedges permanently if it calls too early.
     argocd.argoproj.io/hook: Sync
-    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+    # A failed Job persists and Job specs are immutable, so without
+    # BeforeHookCreation a retried sync recreates it into AlreadyExists.
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
     argocd.argoproj.io/sync-wave: "-2"
 spec:
   backoffLimit: 0
@@ -77,7 +78,7 @@ spec:
             - |
               set -euo pipefail
 
-              attempts=30
+              attempts=96
               sleep_seconds=5
 
               manifest=$(printf '%s\n' \

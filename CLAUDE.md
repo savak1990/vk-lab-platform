@@ -239,10 +239,27 @@ Argo sync-wave numbers only order when the `root` Application *creates* each
 child Application object. They do not reliably gate one Application's
 controller readiness on a sibling Application's health (e.g. a CRD from one
 Application being `Established` before a controller in another Application
-that depends on it starts). Do not assume wave ordering alone is sufficient
-for a cross-Application CRD/Secret dependency — verify it by test, and use a
-`PreSync` hook waiting on the concrete dependency (a CRD's `Established`
-condition, a Secret's key) when the ordering must be guaranteed.
+that depends on it starts). Never assume wave ordering alone is sufficient for
+a cross-Application CRD/namespace/Secret dependency.
+
+The default remedy is `syncPolicy.retry` on the `root` Application, not a
+readiness gate. A failed automated sync is never re-attempted for the same
+revision — `selfHeal` covers drift, not failed syncs — so without retry a
+late-arriving CRD or namespace wedges `root` until a new commit lands. Size the
+retry budget against Argo's own cluster API-discovery cache refresh (~10 min),
+not against the dependency's creation: `no matches for kind` persists for
+minutes after the CRD exists. Argo's default backoff is far too short. Keep the
+worst-case budget inside `ARGO_UP_WATCH_SECONDS`.
+
+A hook is the exception, not the rule. Reserve it for the one class retry cannot
+fix: a consumer controller that wedges permanently after a single failed attempt
+and needs a pod restart. When one is needed, give it
+`hook-delete-policy: BeforeHookCreation,HookSucceeded` — a failed Job persists,
+Job specs are immutable, and a retried sync would otherwise recreate it into
+`AlreadyExists`. Do not add a bespoke gate per dependency.
+
+`SkipDryRunOnMissingResource=true` does not help here — it skips the server
+dry-run, not the real apply, which still fails with `no matches for kind`.
 
 ---
 

@@ -202,6 +202,7 @@ helm upgrade --install argocd argo-cd \
   --repo https://argoproj.github.io/argo-helm \
   --version "$ARGOCD_CHART_VERSION" \
   --namespace argocd --create-namespace \
+  -f "$REPO_ROOT/gitops/argocd/values.yaml" \
   --set server.service.type=ClusterIP \
   --set configs.params."server\.insecure"=true \
   --set configs.secret.argocdServerAdminPassword="$ADMIN_PASSWORD_BCRYPT_HASH" \
@@ -221,6 +222,12 @@ helm upgrade --install argocd argo-cd \
   --set global.affinity.nodeAffinity.type=hard \
   --set-json 'global.affinity.nodeAffinity.matchExpressions=[{"key":"karpenter.sh/capacity-type","operator":"NotIn","values":["spot"]}]' \
   --wait
+
+# Compared by string below to tell a fresh sync's failure from one already on
+# the object when this run started. Deliberately not a timestamp comparison -
+# RFC3339 arithmetic is not portable across BSD/GNU date.
+PRIOR_OPERATION_STARTED_AT="$(kubectl get application root -n argocd \
+  -o jsonpath='{.status.operationState.startedAt}' 2>/dev/null || true)"
 
 # No --wait here: the root Application's own health depends on everything
 # beneath it in gitops/ reconciling, which can take much longer than a helm
@@ -265,10 +272,21 @@ pending_resources() {
     | join(" ")'
 }
 
+# phase/startedAt/retryCount/message as one tab-separated line. Argo keeps
+# phase at "Running" for the whole syncPolicy.retry sequence, so a terminal
+# "Failed" here really means the retry budget is spent.
+operation_state() {
+  kubectl get application root -n argocd -o json 2>/dev/null | jq -r '
+    (.status.operationState // {})
+    | [.phase // "", .startedAt // "", .retryCount // 0,
+       (.message // "" | gsub("\n"; " "))]
+    | @tsv'
+}
+
 # Blocks until root is Synced/Healthy, so a 0 exit means the whole platform
 # (including Postgres) is really ready. Only prints when something changes,
 # to stay readable over a long recovery-from-snapshot bootstrap.
-WATCH_SECONDS="${ARGO_UP_WATCH_SECONDS:-1800}"
+WATCH_SECONDS="${ARGO_UP_WATCH_SECONDS:-2700}"
 POLL_INTERVAL="${ARGO_UP_POLL_INTERVAL:-5}"
 elapsed=0
 last_state=""
@@ -285,6 +303,18 @@ while [ "$elapsed" -lt "$WATCH_SECONDS" ]; do
     last_state="$state"
   fi
   [ "$overall" = "Synced/Healthy" ] && break
+
+  IFS=$'\t' read -r op_phase op_started op_retries op_message < <(operation_state) || true
+  if { [ "$op_phase" = "Failed" ] || [ "$op_phase" = "Error" ]; } \
+    && [ "$op_started" != "$PRIOR_OPERATION_STARTED_AT" ]; then
+    echo "ARGO-UP: root sync $op_phase after $op_retries retries - Argo will not re-run it for this revision." >&2
+    echo "ARGO-UP: $op_message" >&2
+    echo "ARGO-UP: still reconciling: ${pending:-none}" >&2
+    echo "ARGO-UP: applications:" >&2
+    print_app_status >&2
+    exit 1
+  fi
+
   sleep "$POLL_INTERVAL"
   elapsed=$((elapsed + POLL_INTERVAL))
 done
