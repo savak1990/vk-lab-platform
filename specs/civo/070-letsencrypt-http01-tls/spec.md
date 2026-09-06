@@ -49,14 +49,17 @@ Not in scope: the workload identity certs (CIVO-085) and DNS-01.
 ## 4. Design and contracts
 
 - `gitops/templates/platform/civo/tls/issuers.yaml` holds `ClusterIssuer letsencrypt-staging` and `letsencrypt-prod`. Each uses the ACME HTTP-01 solver `gatewayHTTPRoute` with `parentRefs` to `platform-gateway` (namespace `envoy`). The account email comes from values (non-secret).
-- `Certificate platform-public` lives in namespace `envoy`. It sets `dnsNames: [argo.<fqdn>, grafana.<fqdn>]` and `secretName: platform-public-tls`. The issuer comes from `.Values.tls.issuer` (staging in CI, prod on the workstation). It sets `privateKey: {algorithm: ECDSA, size: 256, rotationPolicy: Always}`. ECDSA keeps the chain and the key under the 4 KB SSM Standard limit. RSA-2048 would not.
+- `Certificate platform-public` lives in namespace `envoy`. It sets `dnsNames: [argo.<fqdn>, grafana.<fqdn>]` and `secretName: platform-public-tls`. The issuer comes from `.Values.tls.issuer` (staging in CI, prod on the workstation). It sets `privateKey: {algorithm: ECDSA, size: 256, rotationPolicy: Always}`. ECDSA is a standard Let's Encrypt key type, not a workaround. It keeps the stored manifest far below the parameter size limit and shortens the TLS handshake.
 - The Gateway HTTPS listener sets `certificateRefs: [platform-public-tls]`. The HTTP listener keeps the ACME solver route. It also keeps an `HTTPRoute` redirect filter for everything else.
-- Persistence: before the cascade, the `argo-down` civo branch exports `platform-public-tls` as **two** SSM SecureStrings, `/${project}/persistent/civo/tls/platform-public/crt` and `/key` (Standard tier, 4 KB each; KMS `alias/lab-secrets`). It also exports a String `/annotations` that carries the Secret's `cert-manager.io/*` annotations (`issuer-name`, `issuer-kind`, `issuer-group`, `certificate-name`, `common-name`, `alt-names`). `argo-up` re-creates the Secret with those annotations before the root Application. It does this only when the parameters are present and the certificate does not expire within 15 days. cert-manager reissues when the issuer annotations mismatch `issuerRef` or the key algorithm mismatches the spec (the `IncorrectIssuer` and `SecretPrivateKeyMismatchesSpec` policy checks). For that reason, the annotations and the ECDSA spec must round-trip exactly. Argo does not track the Secret.
+- Persistence: `argo-down` exports the whole Secret, not its fields. Before the cascade, the Civo branch runs `kubectl get secret platform-public-tls -n envoy -o yaml`, strips `resourceVersion`, `uid`, `creationTimestamp` and `managedFields`, and writes the result to one SSM `SecureString` parameter, `/${project}/persistent/civo/tls/platform-public`, encrypted with `alias/lab-secrets`. The parameter uses the Advanced tier (8 KB, 0.05 USD per month) so that the size never becomes a design constraint.
+- Exporting the whole manifest carries the `cert-manager.io/*` annotations by construction. This matters: cert-manager reissues when the Secret's `issuer-name`, `issuer-kind` or `issuer-group` annotations do not match `issuerRef`, or when the stored key does not match the Certificate spec. The `IncorrectIssuer`, `SecretPrivateKeyMismatchesSpec` and `SecretPublicKeysDiffer` policy checks each trigger a new ACME order. Paying for a larger parameter does not prevent this; only the round-trip of the annotations does.
+- `argo-up` restores the Secret before it installs the root Application. It reads the parameter and pipes the manifest into `kubectl apply -f -`. It restores only when the parameter exists and the certificate has not passed its renewal time. Argo never tracks this Secret.
+
 - `lab-role` and the operator already have KMS and SSM permissions under `*/persistent/*`.
 
 **Review amendments (2026-09-06, kubernetes-architect):**
 - Import guard: re-import the Secret only when the certificate's renewal time (`renewBefore`, default two thirds of the 90-day duration) has not passed. A cert past its renewal time triggers an order on import; count it against the 5-per-week duplicate limit.
-- Import `tls.crt` and `tls.key` from the same issuance. A mismatched pair triggers `SecretPublicKeysDiffer` and a reissue.
+- Export and restore the Secret as one manifest so that the certificate, the key and the annotations always come from the same issuance. Splitting them risks a `SecretPublicKeysDiffer` reissue.
 - Restore the Secret before the `Certificate` exists (cert-manager backup guidance), which the `argo-up` ordering already guarantees.
 - Set `cert-manager.io/issue-temporary-certificate: "true"` on the `Certificate` so the HTTPS listener resolves during the first order (see CIVO-060 amendment).
 - The redirect `HTTPRoute` must carry no path match; the ACME solver route's exact match `/.well-known/acme-challenge/<token>` then wins by Gateway API precedence.
@@ -81,7 +84,7 @@ This spec depends on 060 (listeners), 065 (cert-manager), and 110 (DNS resolves 
 - `curl https://argo.civo.<root-domain>` succeeds with a trusted chain (prod) or a staging chain (CI).
 - HTTP on port 80 redirects to HTTPS, except `/.well-known/acme-challenge/*`.
 - A down/up cycle creates no new ACME order (`kubectl get order -A` is empty; the `CertificateRequest` count is unchanged). The Secret is restored with its annotations. The serial is unchanged.
-- Each SSM value is under 4 KB (Standard tier). No Advanced-tier parameter is created.
+- The stored manifest round-trips exactly. The restored Secret carries the same `cert-manager.io/*` annotations and the same key as the export.
 - The SSM parameter is `SecureString`. No key material appears in Argo, Git, or logs.
 - AWS: the golden diff is empty. No cert-manager or issuers exist on AWS.
 
