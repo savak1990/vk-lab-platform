@@ -1,7 +1,7 @@
 ---
 id: "CIVO-010"
 title: "PROVIDER operator input with Civo project defaults and Make dispatch"
-status: "IN_REVIEW"
+status: "DONE"
 priority: "P1"
 milestone: "M0"
 type: "implementation"
@@ -15,7 +15,7 @@ blocked_by: []
 supersedes: []
 created: "2026-09-06"
 updated: "2026-09-07"
-completed: null
+completed: "2026-09-07"
 ---
 
 # CIVO-010 — PROVIDER operator input and Make dispatch
@@ -106,7 +106,7 @@ One PR. A revert restores the previous Makefile. There is no state or data risk.
 - [x] Acceptance criteria met with recorded diffs
 - [x] `shellcheck` clean
 - [x] `secrets/README.md` updated
-- [ ] PR merged; index row updated; status `DONE` with date
+- [x] PR merged; index row updated; status `DONE` with date
 
 ## 14. Execution evidence and status history
 
@@ -156,3 +156,7 @@ One PR. A revert restores the previous Makefile. There is no state or data risk.
     rule by reading the script's branch logic instead, or by redirecting
     output to `/dev/null` and checking the exit code, never by capturing
     or displaying stdout.
+- 2026-09-07 — merged directly to `main` (operator declined a PR review
+  step for this change); re-verified all 15 `make -n` targets, the civo
+  path, the invalid-`PROVIDER` failure, and `shellcheck` against the
+  merged `main` tip. Promoted to `DONE`.
