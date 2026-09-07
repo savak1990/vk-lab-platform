@@ -3,6 +3,8 @@
 # subdomain, and disposable-cluster stack directory. aws is the default and
 # is unchanged from before this variable existed.
 
+PROVIDER_SH_REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+
 export PROVIDER="${PROVIDER:-aws}"
 
 if [ "$PROVIDER" = "civo" ]; then
@@ -26,9 +28,8 @@ fi
 # Decrypts the Civo API token and exports it as CIVO_TOKEN. Masks it in
 # GitHub Actions logs; never echoes it anywhere else.
 civo_token() {
-  local token repo_root
-  repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-  token="$("$repo_root/scripts/secret-decrypt.sh" civo-token)"
+  local token
+  token="$("$PROVIDER_SH_REPO_ROOT/scripts/secret-decrypt.sh" civo-token)"
   if [ -n "${GITHUB_ACTIONS:-}" ]; then
     echo "::add-mask::$token"
   fi
