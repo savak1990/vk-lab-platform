@@ -45,7 +45,21 @@ locals {
   # bootstrap|persistent|disposable, not a scope name, on every tagged resource).
   # "cluster" is likewise a directory name, not a lifecycle class - the
   # constitution's tag vocabulary is disposable, so it maps back to that.
-  lifecycle_class = lookup({ account = "bootstrap", "account-state" = "bootstrap", cluster = "disposable" }, local.raw_class, local.raw_class)
+  lifecycle_class = lookup({ account = "bootstrap", "account-state" = "bootstrap", cluster = "disposable", "cluster-civo" = "disposable", "persistent-civo" = "persistent" }, local.raw_class, local.raw_class)
+
+  # The Civo target runs in exactly one region, for the same reason aws_region
+  # is a constant: a second region was never made to work and is not supported.
+  civo_region = "LON1"
+
+  # Civo stacks get a civo provider in addition to aws - their units still
+  # write SSM parameters, so both providers are needed in the same unit. The
+  # token is read from CIVO_TOKEN by the provider itself and is deliberately
+  # never written here, so it cannot reach the generated file or the state.
+  civo_stack = contains(["persistent-civo", "cluster-civo"], local.raw_class)
+
+  # Interpolated directly after the aws block's closing brace, so an aws stack
+  # renders the empty string and its provider.tf stays byte-identical.
+  civo_provider = local.civo_stack ? "\nprovider \"civo\" {\n  region = \"${local.civo_region}\"\n}" : ""
 }
 
 generate "provider" {
@@ -63,7 +77,7 @@ provider "aws" {
       ManagedBy = "terraform"
     }
   }
-}
+}${local.civo_provider}
 EOF
 }
 

@@ -125,10 +125,15 @@ bootstrap-down:
 ## argocd-admin-password.bcrypt if missing (never overwrites an existing
 ## one - see ADR 0014); bootstrap-up already generates/requires these plus
 ## root-domain, so this is normally a no-op repeat.
+ifeq ($(PROVIDER),civo)
+persistent-up:
+	./scripts/persistent-up-civo.sh
+else
 persistent-up:
 	./scripts/generate-secrets.sh
 	./scripts/require-persistent-secrets.sh
 	cd terraform/live/persistent && terragrunt run --all --non-interactive -- apply -auto-approve
+endif
 
 ## Destroys Persistent-lifecycle resources. Guarded (CONFIRM_DESTROY must
 ## match PROJECT_NAME), rarely-used - see constitution §17. Also

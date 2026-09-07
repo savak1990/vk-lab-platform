@@ -7,6 +7,8 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=lib/provider.sh
+source "$REPO_ROOT/scripts/lib/provider.sh"
 
 # This project's own state bucket - idempotent, safe to re-run every time
 # (see scripts/state-up.sh).
@@ -21,4 +23,12 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 "$REPO_ROOT/scripts/require-unique-subdomain.sh"
 
 cd "$REPO_ROOT/terraform/live/bootstrap"
-terragrunt run --all --non-interactive -- apply -auto-approve
+
+# Terragrunt 1.1.3 has no --queue-exclude-dir; a unit is excluded with a
+# negated --filter, whose path is resolved against the working directory.
+# Civo skips acm: its edge TLS is issued in-cluster, not by ACM.
+if [ -n "$BOOTSTRAP_EXCLUDE" ]; then
+  terragrunt run --all --filter "!./$BOOTSTRAP_EXCLUDE" --non-interactive -- apply -auto-approve
+else
+  terragrunt run --all --non-interactive -- apply -auto-approve
+fi

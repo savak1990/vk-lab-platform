@@ -20,6 +20,8 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$REPO_ROOT/scripts/lib/persistent-ebs-artifacts.sh"
 source "$REPO_ROOT/scripts/lib/confirm-destroy.sh"
+# shellcheck source=lib/provider.sh
+source "$REPO_ROOT/scripts/lib/provider.sh"
 
 PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
 STATE_BUCKET="${PROJECT_NAME}-tf-state"
@@ -79,13 +81,18 @@ count_resources() {
 
 echo "Checking for Disposable state in s3://$STATE_BUCKET ..."
 
-if ! disposable_total=$(count_resources "cluster"); then
-  exit 1
-fi
-if [ "$disposable_total" -gt 0 ]; then
-  echo "Refusing: disposable state still has $disposable_total resource(s). Run 'make down' first."
-  exit 1
-fi
+# Both targets' disposable prefixes, unconditionally: the trailing slash in
+# count_resources stops "cluster/" from matching "cluster-civo/", and a
+# prefix with no objects counts zero, so the civo entry is inert on aws.
+for disposable_prefix in cluster cluster-civo; do
+  if ! disposable_total=$(count_resources "$disposable_prefix"); then
+    exit 1
+  fi
+  if [ "$disposable_total" -gt 0 ]; then
+    echo "Refusing: $disposable_prefix state still has $disposable_total resource(s). Run 'make down' first."
+    exit 1
+  fi
+done
 
 if ! retained_volumes=$(list_retained_volumes); then
   echo "Failed to list retained EBS volumes - aborting." >&2
@@ -110,6 +117,14 @@ if [ "$postgres_snapshot_count" -gt 0 ]; then
 fi
 echo "This is expected to run essentially never."
 
+# The extra civo stack is destroyed first: it is the layer the disposable
+# cluster attaches to, so teardown runs the reverse of persistent-up's order.
+if [ -n "$PERSISTENT_EXTRA_DIR" ]; then
+  civo_token
+  cd "$REPO_ROOT/terraform/live/$PERSISTENT_EXTRA_DIR"
+  terragrunt run --all --non-interactive -- destroy -auto-approve
+fi
+
 cd "$REPO_ROOT/terraform/live/persistent"
 
 # If PROJECT_NAME/SUBDOMAIN differs from whatever this unit's
@@ -119,9 +134,13 @@ cd "$REPO_ROOT/terraform/live/persistent"
 # interactive "yes" prompt would be redundant - skipped the same way
 # bootstrap-down.sh skips it. -auto-approve is what actually skips it -
 # --non-interactive alone doesn't (confirmed empirically).
-terragrunt run --all --non-interactive -- destroy -auto-approve
+if [ -n "$PERSISTENT_EXCLUDE" ]; then
+  terragrunt run --all --filter "!./$PERSISTENT_EXCLUDE" --non-interactive -- destroy -auto-approve
+else
+  terragrunt run --all --non-interactive -- destroy -auto-approve
+fi
 
-for unit_prefix in persistent/vpc persistent/secrets; do
+for unit_prefix in persistent/vpc persistent/secrets persistent-civo/network persistent-civo/reserved-ip; do
   if ! remaining=$(count_resources "$unit_prefix"); then
     exit 1
   fi

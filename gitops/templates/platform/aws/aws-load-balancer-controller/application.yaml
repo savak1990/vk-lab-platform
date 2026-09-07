@@ -44,16 +44,23 @@ spec:
             memory: 128Mi
           limits:
             memory: 256Mi
-  # The chart's keepTLSSecret reuse branch calls `lookup`, which is always nil
-  # under client-side rendering, so every render mints a fresh CA. Unignored,
-  # selfHeal rewrites the caBundle while the running pod serves the old cert.
+        # The chart's own self-signed path (enableCertManager: false) mints a
+        # fresh CA on every client-side render via `genCA` - keepTLSSecret's
+        # reuse branch calls `lookup`, which is always nil under Argo's
+        # client-side rendering. If the Secret and the webhook patch happen
+        # to land in different sync attempts (e.g. a retry after a partial
+        # failure elsewhere in the same Application), each comes from a
+        # different render and the two permanently disagree - no amount of
+        # ignoreDifferences fixes that, since it only stops later overwrites,
+        # not a mismatch baked in at creation. cert-manager's cainjector
+        # reconciles caBundle continuously against the actual serving cert
+        # instead of a one-shot template value, so it can't drift this way.
+        enableCertManager: true
+  # cainjector patches caBundle out-of-band from the cert-manager Certificate
+  # named "aws-load-balancer-controller-serving-cert" - Argo's own rendered
+  # manifest never sets this field when enableCertManager is true, so without
+  # ignoring it, selfHeal would revert every injection back to empty.
   ignoreDifferences:
-    - group: ""
-      kind: Secret
-      name: aws-load-balancer-tls
-      namespace: kube-system
-      jsonPointers:
-        - /data
     - group: admissionregistration.k8s.io
       kind: MutatingWebhookConfiguration
       name: aws-load-balancer-webhook

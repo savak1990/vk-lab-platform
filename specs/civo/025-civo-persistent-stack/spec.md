@@ -53,9 +53,18 @@ The scope does not include the cluster (CIVO-030) or the Roles Anywhere unit (CI
 
 - `root.hcl`: the `lifecycle_class` lookup gains `"persistent-civo" = "persistent"` and `"cluster-civo" = "disposable"`. A `civo_region` local holds `"LON1"`. When `path_parts[0]` starts with a civo stack name, the provider generation emits `provider "civo" { region = "LON1" }` in addition to `aws`. The token comes from `CIVO_TOKEN` only.
 - Units: `persistent-civo/network` creates a `civo_network` named `${project}`. `persistent-civo/reserved-ip` creates a `civo_reserved_ip` named `${project}-ingress`. The reserved-ip unit writes the SSM parameters `/${project}/persistent-civo/reserved-ip/address` and `/${project}/persistent-civo/network/id` as plain String.
-- Make: for civo, `persistent-up` runs `run --all --queue-exclude-dir vpc` in `persistent`. Then it runs `run --all` in `persistent-civo`. `persistent-down` runs the same steps in reverse order. `bootstrap-up` uses `--queue-exclude-dir acm`. The `--queue-exclude-dir` flag exists in Terragrunt 1.x. It is an alias of `--filter`. It takes a glob relative to the working directory. Test whether `acm` or `./acm` matches under 1.1.3.
+- Make: for civo, `persistent-up` runs `run --all --filter '!./vpc'` in `persistent`. Then it runs `run --all` in `persistent-civo`. `persistent-down` runs the same steps in reverse order. `bootstrap-up` uses `--filter '!./acm'`. Verified against Terragrunt 1.1.3 (2026-09-07): `--queue-exclude-dir` does not exist in this version; the exclusion mechanism is `--filter` with a `!` negation. Both `!acm` and `!./acm` match. The filter path is resolved relative to the working directory, and unit discovery is likewise scoped to the working directory, so each invocation must keep its existing `cd terraform/live/<stack>`. Run from `terraform/live`, `!./vpc` excludes nothing.
 - Guards: `persistent-down.sh` refuses to run while the `cluster-civo/` state has resources. After the destroy, it checks that `persistent/secrets` and both civo units are empty. `bootstrap-down.sh` refuses to run when `persistent-civo/` exists.
-- Tags: set `tags = "Project=${project} Lifecycle=persistent ManagedBy=terraform"` on each resource that supports tags.
+- Tags: neither `civo_network` nor `civo_reserved_ip` exposes a tags argument in provider `civo/civo` v1.3.2, so no resource in this stack supports tags. The constitution §16 tag set is unreachable here and is not simulated by other means. The AWS SSM parameters the units write still carry it, through `default_tags` in the generated aws provider.
+
+**Implementation deviations (2026-09-07), recorded rather than silently applied:**
+
+- `civo_network` takes `label`, not `name` — `name` is computed by the provider. §4's "named `${project}`" is implemented as `label = var.project`.
+- SSM ownership is split: `network` writes `/${project}/persistent-civo/network/id` and `reserved-ip` writes `/${project}/persistent-civo/reserved-ip/address`. §4 assigned both to `reserved-ip`, which would contradict the established convention that a parameter's path mirrors the unit that creates it (ADR 0023) and would add a needless inter-unit dependency. The two units stay independent.
+- The teardown guards are widened unconditionally to the union of both targets' prefixes rather than branched on `PROVIDER`. A prefix with no objects counts zero resources, so the civo entries are inert on aws — no provider conditional enters any script. This also closes a pre-existing hazard: the guards match on a trailing slash, so `cluster/` never matched `cluster-civo/` and `persistent-down` would have passed its disposable-state check while a live Civo cluster existed.
+- `persistent-up`'s civo branch is `scripts/persistent-up-civo.sh`; the aws branch stays an inline Makefile recipe. `make -n` prints recipe text verbatim, so parameterizing the shared recipe would have broken the §10 byte-identity gate.
+- `civo_token()` in `scripts/lib/provider.sh` now resolves `secret-decrypt.sh` from the repo root instead of the working directory. It was relative, so it only worked with the cwd at the repo root — every caller here runs after a `cd`.
+- `lab-role` gains only `*/persistent-civo/*`. The matching `cluster-civo` allowance belongs to CIVO-030, which is what will first write there.
 
 ## 5. Files/components affected
 
@@ -98,8 +107,9 @@ Revert Make and root.hcl. `persistent-down` for civo removes the resources. The 
 
 ## 12. Risks and unresolved questions
 
-- The name of the Terragrunt exclusion flag for 1.1.3 is not confirmed.
-- The reserved IP price is unknown. Fill it in from the spike.
+- ~~The name of the Terragrunt exclusion flag for 1.1.3 is not confirmed.~~ Settled 2026-09-07: `--filter '!./<unit>'`. See §4.
+- ~~Whether a `--filter` run refuses `destroy` without `--filter-allow-destroy`.~~ Settled 2026-09-07: it does not. `run --all --filter '!./vpc' -- plan -destroy` queued in reverse order ("dependents and then their dependencies"), excluded `vpc`, and proceeded to the backend. `--filter-allow-destroy` applies only to Git-based filters, not to this path negation.
+- The reserved IP price stays unknown. CIVO-020 could not obtain it: `/v2/charges` proves it is billed as its own `reserved-ip` line item but reports hours only, and every pricing API path returns 404. Read the rate from the dashboard invoice instead. The custom network produced no billing line item at all, so this stack's only cost is the one reserved IP.
 
 ## 13. Definition of done
 
@@ -111,3 +121,15 @@ Revert Make and root.hcl. `persistent-down` for civo removes the resources. The 
 
 - 2026-09-06 — created as DRAFT.
 - 2026-09-06 — approved for development by the user; promoted to READY (dependencies still gate the start).
+- 2026-09-07 — code written; offline validation complete. Status stays READY: no cloud evidence exists, so section 8 is entirely unrun.
+
+  Verified offline:
+  - Terragrunt 1.1.3 has no `--queue-exclude-dir`. `--filter '!./<unit>'` excludes correctly on `list` and on `run --all` (`validate` queued `secrets` alone), and on `destroy` (`plan -destroy` queued in reverse order, `vpc` excluded, no `--filter-allow-destroy` needed).
+  - Golden `make -n` diff empty across all 16 aws lifecycle targets. The civo diff shows only the intended `persistent-up` change.
+  - The generated `provider.tf` for an aws unit is byte-identical to before, ending `}\n`. A civo unit additionally renders `provider "civo" { region = "LON1" }`.
+  - Both `persistent-civo` units pass `terragrunt validate`; state keys resolve to `persistent-civo/<unit>/terraform.tfstate` in `vk-civo-lab-tf-state` with `Lifecycle = "persistent"`.
+  - `terraform fmt`, `terragrunt hcl format --check`, and `bash -n` clean on every touched file except `scripts/bootstrap-down.sh`, whose syntax check the local sandbox refused to run; its change is a one-line prefix-list extension.
+
+  Not verified, and required before DONE:
+  - Every acceptance criterion in section 8. `vk-lab-platform-tf-state` does not currently exist, so section 10's AWS no-op plan is unobtainable until that project is stood back up, and no Civo resource has been created.
+  - The `lab-role` SSM allowance is edited but not applied. It applies through `make account-up`, which is account-global across every project in the account, so it needs an explicit decision. Until it is applied, a `persistent-civo` apply succeeds only with credentials broader than the lab role — CI would fail where a local run passes.

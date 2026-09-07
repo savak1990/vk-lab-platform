@@ -23,7 +23,7 @@ echo "state:        present  (s3://$BUCKET)"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
-for prefix in bootstrap persistent cluster; do
+for prefix in bootstrap persistent persistent-civo cluster cluster-civo; do
   label="$prefix"
 
   # An empty prefix makes list-objects-v2's JMESPath filter evaluate

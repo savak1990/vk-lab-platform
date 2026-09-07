@@ -253,8 +253,13 @@ secrets.
   because a workstation cannot read it back from GitHub either. Second,
   `AWS_ROLE_ARN` stays a variable: it is configuration, not a credential, and
   the constitution already treats the two differently.
-- **Open:** whether `civo-autoscaler-token` (planned by CIVO-170) follows this
-  spec or stays a Kubernetes Secret sourced differently. CIVO-170 decides.
+- **Deferred to CIVO-170:** whether `civo-autoscaler-token` follows this spec or
+  stays a Kubernetes Secret sourced differently. Decided 2026-09-07 not to settle
+  it here. That token does not exist yet, and it differs from the four values
+  above in kind: it is consumed by a controller inside the cluster, not by
+  Terraform or a script on the operator's machine, so this spec's
+  environment-variable mechanism may not be the right answer for it. CIVO-170
+  owns the decision and must record it against this spec.
 
 ## 9. Definition of done
 

@@ -33,7 +33,7 @@ values/gating change; **provider** = provider-specific implementation;
 | Region constant | `root.hcl:12`, `scripts/lib/region.sh:5`, `gitops/values.yaml:7`, `Makefile:14`, `lab.yml` | `eu-west-1` | shared | AWS region unchanged (Route 53/SSM/Roles Anywhere stay in eu-west-1); new `LON1` constant for Civo declared in `root.hcl` and `scripts/lib/region.sh` | add Civo constant | 030 |
 | Account layer | `terraform/live/account/*`, `scripts/account-up.sh` | all AWS | shared | unchanged; `lab-role` gains scoped `rolesanywhere:*`, IAM role names for consumers, SSM `/<project>/cluster-civo/*` | `lab-role` policy additions | 082 |
 | Bootstrap route53 | `terraform/live/bootstrap/route53`, `modules/route53-zone` | Route 53 | shared | zone `civo.<root-domain>` for the civo project | none | 025 |
-| Bootstrap acm | `terraform/live/bootstrap/acm` | ACM | n/a | excluded for civo project (`--queue-exclude-dir`) | Make exclusion | 025 |
+| Bootstrap acm | `terraform/live/bootstrap/acm` | ACM | n/a | excluded for civo project (`--filter '!./acm'`) | Make exclusion | 025 |
 | Roles Anywhere | — | — | provider (AWS side) | *(proposed)* `terraform/live/bootstrap/rolesanywhere`, `modules/rolesanywhere` guarded by `fileexists()` on the CA cert | new unit | 080, 082 |
 | Persistent vpc | `terraform/live/persistent/vpc` | VPC | n/a | excluded for civo project | Make exclusion | 025 |
 | Persistent secrets | `terraform/live/persistent/secrets`, `modules/persistent-secrets` | KMS decrypt → SSM | shared | same, under the civo project prefix | none | 025 |
