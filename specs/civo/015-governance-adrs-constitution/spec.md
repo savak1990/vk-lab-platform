@@ -1,7 +1,7 @@
 ---
 id: "CIVO-015"
 title: "Governance: ADRs 0027–0031, constitution §20, architecture §10a, documentation fixes"
-status: "IN_PROGRESS"
+status: "IN_REVIEW"
 priority: "P0"
 milestone: "M0"
 type: "documentation"
@@ -108,6 +108,13 @@ There are no dependencies or blockers. CIVO-010 and CIVO-020 can run in parallel
 
 The validation is offline only. It consists of a link check, a `git diff --stat` limited to docs, and a review by the user. It uses no cloud. The cost is 0.
 
+**Execution evidence (2026-09-07):**
+
+- `grep -rn -E 'ADR 00(2[5-9]|3[01])' --include='*.md' .` — swept the full repo before and after renumbering. Found and fixed 9 additional stray Civo-ADR references beyond this spec's own §5 file list (`specs/civo/roadmap.md`, `specs/civo/025`, `065`, `080`, `140`, `170`, `200`, and `docs/civo-high-level-design.md`) that would otherwise have silently resolved to the real, unrelated ADRs 0025/0026 (argo-sync-retry, on-demand-full-lifecycle-ci). Final sweep: every remaining hit correctly resolves to either the five new Civo ADRs (0027–0031) or the two real unrelated ADRs in their own unrelated specs (032, 033).
+- Link check across every changed markdown file (`grep -o '\[.*\](.*\.md)'` targets) — one link verified manually (`specs/civo/README.md` exists; the check script's two flagged lines were false positives from macOS `realpath` lacking `-m`, and from spec 015's own quoted regex text being matched as if it were a link).
+- `git diff --stat main -- 'docs/**' 'specs/**' 'CLAUDE.md' 'README.md' 'terraform/live/persistent/README.md'` — 23 files changed, scoped correctly to this spec's work; no CIVO-010 residue.
+- Acceptance criteria re-checked: each ADR states the AWS rule it varies and that AWS is otherwise unchanged; constitution §20 states "§3, §4, §7, and §17 apply to the Civo target exactly as written, with no exemption"; no document claims Kafka/Tempo/Secrets-Manager-runtime-secrets/Terraform-installed-Argo-CD are current; `architecture.md` §5's tree matches `git ls-files gitops terraform/live` exactly; spec 027 carries `**Status:** Superseded by specs/civo/`.
+
 ## 10. AWS regression protection
 
 This spec changes documentation only. ADR 0011/0013/0019/0022/0023 remain accepted for AWS.
@@ -134,3 +141,4 @@ The work lands in one PR. The PR is revertible.
 - 2026-09-06 — plan approved by the user; no hard dependencies; promoted to READY.
 - 2026-09-07 — started implementation; promoted to IN_PROGRESS.
 - 2026-09-07 — renumbered ADRs to 0027–0031 (0025/0026 were claimed by unrelated ADRs — argo-sync-retry, on-demand-full-lifecycle-ci — that landed after this spec was drafted; ADR 0026 itself flags this and requires 0027+, per §12's own anticipation of this risk). Also fixed stray old-numbered Civo-ADR references in specs/civo/roadmap.md, specs/civo/025, specs/civo/065, specs/civo/080, specs/civo/140, specs/civo/170, specs/civo/200, and docs/civo-high-level-design.md.
+- 2026-09-07 — implementation complete: five ADRs (0027–0031), constitution §20, architecture.md staleness fixes, CLAUDE.md/README.md/persistent-README/spec-027 fixes, and decisions.md renumbering all landed. All validation steps run and recorded above; promoted to IN_REVIEW.
