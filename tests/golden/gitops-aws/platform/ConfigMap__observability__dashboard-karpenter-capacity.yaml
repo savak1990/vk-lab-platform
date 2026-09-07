@@ -1,0 +1,47 @@
+# Vendored dashboards, picked up by the Grafana sidecar via the
+# grafana_dashboard label (chart default: enabled, searchNamespace: ALL) -
+# not manually imported through the UI, so they survive `make down`/`make up`
+# recreating Grafana's PVC from scratch (a UI import lives only in Grafana's
+# own SQLite DB).
+apiVersion: v1
+# The first panel's PromQL expression matches alerts.yaml's
+# KarpenterNodePoolNearCapacityLimit rule - keep both in sync if the metric
+# name/labels ever change.
+data:
+  karpenter-capacity.json: |
+    {
+      "title": "Karpenter Capacity",
+      "schemaVersion": 39,
+      "panels": [
+        {
+          "title": "NodePool CPU usage vs limit",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+          "targets": [
+            {
+              "expr": "karpenter_nodepools_usage{resource_type=\"cpu\"} / karpenter_nodepools_limit{resource_type=\"cpu\"}",
+              "legendFormat": "{{ nodepool }}"
+            }
+          ]
+        },
+        {
+          "title": "Nodes per NodePool",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+          "targets": [
+            {
+              "expr": "sum(kube_node_labels{label_karpenter_sh_nodepool!=\"\"}) by (label_karpenter_sh_nodepool)",
+              "legendFormat": "{{ label_karpenter_sh_nodepool }}"
+            }
+          ]
+        }
+      ]
+    }
+kind: ConfigMap
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+  labels:
+    grafana_dashboard: "1"
+  name: dashboard-karpenter-capacity
+  namespace: observability

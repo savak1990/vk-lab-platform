@@ -1,0 +1,11 @@
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshot
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-wave: "0"
+  name: lab-postgres-recovered
+  namespace: cnpg-system
+spec:
+  source:
+    volumeSnapshotContentName: lab-postgres-recovered-content

@@ -1,0 +1,18 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-wave: "2"
+  name: grafana
+  namespace: observability
+spec:
+  hostnames:
+    - grafana.
+  parentRefs:
+    - name: platform-gateway
+      namespace: envoy
+  rules:
+    - backendRefs:
+        - name: kube-prometheus-stack-grafana
+          port: 80

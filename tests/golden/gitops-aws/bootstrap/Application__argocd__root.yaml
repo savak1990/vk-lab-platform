@@ -1,0 +1,89 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  annotations:
+    # Without this, Argo diffs the raw git manifest against the live object's
+    # server-defaulted fields (e.g. HTTPRoute's default path match) and reports
+    # permanent false-positive drift. It is a compare option, not a sync one -
+    # an unknown string in syncOptions is silently ignored.
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  name: root
+  namespace: argocd
+spec:
+  destination:
+    namespace: argocd
+    server: https://kubernetes.default.svc
+  ignoreDifferences:
+    # snapshot-controller patches the bound snapshot's uid in here, but the
+    # field is atomic - any re-apply replaces the whole object and drops it,
+    # leaving the CSI provisioner stuck on "snapshot not bound" forever.
+    - group: snapshot.storage.k8s.io
+      jsonPointers:
+        - /spec/volumeSnapshotRef
+      kind: VolumeSnapshotContent
+  project: default
+  source:
+    helm:
+      parameters:
+        - name: target
+          value: aws
+        - name: project
+          value: vk-lab-platform
+        - name: vpcId
+          value: ""
+        - name: postgres.recoverySnapshotHandle
+          value: ""
+        - name: postgres.storageSize
+          value: 10Gi
+        - name: karpenter.spot.cpuLimit
+          value: "4"
+        - name: karpenter.onDemand.cpuLimit
+          value: "4"
+        - name: envoyGateway.acmCertificateArn
+          value: ""
+        - name: envoyGateway.nlbSubnetIds
+          value: ""
+        - name: envoyGateway.fqdn
+          value: ""
+      # karpenter.{spot,onDemand}.instanceTypes are lists - `parameters`
+      # only carries scalar string overrides (Argo CD's own documented
+      # limitation), so these go through valuesObject instead, which Argo
+      # merges as a real Helm values override, not a stringified `--set`.
+      valuesObject:
+        karpenter:
+          onDemand:
+            instanceTypes:
+              - t4g.medium
+              - t4g.large
+              - m6g.medium
+              - m6g.large
+              - m7g.medium
+              - m7g.large
+          spot:
+            instanceTypes:
+              - t4g.medium
+              - t4g.large
+              - m6g.medium
+              - m6g.large
+              - m7g.medium
+              - m7g.large
+    path: gitops
+    repoURL: https://github.com/savak1990/vk-lab-platform
+    targetRevision: main
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    # A failed automated sync is never re-attempted for the same revision, so a
+    # sibling Application's CRDs or namespace arriving late wedges root forever.
+    # The budget outlasts Argo's own API-discovery cache refresh, not just the CRD.
+    retry:
+      backoff:
+        duration: 15s
+        factor: 2
+        maxDuration: 2m
+      limit: 10
+    syncOptions:
+      - ServerSideApply=true

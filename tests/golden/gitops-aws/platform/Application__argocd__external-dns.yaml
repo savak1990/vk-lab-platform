@@ -1,0 +1,59 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  annotations:
+    # After envoy-gateway (wave -1), whose CRDs this needs. Wave order across
+    # sibling Applications does not guarantee teardown order (see
+    # argo-down.sh's explicit wait for the actual guarantee).
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  name: external-dns
+  namespace: argocd
+spec:
+  destination:
+    namespace: kube-system
+    server: https://kubernetes.default.svc
+  project: default
+  source:
+    chart: external-dns
+    helm:
+      values: |
+        provider:
+          name: aws
+        # Reads hostnames straight from the existing HTTPRoutes - no annotation
+        # needed on any generated Service, no second source of truth.
+        sources:
+          - gateway-httproute
+        # Scoped to lab.<root-domain> only - never the parent/root zone.
+        domainFilters:
+          - ""
+        registry: txt
+        # Stable across make down/up cycles - must never be a regenerated
+        # cluster UID, or every TXT record orphans on the first cycle.
+        txtOwnerId: "vk-lab-platform"
+        # sync (not upsert-only) - upsert-only leaves orphaned records behind
+        # on make down, breaking this spec's own cleanup requirement.
+        policy: sync
+        serviceAccount:
+          create: true
+          name: external-dns
+        # Pod Identity, not IRSA (terraform/modules/external-dns-pod-identity) -
+        # no OIDC annotation needed on the ServiceAccount.
+        nodeSelector:
+          node-type: system
+        resources:
+          requests:
+            cpu: 10m
+            memory: 64Mi
+          limits:
+            memory: 128Mi
+    repoURL: https://kubernetes-sigs.github.io/external-dns/
+    targetRevision: 1.21.1
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+      - SkipDryRunOnMissingResource=true

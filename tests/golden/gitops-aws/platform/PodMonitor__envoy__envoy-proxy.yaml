@@ -1,0 +1,16 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-wave: "2"
+  name: envoy-proxy
+  namespace: envoy
+spec:
+  podMetricsEndpoints:
+    - interval: 30s
+      path: /stats/prometheus
+      port: metrics
+  selector:
+    matchLabels:
+      gateway.envoyproxy.io/owning-gateway-name: platform-gateway

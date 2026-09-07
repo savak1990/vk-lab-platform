@@ -1,0 +1,30 @@
+apiVersion: karpenter.k8s.aws/v1
+kind: EC2NodeClass
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    # Deleting this is what drains the nodes, so it must outlive every other
+    # root-managed object - a workload sharing its wave gets its pods evicted
+    # mid-deletion, and controllers whose finalizers it needs die with them.
+    argocd.argoproj.io/sync-wave: "-3"
+  name: default
+spec:
+  amiSelectorTerms:
+    - alias: al2023@latest
+  # Matches the vpc-cni prefix-delegation override in terraform/modules/eks -
+  # without this, nodeadm calculates max-pods from the pre-prefix-delegation
+  # ENI/IP table and the ceiling stays at the old, lower value.
+  kubelet:
+    maxPods: 110
+  role: vk-lab-platform-eks-karpenter-node
+  securityGroupSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: vk-lab-platform-eks
+  subnetSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: vk-lab-platform-eks
+  tags:
+    Lifecycle: disposable
+    ManagedBy: karpenter
+    Project: vk-lab-platform
+    Scope: platform

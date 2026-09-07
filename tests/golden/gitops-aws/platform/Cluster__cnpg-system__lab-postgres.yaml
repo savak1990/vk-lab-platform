@@ -1,0 +1,45 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-wave: "2"
+  name: lab-postgres
+  namespace: cnpg-system
+spec:
+  affinity:
+    nodeSelector:
+      workload-type: on-demand
+  # Cold (online: false) volume-snapshot backup - confirmed via CNPG docs
+  # to need neither an object store nor WAL archiving, just a CSI driver
+  # that supports snapshots. instances: 1 means this briefly fences the
+  # primary; acceptable since argo-down.sh triggers it immediately before
+  # tearing the cluster down anyway. See ADR 0013.
+  backup:
+    volumeSnapshot:
+      className: ebs-postgres-snapshot
+      online: false
+  bootstrap:
+    initdb:
+      database: vkdb
+      owner: vkdb
+  instances: 1
+  postgresql:
+    parameters:
+      max_replication_slots: "10"
+      # wal_level intentionally not set — CNPG defaults it to "logical" already
+      # shared_buffers / max_connections intentionally not set — sized only by
+      # the requests above, not by explicit limits
+
+      max_wal_senders: "10"
+  priorityClassName: postgres-critical
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+  storage:
+    # Increase-only: shrinking a PVC is rejected by Kubernetes, and on the
+    # snapshot-recovery path (above) the new PVC must be >= the snapshot's
+    # restore size or it never binds.
+    size: 20Gi
+    storageClass: ebs-delete

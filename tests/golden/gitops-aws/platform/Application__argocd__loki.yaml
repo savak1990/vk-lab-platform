@@ -1,0 +1,116 @@
+# SingleBinary + filesystem storage - not S3-backed "simple scalable" mode,
+# so this needs zero new Terraform/IAM. Data is lost on `make down`
+# (ebs-delete); acceptable since this stack's own data is disposable.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  name: loki
+  namespace: argocd
+spec:
+  destination:
+    namespace: observability
+    server: https://kubernetes.default.svc
+  project: default
+  source:
+    chart: loki
+    helm:
+      values: |
+        deploymentMode: SingleBinary
+        loki:
+          auth_enabled: false
+          commonConfig:
+            replication_factor: 1
+          storage:
+            type: filesystem
+          schemaConfig:
+            configs:
+              - from: "2024-01-01"
+                store: tsdb
+                object_store: filesystem
+                schema: v13
+                index:
+                  prefix: index_
+                  period: 24h
+          compactor:
+            # retention_enabled alone is a no-op for filesystem storage -
+            # delete_request_store must also be set.
+            retention_enabled: true
+            delete_request_store: filesystem
+          limits_config:
+            retention_period: 168h
+            reject_old_samples: true
+            reject_old_samples_max_age: 168h
+        singleBinary:
+          replicas: 1
+          # Requests sized from measured usage (~81Mi over 45m); limit
+          # leaves headroom for log-volume growth toward the 7d retention.
+          resources:
+            requests:
+              cpu: 20m
+              memory: 96Mi
+            limits:
+              memory: 256Mi
+          # Avoids spot only (AZ-pinned PVC + spot interruption risk) - not
+          # hard-pinned to the system node.
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - key: karpenter.sh/capacity-type
+                        operator: NotIn
+                        values: ["spot"]
+          persistence:
+            enabled: true
+            storageClass: ebs-delete
+            size: 10Gi
+        # Distributed-mode-only components - unused in SingleBinary mode.
+        read:
+          replicas: 0
+        write:
+          replicas: 0
+        backend:
+          replicas: 0
+        # Chart defaults to an 8GiB memcached deployment for each of these -
+        # far beyond lab scale, disabled outright.
+        chunksCache:
+          enabled: false
+        resultsCache:
+          enabled: false
+        lokiCanary:
+          enabled: false
+        test:
+          enabled: false
+        gateway:
+          enabled: false
+        # Rules sidecar (loki-sc-rules), sized from measured usage (~72Mi).
+        sidecar:
+          resources:
+            requests:
+              cpu: 5m
+              memory: 80Mi
+            limits:
+              memory: 128Mi
+        monitoring:
+          serviceMonitor:
+            # Added separately by monitors.yaml instead, after this chart's
+            # own Application creates the ServiceMonitor CRD (kube-prometheus-
+            # stack, same wave) - not required for log visibility, optional.
+            enabled: false
+          selfMonitoring:
+            enabled: false
+          lokiCanary:
+            enabled: false
+    repoURL: https://grafana.github.io/helm-charts
+    targetRevision: 7.3.0
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

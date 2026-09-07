@@ -1,0 +1,15 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "-3"
+  name: envoy-gateway-webhook-probe
+  namespace: envoy
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: envoy-gateway-webhook-probe
+subjects:
+  - kind: ServiceAccount
+    name: envoy-gateway-webhook-probe
+    namespace: envoy

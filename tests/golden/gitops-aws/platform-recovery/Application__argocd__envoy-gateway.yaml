@@ -1,0 +1,39 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  annotations:
+    # Must outlive the Gateway API resources it manages, and its own chart
+    # installs the CRDs they depend on - so it syncs before them, same as
+    # a controller-before-CRs split, with no drain urgency to force it lower.
+    argocd.argoproj.io/sync-wave: "-1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  name: envoy-gateway
+  namespace: argocd
+spec:
+  destination:
+    namespace: envoy
+    server: https://kubernetes.default.svc
+  project: default
+  source:
+    chart: gateway-helm
+    helm:
+      values: |
+        deployment:
+          envoyGateway:
+            resources:
+              requests:
+                cpu: 20m
+                memory: 64Mi
+              limits:
+                memory: 128Mi
+    # OCI chart, same repoURL/chart split karpenter already uses here.
+    repoURL: docker.io/envoyproxy
+    targetRevision: v1.2.1
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

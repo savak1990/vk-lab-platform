@@ -1,0 +1,39 @@
+apiVersion: v1
+data:
+  cnpg.json: |
+    {
+      "title": "CloudNativePG",
+      "schemaVersion": 39,
+      "panels": [
+        {
+          "title": "Instance up",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+          "targets": [
+            {
+              "expr": "cnpg_collector_up{cluster=\"lab-postgres\"}",
+              "legendFormat": "{{ pod }}"
+            }
+          ]
+        },
+        {
+          "title": "WAL ready to archive",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+          "targets": [
+            {
+              "expr": "cnpg_collector_pg_wal_archive_status{cluster=\"lab-postgres\", value=\"ready\"}",
+              "legendFormat": "{{ pod }}"
+            }
+          ]
+        }
+      ]
+    }
+kind: ConfigMap
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+  labels:
+    grafana_dashboard: "1"
+  name: dashboard-cnpg
+  namespace: observability

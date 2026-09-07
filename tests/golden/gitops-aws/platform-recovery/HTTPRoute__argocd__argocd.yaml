@@ -1,0 +1,20 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-wave: "2"
+  name: argocd
+  namespace: argocd
+spec:
+  # Matches by hostname. Ahead of automated DNS publishing, reach this via
+  # an /etc/hosts entry pointing the hostname at the NLB's address.
+  hostnames:
+    - argo.
+  parentRefs:
+    - name: platform-gateway
+      namespace: envoy
+  rules:
+    - backendRefs:
+        - name: argocd-server
+          port: 80

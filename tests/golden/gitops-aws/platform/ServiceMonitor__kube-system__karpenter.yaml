@@ -1,0 +1,21 @@
+# ServiceMonitor/PodMonitor objects for components whose own Applications
+# sync at an earlier wave than kube-prometheus-stack's CRD install
+# (karpenter -4, cnpg-operator -1, external-secrets -2) - defined here
+# instead of inside those Applications' helm.values to avoid referencing a
+# CRD that doesn't exist yet at their sync time. Follows the same
+# SkipDryRunOnMissingResource precedent as karpenter/nodepool.yaml.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-wave: "2"
+  name: karpenter
+  namespace: kube-system
+spec:
+  endpoints:
+    - interval: 30s
+      port: http-metrics
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: karpenter
