@@ -168,7 +168,7 @@ section 3 and must not edit those ADRs in place beyond a superseded-by note.
 | Line | Currently states | Change |
 |---|---|---|
 | 107 | Each committed secret MUST be its own ciphertext file under `secrets/` | Replace with the one-secret-per-GitHub-secret rule and the no-combining rule |
-| 276 | The root domain MUST use the KMS ciphertext mechanism | Point at the GitHub secret `ROOT_DOMAIN`; keep the hygiene-not-security framing |
+| 276 | The root domain MUST use the KMS ciphertext mechanism | Point at the GitHub secret `ROOT_DOMAIN`. Keep the hygiene-not-security framing. State that it is a secret rather than a variable for uniformity, not because it is a credential |
 | 333 | The `local` target's only AWS call is decrypting `secrets/*.enc` | The `local` target now makes no AWS call at all. This strengthens §333 |
 | 354 | Fork setup includes committing your own `root-domain.enc` | Fork setup becomes: bootstrap, set four GitHub secrets, set `AWS_ROLE_ARN` |
 | 356 | ADR 0023 superseded the separate-GitHub-secret path | Rewrite: ADR 0032 restores it, and says why |
@@ -242,13 +242,17 @@ secrets.
   A later change that wants Terraform to manage them must use `value_encrypted`
   with `github_actions_public_key`, and the plaintext must still come from
   somewhere else.
-- **Open:** should `ROOT_DOMAIN` be a GitHub *variable* rather than a secret?
-  The constitution already calls it hygiene data, not a credential, and
-  variables are readable through the API and through `gh variable get`, so a
-  variable would make a fork owner's setup visible and checkable, and it would
-  give a workstation a real read path for that one value. `AWS_ROLE_ARN` is
-  already a variable for the same reason. The cost is that the value appears
-  unmasked in build output. Decide during implementation and record the choice.
+- ~~Open: should `ROOT_DOMAIN` be a GitHub *variable* rather than a secret?~~
+  **Decided 2026-09-07 by the operator: a GitHub secret, like the other three.**
+  A variable would have been readable through the API and through
+  `gh variable get`, which would have given a workstation a real read path for
+  that one value, and `AWS_ROLE_ARN` is already a variable. The decision goes
+  the other way. The reason is uniformity: one rule for all four values, and no
+  value rendered unmasked in build output. Two consequences follow. First,
+  `ROOT_DOMAIN` needs an entry in `secrets/local.env` like every other value,
+  because a workstation cannot read it back from GitHub either. Second,
+  `AWS_ROLE_ARN` stays a variable: it is configuration, not a credential, and
+  the constitution already treats the two differently.
 - **Open:** whether `civo-autoscaler-token` (planned by CIVO-170) follows this
   spec or stays a Kubernetes Secret sourced differently. CIVO-170 decides.
 
