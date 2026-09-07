@@ -55,7 +55,11 @@ done
 # to read a cluster_name from.
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$REPO_ROOT/scripts/lib/argo-state.sh"
-CLUSTER_NAME="$(terragrunt --working-dir "$REPO_ROOT/terraform/live/cluster/eks" output -raw cluster_name 2>/dev/null || true)"
+if [ "${PROVIDER:-aws}" = "civo" ]; then
+  CLUSTER_NAME="$(terragrunt --working-dir "$REPO_ROOT/terraform/live/cluster-civo/k8s" output -raw cluster_name 2>/dev/null || true)"
+else
+  CLUSTER_NAME="$(terragrunt --working-dir "$REPO_ROOT/terraform/live/cluster/eks" output -raw cluster_name 2>/dev/null || true)"
+fi
 
 if [ -z "$CLUSTER_NAME" ]; then
   printf '%-13s unknown  (cluster not up)\n' "argo:"
