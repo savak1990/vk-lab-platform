@@ -35,11 +35,8 @@ civo_token() {
   export CIVO_TOKEN="$token"
 }
 
-# Every civo CLI invocation writes its active token back to ~/.civo.json as
-# a side effect (confirmed in civo/cli's config.go, even for a CIVO_TOKEN-
-# only invocation) - CIVO_CONFIG redirects that write to a throwaway file so
-# the decrypted token never lands in a real dotfile on disk. `|| status=$?`
-# (not a bare call) keeps `set -e` from skipping the cleanup below on failure.
+# civo CLI writes token to ~/.civo.json as a side effect; CIVO_CONFIG redirects to throwaway tmpfile.
+# || status=$? prevents set -e interference on failure.
 civo_cli() {
   local tmp status=0
   tmp="$(mktemp)"
@@ -48,10 +45,8 @@ civo_cli() {
   return "$status"
 }
 
-# `civo <resource> ls -o json` prints the plain-text line "No resources
-# found in region ..." instead of `[]` when there are zero matches (verified
-# live) - piping that into jq under `set -e` would abort the caller instead
-# of reporting zero results, so the shape is checked before parsing.
+# civo <resource> ls -o json returns plain text "No resources..." instead of [] on zero results.
+# Check shape before piping to jq to avoid aborting under set -e.
 civo_list_names() {
   local resource="$1"
   shift
@@ -71,14 +66,8 @@ cluster_exists() {
   fi
 }
 
-# Merges this cluster's kubeconfig into the given path (or the default
-# kubeconfig / $KUBECONFIG if no path is given) and switches the current
-# context to it. On civo, the civo CLI always names the context after the
-# cluster's own (lowercased) name - there is no --context-name flag - so the
-# context is renamed to "${PROJECT_NAME}-civo" afterward for a name stable
-# across cluster recreations. Deleting the destination context first guards
-# a second run against the same cluster: kubectl config rename-context fails
-# if the destination name already exists.
+# On civo, renames context to ${PROJECT_NAME}-civo (no --context-name flag); deletes target context first
+# to guard against reruns. On AWS, uses update-kubeconfig with the eks-access-identity role.
 configure_kubeconfig() {
   local kubeconfig="${1:-}"
   local kcfg=()
