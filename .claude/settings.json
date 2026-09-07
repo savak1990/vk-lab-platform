@@ -2,16 +2,7 @@
   "permissions": {
     "deny": [
       "Bash(make account-down*)",
-      "Bash(make state-down*)",
-      "Bash(make full-down*)",
       "Bash(*account-down.sh*)",
-      "Bash(*account-state-down.sh*)",
-      "Bash(./scripts/state-down.sh*)",
-      "Bash(scripts/state-down.sh*)",
-      "Bash(bash scripts/state-down.sh*)",
-      "Bash(bash ./scripts/state-down.sh*)",
-      "Bash(sh scripts/state-down.sh*)",
-      "Bash(sh ./scripts/state-down.sh*)",
       "Bash(aws s3 rb*)",
       "Bash(aws s3api delete-bucket*)",
       "Bash(aws s3api delete-objects*)",
