@@ -25,16 +25,26 @@ argo_access_role_arn() {
 argo_state() {
   local cluster="${1:?argo_state: cluster name required}"
   local kubeconfig="${2:?argo_state: kubeconfig path required}"
-  local role_arn sync_health app_count
+  local sync_health app_count
 
-  role_arn="$(argo_access_role_arn)"
-  [ -n "$role_arn" ] || { echo "unknown  (eks-access-identity not found)"; return; }
+  if [ "$PROVIDER" = "civo" ]; then
+    civo_token
+    if ! CLUSTER_NAME="$cluster" configure_kubeconfig "$kubeconfig" >/dev/null 2>&1 \
+      || ! kubectl --kubeconfig "$kubeconfig" cluster-info --request-timeout=5s >/dev/null 2>&1; then
+      echo "unknown  (cluster unreachable)"
+      return
+    fi
+  else
+    local role_arn
+    role_arn="$(argo_access_role_arn)"
+    [ -n "$role_arn" ] || { echo "unknown  (eks-access-identity not found)"; return; }
 
-  if ! aws eks update-kubeconfig --name "$cluster" --region "$LAB_REGION" \
-    --alias "$cluster" --role-arn "$role_arn" --kubeconfig "$kubeconfig" >/dev/null 2>&1 \
-    || ! kubectl --kubeconfig "$kubeconfig" cluster-info --request-timeout=5s >/dev/null 2>&1; then
-    echo "unknown  (cluster unreachable)"
-    return
+    if ! aws eks update-kubeconfig --name "$cluster" --region "$LAB_REGION" \
+      --alias "$cluster" --role-arn "$role_arn" --kubeconfig "$kubeconfig" >/dev/null 2>&1 \
+      || ! kubectl --kubeconfig "$kubeconfig" cluster-info --request-timeout=5s >/dev/null 2>&1; then
+      echo "unknown  (cluster unreachable)"
+      return
+    fi
   fi
 
   if ! kubectl --kubeconfig "$kubeconfig" get application root -n argocd >/dev/null 2>&1; then

@@ -5,7 +5,8 @@
 # emptied-by-destroy) file exists.
 set -euo pipefail
 
-PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
+# shellcheck source=lib/provider.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/provider.sh"
 BUCKET="${PROJECT_NAME}-tf-state"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/region.sh"
 
