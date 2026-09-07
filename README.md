@@ -60,6 +60,10 @@ make full-down          # the exact reverse of full-up (rarely used - each
 
 make status             # reports which layers currently have state, for THIS PROJECT_NAME
 make clusters           # lists every platform cluster live in the account, ALL projects
+
+make gitops-check       # offline: renders gitops/ for target=aws/civo/local and
+                         # checks it - aws against the committed golden baseline
+                         # (tests/golden/gitops-aws), civo/local structurally
 ```
 
 ### Running more than one lab

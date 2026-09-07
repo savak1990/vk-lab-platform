@@ -261,3 +261,10 @@ generate-secrets: export ROOT_DOMAIN := $(ROOT_DOMAIN)
 generate-secrets: export FIXED_TEST_PASSWORDS := true
 generate-secrets:
 	@./scripts/generate-secrets.sh
+
+## Renders gitops/ and gitops/bootstrap/ for aws/civo/local and verifies:
+## the aws render against the committed golden baseline (tests/golden/gitops-aws),
+## and civo/local structurally (expected objects present, aws-only kinds absent).
+## Usage: make gitops-check
+gitops-check:
+	@./scripts/gitops-render-check.sh check
