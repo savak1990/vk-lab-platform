@@ -8,7 +8,9 @@ Never reference specific documents (specs, ADRs, tickets) in code comments, e.g.
 
 ## Project purpose
 
-This repository defines and validates a disposable AWS/EKS learning platform.
+This repository defines and validates a disposable learning platform,
+with AWS/EKS as the primary execution target and Civo managed Kubernetes
+as a second target (ADR 0027).
 
 It is PLATFORM-ONLY.
 
@@ -65,7 +67,7 @@ Long-lived and rarely destroyed:
 
 Must survive `make down`:
 
-- VPC/subnets (deferred — spec 021; the AWS account's default VPC/public subnets are used until then)
+- VPC/subnets (spec 021, implemented — a dedicated VPC with public-only subnets, no NAT Gateway, ADR 0020)
 - Route 53 (the delegated `lab.<root-domain>` subdomain zone — never the parent/root zone)
 - ACM (the lab subdomain certificate — never the root domain's existing certificate)
 - Secrets Manager
@@ -279,7 +281,9 @@ No long-lived AWS credentials may be required by GitHub Actions.
 
 GitHub Actions → AWS authentication MUST use OIDC and temporary credentials.
 
-Kubernetes workloads should use EKS workload identity / Pod Identity.
+Kubernetes workloads should use EKS Pod Identity (AWS target) or IAM
+Roles Anywhere (Civo target, ADR 0029) — never a static AWS credential
+at rest in the cluster.
 
 Runtime secrets live in AWS Secrets Manager.
 
@@ -350,8 +354,14 @@ Bootstrap lifecycle, per project.
 `terraform/live/persistent/`
 Persistent lifecycle.
 
+`terraform/live/persistent-civo/`
+Persistent lifecycle, Civo target only (network, reserved IP). See ADR 0027.
+
 `terraform/live/cluster/`
 Disposable personal-lab lifecycle.
+
+`terraform/live/cluster-civo/`
+Disposable lifecycle, Civo target only (firewall, k3s cluster). See ADR 0027.
 
 `terraform/live/ci/`
 CI-specific infrastructure.

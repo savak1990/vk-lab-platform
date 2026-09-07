@@ -66,7 +66,7 @@ flowchart LR
 ```
 
 On AWS the NLB terminates TLS with ACM (ADR 0011). On Civo the LB is a
-plain TCP forwarder and Envoy owns TLS (proposed ADR 0026).
+plain TCP forwarder and Envoy owns TLS (proposed ADR 0028).
 
 ### 4.2 Identity chain (AWS access from Civo workloads)
 
@@ -185,7 +185,7 @@ subtrees; shared components read only the contract values.
 | Does Civo expose a ServiceAccount OIDC issuer (would allow web identity instead of Roles Anywhere)? | none (Roles Anywhere stays) | CIVO-020 spike, recheck |
 | Reserved IP price | cost model precision | CIVO-025 |
 | Helm chart support for `extraContainers` in ESO 2.9.0 and external-dns 1.21.1 | none | verified 2026-09-06: both charts expose `extraContainers`/`extraVolumes`; re-check at pinned versions |
-| Civo autoscaler needs an API key in-cluster | CIVO-170 | dedicated second API key, ADR 0028 |
+| Civo autoscaler needs an API key in-cluster | CIVO-170 | dedicated second API key, ADR 0030 |
 
 ## 8. Where things live
 

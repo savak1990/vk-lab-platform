@@ -1,5 +1,7 @@
 # 027 — Alternative Cloud Execution Targets (Civo, DigitalOcean)
 
+**Status:** Superseded by [specs/civo/](../civo/README.md).
+
 **Complexity:** High — not one hard problem, but every AWS-specific
 integration point in specs 003–013 needs its own provider-gated branch, and
 several have no drop-in equivalent at all.

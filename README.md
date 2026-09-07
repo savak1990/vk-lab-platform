@@ -17,11 +17,11 @@ for what went wrong and how this platform fixes it.
 ## Status
 
 State, Bootstrap, and Persistent (specs 001–002) and the full Disposable
-stack — EKS, Karpenter, Argo CD, Envoy Gateway, NLB, Postgres, Kafka, and
-observability (specs 003–014, 024) — are implemented and wired up behind
-`make up`/`make down`. The GitHub OIDC provider and `lab.yml` (specs
-015–016) are also implemented — the platform can be started/stopped from
-GitHub Actions, not just a workstation.
+stack — EKS, Karpenter, Argo CD, Envoy Gateway, NLB, Postgres, and
+observability — are implemented and wired up behind `make up`/`make down`.
+Kafka is deferred (ADR 0017). The GitHub OIDC provider and `lab.yml` are
+also implemented — the platform can be started/stopped from GitHub
+Actions, not just a workstation.
 
 ## Usage
 

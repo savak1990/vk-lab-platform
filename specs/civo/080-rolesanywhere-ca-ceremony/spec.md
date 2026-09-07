@@ -26,7 +26,7 @@ A reproducible script creates the Roles Anywhere root CA for a project.
 The script commits the public certificate as
 `secrets/<project>/civo-ca-cert.pem`. It commits the private key as KMS
 ciphertext `secrets/<project>/civo-ca-key.enc`. It documents rotation.
-This is the initial trust ceremony that ADR 0027 names. Automation cannot
+This is the initial trust ceremony that ADR 0029 names. Automation cannot
 remove the ceremony. Automation can only make it repeatable.
 
 ## 2. Scope and non-goals
@@ -61,7 +61,7 @@ public file, the rotation runbook, and the `.gitignore` guard against
 
 ## 7. Dependencies and blockers
 
-CIVO-015 (ADR 0027 accepted). No cloud resources are needed beyond KMS encrypt.
+CIVO-015 (ADR 0029 accepted). No cloud resources are needed beyond KMS encrypt.
 
 ## 8. Acceptance criteria
 

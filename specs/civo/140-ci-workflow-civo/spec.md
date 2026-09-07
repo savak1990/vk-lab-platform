@@ -71,7 +71,7 @@ Not in scope: PR validation workflows (spec 019), Kind CI (spec 024).
 
 ## 7. Dependencies and blockers
 
-045 (scripts), 015 (ADR 0028).
+045 (scripts), 015 (ADR 0030).
 
 ## 8. Acceptance criteria
 

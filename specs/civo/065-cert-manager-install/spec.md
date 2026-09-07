@@ -36,7 +36,7 @@ ServiceMonitor gating. Not in scope: the issuers and the certificates
 ## 3. Current state / evidence
 
 No cert-manager objects exist in `gitops/` (verified negative). ADR 0011
-rejects cert-manager for AWS. CIVO-015's ADR 0026 allows it on Civo.
+rejects cert-manager for AWS. CIVO-015's ADR 0028 allows it on Civo.
 
 ## 4. Design and contracts
 
