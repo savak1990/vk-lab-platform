@@ -26,7 +26,7 @@ The root CA key never enters the cluster. `argo-up` issues a short-lived
 intermediate per cluster (`pathlen:0`, allowed by the root's `pathlen:1`
 from CIVO-080). The trust anchor stays the root. A cert-manager approval
 policy restricts which namespaces may request which CNs. Together, they
-bound the blast radius of a `CIVO_TOKEN` compromise (ADR 0027) in time and
+bound the blast radius of a `CIVO_TOKEN` compromise (ADR 0029) in time and
 in scope.
 
 ## 2. Scope and non-goals

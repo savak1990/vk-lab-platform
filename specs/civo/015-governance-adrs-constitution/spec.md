@@ -1,7 +1,7 @@
 ---
 id: "CIVO-015"
-title: "Governance: ADRs 0025–0028, constitution §20, architecture §10a, documentation fixes"
-status: "READY"
+title: "Governance: ADRs 0027–0031, constitution §20, architecture §10a, documentation fixes"
+status: "IN_PROGRESS"
 priority: "P0"
 milestone: "M0"
 type: "documentation"
@@ -14,7 +14,7 @@ depends_on: []
 blocked_by: []
 supersedes: []
 created: "2026-09-06"
-updated: "2026-09-06"
+updated: "2026-09-07"
 completed: null
 ---
 
@@ -53,11 +53,11 @@ The scope does not include code, the CA design details (CIVO-080), or tests.
 
 Each ADR has the status Proposed until the PR merges. The ADR contents are:
 
-- **0025 Civo second execution target under a separate project.** The operator gives the `PROVIDER` input. The project is `vk-civo-lab`. The subdomain is `civo`. The stage model is identical. The state bucket is separate. The stack directories are `persistent-civo`/`cluster-civo`. The lifecycle classes apply to the Civo cluster as Disposable. The account layer is shared. This ADR supersedes the `TARGET` proposal of spec 027.
-- **0026 Envoy-terminated TLS with cert-manager on Civo.** This ADR answers the reasons of ADR 0011. The platform persists the TLS Secret across down/up (SSM SecureString). CI uses LE staging. Together these two measures mitigate the rate limit. Civo has no ACM and no NLB. Invariant 10 gets a Civo variant. ADR 0011 stays unchanged for AWS.
-- **0027 IAM Roles Anywhere with an offline CA.** The trust anchor comes from an external CA. M1 uses a single CA. The trust policies are CN-conditioned. A helper sidecar provides the credentials. The ADR states the blast radius explicitly: `lab-role` `kms:*` on `alias/lab-secrets` and `CIVO_TOKEN` → cluster-admin → CA key Secret → every role. The ADR lists the mitigations and the intermediate-CA follow-up (CIVO-200).
-- **0028 Civo API token handling.** The token is a static key. KMS encrypts it at `secrets/civo-token.enc`. Scripts decrypt it at run time. CI masks it. To rotate the token, regenerate it, re-encrypt it, and commit the file. The invariant 4 text (AWS credentials) is not violated. The ADR acknowledges the principle. The ADR evaluates a JWT exchange and rejects it, because it still depends on a key.
-- **0029 Logical dumps to S3 as the single PostgreSQL backup mechanism.** Replaces ADR 0013's EBS VolumeSnapshot recovery on both targets. Civo cannot snapshot or clone volumes, and CNPG offers no way to add a sidecar to its instance pods, so physical backups from Civo would need a permanent AWS key. A dump job from an image this repository owns uses `credential_process` on Civo and Pod Identity on AWS. States the accepted loss of point-in-time recovery and the retention window. AWS migrates in CIVO-185, not in M1.
+- **0027 Civo second execution target under a separate project.** The operator gives the `PROVIDER` input. The project is `vk-civo-lab`. The subdomain is `civo`. The stage model is identical. The state bucket is separate. The stack directories are `persistent-civo`/`cluster-civo`. The lifecycle classes apply to the Civo cluster as Disposable. The account layer is shared. This ADR supersedes the `TARGET` proposal of spec 027.
+- **0028 Envoy-terminated TLS with cert-manager on Civo.** This ADR answers the reasons of ADR 0011. The platform persists the TLS Secret across down/up (SSM SecureString). CI uses LE staging. Together these two measures mitigate the rate limit. Civo has no ACM and no NLB. Invariant 10 gets a Civo variant. ADR 0011 stays unchanged for AWS.
+- **0029 IAM Roles Anywhere with an offline CA.** The trust anchor comes from an external CA. M1 uses a single CA. The trust policies are CN-conditioned. A helper sidecar provides the credentials. The ADR states the blast radius explicitly: `lab-role` `kms:*` on `alias/lab-secrets` and `CIVO_TOKEN` → cluster-admin → CA key Secret → every role. The ADR lists the mitigations and the intermediate-CA follow-up (CIVO-200).
+- **0030 Civo API token handling.** The token is a static key. KMS encrypts it at `secrets/civo-token.enc`. Scripts decrypt it at run time. CI masks it. To rotate the token, regenerate it, re-encrypt it, and commit the file. The invariant 4 text (AWS credentials) is not violated. The ADR acknowledges the principle. The ADR evaluates a JWT exchange and rejects it, because it still depends on a key.
+- **0031 Logical dumps to S3 as the single PostgreSQL backup mechanism.** Replaces ADR 0013's EBS VolumeSnapshot recovery on both targets. Civo cannot snapshot or clone volumes, and CNPG offers no way to add a sidecar to its instance pods, so physical backups from Civo would need a permanent AWS key. A dump job from an image this repository owns uses `credential_process` on Civo and Pod Identity on AWS. States the accepted loss of point-in-time recovery and the retention window. AWS migrates in CIVO-185, not in M1.
 
 Constitution §20 "Civo execution target" gives a variant for each of these sections:
 
@@ -77,7 +77,7 @@ For `architecture.md`, do these three changes:
 
 ## 5. Files/components affected
 
-- `docs/adr/0025-…md`, `0026-…md`, `0027-…md`, `0028-…md`, `0029-…md` (new).
+- `docs/adr/0027-…md`, `0028-…md`, `0029-…md`, `0030-…md`, `0031-…md` (new).
 - `specs/000-constitution/spec.md` (add §20; do not change §18).
 - `docs/architecture.md` (§10a, the §5 tree, and the Kafka/Tempo/Secrets Manager/argocd-bootstrap fixes).
 - `CLAUDE.md` (the project purpose line, the VPC line in the lifecycle list, the repository layout, and the workload identity line).
@@ -86,7 +86,7 @@ For `architecture.md`, do these three changes:
 
 ## 6. Implementation steps
 
-1. Write ADRs 0025–0028 in the existing ADR format (`# ADR NNNN: Title` / Status / Context / Decision / Consequences).
+1. Write ADRs 0027–0031 in the existing ADR format (`# ADR NNNN: Title` / Status / Context / Decision / Consequences).
 2. Add constitution §20. Cross-reference each variant to its ADR.
 3. Apply the review-table fixes to `architecture.md`. Keep the target-state sections. Label the deferred items.
 4. Update `CLAUDE.md`, `README.md`, the persistent README, and the spec 027 status.
@@ -123,7 +123,7 @@ The work lands in one PR. The PR is revertible.
 
 ## 13. Definition of done
 
-- [ ] Four ADRs merged with Status Accepted
+- [ ] Five ADRs merged with Status Accepted
 - [ ] Constitution §20 merged
 - [ ] Review-table fixes applied
 - [ ] Index row updated; status `DONE`
@@ -132,3 +132,5 @@ The work lands in one PR. The PR is revertible.
 
 - 2026-09-06 — created as DRAFT.
 - 2026-09-06 — plan approved by the user; no hard dependencies; promoted to READY.
+- 2026-09-07 — started implementation; promoted to IN_PROGRESS.
+- 2026-09-07 — renumbered ADRs to 0027–0031 (0025/0026 were claimed by unrelated ADRs — argo-sync-retry, on-demand-full-lifecycle-ci — that landed after this spec was drafted; ADR 0026 itself flags this and requires 0027+, per §12's own anticipation of this risk). Also fixed stray old-numbered Civo-ADR references in specs/civo/roadmap.md, specs/civo/025, specs/civo/065, specs/civo/080, specs/civo/140, specs/civo/170, specs/civo/200, and docs/civo-high-level-design.md.

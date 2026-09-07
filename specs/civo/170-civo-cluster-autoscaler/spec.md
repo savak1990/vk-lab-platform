@@ -54,7 +54,7 @@ parity.
 - Install: prefer the Argo-managed upstream `cluster-autoscaler` Helm chart with the `civo` cloud provider, if the chart supports it for the pinned version. Otherwise, add the marketplace app to `applications` in CIVO-030's cluster resource. In that case, `argo-up` performs a documented `kubectl patch` of the Deployment args to `--nodes=2:5:workers`. The patch is idempotent. Record which path was taken. Argo-managed is preferred for GitOps ownership.
 - Terraform: add `lifecycle { ignore_changes = [pools[0].node_count] }` on `civo_kubernetes_cluster`.
 - Values: `capacity.autoscaler: {min: 2, max: 5, pool: workers}`.
-- Credential: both the marketplace app and the upstream `civo` cloudprovider need a Civo API key as a Secret in `kube-system`. Use a **dedicated second API key** (Civo accounts may hold several). Store it as `secrets/civo-autoscaler-token.enc`. `argo-up` delivers it (never the main token). Then a Secret read in `kube-system` does not yield full account control. ADR 0028 must state this.
+- Credential: both the marketplace app and the upstream `civo` cloudprovider need a Civo API key as a Secret in `kube-system`. Use a **dedicated second API key** (Civo accounts may hold several). Store it as `secrets/civo-autoscaler-token.enc`. `argo-up` delivers it (never the main token). Then a Secret read in `kube-system` does not yield full account control. ADR 0030 must state this.
 - Civo docs recommend a minimum of 2 workers with the autoscaler. The spike and this spec verify that `min=1` is honored.
 - Observability: a ServiceMonitor for the autoscaler metrics (gated to civo).
 
@@ -118,7 +118,7 @@ Research needed before this spec becomes READY:
 1. Does a Civo Organization or team account give a second account with its own key, and at what cost?
 2. Does Civo offer scoped API keys that the public documentation does not describe? Ask Civo support.
 3. Can the autoscaler run with a narrower credential, for example one limited to node-pool endpoints?
-4. If none of the above holds, is the exposure acceptable for a single-operator lab with no untrusted workloads? Record the answer in ADR 0028.
+4. If none of the above holds, is the exposure acceptable for a single-operator lab with no untrusted workloads? Record the answer in ADR 0030.
 
 Until that research completes, milestone M1 uses a fixed node count set
 by Terraform. The cost stays deterministic and no Civo credential lives

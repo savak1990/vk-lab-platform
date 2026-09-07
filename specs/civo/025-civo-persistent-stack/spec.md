@@ -74,7 +74,7 @@ The scope does not include the cluster (CIVO-030) or the Roles Anywhere unit (CI
 
 ## 7. Dependencies and blockers
 
-CIVO-010 supplies PROVIDER, the defaults, and the token helper. CIVO-015 (ADR 0025) declares the stack. CIVO-050 can run in parallel.
+CIVO-010 supplies PROVIDER, the defaults, and the token helper. CIVO-015 (ADR 0027) declares the stack. CIVO-050 can run in parallel.
 
 ## 8. Acceptance criteria
 

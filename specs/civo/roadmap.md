@@ -101,7 +101,7 @@ Parallel tracks once 045/050 land: ingress (060 → 070), identity (080 → 082 
 | CNPG sizing, backups, restore | 180 (bucket, jobs, IAM), 120 (cycle proof), 185 (AWS migration) |
 | Capacity comparison, fixed capacity allowed, autoscaler separate | 030 (fixed pool), 170 (deferred), 175 |
 | Identity chain items 1–9 | 080 (2), 082 (1, 8), 085 (3, 4), 090 (6, 7, 9), 085/090 (5) |
-| Civo token handling | 010, 040, 140, ADR 0028 |
+| Civo token handling | 010, 040, 140, ADR 0030 |
 | Destruction classification and recovery | 040, 045, 150 |
 | Tests and CI gates | 130, 140, 150 |
 | Costs with dated prices | research.md |
