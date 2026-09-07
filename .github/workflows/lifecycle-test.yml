@@ -17,10 +17,6 @@ on:
         description: "SUBDOMAIN for this run - must be unique per project (scripts/require-unique-subdomain.sh enforces this)."
         type: string
         default: ci
-      confirm_destroy:
-        description: "Type the project_name above exactly - full-down requires this to reach persistent-down/bootstrap-down."
-        type: string
-        default: ""
 
 run-name: "lifecycle-test (${{ inputs.project_name }})"
 
@@ -146,4 +142,7 @@ jobs:
 
       - run: make full-down
         env:
-          CONFIRM_DESTROY: ${{ inputs.confirm_destroy }}
+          # Always this run's own project_name, not a user-typed input - every
+          # dispatch of this workflow is expected to end in full-down (ADR
+          # 0026 decision 1), so there is no confirmation decision left to make.
+          CONFIRM_DESTROY: ${{ inputs.project_name }}

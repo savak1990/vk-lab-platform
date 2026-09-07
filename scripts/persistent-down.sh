@@ -27,6 +27,14 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/region.sh"
 
 confirm_destroy "$PROJECT_NAME"
 
+# The secrets module's data sources re-read these plaintext-backed files
+# during destroy too, not just apply - on a fresh checkout that never ran
+# persistent-up (e.g. a standalone `full-down` dispatch), they don't exist
+# and terragrunt destroy fails before deleting anything. Same
+# auto-generate-if-missing call persistent-up makes; a no-op wherever the
+# files already exist.
+"$REPO_ROOT/scripts/generate-secrets.sh"
+
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
