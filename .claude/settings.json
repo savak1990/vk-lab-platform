@@ -2,12 +2,10 @@
   "permissions": {
     "deny": [
       "Bash(make account-down*)",
-      "Bash(make bootstrap-down*)",
       "Bash(make state-down*)",
       "Bash(make full-down*)",
       "Bash(*account-down.sh*)",
       "Bash(*account-state-down.sh*)",
-      "Bash(*bootstrap-down.sh*)",
       "Bash(*state-down.sh*)",
       "Bash(aws s3 rb*)",
       "Bash(aws s3api delete-bucket*)",
@@ -31,8 +29,10 @@
       "Bash(git push -f*)"
     ],
     "ask": [
+      "Bash(make bootstrap-down*)",
       "Bash(make persistent-down*)",
       "Bash(make platform-down*)",
+      "Bash(*bootstrap-down.sh*)",
       "Bash(*persistent-down.sh*)",
       "Bash(make full-up*)",
       "Bash(make platform-up*)",
