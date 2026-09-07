@@ -57,6 +57,10 @@ ADR 0018), retention changes, Civo-specific dashboards.
 - Gate the Karpenter ServiceMonitor, alert, and dashboard on `.Values.target == "aws"`.
 - PVC sizes are unchanged (10Gi/1Gi/1Gi/10Gi) on `civo-volume`. The volumes have Delete reclaim. The volumes are removed with the cluster (verified in CIVO-150).
 - Record the resource requests for CIVO-175.
+- CIVO-020 found an `otel-collector` DaemonSet that Civo installs into `kube-system` on a stock
+  cluster. Decide whether this stack's collector runs beside it or replaces it. State the choice.
+- Size this stack against 2308 MiB of allocatable memory per Medium node. CIVO-020 measured that
+  figure. Do not use the 2672 MiB that the Civo documentation states.
 
 **Review amendments (2026-09-06, kubernetes-architect):**
 - Keep `kubeControllerManager`, `kubeScheduler`, `kubeEtcd`, and `kubeProxy` scrapes disabled on Civo. Managed k3s binds these to localhost on control-plane hosts outside the pool and ships no Services for them. Kubelet, cAdvisor, and node-exporter are the realistic targets. Do not spend time on the alternative.
