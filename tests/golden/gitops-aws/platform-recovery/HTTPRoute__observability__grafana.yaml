@@ -1,3 +1,6 @@
+# Stays gated: lives in and targets the observability namespace, which only
+# kube-prometheus-stack's Application creates (aws-only until CIVO-160) -
+# unconditional here would fail apply with "namespaces \"observability\" not found".
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:

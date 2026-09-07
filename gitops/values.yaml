@@ -9,6 +9,27 @@ region: eu-west-1
 # lets aws-load-balancer-controller skip IMDS-based VPC discovery.
 vpcId: ""
 
+# className/snapshotClassName name the CSI StorageClass/VolumeSnapshotClass
+# a target provides; each target supplies its own.
+storage:
+  className: ebs-delete
+  snapshotClassName: ebs-postgres-snapshot
+
+# spotAvoidance gates the observability/Postgres anti-affinity blocks below —
+# only meaningful where Karpenter's spot/on-demand distinction exists (aws).
+capacity:
+  spotAvoidance: true
+
+# cert-manager is off by default: aws terminates TLS at the NLB with an ACM
+# certificate, so no in-cluster issuer is needed until a target lacks that.
+certManager:
+  enabled: false
+
+# podIdentity (EKS Pod Identity) is aws-only; other targets substitute
+# their own workload-identity mechanism.
+awsIdentity:
+  mode: podIdentity
+
 # recoverySnapshotHandle is set automatically by scripts/argo-up.sh, which
 # discovers the latest retained EBS snapshot (if any) via the AWS API — no
 # manual edit required. Empty means "no snapshot found, bootstrap fresh".
@@ -18,6 +39,11 @@ vpcId: ""
 postgres:
   recoverySnapshotHandle: ""
   storageSize: 20Gi
+  # Pins Postgres off spot (AZ-pinned PVC + interruption risk). Helm deep-
+  # merges values, so a target without an on-demand pool needs its own
+  # postgres/cluster.yaml (or a nodeSelector: null override), not {}.
+  nodeSelector:
+    workload-type: on-demand
 
 # Operator-configurable via {SPOT,ON_DEMAND}_KARPENTER_INSTANCE_TYPES
 # (comma-separated) and {SPOT,ON_DEMAND}_KARPENTER_CPU_LIMIT env vars on
@@ -47,7 +73,20 @@ karpenter:
 # carry kubernetes.io/role/elb (see envoy-gateway/gateway.yaml's comment).
 # fqdn is persistent/route53's fqdn output ("lab.<root-domain>") - the
 # HTTPRoutes' hostnames are built from this, not a literal domain string.
+# tls.mode names which layer terminates TLS - aws terminates at the NLB,
+# plaintext behind it; a target with no such edge LB terminates in Envoy
+# itself. service.annotations carries LB-provisioning annotations; empty is a no-op.
 envoyGateway:
   acmCertificateArn: ""
   nlbSubnetIds: ""
   fqdn: ""
+  tls:
+    mode: nlb
+  service:
+    annotations: {}
+
+# txtOwnerId is external-dns's TXT-registry ownership marker - stable across
+# make down/up cycles. Empty means "use .Values.project" (aws's current
+# behavior); a target may pass its own project-scoped id instead.
+externalDns:
+  txtOwnerId: ""

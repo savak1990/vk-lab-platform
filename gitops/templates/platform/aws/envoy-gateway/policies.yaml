@@ -1,6 +1,7 @@
 {{- if eq .Values.target "aws" }}
 # Kept off the argocd HTTPRoute deliberately - testing traffic policy here
 # shouldn't risk destabilizing the UI used to watch Argo's own sync status.
+# Stays aws-only: targets the grafana HTTPRoute, itself gated the same way.
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: BackendTrafficPolicy
 metadata:

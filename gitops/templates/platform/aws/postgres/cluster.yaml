@@ -10,9 +10,11 @@ metadata:
 spec:
   instances: 1
   priorityClassName: postgres-critical
+  {{- if .Values.postgres.nodeSelector }}
   affinity:
     nodeSelector:
-      workload-type: on-demand
+      {{- .Values.postgres.nodeSelector | toYaml | nindent 6 }}
+  {{- end }}
   resources:
     requests:
       cpu: 250m
@@ -40,7 +42,7 @@ spec:
     # snapshot-recovery path (above) the new PVC must be >= the snapshot's
     # restore size or it never binds.
     size: {{ .Values.postgres.storageSize | quote }}
-    storageClass: ebs-delete
+    storageClass: {{ .Values.storage.className }}
   # Cold (online: false) volume-snapshot backup - confirmed via CNPG docs
   # to need neither an object store nor WAL archiving, just a CSI driver
   # that supports snapshots. instances: 1 means this briefly fences the
