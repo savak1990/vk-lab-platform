@@ -82,13 +82,13 @@ configure_kubeconfig() {
     fi
     local raw_context
     raw_context="$(echo "$CLUSTER_NAME" | tr '[:upper:]' '[:lower:]')"
-    kubectl "${kcfg[@]}" config delete-context "${PROJECT_NAME}-civo" >/dev/null 2>&1 || true
-    kubectl "${kcfg[@]}" config rename-context "$raw_context" "${PROJECT_NAME}-civo" >/dev/null
-    kubectl "${kcfg[@]}" config use-context "${PROJECT_NAME}-civo" >/dev/null
+    kubectl ${kcfg[@]:+"${kcfg[@]}"} config delete-context "${PROJECT_NAME}-civo" >/dev/null 2>&1 || true
+    kubectl ${kcfg[@]:+"${kcfg[@]}"} config rename-context "$raw_context" "${PROJECT_NAME}-civo" >/dev/null
+    kubectl ${kcfg[@]:+"${kcfg[@]}"} config use-context "${PROJECT_NAME}-civo" >/dev/null
   else
     aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$LAB_REGION" --alias "$CLUSTER_NAME" \
       --role-arn "$(aws iam get-role --role-name eks-access-identity --query Role.Arn --output text)" \
-      "${kcfg[@]}" >/dev/null
+      ${kcfg[@]:+"${kcfg[@]}"} >/dev/null
   fi
-  kubectl "${kcfg[@]}" config set-context --current --namespace=default >/dev/null
+  kubectl ${kcfg[@]:+"${kcfg[@]}"} config set-context --current --namespace=default >/dev/null
 }
