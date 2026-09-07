@@ -92,7 +92,7 @@ CIVO-040 (the kubeconfig and the existence proof). CIVO-050 (`target: civo` rend
 ## 8. Acceptance criteria
 
 - `PROVIDER=civo make argo-up` is idempotent. The second run hits the fast path.
-- The root Application is `Synced/Healthy` on civo with the baseline set.
+- The root Application is `Synced/Healthy` on civo with the baseline set. This is also the live-cluster validation CIVO-050 deferred here (2026-09-07): CIVO-050's own acceptance criteria only cover the offline render/structural checks.
 - `argo-down` on civo removes the LoadBalancer Service and the Civo LB before the cascade. Check the Civo LB with `civo loadbalancer ls`.
 - The AWS `make argo-up` fast path and full path produce the same Helm command lines as before. Record the lines with a `set -x` diff and redact the secrets.
 - The scripts print no token value and no bcrypt value.
