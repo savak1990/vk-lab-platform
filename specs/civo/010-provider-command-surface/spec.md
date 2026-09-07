@@ -1,7 +1,7 @@
 ---
 id: "CIVO-010"
 title: "PROVIDER operator input with Civo project defaults and Make dispatch"
-status: "READY"
+status: "IN_REVIEW"
 priority: "P1"
 milestone: "M0"
 type: "implementation"
@@ -14,7 +14,7 @@ depends_on: []
 blocked_by: []
 supersedes: []
 created: "2026-09-06"
-updated: "2026-09-06"
+updated: "2026-09-07"
 completed: null
 ---
 
@@ -103,12 +103,56 @@ One PR. A revert restores the previous Makefile. There is no state or data risk.
 
 ## 13. Definition of done
 
-- [ ] Acceptance criteria met with recorded diffs
-- [ ] `shellcheck` clean
-- [ ] `secrets/README.md` updated
+- [x] Acceptance criteria met with recorded diffs
+- [x] `shellcheck` clean
+- [x] `secrets/README.md` updated
 - [ ] PR merged; index row updated; status `DONE` with date
 
 ## 14. Execution evidence and status history
 
 - 2026-09-06 — created as DRAFT.
 - 2026-09-06 — plan approved by the user; no hard dependencies; promoted to READY.
+- 2026-09-07 — no unmet dependencies (depends_on empty); promoted to IN_PROGRESS.
+- 2026-09-07 — implemented and validated. Two deviations from §4's design,
+  both required to keep the byte-identity gate meaningful: the "guard
+  target" became a parse-time `$(error ...)` (a guard target's recipe line
+  would itself appear in `make -n` output and break byte-identity), and the
+  kubeconfig dispatch uses a make-level `ifeq`/`else`/`endif` around the two
+  full recipes rather than a shell `if` inside one recipe (same reason —
+  `make -n` prints recipe text verbatim, a shell conditional would change
+  it for the aws branch too). §3's claim that `.gitignore` "already admits"
+  `civo-token.enc` understates it: the file already carries its own
+  explicit `!secrets/civo-token.enc` line, unchanged by this spec.
+- Execution evidence (commands run, no secrets):
+  - `grep -n '\$(shell ' Makefile` — no match; confirmed baseline is
+    deterministic before editing.
+  - Captured `make -n <target>` for all 14 lifecycle targets before any
+    edit; diffed against the same 14 after the edit with `PROVIDER` unset —
+    empty diff on every target.
+  - Re-ran the same 14 with `PROVIDER=aws` explicit — empty diff against
+    the pre-edit baseline (via `git stash`) on every target, including
+    `eks-kubeconfig`/`test-kubeconfig`.
+  - `make -n up PROVIDER=gcp` → `Makefile:11: *** PROVIDER must be aws or
+    civo, got 'gcp'.  Stop.` (exit 2) before any target runs.
+  - `make -n cluster-up PROVIDER=civo` → `cd terraform/live/cluster-civo
+    && ...`. Confirmed identical in both `PROVIDER=civo make` and
+    `make PROVIDER=civo` forms.
+  - Verified `PROJECT_NAME`/`SUBDOMAIN`/`CLUSTER_DIR` resolution across all
+    four combinations of {command-line, env-var} × {default, `PROJECT_NAME=
+    other` override} via a throwaway probe Makefile including the real one
+    — civo defaults to `vk-civo-lab`/`civo`/`cluster-civo`; an explicit
+    `PROJECT_NAME=other` wins in every form.
+  - `make eks-kubeconfig PROVIDER=civo` → prints the "implemented in a
+    later Civo spec" stub message and exits 1.
+  - `shellcheck scripts/lib/provider.sh` — exit 0, no findings.
+  - `require_valid_project_name vk-civo-lab` — passes (23-char limit, 11
+    chars).
+  - Confirmed `secrets/civo-token.enc` resolves via the new repo-root path
+    rule in both `secret-decrypt.sh` and `secret-encrypt.sh`, and that the
+    pre-existing `root-domain` rule is untouched.
+  - **Caution for future runs of this evidence**: do not run
+    `scripts/secret-decrypt.sh civo-token` directly to prove the path
+    rule — it prints the live plaintext token to stdout. Verify the path
+    rule by reading the script's branch logic instead, or by redirecting
+    output to `/dev/null` and checking the exit code, never by capturing
+    or displaying stdout.

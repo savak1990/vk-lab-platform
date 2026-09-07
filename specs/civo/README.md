@@ -74,8 +74,8 @@ verified in this environment.
 
 | ID | Folder | Title | Status | Pri | Diff | Tier | Depends on | Milestone |
 |---|---|---|---|---|---|---|---|---|
-| CIVO-010 | [010-provider-command-surface](010-provider-command-surface/spec.md) | `PROVIDER` operator input and Make dispatch | READY | P1 | S | standard | — | M0 |
-| CIVO-015 | [015-governance-adrs-constitution](015-governance-adrs-constitution/spec.md) | ADRs 0025–0028, constitution §20, architecture §10a | READY | P0 | M | strongest | — | M0 |
+| CIVO-010 | [010-provider-command-surface](010-provider-command-surface/spec.md) | `PROVIDER` operator input and Make dispatch | IN_REVIEW | P1 | S | standard | — | M0 |
+| CIVO-015 | [015-governance-adrs-constitution](015-governance-adrs-constitution/spec.md) | ADRs 0025–0028, constitution §20, architecture §10a | IN_PROGRESS | P0 | M | strongest | — | M0 |
 | CIVO-020 | [020-civo-feasibility-spike](020-civo-feasibility-spike/spec.md) | Throwaway-cluster feasibility spike and report | READY | P0 | M | standard | — | M0 |
 | CIVO-025 | [025-civo-persistent-stack](025-civo-persistent-stack/spec.md) | `persistent-civo` network and reserved IP | READY | P1 | S | standard | 010, 015 | M1 |
 | CIVO-030 | [030-civo-terraform-cluster](030-civo-terraform-cluster/spec.md) | `cluster-civo` firewall and k3s cluster | READY | P1 | M | standard | 010, 015, 020, 025 | M1 |

@@ -45,7 +45,7 @@ else
   echo "CLUSTER-DOWN: cluster $CLUSTER_NAME does not exist - skipping kubectl checks, proceeding to terragrunt destroy."
 fi
 
-cd "$REPO_ROOT/terraform/live/cluster" && terragrunt run --all --non-interactive -- destroy -auto-approve
+cd "$REPO_ROOT/terraform/live/${CLUSTER_DIR:-cluster}" && terragrunt run --all --non-interactive -- destroy -auto-approve
 
 echo "CLUSTER-DOWN: destroy complete - checking for leaked disposable-lifecycle AWS resources..."
 LEAK_COUNT=0

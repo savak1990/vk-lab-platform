@@ -19,8 +19,8 @@ VALUE="${SECRET_VALUE:-}"
 test -n "$NAME" || { echo "Usage: SECRET_NAME=<name> SECRET_VALUE=<value> scripts/secret-encrypt.sh"; exit 1; }
 test -n "$VALUE" || { echo "Usage: SECRET_NAME=<name> SECRET_VALUE=<value> scripts/secret-encrypt.sh"; exit 1; }
 
-# root-domain is account-global, not per-project - see secrets/README.md.
-if [ "$NAME" = "root-domain" ]; then
+# root-domain and civo-token are account-global, not per-project - see secrets/README.md.
+if [ "$NAME" = "root-domain" ] || [ "$NAME" = "civo-token" ]; then
   DEST="$REPO_ROOT/secrets/$NAME.enc"
 else
   mkdir -p "$REPO_ROOT/secrets/$PROJECT_NAME"

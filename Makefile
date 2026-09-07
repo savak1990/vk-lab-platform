@@ -4,17 +4,41 @@
 
 # Lifecycle: state -> bootstrap -> persistence -> cluster -> argo
 
+# Selects the provider's project/stack defaults and dispatch. aws is the
+# default; behavior is unchanged from before this variable existed.
+export PROVIDER ?= aws
+ifeq ($(filter aws civo,$(PROVIDER)),)
+$(error PROVIDER must be aws or civo, got '$(PROVIDER)')
+endif
+
 # Overridable so CI/integration runs can use a disposable, randomly
 # generated name instead of the personal lab's, e.g.
 # PROJECT_NAME=vk-lab-ci-1234 make bootstrap-up
+ifeq ($(PROVIDER),civo)
+export PROJECT_NAME ?= vk-civo-lab
+export SUBDOMAIN ?= civo
+else
 export PROJECT_NAME ?= vk-lab-platform
+export SUBDOMAIN ?= lab
+endif
 
 # The platform targets exactly one region. Deliberately := and unexported:
 # the scripts read it from scripts/lib/region.sh, terragrunt from root.hcl.
 REGION := eu-west-1
 
-# Overridable subdomain delegated from the root domain, e.g. lab.<root-domain>.
-export SUBDOMAIN ?= lab
+# The disposable-cluster stack directory; civo uses its own directory,
+# never wired into the aws path.
+ifeq ($(PROVIDER),civo)
+export CLUSTER_DIR := cluster-civo
+export PERSISTENT_EXTRA_DIR := persistent-civo
+export BOOTSTRAP_EXCLUDE := acm
+export PERSISTENT_EXCLUDE := vpc
+else
+export CLUSTER_DIR := cluster
+export PERSISTENT_EXTRA_DIR :=
+export BOOTSTRAP_EXCLUDE :=
+export PERSISTENT_EXCLUDE :=
+endif
 
 ## Brings up the cluster + Argo CD onto an existing Persistent layer.
 ## Fails fast (naming `make persistent-up`) if Persistent doesn't exist yet -
@@ -122,7 +146,7 @@ persistent-down:
 ## this to install Argo CD and the platform.
 cluster-up:
 	./scripts/require-persistent.sh
-	cd terraform/live/cluster && terragrunt run --all --non-interactive -- apply -auto-approve
+	cd terraform/live/$(CLUSTER_DIR) && terragrunt run --all --non-interactive -- apply -auto-approve
 
 ## Destroys the disposable EKS cluster. Routine, unlike bootstrap-down/persistent-down.
 ## Requires `make argo-down` to have already cascaded away Argo/Karpenter's
@@ -141,10 +165,16 @@ cluster-down:
 ## instead of depending on this, since the cluster may not exist yet (or
 ## anymore) when those run, and a Make prerequisite can't be conditional.
 ## Usage: make eks-kubeconfig
+ifeq ($(PROVIDER),civo)
+eks-kubeconfig:
+	@echo "eks-kubeconfig for PROVIDER=civo: implemented in a later Civo spec" >&2
+	@exit 1
+else
 eks-kubeconfig:
 	aws eks update-kubeconfig --name $(PROJECT_NAME)-eks --region $(REGION) --alias $(PROJECT_NAME)-eks \
 		--role-arn "$$(aws iam get-role --role-name eks-access-identity --query Role.Arn --output text)"
 	kubectl config set-context --current --namespace=default
+endif
 
 ## Installs Argo CD and the root Application onto the disposable EKS
 ## cluster (ADR 0012 - a script, not Terraform), then blocks until the
@@ -160,10 +190,16 @@ argo-up:
 ## `make test` still switches your shell's *current* context to this
 ## read-only one; run `make eks-kubeconfig` afterward to switch back.
 ## Usage: make test-kubeconfig
+ifeq ($(PROVIDER),civo)
+test-kubeconfig:
+	@echo "test-kubeconfig for PROVIDER=civo: implemented in a later Civo spec" >&2
+	@exit 1
+else
 test-kubeconfig:
 	aws eks update-kubeconfig --name $(PROJECT_NAME)-eks --region $(REGION) --alias $(PROJECT_NAME)-eks-test \
 		--role-arn "$$(aws iam get-role --role-name eks-test-identity --query Role.Arn --output text)"
 	kubectl config set-context --current --namespace=default
+endif
 
 ## Runs the black-box E2E suite (tests/e2e) against the disposable cluster.
 ## Depends on test-kubeconfig so it works standalone, not just chained after

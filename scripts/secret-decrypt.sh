@@ -11,8 +11,8 @@ NAME="${1:-}"
 
 test -n "$NAME" || { echo "Usage: scripts/secret-decrypt.sh <name>"; exit 1; }
 
-# root-domain is account-global, not per-project - see secrets/README.md.
-if [ "$NAME" = "root-domain" ]; then
+# root-domain and civo-token are account-global, not per-project - see secrets/README.md.
+if [ "$NAME" = "root-domain" ] || [ "$NAME" = "civo-token" ]; then
   SECRET_FILE="$REPO_ROOT/secrets/$NAME.enc"
 else
   SECRET_FILE="$REPO_ROOT/secrets/$PROJECT_NAME/$NAME.enc"

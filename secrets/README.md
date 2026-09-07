@@ -17,10 +17,13 @@ everything else applies in, so `make secret-encrypt`/`secret-decrypt`/
 Files live under a per-project directory, `secrets/<PROJECT_NAME>/<name>.enc`
 (`PROJECT_NAME` defaults to `vk-lab-platform`), so a different `PROJECT_NAME`
 run (e.g. a CI/disposable-account run) gets its own secret set without
-colliding with the personal lab's — **except `root-domain.enc`**, filed
-directly under `secrets/` with no project directory, since the root domain
-is account-global: one value shared by every `PROJECT_NAME` in the account,
-applied once by `terraform/live/account/root-domain`. For a throwaway
+colliding with the personal lab's — **except `root-domain.enc` and
+`civo-token.enc`**, filed directly under `secrets/` with no project
+directory, since both are account-global: one value shared by every
+`PROJECT_NAME` in the account. `root-domain.enc` is applied once by
+`terraform/live/account/root-domain`; `civo-token.enc` holds the Civo API
+token, read by `scripts/lib/provider.sh`'s `civo_token` helper
+(`PROVIDER=civo` only). For a throwaway
 CI/test environment,
 `make generate-secrets` creates this project's secrets automatically
 (root domain from an argument, a fixed test Postgres password) instead of
