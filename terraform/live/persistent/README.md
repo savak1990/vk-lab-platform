@@ -1,7 +1,12 @@
 # Persistent stack
 
 Creates Persistent-lifecycle resources that must survive `make down`: the
-platform-owned VPC and Secrets Manager.
+platform-owned VPC and SSM Parameter Store secrets (ADR 0023).
+
+On the Civo target (`PROVIDER=civo`), this stack applies only its
+`secrets` unit — the `vpc` unit is AWS-only and is excluded. Civo's own
+network and reserved IP are managed by the sibling `persistent-civo/`
+stack (ADR 0027).
 
 The delegated `${SUBDOMAIN}.<root-domain>` Route 53 hosted zone (plus its NS
 delegation record in the parent zone) and its ACM certificate moved to
@@ -15,7 +20,7 @@ Two units, applied/destroyed together via `make persistent-up`/
 
 - `vpc/` — the platform-owned VPC: public subnets across two AZs, no NAT
   Gateway (spec 020, ADR 0020).
-- `secrets/` — one Secrets Manager secret, `${PROJECT_NAME}-secrets`, holding every runtime secret as a JSON key (currently just `postgres_app_password`) — one secret, not one per value, since Secrets Manager bills per secret (~$0.40/month each) rather than per key.
+- `secrets/` — one SSM parameter per value under `/${PROJECT_NAME}/persistent/...` (`postgres/app_password` and `grafana/admin_password` as `SecureString`, `argocd/admin_password_bcrypt` as a plain `String` since a bcrypt hash isn't a reversible credential) — SSM has no per-parameter charge at standard tier, so this uses one parameter per value rather than Secrets Manager's per-secret billing (ADR 0023).
 
 ## Configuration
 
