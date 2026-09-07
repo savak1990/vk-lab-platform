@@ -1,5 +1,13 @@
 # Platform Architecture and Target State
 
+> **Current state vs. target state.** This document mixes both. Where a
+> section describes something not yet built, it is labeled explicitly.
+> For a strictly-current, per-target account of what actually exists
+> today, see `docs/aws-platform-design.md` (AWS), `docs/argocd-design.md`
+> (Argo CD/gitops rendering), and `docs/civo-high-level-design.md`
+> (Civo). This document remains the target-architecture north star; those
+> three are the as-built cross-checks.
+
 # 1. Purpose
 
 This document defines the target architecture for the AWS/EKS learning platform.
@@ -23,7 +31,7 @@ The platform is intended to provide a realistic, reproducible, observable, dynam
 - Route 53 and ACM
 - observability
 - AWS IAM and Pod Identity
-- Secrets Manager and KMS
+- SSM Parameter Store and KMS
 - GitHub Actions
 - Terraform and Terragrunt
 - disposable infrastructure lifecycle
@@ -98,7 +106,7 @@ The platform must provide:
 11. AWS NLB as the public AWS entry point, TLS-terminated with an ACM certificate.
 12. Route 53 DNS.
 13. ACM-managed HTTPS certificates.
-14. Secrets stored in AWS Secrets Manager.
+14. Secrets stored in SSM Parameter Store (ADR 0023).
 15. KMS support for deterministic encrypted bootstrap secret material.
 16. No long-lived AWS credentials in GitHub.
 17. Simple platform start and stop operations.
@@ -130,164 +138,88 @@ Cost, simplicity, learning value, reproducibility, and architectural correctness
 
 # 5. Repository Structure
 
-The target repository structure is:
+This is the **current, as-built** repository structure (from `git ls-files`), not an aspirational target — items that do not exist yet are called out explicitly below the tree instead of being drawn as if implemented:
 
 ```text
 vk-lab-platform/
 ├── .github/
 │   └── workflows/
-│       ├── validate.yml
-│       ├── kind-integration.yml        # spec 024; cheap GitOps test, trusted-context PRs only
-│       ├── platform-integration.yml    # spec 020; full-AWS test; mode=routine|resilience
-│       ├── lab.yml                     # spec 016; single workflow, target selector (ADR 0022)
-│       └── cleanup-stale-ci.yml
-│
-├── atlantis.yaml                  # spec 018; one project per Terragrunt stack
+│       └── lab.yml                     # spec 016; single workflow, target selector (ADR 0022)
 │
 ├── terraform/
-│   ├── modules/
-│   │   ├── terraform-state/
-│   │   ├── github-oidc/
-│   │   ├── kms/
-│   │   ├── secrets-manager/
-│   │   ├── vpc/                   # spec 021; platform-owned, public subnets, no NAT
-│   │   ├── route53-zone/
-│   │   ├── acm-certificate/
-│   │   ├── rds/
-│   │   ├── ebs-volume/
-│   │   ├── eks/
-│   │   ├── eks-addons/
-│   │   ├── node-group/
-│   │   └── karpenter-iam/
+│   ├── modules/                        # reusable Terraform modules
 │   │
 │   └── live/
 │       ├── root.hcl
 │       │
-│       ├── state/                      # ADR 0004; per-project state bucket; make state-up / state-down (ADR 0005, guarded) - usually invoked via bootstrap-up/bootstrap-down, not directly
+│       ├── state/                      # ADR 0004; per-project state bucket; make state-up / state-down (ADR 0005, guarded)
 │       │
-│       ├── account-state/              # dedicated state bucket for account/ alone - never a project's own, so no project's bootstrap-down can orphan it
+│       ├── account-state/              # dedicated state bucket for account/ alone
 │       │
 │       ├── account/                    # account-global scope, not a lifecycle class; make account-up / account-down
-│       │   ├── kms/                    # shared secrets KMS key (alias/lab-secrets), one per account, not per-project
-│       │   ├── github-oidc/            # spec 015; one account-level provider, created once (§17a, ADR 0007)
-│       │   ├── lab-role/               # shared AWS-automation role for lab.yml, scoped by naming convention (not per-project)
-│       │   └── eks-access-identity/    # spec 016; Kubernetes-access-only identity, no permission policy (§17a)
+│       │   ├── kms/                    # shared secrets KMS key (alias/lab-secrets), one per account
+│       │   ├── github-oidc/            # one account-level provider, created once (§17a, ADR 0007)
+│       │   ├── lab-role/               # shared AWS-automation role, scoped by naming convention (ADR 0022)
+│       │   ├── eks-access-identity/    # Kubernetes-access-only identity, no permission policy (§17a, ADR 0022)
+│       │   ├── eks-test-identity/
+│       │   └── root-domain/
 │       │
 │       ├── bootstrap/
-│       │   ├── terragrunt.stack.hcl
-│       │   ├── route53/                # lab DNS zone/delegation - moved here from persistent/
-│       │   ├── acm/                    # cert for that zone - moved here from persistent/
-│       │   └── atlantis/               # spec 018; standalone compute, independent of EKS; own instance/task role, not OIDC
+│       │   ├── route53/                # lab DNS zone/delegation
+│       │   └── acm/                    # cert for that zone
 │       │
 │       ├── persistent/
-│       │   ├── terragrunt.stack.hcl
-│       │   ├── vpc/                   # spec 021; platform-owned, public subnets, no NAT
-│       │   ├── secrets/
-│       │   ├── rds/
-│       │   └── persistent-storage/
+│       │   ├── vpc/                    # spec 021, implemented; dedicated VPC, public subnets, no NAT (ADR 0020)
+│       │   └── secrets/                # SSM Parameter Store (ADR 0023) — see §17
 │       │
-│       ├── cluster/                # aws target only; the local target (§10a) has no Terraform-managed equivalent
-│       │   ├── terragrunt.stack.hcl
-│       │   ├── eks/
-│       │   ├── eks-addons/
-│       │   ├── system-node-group/
-│       │   ├── karpenter/
-│       │   └── argocd-bootstrap/
-│       │
-│       └── ci/
-│           ├── persistent/
-│           └── cluster/
+│       └── cluster/
+│           ├── eks/
+│           ├── karpenter/
+│           ├── aws-lb-controller-pod-identity/
+│           ├── ebs-csi-pod-identity/
+│           ├── external-dns-pod-identity/
+│           └── external-secrets-pod-identity/
 │
 ├── gitops/
-│   ├── bootstrap/
-│   │   └── root-application.yaml
+│   ├── Chart.yaml
+│   ├── values.yaml
+│   ├── argocd/
+│   │   └── values.yaml
 │   │
-│   ├── platform/
-│   │   ├── argocd/
-│   │   │
-│   │   ├── aws/                   # values-aws.yaml only; omitted from the local target's app list (§10a)
-│   │   │   ├── aws-load-balancer-controller/
-│   │   │   ├── external-dns/
-│   │   │   └── secrets-store-csi/
-│   │   │
-│   │   ├── autoscaling/
-│   │   │   └── karpenter/         # values-aws.yaml only; omitted from the local target's app list (§10a)
-│   │   │       ├── nodepool.yaml
-│   │   │       └── ec2nodeclass.yaml
-│   │   │
-│   │   ├── gateway/
-│   │   │   ├── envoy-gateway/
-│   │   │   ├── gatewayclass/
-│   │   │   ├── gateway/
-│   │   │   ├── routes/
-│   │   │   └── policies/
-│   │   │
-│   │   └── observability/
-│   │       ├── kube-prometheus-stack/
-│   │       ├── loki/
-│   │       ├── alloy/
-│   │       ├── tempo/
-│   │       └── otel-collector/
+│   ├── bootstrap/                      # the root Argo Application chart; installed by scripts/argo-up.sh (ADR 0012), not Terraform
+│   │   ├── Chart.yaml
+│   │   ├── values.yaml
+│   │   └── templates/
+│   │       └── root-application.yaml
 │   │
-│   ├── data/
-│   │   ├── postgres/
-│   │   │   ├── operator/
-│   │   │   ├── cluster/
-│   │   │   ├── secrets/
-│   │   │   ├── monitoring/
-│   │   │   └── alerts/
-│   │   │
-│   │   ├── kafka/
-│   │   │   ├── strimzi/
-│   │   │   ├── cluster/
-│   │   │   ├── storage/
-│   │   │   ├── exporter/
-│   │   │   ├── monitoring/
-│   │   │   └── alerts/
-│   │   │
-│   │   └── debezium/
-│   │
-│   └── workloads/
-│       └── integration/
+│   └── templates/
+│       └── platform/
+│           └── aws/                    # target=aws components, one directory per component, gated by {{- if eq .Values.target "aws" }}
+│               ├── aws-load-balancer-controller/
+│               ├── ebs-csi/
+│               ├── envoy-gateway/
+│               ├── external-dns/
+│               ├── external-secrets/   # ESO — the platform's secrets-sync mechanism; there is no secrets-store-csi component
+│               ├── karpenter/
+│               ├── observability/      # kube-prometheus-stack, Loki, Alloy, metrics-server (no Tempo/OTel yet — see §19)
+│               ├── postgres/
+│               └── rbac/
 │
 ├── secrets/
 │   ├── root-domain.enc
-│   ├── postgres-app-password.enc
-│   ├── kafka-cluster-credentials.enc
-│   └── ...                        # one KMS-encrypted file per secret/config value
+│   ├── civo-token.enc                  # ADR 0030
+│   └── <project>/                      # project-scoped secrets, e.g. vk-lab-platform/postgres-app-password.enc
 │
 ├── specs/
 │   ├── 000-constitution/
-│   ├── 001-bootstrap/
-│   ├── 002-persistent-foundation/
-│   ├── 003-network-and-eks/
-│   ├── 004-argocd-bootstrap/
-│   ├── 005-storage-contract/
-│   ├── 006-karpenter/
-│   ├── 007-postgres/
-│   ├── 009-observability/
-│   ├── 010-envoy-gateway/
-│   ├── 011-nlb-edge/
-│   ├── 012-external-dns/
-│   ├── 013-secrets/
-│   ├── 014-lifecycle/
-│   ├── 016-github-actions-lifecycle/
-│   ├── 017-branch-protection/
-│   ├── 018-atlantis-terraform-automation/
-│   ├── 019-ci-fast-validation/
-│   ├── 020-ci-full-lifecycle-validation/
-│   ├── 021-vpc/
-│   ├── 022-local-dev-mode/        # local (minikube/kind) target; shapes specs 004, 006-013 from inception (§10a, ADR 0006)
-│   ├── 023-e2e-test-framework/    # Go/Ginkgo/Gomega suite + environment abstraction, reused by 020 and 024
-│   ├── 024-ci-kind-integration-test/  # cheap kind-based GitOps CI test consuming 022 and 023
-│   ├── 025-kafka/                 # deferred (ADR 0017) - re-implement before 026-debezium
-│   └── 026-debezium/              # deliberately implemented last, after CI/CD and local-dev tooling exist
-│
-├── tests/
-│   └── e2e/                       # spec 024; suite_test.go, per-service tests, framework/
+│   ├── civo/                           # Civo second-target planning package (ADR 0027)
+│   └── ...                             # numbered specs, one directory per spec
 │
 ├── docs/
 │   ├── architecture.md
+│   ├── aws-platform-design.md          # as-built AWS cross-check
+│   ├── argocd-design.md                # as-built Argo CD/gitops-rendering cross-check
+│   ├── civo-high-level-design.md       # as-built Civo cross-check (ADR 0027)
 │   └── adr/
 │
 ├── Makefile
@@ -295,7 +227,7 @@ vk-lab-platform/
 └── .gitignore
 ```
 
-`gitops/workloads/integration` may contain minimal synthetic workloads needed to test the platform itself. It must not become a home for real business services.
+Target-state items not yet built, deliberately not drawn above as if they exist: a Terraform-installed Argo CD (superseded — Argo CD is installed by `scripts/argo-up.sh`, ADR 0012, and never will be Terraform-managed); the four-workflow CI layout (`validate.yml`, `kind-integration.yml`, `platform-integration.yml`, `cleanup-stale-ci.yml` alongside `lab.yml` — only `lab.yml` exists today); Atlantis (spec 018); a dedicated `terraform/live/ci/` tree; Kafka's `gitops/` component (deferred, ADR 0017, spec 025); Tempo and the OpenTelemetry Collector (deferred, ADR 0018, spec 029).
 
 ---
 
@@ -353,7 +285,7 @@ Examples:
 - VPC/subnets (platform-owned, `terraform/live/persistent/vpc`, spec 021 — see §10)
 - Route 53 hosted zone
 - ACM certificate
-- Secrets Manager
+- SSM Parameter Store
 - RDS
 - retained EBS volumes
 - persistent S3 resources
@@ -416,7 +348,7 @@ AWS infrastructure including:
 - system node group
 - IAM
 - KMS
-- Secrets Manager resources
+- SSM Parameter Store resources
 - RDS
 - persistent AWS storage
 - Route 53
@@ -566,63 +498,97 @@ default (constitution §9).
 
 ---
 
-# 10a. Execution Targets: `aws` and `local`
+# 10a. Execution Targets: `aws`, `local`, and `civo`
 
-The platform supports two Argo CD execution targets: **`aws`** (real EKS, the
+The platform supports three execution targets: **`aws`** (real EKS, the
 target described throughout the rest of this document unless stated
-otherwise) and **`local`** (minikube or kind, AWS-free except where noted).
-See ADR 0006 and spec 022 for the full design; this section summarizes the
-shape of it so later sections can refer to "the `aws` target" and "the
-`local` target" unambiguously.
+otherwise), **`local`** (minikube or kind, AWS-free except where noted),
+and **`civo`** (real Civo managed Kubernetes, a second real cloud target,
+ADR 0027). See ADR 0006 and spec 022 for the `local` design and ADR 0027
+plus `specs/civo/` for the Civo design; this section summarizes the shape
+of all three so later sections can refer to "the `aws` target", "the
+`local` target", and "the `civo` target" unambiguously.
 
-Both targets share a single `gitops/` tree. Every component under `gitops/`
-is one Helm chart with a shared `values.yaml` plus `values-aws.yaml` and
-`values-local.yaml` overrides — not a duplicated manifest tree, not
-Kustomize overlays. A single root Argo `Application` (spec 004) is
-parameterized by a `target` value at install time; an umbrella/app-of-apps
-chart uses that value to omit AWS-only components (Karpenter, AWS Load
-Balancer Controller, external-dns, EBS CSI driver, RDS) from the rendered
-app list entirely when `target=local`.
+All three targets share a single `gitops/` tree, rendered from one
+umbrella Helm chart (`gitops/`, with `gitops/bootstrap/` as the root
+Argo Application chart) and a `target` value (`aws` or `local`) selected
+at install time. There is no per-target `values-aws.yaml`/`values-local.yaml`
+file layout — each component template under
+`gitops/templates/platform/aws/` is gated inline with
+`{{- if eq .Values.target "aws" }}`, and `target=local` renders those
+templates out of the app list entirely. **The Civo target renders with
+`target=aws` gitops values** — Civo hosts the same AWS-integrated
+components (ESO reading SSM, ExternalDNS writing Route 53, Roles
+Anywhere-backed backup jobs) as the AWS target, just reached through a
+different identity mechanism (ADR 0029) instead of EKS Pod Identity.
+`PROVIDER` (aws/civo) and `target` (aws/local) are orthogonal values,
+not the same selector.
 
-The two targets diverge in kind, not just in values, on several points:
+The `local` target's `make minikube-up`/`make kind-up` entry points and
+its per-file `local`-only rendering are specified (spec 022) but not yet
+implemented — no `values-local.yaml`, no `local`-mode gating, no local
+StorageClass override exist on disk today. The divergences below
+describe the target design, not current behavior, for `local`.
 
-- **Install path.** Both targets: `make argo-up`/`make argo-down` (scripts)
-  install/remove Argo CD and the root Application — no Terraform involved
-  for either target (ADR 0012, spec 004 Requirement 1). `aws` additionally
-  requires the disposable EKS cluster to exist first (`make cluster-up`);
-  `local` entry points are `make minikube-up` and `make kind-up`; there is
-  no unified `make local-up` wrapper.
-- **Persistence.** `aws`: Postgres/Kafka data is Persistent-lifecycle,
-  surviving `make down` (§6, spec 005). `local`: fully throwaway — no
+The three targets diverge in kind, not just in values, on several points:
+
+- **Install path.** `aws`/`civo`: `make argo-up`/`make argo-down`
+  (scripts) install/remove Argo CD and the root Application — no
+  Terraform involved (ADR 0012, spec 004 Requirement 1). `aws`
+  additionally requires the disposable EKS cluster to exist first
+  (`make cluster-up`); `civo` requires the disposable Civo k3s cluster
+  to exist first (`PROVIDER=civo make cluster-up`, spec CIVO-030,
+  ADR 0027). `local` entry points are `make minikube-up` and
+  `make kind-up` (spec 022, not yet implemented); there is no unified
+  `make local-up` wrapper.
+- **Persistence.** `aws`: Postgres data is Persistent-lifecycle,
+  surviving `make down` (§6, spec 005), currently via CNPG
+  `VolumeSnapshot` (ADR 0013). `civo`: Postgres persists via logical
+  dumps to a shared S3 bucket instead (ADR 0031, Civo's CSI driver has
+  no snapshot capability); the Civo network and reserved IP are
+  Persistent-lifecycle (ADR 0027). `local`: fully throwaway — no
   persistent-lifecycle class, default local StorageClass with `Delete`
   reclaim semantics, no destroy/recreate persistence proof.
 - **Public edge.** `aws`: Route53 → NLB → Envoy (§11–12); ExternalDNS
   (spec 012) publishes the Route 53 records, AWS Load Balancer Controller
-  (spec 011) provisions the NLB. `local`: no NLB/Route53/ACM/ExternalDNS;
-  access is via `kubectl port-forward` directly to Envoy Gateway's Service,
-  forced to `ClusterIP` in `values-local.yaml`.
-- **Routing.** `aws`: Gateway API `HTTPRoute`s match by hostname
-  (`api.lab.<root-domain>`). `local`: routes match by path (`/api`,
-  `/grafana`, `/argo`), since `kubectl port-forward` to `localhost` can't
-  present a matching Host header. This is a permanent, accepted divergence.
+  (spec 011) provisions the NLB. `civo`: Route 53 (a separate
+  `civo.<root-domain>` delegation, ADR 0027) → Civo load balancer (a
+  plain TCP forwarder, no TLS) → Envoy (spec CIVO-060). `local`: no
+  NLB/Route53/ACM/ExternalDNS; access is via `kubectl port-forward`
+  directly to Envoy Gateway's Service.
+- **Routing.** `aws`/`civo`: Gateway API `HTTPRoute`s match by hostname
+  (`api.lab.<root-domain>` / `api.civo.<root-domain>`) — unchanged
+  between the two. `local`: routes match by path (`/api`, `/grafana`,
+  `/argo`), since `kubectl port-forward` to `localhost` can't present a
+  matching Host header. This is a permanent, accepted divergence.
 - **TLS.** `aws`: ACM certificate, terminated at the NLB's TLS listener
-  (§12) — Envoy never holds a certificate. `local`: plain HTTP, no TLS
-  anywhere in the request path.
-- **Secrets.** `aws`: Secrets Manager + Pod Identity (spec 013). `local`:
-  placeholder credentials loaded directly into Kubernetes `Secret` objects by
-  default, with an opt-in path to decrypt real values from `secrets/*.enc`
-  via AWS KMS instead (spec 022) — neither local path touches Secrets
-  Manager, Pod Identity, or External Secrets Operator.
-- **Sync source.** `aws`: the root Application syncs from the GitHub repo.
-  `local`: the root Application syncs from the local working directory on
-  disk, so `gitops/` edits reconcile without a commit/push.
+  (§12) — Envoy never holds a certificate. `civo`: no ACM/NLB equivalent;
+  TLS terminates at Envoy Gateway itself via cert-manager and Let's
+  Encrypt HTTP-01, with the Secret persisted across down/up as an SSM
+  `SecureString` (ADR 0028). `local`: plain HTTP, no TLS anywhere in the
+  request path.
+- **Secrets.** `aws`: SSM Parameter Store (ADR 0023) reached via EKS Pod
+  Identity (spec 013). `civo`: the same SSM Parameter Store, reached
+  instead via IAM Roles Anywhere and a per-pod credential-helper sidecar
+  (ADR 0029, spec CIVO-090) — no EKS Pod Identity on Civo. `local`:
+  placeholder credentials loaded directly into Kubernetes `Secret`
+  objects by default, with an opt-in path to decrypt real values from
+  `secrets/*.enc` via AWS KMS instead (spec 022) — the local path
+  touches neither SSM nor Pod Identity nor Roles Anywhere.
+- **Sync source.** `aws`/`civo`: the root Application syncs from the
+  GitHub repo — unchanged between the two. `local`: the root Application
+  syncs from the local working directory on disk, so `gitops/` edits
+  reconcile without a commit/push.
 
 The `local` target sits outside the State/Bootstrap/Persistent/Disposable
 lifecycle model (§6) entirely — it is not a fifth class, it simply isn't
-governed by that taxonomy (constitution §18). A successful `local` run is
-never a substitute for the `aws`-target full lifecycle acceptance test (§38)
-or constitution §12's Definition of Done; it is a faster inner dev loop, not
-a smaller version of the real thing.
+governed by that taxonomy (constitution §18). The `civo` target's
+resources are classified exactly like AWS's, under the same taxonomy
+(constitution §20, ADR 0027) — Civo is not exempt from §6. A successful
+`local` or `civo` run is never a substitute for the `aws`-target full
+lifecycle acceptance test (§38) or constitution §12's Definition of Done;
+each is its own inner dev loop or second-provider validation, not a
+smaller version of the real thing.
 
 ---
 
@@ -835,6 +801,10 @@ Monitoring must include relevant database health and CDC-related metrics such as
 
 # 14. Kafka
 
+**Deferred (ADR 0017, spec 025).** Kafka is not currently deployed — it
+was removed from the platform and is planned to be re-implemented before
+spec 026 (Debezium). The design below is target-state, not current.
+
 Kafka runs in Kubernetes using Strimzi.
 
 ```text
@@ -906,7 +876,7 @@ This behavior must be covered by full lifecycle CI.
 
 # 17. Secrets and Identity
 
-This section describes the `aws` target. The `local` target does not use Secrets Manager, Pod Identity, or External Secrets Operator at all — see §10a and spec 022 for its placeholder-by-default, KMS-decrypt-opt-in secrets mechanism.
+This section describes the `aws` and `civo` targets. The `local` target does not use SSM Parameter Store, Pod Identity, Roles Anywhere, or External Secrets Operator at all — see §10a and spec 022 for its placeholder-by-default, KMS-decrypt-opt-in secrets mechanism.
 
 No plaintext runtime secret may exist in Git.
 
@@ -924,18 +894,18 @@ temporary credentials
 
 No permanent AWS access key is required.
 
-Kubernetes workloads access AWS through workload identity such as EKS Pod Identity.
+Kubernetes workloads access AWS through workload identity: EKS Pod Identity on the `aws` target, IAM Roles Anywhere on the `civo` target (ADR 0029) — the mechanism differs, the no-static-credential intent does not.
 
-Runtime secrets live in AWS Secrets Manager.
+**Runtime secrets live in SSM Parameter Store (ADR 0023), not AWS Secrets Manager.**
 
 ```text
-Pod
- ↓
-Pod Identity
- ↓
-IAM
- ↓
-Secrets Manager
+Pod (aws)              Pod (civo)
+ ↓                       ↓
+Pod Identity        Roles Anywhere + helper sidecar
+ ↓                       ↓
+     IAM
+      ↓
+SSM Parameter Store
 ```
 
 Helm and GitOps configuration contain references to secret resources, never plaintext values.
@@ -1012,24 +982,24 @@ The repository therefore contains one committed ciphertext file per value, for e
 ```text
 secrets/
 ├── root-domain.enc
-├── postgres-app-password.enc
-├── kafka-cluster-credentials.enc
-└── ...
+├── civo-token.enc
+└── <project>/
+    └── postgres-app-password.enc
 ```
 
 Secrets and private configuration values MUST NOT be combined into a single committed ciphertext file. One file per value keeps blast radius and lifecycle independent — a value can be added, rotated, or removed without touching unrelated ciphertext, and a diff on one file never reveals that an unrelated value also changed.
 
 Only authorized AWS identities may decrypt any of these files.
 
-Decrypted values should be written directly to Secrets Manager without unnecessarily persisting plaintext in Terraform state.
+Decrypted values are written directly to SSM Parameter Store (ADR 0023) without unnecessarily persisting plaintext in Terraform state.
 
-This one-file-per-secret rule governs only the Git-committed layout. It is independent of how values are grouped once they reach Secrets Manager: for cost optimization, the platform may still keep multiple related *runtime* credentials inside one Secrets Manager JSON object (e.g., a single Postgres credentials secret with several fields). That AWS-side grouping is an intentional lab-specific trade-off rather than the preferred isolation model for production systems, and it does not change the one-file-per-secret rule for what's committed to Git.
+This one-file-per-secret rule governs only the Git-committed layout. It is independent of how values are grouped once they reach SSM: the platform may still group related *runtime* config under one parameter path prefix for a given component. That AWS-side grouping is an intentional lab-specific trade-off rather than the preferred isolation model for production systems, and it does not change the one-file-per-secret rule for what's committed to Git.
 
 ## Non-secret private configuration
 
 The same per-file encrypted mechanism also carries non-secret private configuration values, such as the platform's root domain name (§12) — for example, `secrets/root-domain.enc`. These values are committed to Git only in KMS-encrypted form for repository-hygiene reasons — to avoid exposing personal infrastructure details in a public repository — not because the value itself is a security credential.
 
-Terraform must obtain the decrypted domain value through this same secure bootstrap/runtime mechanism (for example, a decrypted value supplied as a Terraform variable at apply time from Secrets Manager), without unnecessarily persisting private configuration into committed files.
+Terraform must obtain the decrypted domain value through this same secure bootstrap/runtime mechanism (for example, a decrypted value supplied as a Terraform variable at apply time from SSM Parameter Store), without unnecessarily persisting private configuration into committed files.
 
 Because the domain value is used to create real Route 53 and ACM resources, it will necessarily appear in the persistent stack's Terraform state. Remote state for the persistent stack must therefore remain private and access-controlled; the domain cannot be fully hidden from Terraform state, and this document does not claim otherwise.
 
@@ -1048,7 +1018,7 @@ parameters), so that rationale no longer applies (see ADR 0007, superseded).
 
 # 19. Observability
 
-This section describes the full `aws`-target stack. The `local` target runs the same components but with a reduced, explicitly-stated sizing/retention posture for laptop scale (§10a); any component omitted for `local` must be stated explicitly, not silently dropped — see spec 022 for specifics.
+This section describes the full `aws`-target target-state stack. Prometheus, Grafana, Loki, Alloy, and metrics-server are currently deployed; **Tempo and the OpenTelemetry Collector are deferred (ADR 0018, spec 029)** and are not currently running. The `local` target runs the same components but with a reduced, explicitly-stated sizing/retention posture for laptop scale (§10a); any component omitted for `local` must be stated explicitly, not silently dropped — see spec 022 for specifics.
 
 The platform uses:
 
@@ -1189,7 +1159,7 @@ make account-down     destroys them — guarded (CONFIRM_DESTROY), expected to r
 make bootstrap-up     creates this project's own state bucket, then Bootstrap-lifecycle resources (lab DNS zone, ACM cert, Atlantis)
 make bootstrap-down   destroys them — guarded (CONFIRM_DESTROY must match PROJECT_NAME), expected to run essentially never
 
-make persistent-up    creates Persistent-lifecycle resources (VPC, Secrets Manager, retained EBS)
+make persistent-up    creates Persistent-lifecycle resources (VPC, SSM Parameter Store, retained EBS)
 make persistent-down  destroys them — guarded, deliberate, rarely used, real and permanent data loss
 
 make up                creates Disposable-lifecycle resources (EKS, then argo-up: Argo, workloads)
@@ -1213,7 +1183,7 @@ The Account layer applies in the platform's single region, `eu-west-1` (`terrafo
 
 `make persistent-down` and `make bootstrap-down` are destructive, rarely-used escape hatches, not part of the routine up/down cycle:
 
-- `make persistent-down` MUST refuse to run while any Disposable-lifecycle resource still exists (mirroring the controller-cleanup ordering in §21) and MUST require an explicit confirmation step, since it deletes Secrets Manager contents and retained EBS volumes permanently. It MUST verify afterward that every unit's Terraform state is actually empty before reporting success, rather than trusting a possibly-partial destroy.
+- `make persistent-down` MUST refuse to run while any Disposable-lifecycle resource still exists (mirroring the controller-cleanup ordering in §21) and MUST require an explicit confirmation step, since it deletes SSM Parameter Store contents and retained EBS volumes permanently. It MUST verify afterward that every unit's Terraform state is actually empty before reporting success, rather than trusting a possibly-partial destroy.
 - `make bootstrap-down` MUST refuse to run while Persistent or Disposable state still exists, and MUST require `CONFIRM_DESTROY` to exactly match `PROJECT_NAME` — the shared account-global `lab-role` has no per-project IAM scoping to fall back on, so this script-level check is the only guard. It deletes the lab DNS zone (and its parent-zone NS delegation record) and ACM certificate, then this project's own state bucket. This repository does not expect it to run against a live environment in normal operation.
 
 ---
@@ -1338,7 +1308,7 @@ These must remain:
 ```text
 Terraform state
 KMS
-Secrets Manager
+SSM Parameter Store
 VPC
 Route 53 — the delegated `lab.<root-domain>` hosted zone (the parent/root hosted zone is external and is never managed by this platform)
 ACM — the lab subdomain certificate
@@ -1475,7 +1445,7 @@ test the actual GitOps reconciliation path, not to re-implement it in test
 setup code.
 
 This test cannot faithfully exercise AWS-specific integrations: NLB,
-Route 53, ACM, EBS/EFS CSI, Pod Identity, or AWS Secrets Manager integration.
+Route 53, ACM, EBS/EFS CSI, Pod Identity, or SSM Parameter Store integration.
 Those remain Full Lifecycle Validation's job (§27–28). It runs only in a
 trusted GitHub context (§30) — even though it touches no AWS resources, it
 still spends real runner compute on PR-controlled code.
@@ -1820,7 +1790,7 @@ Principles:
 - minimize observability retention
 - use appropriately small component configurations
 - avoid unnecessary managed-service costs
-- use a combined Secrets Manager object where appropriate for the lab
+- use a combined SSM parameter where appropriate for the lab
 - avoid running full AWS lifecycle CI unnecessarily
 
 Full integration testing should be triggered intelligently rather than blindly for every textual change.
@@ -1970,7 +1940,7 @@ make persistent-down (explicit confirmation step)
 VERIFY:
 lab.<root-domain> hosted zone deleted
 ACM certificate deleted
-every Secrets Manager secret deleted
+every SSM Parameter Store secret parameter deleted
 every retained EBS volume deleted
 parent/root hosted zone untouched throughout
 only Bootstrap-lifecycle resources remain
