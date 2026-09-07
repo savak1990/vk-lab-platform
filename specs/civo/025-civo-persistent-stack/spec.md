@@ -46,13 +46,13 @@ The scope does not include the cluster (CIVO-030) or the Roles Anywhere unit (CI
 - `Makefile:104-107` `persistent-up` runs `terragrunt run --all` in `terraform/live/persistent`. The units are `vpc` and `secrets`.
 - `scripts/bootstrap-up.sh` runs `run --all` in `terraform/live/bootstrap`. The units are `route53` and `acm`.
 - `root.hcl:48` contains the lifecycle lookup. Lines `:51-68` generate the provider. Lines `:72-85` set the backend.
-- `scripts/persistent-down.sh:74,116` contain the prefix checks. `scripts/bootstrap-down.sh:31` contains one more.
+- `scripts/persistent-down.sh` contains the prefix checks: `count_resources()` around `:50-78`, the pre-destroy disposable guard around `:82`, and the post-destroy per-unit verify around `:124`. `scripts/bootstrap-down.sh:31` contains one more, inline.
 - The Civo provider reads the `CIVO_TOKEN` environment variable. It supplies the `civo_network` and `civo_reserved_ip` resources (research.md).
 
 ## 4. Design and contracts
 
 - `root.hcl`: the `lifecycle_class` lookup gains `"persistent-civo" = "persistent"` and `"cluster-civo" = "disposable"`. A `civo_region` local holds `"LON1"`. When `path_parts[0]` starts with a civo stack name, the provider generation emits `provider "civo" { region = "LON1" }` in addition to `aws`. The token comes from `CIVO_TOKEN` only.
-- Units: `persistent-civo/network` creates a `civo_network` named `${project}`. `persistent-civo/reserved-ip` creates a `civo_reserved_ip` named `${project}-ingress`. The reserved-ip unit writes the SSM parameters `/${project}/persistent-civo/reserved-ip/address` and `/${project}/persistent-civo/network/id` as plain String.
+- Units: `persistent-civo/network` creates a `civo_network` with `label = ${project}`. `persistent-civo/reserved-ip` creates a `civo_reserved_ip` named `${project}-ingress`. Each unit writes its own SSM parameter as plain String — `network` writes `/${project}/persistent-civo/network/id`, `reserved-ip` writes `/${project}/persistent-civo/reserved-ip/address`. (Both points were changed during implementation; see the deviations below.)
 - Make: for civo, `persistent-up` runs `run --all --filter '!./vpc'` in `persistent`. Then it runs `run --all` in `persistent-civo`. `persistent-down` runs the same steps in reverse order. `bootstrap-up` uses `--filter '!./acm'`. Verified against Terragrunt 1.1.3 (2026-09-07): `--queue-exclude-dir` does not exist in this version; the exclusion mechanism is `--filter` with a `!` negation. Both `!acm` and `!./acm` match. The filter path is resolved relative to the working directory, and unit discovery is likewise scoped to the working directory, so each invocation must keep its existing `cd terraform/live/<stack>`. Run from `terraform/live`, `!./vpc` excludes nothing.
 - Guards: `persistent-down.sh` refuses to run while the `cluster-civo/` state has resources. After the destroy, it checks that `persistent/secrets` and both civo units are empty. `bootstrap-down.sh` refuses to run when `persistent-civo/` exists.
 - Tags: neither `civo_network` nor `civo_reserved_ip` exposes a tags argument in provider `civo/civo` v1.3.2, so no resource in this stack supports tags. The constitution §16 tag set is unreachable here and is not simulated by other means. The AWS SSM parameters the units write still carry it, through `default_tags` in the generated aws provider.
@@ -108,7 +108,7 @@ Revert Make and root.hcl. `persistent-down` for civo removes the resources. The 
 ## 12. Risks and unresolved questions
 
 - ~~The name of the Terragrunt exclusion flag for 1.1.3 is not confirmed.~~ Settled 2026-09-07: `--filter '!./<unit>'`. See §4.
-- ~~Whether a `--filter` run refuses `destroy` without `--filter-allow-destroy`.~~ Settled 2026-09-07: it does not. `run --all --filter '!./vpc' -- plan -destroy` queued in reverse order ("dependents and then their dependencies"), excluded `vpc`, and proceeded to the backend. `--filter-allow-destroy` applies only to Git-based filters, not to this path negation.
+- ~~Whether a `--filter` run refuses `destroy` without `--filter-allow-destroy`.~~ Settled 2026-09-07: it does not. First by probe — `plan -destroy` queued in reverse order ("dependents and then their dependencies") and excluded `vpc` — then conclusively, by two real `persistent-down` runs that each executed `run --all --filter '!./vpc' -- destroy` against live state and succeeded. `--filter-allow-destroy` applies only to Git-based filters, not to this path negation.
 - The reserved IP price stays unknown. CIVO-020 could not obtain it: `/v2/charges` proves it is billed as its own `reserved-ip` line item but reports hours only, and every pricing API path returns 404. Read the rate from the dashboard invoice instead. The custom network produced no billing line item at all, so this stack's only cost is the one reserved IP.
 
 ## 13. Definition of done

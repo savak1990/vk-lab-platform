@@ -61,6 +61,7 @@ any in-cluster resource.
 - `terraform/live/root.hcl` (`civo_region`) and `scripts/lib/region.sh` (`CIVO_REGION`).
 - `terraform/modules/lab-role/main.tf`: the SSM path `*/cluster-civo/*`. Coordinate this with CIVO-082.
 - The state keys `cluster-civo/network` and `cluster-civo/k8s` in the civo bucket.
+- `scripts/status.sh:58` hardcodes `terraform/live/cluster/eks` when reading `cluster_name` for the Argo check. CIVO-025 widened this script's state-prefix loop but deliberately left this line alone, because the civo cluster unit is named here, not there. Until this spec lands the line is harmless — it returns empty and `make status` correctly reports "cluster not up" on civo. Once `cluster-civo/k8s` exists, this must resolve the unit per provider or `make status` will silently report the wrong thing.
 
 ## 6. Implementation steps
 
