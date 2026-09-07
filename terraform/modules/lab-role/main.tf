@@ -340,14 +340,6 @@ data "aws_iam_policy_document" "permissions" {
     resources = ["*"] # not a resource-scoped action
   }
 
-  # Broadened from just Decrypt/Encrypt (still scoped to this one key's ARN,
-  # never any other key in the account) - the actual "never destroy the
-  # shared secrets KMS key" guarantee is the explicit Deny below, not this
-  # list's narrowness. Unlike the state bucket above, this Deny stays
-  # unconditional: the key is account-global and shared by every project's
-  # secrets, so no per-project destroy should ever be able to touch it -
-  # only account-down (a distinct script/role/terragrunt unit this role
-  # never runs) destroys it.
   # Every module's data "aws_kms_alias" lookup calls ListAliases, which has
   # no resource-level scoping - the kms:* grant on the key ARN below cannot
   # cover it, since the API always requests the action on Resource "*".
@@ -357,6 +349,14 @@ data "aws_iam_policy_document" "permissions" {
     resources = ["*"]
   }
 
+  # Broadened from just Decrypt/Encrypt (still scoped to this one key's ARN,
+  # never any other key in the account) - the actual "never destroy the
+  # shared secrets KMS key" guarantee is the explicit Deny below, not this
+  # list's narrowness. Unlike the state bucket above, this Deny stays
+  # unconditional: the key is account-global and shared by every project's
+  # secrets, so no per-project destroy should ever be able to touch it -
+  # only account-down (a distinct script/role/terragrunt unit this role
+  # never runs) destroys it.
   statement {
     sid       = "KmsSecretsKey"
     actions   = ["kms:*"]
