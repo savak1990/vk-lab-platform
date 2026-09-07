@@ -1,4 +1,3 @@
-{{- if eq .Values.target "aws" }}
 # Syncs the Postgres app-user password from AWS Secrets Manager into a
 # Kubernetes Secret (spec 007-2), so CNPG's recovery bootstrap always finds
 # the same password the snapshot's PGDATA already has - CNPG never resets
@@ -55,4 +54,3 @@ spec:
       # ESO's SecretStore CRDs exceed the 262144-byte last-applied-config
       # annotation limit under client-side apply; SSA needs no such annotation.
       - ServerSideApply=true
-{{- end }}

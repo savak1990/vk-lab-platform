@@ -39,14 +39,16 @@ and observability on civo (CIVO-160).
 ## 3. Current state / evidence
 
 - All 25 files under `gitops/templates/platform/aws/` start with `{{- if eq .Values.target "aws" }}`.
-- These files are provider-neutral today: `envoy-gateway/application.yaml`, `postgres/application.yaml` (cnpg-operator), `postgres/priorityclass.yaml`, `external-secrets/application.yaml`, `external-secrets/secretstore.yaml` (no `auth`), `ebs-csi/snapshot-controller.yaml` (CRDs + controller), `envoy-gateway/httproutes.yaml`, `policies.yaml`, `rbac/e2e-test-readonly.yaml`.
+- These files are provider-neutral today: `envoy-gateway/application.yaml`, `postgres/application.yaml` (cnpg-operator), `postgres/priorityclass.yaml`, `external-secrets/application.yaml`, `envoy-gateway/httproutes.yaml`, `policies.yaml`, `rbac/e2e-test-readonly.yaml`.
+
+**Implementation correction (2026-09-07):** `external-secrets/secretstore.yaml` is *not* portable, despite the `(no auth)` note above — the note meant "no explicit auth block" (Pod Identity is ambient), not "no AWS content". The file's `ClusterSecretStore` hardcodes `provider.aws.service: ParameterStore` and `region: {{ .Values.region }}`; hoisting it ungated would render a non-functional AWS-only SecretStore on civo (ESO never resolves it there, so `lab-postgres-app` never materializes — the exact Secret CNPG's bootstrap needs). It stays under `aws/`, gated as before; CIVO-100 (eso-on-civo) adds the civo equivalent. Only `external-secrets/application.yaml` (the operator install) hoists. `ebs-csi/snapshot-controller.yaml` was never actually hoisted either — see the kubernetes-architect amendment below, which already corrected this before implementation started.
 - Some otherwise portable files contain AWS literals. `storageClass: ebs-delete` is at `kube-prometheus-stack.yaml:66,95,103`, `loki.yaml:69`, and `postgres/cluster.yaml:43`. Spot anti-affinity is at `kube-prometheus-stack.yaml:55-62,84-91,121-128`, `loki.yaml:59-66`, and `metrics-server.yaml:25-32`. `nodeSelector workload-type: on-demand` is at `postgres/cluster.yaml:13-15`.
 - Argo tracks resources by group/kind/name/namespace. The file location does not matter.
 
 ## 4. Design and contracts
 
 - New values, with defaults equal to the current AWS behavior: `storage.className: ebs-delete`, `storage.snapshotClassName: ebs-postgres-snapshot`, `capacity.spotAvoidance: true`, `postgres.nodeSelector: {workload-type: on-demand}`, `certManager.enabled: false`, `awsIdentity.mode: podIdentity`, `externalDns.txtOwnerId: ""` (empty → `.Values.project`), `envoyGateway.tls.mode: nlb` (`envoy` on civo), `envoyGateway.service.annotations: {}`. CIVO-060 moves the aws annotations into a values-driven form. In this spec, the aws file keeps its literals.
-- `gitops/templates/platform/shared/` gets the hoisted files with no target gate. The hoisted files are: the envoy-gateway Application, the cnpg-operator Application, the PriorityClass, the ESO Application, the ClusterSecretStore + ExternalSecrets, the snapshot CRDs + controller, the HTTPRoutes, the BackendTrafficPolicy, and the e2e RBAC.
+- `gitops/templates/platform/shared/` gets the hoisted files with no target gate. The hoisted files are: the envoy-gateway Application, the cnpg-operator Application, the PriorityClass, the ESO Application (not the ClusterSecretStore + ExternalSecrets — see the 2026-09-07 correction above), the HTTPRoutes, the BackendTrafficPolicy, and the e2e RBAC. The snapshot CRDs + controller are not hoisted either (kubernetes-architect amendment below).
 - `gitops/templates/platform/civo/` gets `storageclass.yaml`, `volumesnapshotclass.yaml`, and placeholders for later specs. In `storageclass.yaml`, `civo-volume` is preinstalled. Add `civo-retain` only if the spike chose option b. `volumesnapshotclass.yaml` uses the driver `csi.civo.com` and Retain. It is gated on the spike result.
 - These files stay aws-only: alb-controller, the ebs-csi driver + classes, karpenter, the webhook probe, EnvoyProxy/Gateway (until CIVO-060 makes them values-driven), observability (until CIVO-160), and the CNPG Cluster (until CIVO-120).
 - `.Values.target` permits the values `aws|civo|local`. A `fail` in `_helpers.tpl` rejects all other values.
@@ -80,7 +82,7 @@ This spec depends on CIVO-010 only for the `target` naming. It is otherwise inde
 ## 8. Acceptance criteria
 
 - `make gitops-check` passes with an empty diff for aws after every step.
-- `helm template --set target=civo` renders envoy-gateway, cnpg-operator, external-secrets, the snapshot controller, the ClusterSecretStore, the HTTPRoutes, and the RBAC. It renders no alb-controller, ebs-csi, karpenter, or webhook probe.
+- `helm template --set target=civo` renders envoy-gateway, cnpg-operator, external-secrets (the operator only, not the ClusterSecretStore — see the 2026-09-07 correction), the HTTPRoutes, the BackendTrafficPolicy, and the RBAC. It renders no alb-controller, ebs-csi, karpenter, webhook probe, snapshot controller, or ClusterSecretStore.
 - `--set target=gcp` fails.
 - `kubeconform -strict` (with CRD schemas where available) passes for both renders.
 

@@ -112,6 +112,7 @@ Revert the scripts. The fail-closed rule on the civo CNPG teardown prevents sile
 ## 12. Risks and unresolved questions
 
 - The Civo Service status may present a hostname instead of an IP with the proxy protocol (off in M1).
+- **Correction (2026-09-07):** §4's claim that "`.hostname` appears only with proxy protocol" is wrong. Civo's CCM (`civo/civo-cloud-controller-manager`, `loadbalancer.go`) sets `.hostname` (`<lb-id>.lb.civo.com`) unconditionally, on every LoadBalancer Service, alongside `.ip`. `.ip` is the one that's conditional — it's populated only when proxy protocol is disabled. So the DNS-wait's `.ip` read is correct for M1 (proxy protocol off), but the day CIVO-190 (proxy-protocol-client-ip) turns proxy protocol on, `.ip` goes empty and this check silently breaks rather than falling back to `.hostname`. CIVO-190's spec must account for this — either switch the check to `.hostname` at that point, or read whichever field is populated.
 
 ## 13. Definition of done
 

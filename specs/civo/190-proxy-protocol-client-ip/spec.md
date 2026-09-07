@@ -80,6 +80,7 @@ Flip the value back.
 ## 12. Risks and unresolved questions
 
 - The interaction between the hostname-only status and the reserved IP.
+- **Cross-reference (2026-09-07, from CIVO-045):** Civo's CCM sets `.hostname` unconditionally on every LoadBalancer Service already, not only once proxy protocol is on — `.ip` is the field that's conditional (populated only when proxy protocol is off). So this spec's "ExternalDNS handling of a hostname-only status" isn't a new field appearing; it's `.ip` going empty. `scripts/argo-up.sh`'s `current_nlb_ips()`/DNS-wait (CIVO-045 §4) reads `.ip` on civo — this spec must update that read (or fall back to `.hostname`) when it turns proxy protocol on, or the DNS-wait check silently breaks.
 
 ## 13. Definition of done
 

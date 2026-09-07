@@ -1,4 +1,3 @@
-{{- if eq .Values.target "aws" }}
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -38,4 +37,3 @@ spec:
     - backendRefs:
         - name: kube-prometheus-stack-grafana
           port: 80
-{{- end }}

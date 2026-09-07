@@ -1,4 +1,3 @@
-{{- if eq .Values.target "aws" }}
 apiVersion: scheduling.k8s.io/v1
 kind: PriorityClass
 metadata:
@@ -8,4 +7,3 @@ metadata:
 value: 10000
 globalDefault: false
 description: Lets Postgres preempt default-priority burst workloads on the shared on-demand pool.
-{{- end }}
