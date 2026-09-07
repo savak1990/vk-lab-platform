@@ -3,7 +3,8 @@
 # eks-access-identity doesn't exist yet - both prerequisites for cluster-up.
 set -euo pipefail
 
-PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
+# shellcheck source=lib/provider.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/provider.sh"
 BUCKET="${PROJECT_NAME}-tf-state"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/region.sh"
 
@@ -30,10 +31,29 @@ if [ "$total" -eq 0 ]; then
   exit 1
 fi
 
-# terraform/modules/eks looks this up by fixed name (account-global, not
-# state-tracked in this project's bucket) - check it explicitly here so
-# cluster-up fails with a clear message instead of a raw data-source error.
-if ! aws iam get-role --role-name eks-access-identity >/dev/null 2>&1; then
-  echo "eks-access-identity not found. Run 'make account-up' first." >&2
-  exit 1
+if [ "$PROVIDER" = "civo" ]; then
+  civo_keys=$(aws s3api list-objects-v2 --bucket "$BUCKET" --prefix "persistent-civo/network/" --region "$LAB_REGION" \
+    --query "Contents[?ends_with(Key, 'terraform.tfstate')].Key" --output text)
+
+  civo_total=0
+  if [ -n "$civo_keys" ] && [ "$civo_keys" != "None" ]; then
+    for key in $civo_keys; do
+      aws s3api get-object --bucket "$BUCKET" --key "$key" --region "$LAB_REGION" "$TMP_DIR/state.json" >/dev/null
+      count=$(jq '.resources | length' "$TMP_DIR/state.json")
+      civo_total=$((civo_total + count))
+    done
+  fi
+
+  if [ "$civo_total" -eq 0 ]; then
+    echo "Civo network not found under persistent-civo/network/ in s3://$BUCKET. Run 'make persistent-up' first." >&2
+    exit 1
+  fi
+else
+  # terraform/modules/eks looks this up by fixed name (account-global, not
+  # state-tracked in this project's bucket) - check it explicitly here so
+  # cluster-up fails with a clear message instead of a raw data-source error.
+  if ! aws iam get-role --role-name eks-access-identity >/dev/null 2>&1; then
+    echo "eks-access-identity not found. Run 'make account-up' first." >&2
+    exit 1
+  fi
 fi
