@@ -81,3 +81,19 @@ b. **Storing the token only as a GitHub Actions secret, uncommitted.**
 - The autoscaler's separate key means rotating or revoking the operator's
   token does not require also rotating the in-cluster autoscaler
   credential, and vice versa.
+- The `civo` CLI defeats this decision if used carelessly. It loads
+  `CIVO_TOKEN` into its in-memory config under the name `tempKey`, and any
+  command that saves the config then writes that plaintext token to
+  `~/.civo.json`. CIVO-020 measured this: one `civo region current LON1`
+  put the decrypted token on disk. The Civo API key has no scopes and no
+  expiry, so this is a full-account credential at rest.
+  Two workarounds exist. Prefer the first.
+  1. Never run a config-saving `civo` command. Pass `--region LON1` on
+     every invocation instead.
+  2. Set the region once, then remove the entry:
+     `jq 'del(.apikeys.tempKey) | .meta.current_apikey = ""' ~/.civo.json`.
+     The region default survives this. Read-only commands do not add the
+     token back.
+  A CI runner is not affected in practice, because its `~/.civo.json` does
+  not outlive the job. A CI runner must still set the region: a fresh
+  config defaults to NYC1, not LON1.

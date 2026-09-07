@@ -1,7 +1,7 @@
 ---
 id: "CIVO-020"
 title: "Civo feasibility spike on a throwaway cluster"
-status: "IN_PROGRESS"
+status: "DONE"
 priority: "P0"
 milestone: "M0"
 type: "research"
@@ -15,7 +15,7 @@ blocked_by: []
 supersedes: []
 created: "2026-09-06"
 updated: "2026-09-07"
-completed: null
+completed: "2026-09-07"
 ---
 
 # CIVO-020 — Feasibility spike
@@ -141,7 +141,7 @@ None. The results are documentation.
 - [x] `decisions.md` updated (CIVO-120 needed no change; see section 5)
 - [x] Spike resources gone, verified by empty `civo ... ls` across every resource type
 - [x] Index updated
-- [ ] PR opened; status `DONE`
+- [x] Change on `main` (no pull request); status `DONE`
 
 ## 14. Execution evidence and status history
 
@@ -181,3 +181,7 @@ None. The results are documentation.
   (b) Does a CSI volume survive cluster deletion? It does, and it keeps billing.
   (c) Is the algorithm value `round_robin` or `round-robin`? It is `round_robin`.
   (d) Is `g4s.kube.large` selectable in LON1? It is.
+- 2026-09-07 — the report, the corrected rows, and the two decisions landed on `main` in commit
+  `e83d1f4`. No pull request was opened. The operator set the default to push straight to `main`,
+  and `specs/civo/README.md` now records that. Promoted to `DONE`.
+  CIVO-030 is the only direct dependent. Its `blocked_by` is empty and needs no change.

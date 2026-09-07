@@ -33,13 +33,15 @@ work into the gaps (`085-...`) without renumbering.
 | `READY` | Approved for development; no active blocker. An implementer may start only when every `depends_on` is `DONE` (checked at session start) |
 | `IN_PROGRESS` | An authorized implementer started the bounded work |
 | `BLOCKED` | Needs a named decision, capability, prerequisite, or unfinished hard dependency; `blocked_by` names it |
-| `IN_REVIEW` | Implementation and checks complete, awaiting review/integration |
+| `IN_REVIEW` | Implementation and checks complete, awaiting review. **Used only when the operator asks for a pull request.** A change that goes straight to `main` skips this status |
 | `DONE` | Acceptance criteria and gates passed, evidence recorded, reviewed and integrated |
 | `CANCELLED` | Abandoned or superseded; rationale and replacement kept |
 
-Flow: `DRAFT → READY → IN_PROGRESS → IN_REVIEW → DONE`. `BLOCKED` may
-interrupt anywhere. It returns to `READY` or `IN_PROGRESS`. A review failure
-returns the spec to `IN_PROGRESS`. Reopening `DONE` needs a recorded reason.
+Flow: `DRAFT → READY → IN_PROGRESS → DONE`, or
+`DRAFT → READY → IN_PROGRESS → IN_REVIEW → DONE` when a pull request exists.
+`BLOCKED` may interrupt anywhere. It returns to `READY` or `IN_PROGRESS`.
+A review failure returns the spec to `IN_PROGRESS`. Reopening `DONE` needs a
+recorded reason.
 
 Priority:
 
@@ -66,8 +68,10 @@ verified in this environment.
 3. Set `status: "IN_PROGRESS"` and `updated`. Add a status-history line.
 4. Implement only the spec's scope. Do not touch AWS behavior unless the spec says so. Run the AWS regression gate that the spec names.
 5. Run the validation section. Record the commands and results (no secrets) under "Execution evidence".
-6. Set `IN_REVIEW`. Open one PR mapped to the spec ID.
-7. On merge and gate pass, set `DONE` and `completed`. Re-check the direct dependents' `blocked_by`.
+6. A pull request is optional. The operator decides. **The default is to push the change straight to `main` and open no pull request.** Ask only when the change is large, risky, or touches AWS behaviour.
+   - No pull request: skip `IN_REVIEW`. Go to step 7.
+   - Pull request: set `IN_REVIEW` and open one PR mapped to the spec ID. Go to step 7 after the merge.
+7. When the change is on `main` and the gates pass, set `DONE` and `completed`. Record in the status history whether a pull request was used. Re-check the direct dependents' `blocked_by`.
 8. Update the index table below if the status, priority, or dependencies changed.
 
 ## Index
@@ -75,8 +79,8 @@ verified in this environment.
 | ID | Folder | Title | Status | Pri | Diff | Tier | Depends on | Milestone |
 |---|---|---|---|---|---|---|---|---|
 | CIVO-010 | [010-provider-command-surface](010-provider-command-surface/spec.md) | `PROVIDER` operator input and Make dispatch | DONE | P1 | S | standard | — | M0 |
-| CIVO-015 | [015-governance-adrs-constitution](015-governance-adrs-constitution/spec.md) | ADRs 0027–0031, constitution §20, architecture §10a | IN_REVIEW | P0 | M | strongest | — | M0 |
-| CIVO-020 | [020-civo-feasibility-spike](020-civo-feasibility-spike/spec.md) | Throwaway-cluster feasibility spike and report | IN_PROGRESS | P0 | M | standard | — | M0 |
+| CIVO-015 | [015-governance-adrs-constitution](015-governance-adrs-constitution/spec.md) | ADRs 0027–0031, constitution §20, architecture §10a | DONE | P0 | M | strongest | — | M0 |
+| CIVO-020 | [020-civo-feasibility-spike](020-civo-feasibility-spike/spec.md) | Throwaway-cluster feasibility spike and report | DONE | P0 | M | standard | — | M0 |
 | CIVO-025 | [025-civo-persistent-stack](025-civo-persistent-stack/spec.md) | `persistent-civo` network and reserved IP | READY | P1 | S | standard | 010, 015 | M1 |
 | CIVO-030 | [030-civo-terraform-cluster](030-civo-terraform-cluster/spec.md) | `cluster-civo` firewall and k3s cluster | READY | P1 | M | standard | 010, 015, 020, 025 | M1 |
 | CIVO-040 | [040-civo-cluster-scripts](040-civo-cluster-scripts/spec.md) | Cluster scripts, kubeconfig, guards, leak sweep | READY | P1 | M | standard | 030 | M1 |

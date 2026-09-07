@@ -1,7 +1,7 @@
 ---
 id: "CIVO-015"
 title: "Governance: ADRs 0027–0031, constitution §20, architecture §10a, documentation fixes"
-status: "IN_REVIEW"
+status: "DONE"
 priority: "P0"
 milestone: "M0"
 type: "documentation"
@@ -15,7 +15,7 @@ blocked_by: []
 supersedes: []
 created: "2026-09-06"
 updated: "2026-09-07"
-completed: null
+completed: "2026-09-07"
 ---
 
 # CIVO-015 — Governance and documentation base
@@ -130,10 +130,10 @@ The work lands in one PR. The PR is revertible.
 
 ## 13. Definition of done
 
-- [ ] Five ADRs merged with Status Accepted
-- [ ] Constitution §20 merged
-- [ ] Review-table fixes applied
-- [ ] Index row updated; status `DONE`
+- [x] Five ADRs merged with Status Accepted
+- [x] Constitution §20 merged
+- [x] Review-table fixes applied
+- [x] Index row updated; status `DONE`
 
 ## 14. Execution evidence and status history
 
@@ -142,3 +142,7 @@ The work lands in one PR. The PR is revertible.
 - 2026-09-07 — started implementation; promoted to IN_PROGRESS.
 - 2026-09-07 — renumbered the ADRs to 0027–0031. Two unrelated ADRs — argo-sync-retry and on-demand-full-lifecycle-ci — had already claimed 0025 and 0026 after this spec was drafted. ADR 0026 itself flags this collision and requires 0027 or later. Spec 015's own §12 anticipated this risk. Also fixed stray old-numbered Civo-ADR references in specs/civo/roadmap.md, specs/civo/025, specs/civo/065, specs/civo/080, specs/civo/140, specs/civo/170, specs/civo/200, and docs/civo-high-level-design.md.
 - 2026-09-07 — implementation complete. These items landed: five ADRs (0027–0031); constitution §20; the architecture.md staleness fixes; the CLAUDE.md/README.md/persistent-README/spec-027 fixes; the decisions.md renumbering. All validation steps run and recorded above; promoted to IN_REVIEW.
+- 2026-09-07 — verified on `main`: `docs/adr/0027`–`0031` exist and are committed, and the
+  constitution carries §20 "Civo execution target". No pull request was opened. The operator
+  set the default to push straight to `main`, and `specs/civo/README.md` now records that.
+  Promoted to `DONE`.

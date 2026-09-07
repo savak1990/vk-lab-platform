@@ -106,7 +106,7 @@ One PR. A revert restores the previous Makefile. There is no state or data risk.
 - [x] Acceptance criteria met with recorded diffs
 - [x] `shellcheck` clean
 - [x] `secrets/README.md` updated
-- [x] PR merged; index row updated; status `DONE` with date
+- [x] Change on `main` (no pull request; operator declined one); index row updated; status `DONE` with date
 
 ## 14. Execution evidence and status history
 
