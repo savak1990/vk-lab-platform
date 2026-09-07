@@ -81,7 +81,7 @@ verified in this environment.
 | CIVO-010 | [010-provider-command-surface](010-provider-command-surface/spec.md) | `PROVIDER` operator input and Make dispatch | DONE | P1 | S | standard | — | M0 |
 | CIVO-015 | [015-governance-adrs-constitution](015-governance-adrs-constitution/spec.md) | ADRs 0027–0031, constitution §20, architecture §10a | DONE | P0 | M | strongest | — | M0 |
 | CIVO-020 | [020-civo-feasibility-spike](020-civo-feasibility-spike/spec.md) | Throwaway-cluster feasibility spike and report | DONE | P0 | M | standard | — | M0 |
-| CIVO-025 | [025-civo-persistent-stack](025-civo-persistent-stack/spec.md) | `persistent-civo` network and reserved IP | READY | P1 | S | standard | 010, 015 | M1 |
+| CIVO-025 | [025-civo-persistent-stack](025-civo-persistent-stack/spec.md) | `persistent-civo` network and reserved IP | DONE | P1 | S | standard | 010, 015 | M1 |
 | CIVO-030 | [030-civo-terraform-cluster](030-civo-terraform-cluster/spec.md) | `cluster-civo` firewall and k3s cluster | READY | P1 | M | standard | 010, 015, 020, 025 | M1 |
 | CIVO-040 | [040-civo-cluster-scripts](040-civo-cluster-scripts/spec.md) | Cluster scripts, kubeconfig, guards, leak sweep | READY | P1 | M | standard | 030 | M1 |
 | CIVO-045 | [045-argo-scripts-civo-branches](045-argo-scripts-civo-branches/spec.md) | `argo-up`/`argo-down` Civo branches | READY | P1 | M | standard | 040, 050 | M1 |

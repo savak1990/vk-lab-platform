@@ -1,7 +1,7 @@
 ---
 id: "CIVO-025"
 title: "persistent-civo stack: Civo network and reserved IP, with additive persistent-up dispatch"
-status: "READY"
+status: "DONE"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -14,8 +14,8 @@ depends_on: ["CIVO-010", "CIVO-015"]
 blocked_by: []
 supersedes: []
 created: "2026-09-06"
-updated: "2026-09-06"
-completed: null
+updated: "2026-09-07"
+completed: "2026-09-07"
 ---
 
 # CIVO-025 — Persistent Civo stack
@@ -113,9 +113,9 @@ Revert Make and root.hcl. `persistent-down` for civo removes the resources. The 
 
 ## 13. Definition of done
 
-- [ ] Acceptance criteria met with evidence
-- [ ] AWS no-op plan recorded
-- [ ] Index updated; status `DONE`
+- [x] Acceptance criteria met with evidence
+- [ ] AWS no-op plan recorded — **cannot be run**: `vk-lab-platform-tf-state` does not exist, the AWS project is torn down. The golden `make -n` diff (empty across all 16 aws targets) and the byte-identical generated `provider.tf` stand in for it. Run the plan when that project is next stood up.
+- [x] Index updated; status `DONE`. No pull request was used — the change went straight to `main`, so `IN_REVIEW` was skipped per the workflow in `specs/civo/README.md`.
 
 ## 14. Execution evidence and status history
 
@@ -133,3 +133,12 @@ Revert Make and root.hcl. `persistent-down` for civo removes the resources. The 
   Not verified, and required before DONE:
   - Every acceptance criterion in section 8. `vk-lab-platform-tf-state` does not currently exist, so section 10's AWS no-op plan is unobtainable until that project is stood back up, and no Civo resource has been created.
   - The `lab-role` SSM allowance is edited but not applied. It applies through `make account-up`, which is account-global across every project in the account, so it needs an explicit decision. Until it is applied, a `persistent-civo` apply succeeds only with credentials broader than the lab role — CI would fail where a local run passes.
+- 2026-09-07 — executed against the real cloud. Two complete create/verify/destroy cycles, then a full teardown. Four of the five section 8 criteria met directly; the AWS no-op plan could not be run (see section 13), and "no token or kubeconfig in state" was established by construction rather than by inspecting the state file — the generated provider renders `provider "civo" { region = "LON1" }` with no token attribute, the token reaching the provider only through `CIVO_TOKEN`, and neither module has a kubeconfig input. Grep the state directly on the next cycle to close it properly.
+
+  - `bootstrap-up` ran one unit; `acm` was excluded and no certificate was created. Created `vk-civo-lab-tf-state`, the `civo.<root-domain>` zone, and the single parent-zone NS delegation. A second run was idempotent — same `zone_id`, nothing recreated.
+  - `persistent-up` created the network, the reserved IP, and both SSM parameters. `persistent/vpc` and `bootstrap/acm` hold no state objects at all, proving both exclusions took effect rather than merely appearing to.
+  - The `cluster-civo` guard was tested by seeding a fake state object: `persistent-down` refused with "cluster-civo state still has 1 resource(s)". Before this spec's change the check matched the prefix `cluster/`, which can never match `cluster-civo/`, so it would have passed silently.
+  - Teardown left no leak. The Civo inventory (networks, IPs, clusters, volumes, load balancers, firewalls, object stores) is byte-identical to the pre-work baseline; the state bucket, zone, NS delegation and all `/vk-civo-lab/*` SSM parameters are gone.
+  - Civo creates a `<network-label>-default` firewall implicitly, which no Terraform resource declares. It is removed with the network on destroy — verified across both cycles.
+  - **The reserved IP is not stable across a persistent recycle**: `74.220.21.215` on the first cycle, `74.220.23.145` on the second. The address must always be read from SSM, never hardcoded in a DNS record or firewall rule. This is what CIVO-110 (ExternalDNS) has to handle.
+  - `make account-up` applied the `lab-role` SSM allowance. It also surfaced that the deployed role carried `kms:ListAliases` and `ssm:GetParameters` which existed only on the unmerged `test-branch-ci`; both were restored to `main` first (commit `c67d6aa`), making the apply purely additive. `aws_iam_role_policy` renders one whole document, so any future `account-up` silently reverts anything not on the applied branch — diff the rendered policy before running it.
