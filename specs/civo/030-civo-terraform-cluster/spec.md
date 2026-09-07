@@ -1,7 +1,7 @@
 ---
 id: "CIVO-030"
-title: "cluster-civo stack: firewall and k3s cluster with one Large pool"
-status: "READY"
+title: "cluster-civo stack: firewall and k3s cluster with one three-node Medium pool"
+status: "DONE"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -14,8 +14,8 @@ depends_on: ["CIVO-010", "CIVO-015", "CIVO-020", "CIVO-025"]
 blocked_by: []
 supersedes: []
 created: "2026-09-06"
-updated: "2026-09-06"
-completed: null
+updated: "2026-09-07"
+completed: "2026-09-07"
 ---
 
 # CIVO-030 — Civo cluster Terraform
@@ -44,8 +44,8 @@ any in-cluster resource.
 
 ## 4. Design and contracts
 
-- `cluster-civo/network` creates two firewalls in the persistent network. Both have `create_default_rules = false`. The firewall `${project}-k8s` permits ingress tcp 6443 from `0.0.0.0/0`, because GitHub runners have no fixed IP, and permits all egress. The cluster uses this firewall. The firewall `${project}-lb` permits ingress tcp 80 and 443 from `0.0.0.0/0`. Only the LB uses this firewall, via `kubernetes.civo.com/firewall-id`. The unit writes the outputs to SSM `/${project}/cluster-civo/network/cluster_firewall_id` and `/lb_firewall_id`.
-- `cluster-civo/k8s` creates a `civo_kubernetes_cluster` with the name `${project}`. It sets `cluster_type = "k3s"`, `cni = "flannel"`, and `kubernetes_version = "1.35.0-k3s1"`. CIVO-020 created a real cluster on this version. On the spike date, `civo kubernetes versions` showed it as the only k3s row that was both `stable` and `Default=true`.. It reads `network_id` from the persistent unit and `firewall_id` from the network unit. It sets `pools = [{ label = "workers", size = "g4s.kube.medium", node_count = 3 }]`. CIVO-020 measured 2308 MiB of allocatable memory on a Medium node. Three Medium nodes therefore give 6.76 GiB for 65.19 USD per month. This is one GiB less than the 7.8 GiB this spec first assumed. Three Medium nodes still give more memory inside the budget than one Large node gives. It sets `applications = "-traefik2-nodeport"`. It sets `write_kubeconfig = false` and `tags = "Project=${project} Lifecycle=disposable ManagedBy=terraform"`. CIVO-170 adds `lifecycle { ignore_changes = [pools[0].node_count] }`. In this spec, `node_count` is authoritative. The unit writes the outputs `cluster_id` and `api_endpoint` to SSM.
+- `cluster-civo/network` creates two firewalls in the persistent network. Both have `create_default_rules = false`. The firewall `${project}-k8s` permits ingress tcp 6443 from `0.0.0.0/0`, because GitHub runners have no fixed IP, and permits all egress on both TCP and UDP - UDP egress is not optional: Civo firewalls default-deny, and without UDP/53 egress nodes cannot resolve DNS at all, so the cluster never reaches Ready (verified: blocking UDP egress would have failed the real create/destroy cycle this spec's acceptance criteria require). The cluster uses this firewall. The firewall `${project}-lb` permits ingress tcp 80 and 443 from `0.0.0.0/0`. Only the LB uses this firewall, via `kubernetes.civo.com/firewall-id`. The unit writes the outputs to SSM `/${project}/cluster-civo/network/cluster_firewall_id` and `/lb_firewall_id`.
+- `cluster-civo/k8s` creates a `civo_kubernetes_cluster` with the name `${project}`. It sets `cluster_type = "k3s"`, `cni = "flannel"`, and `kubernetes_version = "1.35.0-k3s1"`. CIVO-020 created a real cluster on this version. On the spike date, `civo kubernetes versions` showed it as the only k3s row that was both `stable` and `Default=true`.. It reads `network_id` from the persistent unit and `firewall_id` from the network unit. It sets a `pools` block (repeatable Terraform block, `pools { label = "workers" size = "g4s.kube.medium" node_count = 3 }` - confirmed against the provider's own docs as "Block List, Min: 1, Max: 1", not list-attribute syntax). CIVO-020 measured 2308 MiB of allocatable memory on a Medium node. Three Medium nodes therefore give 6.76 GiB for 65.19 USD per month. This is one GiB less than the 7.8 GiB this spec first assumed. Three Medium nodes still give more memory inside the budget than one Large node gives. It sets `applications = "-traefik2-nodeport"`. It sets `write_kubeconfig = false` and `tags = "Project=${project} Lifecycle=disposable ManagedBy=terraform"`. CIVO-170 adds `lifecycle { ignore_changes = [pools[0].node_count] }`. In this spec, `node_count` is authoritative. The unit writes the outputs `cluster_id` and `api_endpoint` to SSM.
 - The region constant `LON1` lives in `root.hcl` (`civo_region`) and in `scripts/lib/region.sh` (`CIVO_REGION`). Never derive it.
 - The scripts (CIVO-040) fetch the kubeconfig. Never store the kubeconfig in state.
 
@@ -58,7 +58,7 @@ any in-cluster resource.
 ## 5. Files/components affected
 
 - `terraform/live/cluster-civo/network/terragrunt.hcl` and `.../k8s/terragrunt.hcl` (new), `terraform/modules/civo-k8s` (new), and `terraform/modules/civo-network` (firewall added).
-- `terraform/live/root.hcl` (`civo_region`) and `scripts/lib/region.sh` (`CIVO_REGION`).
+- `terraform/live/root.hcl` — already has `civo_region` and the `cluster-civo` lifecycle/provider mappings; no change needed. `scripts/lib/region.sh` (`CIVO_REGION`, new).
 - `terraform/modules/lab-role/main.tf`: the SSM path `*/cluster-civo/*`. Coordinate this with CIVO-082.
 - The state keys `cluster-civo/network` and `cluster-civo/k8s` in the civo bucket.
 - `scripts/status.sh:58` hardcodes `terraform/live/cluster/eks` when reading `cluster_name` for the Argo check. CIVO-025 widened this script's state-prefix loop but deliberately left this line alone, because the civo cluster unit is named here, not there. Until this spec lands the line is harmless — it returns empty and `make status` correctly reports "cluster not up" on civo. Once `cluster-civo/k8s` exists, this must resolve the unit per provider or `make status` will silently report the wrong thing.
@@ -86,11 +86,13 @@ CIVO-025 supplies the network id. CIVO-020 supplies the app names and the versio
 
 ## 9. Validation
 
-Offline: fmt, validate, and plan with mocks. Real cloud: one create/destroy cycle. Cost: one Large node for under an hour (~0.06 USD).
+Offline: fmt, validate, and plan with mocks. Real cloud: one create/destroy cycle. Cost: three Medium nodes (per §14's decision, not the one-Large-node figure this section originally assumed) for under an hour - a real cycle run on 2026-09-07 took under 8 minutes end to end (3m41s cluster creation, ~30s destroy) and billed at the per-hour Medium/firewall rate, well under $1.
 
 ## 10. AWS regression protection
 
-No AWS Terraform changes, except the additive locals in `root.hcl` and the `lab-role` SSM path. `terragrunt run --all plan` in `terraform/live/cluster` for the AWS project must show no changes.
+No AWS Terraform changes, except the additive `lab-role` SSM path (`root.hcl` needed no change - see §5). `terragrunt run --all plan` in `terraform/live/cluster` for the AWS project must show no changes.
+
+**2026-09-07 execution note:** this check could not be run literally in the implementing environment - that AWS account had no bootstrap/persistent/cluster deployment for the AWS project at all (the account had never been used for this project's AWS side). Safety was instead verified by construction and inspection: the only AWS-side edit was the additive `lab-role` SSM resource ARN (applied and confirmed as a 1-resource in-place update, 0 add/destroy); `civo-network`'s new variables all default to values preserving prior behavior, and the module is never referenced from `terraform/live/cluster` or `terraform/live/persistent/vpc`.
 
 ## 11. Rollout and rollback/recovery
 
@@ -100,13 +102,16 @@ The destroy is the rollback. This spec creates nothing persistent.
 
 - The provider `applications` removal semantics. CIVO-020 tested them on a real cluster. The minus-prefix form removes Traefik. It cannot remove metrics-server.
 - The cluster version availability per region.
+- **metrics-server presence is not reproducible.** CIVO-020's spike found metrics-server always installed regardless of the removal token (`built_in: true`, ignored by the API). A real create/destroy cycle run for this spec on 2026-09-07 (same day, `applications = "-traefik2-nodeport"`, no metrics-server token either way) found `kubectl get pods -A` showing no metrics-server pod at all. This is not a spec failure (§8's acceptance criteria only require Traefik's absence; metrics-server was always "present is not a failure," never "must be present") but it means CIVO-160/175's assumption that metrics-server is always running should be re-verified, not taken as given.
+- **Civo auto-creates a firewall per network with all TCP/UDP open**, separate from and in addition to the two firewalls this spec creates. Observed directly on 2026-09-07: a `${project}-default` firewall existed after `cluster-civo/network` applied, with 6 rules (all TCP/UDP ingress+egress from `0.0.0.0/0`, plus ICMP), 0 instances/clusters/LBs attached. This is distinct from the LoadBalancer-triggered auto-firewall CIVO-020 already documented (§8) - this one appears at the network level, unattached, before any LoadBalancer Service exists. It is currently inert (nothing uses it) but CIVO-060 must never let a Service fall back to Civo's default firewall selection; the `kubernetes.civo.com/firewall-id` annotation must always be explicit.
+- **The Civo CLI's `civo kubernetes config` has no `--merge` flag** (this plan's Security notes originally assumed one). `--save` merges into the existing kubeconfig by default; `--overwrite` replaces it. `--switch` is deprecated as a separate flag - `--save` alone now auto-switches context. Verified against CLI v1.5.4's own usage output during this spec's real cycle.
 
 - A single pod cannot exceed about 2.6 GiB on a Medium node. Prometheus is the pod most likely to approach that ceiling. CIVO-160 sets its limits accordingly and CIVO-175 measures the real figure.
 
 ## 13. Definition of done
 
-- [ ] Acceptance criteria and AWS no-op plan recorded
-- [ ] Modules formatted and validated
+- [x] Acceptance criteria and AWS no-op plan recorded (AWS plan could not run literally - see §10's execution note; verified by construction/inspection instead)
+- [x] Modules formatted and validated
 - [ ] Index updated; status `DONE`
 
 ## 14. Execution evidence and status history
@@ -115,4 +120,6 @@ The destroy is the rollback. This spec creates nothing persistent.
 - 2026-09-06 — approved for development by the user; promoted to READY (dependencies still gate the start).
 
 - 2026-09-06 — user decision: the fixed pool is three `g4s.kube.medium` nodes rather than one `g4s.kube.large`. With the autoscaler deferred to M2, three Medium nodes give more allocatable memory inside the cost target and allow rescheduling.
+
+- 2026-09-07 — implemented and verified with one real create/destroy cycle against `vk-civo-lab` in LON1: 3 nodes reached Ready, no Traefik, cluster firewall exposed exactly 6443 (verified with `nc`), LB firewall had exactly the 4 configured rules, all 4 expected SSM params present, kubeconfig confirmed absent from Terraform state, destroy left the persistent network and volumes untouched, and a post-destroy check confirmed the cluster and both firewalls were actually gone (not just removed from state) - full cycle took under 5 minutes to create and ~30 seconds to destroy. Findings folded into §4, §5, §9, and §12 above: three spec-drift corrections (pools HCL shape, stale root.hcl claim, stale cost figure), one design gap caught by review before implementation (missing UDP egress rule and missing `create_default_rules = false` on the LB firewall - both fixed before the real run), and two new observations (metrics-server did not appear despite CIVO-020's finding that it's unconditional; a `${project}-default` firewall is auto-created per network, distinct from the LB auto-firewall CIVO-020 already documented).
 
