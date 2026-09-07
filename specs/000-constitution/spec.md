@@ -358,3 +358,17 @@ A forked copy of this repository MUST be runnable against the fork owner's own A
 No workflow, module, or spec MUST hardcode an AWS account ID, IAM role ARN, or domain value (see ADR 0007).
 
 The AWS region is the single deliberate exception. The platform targets exactly one region, `eu-west-1`. That value MUST be declared once per layer — `terraform/live/root.hcl`'s `aws_region` local, `scripts/lib/region.sh`, `gitops/values.yaml`, the `Makefile`, and `.github/workflows/lab.yml` — and every downstream consumer MUST derive it from its own layer's declaration. It MUST NOT be re-derived from an environment variable, a workflow input, a `get_env` default, or ambient AWS CLI/SDK region resolution (ADR 0024).
+
+---
+
+## 20. Civo execution target
+
+Civo is a second, real (non-`local`) execution target, selected by the `PROVIDER` operator input (ADR 0027). It is not a substitute for §18's `local` target — `local` remains AWS-free by design; Civo is a second cloud provider with its own AWS-adjacent identity and DNS surface. §3, §4, §7, and §17 apply to the Civo target exactly as written, with no exemption. The following sections carry an explicit Civo variant instead of a blanket carve-out:
+
+- **§3 (Lifecycle Separation).** The Civo cluster, its node pool, Argo CD, and every Kubernetes workload on it are Disposable, exactly as the equivalent AWS resources are. The Civo network and reserved IP are Persistent. IAM Roles Anywhere's trust anchor, profile, and roles (ADR 0029) are Bootstrap. See ADR 0027.
+- **§5 (Security).** Civo workloads reach AWS through IAM Roles Anywhere (ADR 0029), not EKS Pod Identity — the mechanism differs, the intent (no static AWS credential at rest in the cluster) does not. The Civo API token (`CIVO_TOKEN`) is not an AWS credential and so does not engage this section's GitHub-Actions-OIDC clause directly; it is itself a long-lived static key and is handled with the same KMS-encrypted-ciphertext discipline this section already requires for other secrets (ADR 0030).
+- **§8 (Public Traffic).** Civo has no NLB or ACM equivalent. TLS terminates at Envoy Gateway using cert-manager and Let's Encrypt HTTP-01 (ADR 0028), not at the load balancer. The Civo load balancer, like the AWS NLB, performs no host/path routing — that discipline is unchanged.
+- **§14 (DNS Domain Ownership and Configuration).** The delegated zone is `civo.<root-domain>`, a separate delegation from the AWS target's `lab.<root-domain>` (ADR 0027). There is no ACM certificate on this target — see the §8 variant above for how TLS is handled instead.
+- **§16 (Resource Tagging).** Civo's tagging support is more limited than AWS's; tags on Civo resources are applied on a best-effort basis where the provider and Terraform resource support it, not guaranteed to carry every tag key this section requires for AWS resources.
+- **§17 (Lifecycle Command Surface).** The same command pairs this section requires for AWS (`make state-up`/`down`, `bootstrap-up`/`down`, `persistent-up`/`down`, `up`/`down`, `full-up`/`full-down`) apply to the Civo target, dispatched by `PROVIDER` rather than by a separate command set (ADR 0027, spec CIVO-010). No new lifecycle command is introduced for Civo.
+- **§19 (Fork Configurability).** A fork targeting Civo additionally needs the Civo API token encrypted per ADR 0030 and the offline CA ceremony (ADR 0029, spec CIVO-080) completed before `PROVIDER=civo make up` can succeed — these are additional one-time setup steps on top of §19's existing AWS fork steps, not a replacement of them.
