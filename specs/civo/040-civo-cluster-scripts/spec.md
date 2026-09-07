@@ -58,7 +58,7 @@ Not in scope: `argo-up` and `argo-down` (CIVO-045), and tests (CIVO-130).
 - `status.sh` uses the prefixes `bootstrap persistent persistent-civo cluster cluster-civo`. It shows only the prefixes that are present in the bucket. The Argo check uses `configure_kubeconfig`.
 - `require-persistent.sh` skips the `eks-access-identity` check on civo. It adds a check that the `persistent-civo/network` state is not empty.
 - Guards: `bootstrap-down.sh` refuses on `persistent persistent-civo cluster cluster-civo`. `persistent-down.sh` refuses on `cluster cluster-civo`. The `state-down.sh` guard list becomes `bootstrap persistent persistent-civo cluster cluster-civo`. This fixes the pre-existing `disposable` bug.
-- Makefile: we keep `eks-kubeconfig` as an alias of a new `kubeconfig` target. The new target dispatches on `PROVIDER`.
+- Makefile: `eks-kubeconfig` is renamed to `kubeconfig` outright, no alias kept (2026-09-07 user decision — clean rename over back-compat). The new target dispatches on `PROVIDER`. `test-kubeconfig` is unaffected by this rename and keeps its current name.
 
 ## 5. Files/components affected
 
