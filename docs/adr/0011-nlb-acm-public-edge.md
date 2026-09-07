@@ -1,5 +1,9 @@
 # ADR 0011: NLB + ACM for the public edge, ExternalDNS for app records
 
+> **Note (2026-09-07):** This decision is AWS-only. The Civo execution
+> target uses a different TLS-termination design — see
+> [ADR 0028](0028-envoy-cert-manager-tls-on-civo.md).
+
 ## Status
 
 Accepted
