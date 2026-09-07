@@ -1,4 +1,4 @@
-.PHONY: up down full-up full-down platform-up platform-down state-up state-down status clusters require-valid-project-name account-up account-down bootstrap-up bootstrap-down secret-encrypt secret-decrypt generate-secrets persistent-up persistent-down clear-cache cluster-up cluster-down eks-kubeconfig test-kubeconfig argo-up argo-down test
+.PHONY: up down full-up full-down platform-up platform-down state-up state-down status clusters require-valid-project-name account-up account-down bootstrap-up bootstrap-down secret-encrypt secret-decrypt generate-secrets persistent-up persistent-down clear-cache cluster-up cluster-down kubeconfig test-kubeconfig argo-up argo-down test
 
 .NOTPARALLEL:
 
@@ -145,13 +145,19 @@ endif
 persistent-down:
 	./scripts/persistent-down.sh
 
-## Creates the disposable EKS cluster (system node group + addons). Fails
-## fast (naming `make persistent-up`) if the Persistent layer doesn't exist
-## yet - never creates it (constitution §17). Run `make argo-up` after
-## this to install Argo CD and the platform.
+## Creates the disposable cluster (system node group + addons, or firewall +
+## k3s cluster on civo). Fails fast (naming `make persistent-up`) if the
+## Persistent layer doesn't exist yet - never creates it (constitution §17).
+## Run `make argo-up` after this to install Argo CD and the platform.
+ifeq ($(PROVIDER),civo)
+cluster-up:
+	./scripts/require-persistent.sh
+	@bash -c 'source scripts/lib/region.sh; source scripts/lib/provider.sh; civo_token; cd terraform/live/$(CLUSTER_DIR) && terragrunt run --all --non-interactive -- apply -auto-approve'
+else
 cluster-up:
 	./scripts/require-persistent.sh
 	cd terraform/live/$(CLUSTER_DIR) && terragrunt run --all --non-interactive -- apply -auto-approve
+endif
 
 ## Destroys the disposable EKS cluster. Routine, unlike bootstrap-down/persistent-down.
 ## Requires `make argo-down` to have already cascaded away Argo/Karpenter's
@@ -161,21 +167,21 @@ cluster-up:
 cluster-down:
 	./scripts/cluster-down.sh
 
-## Points local kubectl context at the disposable EKS cluster. Every kubectl
-## call re-assumes eks-access-identity via --role-arn (baked into the
-## generated kubeconfig's exec plugin), so access never depends on whether
-## you or GitHub Actions created the cluster - see docs/adr on this. A
-## manual/human convenience target only - up/down/argo-up/argo-down/
-## cluster-down/status each configure their own kubeconfig internally
-## instead of depending on this, since the cluster may not exist yet (or
-## anymore) when those run, and a Make prerequisite can't be conditional.
-## Usage: make eks-kubeconfig
+## Points local kubectl context at the disposable cluster. On aws, every
+## kubectl call re-assumes eks-access-identity via --role-arn (baked into
+## the generated kubeconfig's exec plugin), so access never depends on
+## whether you or GitHub Actions created the cluster. On civo, merges the
+## cluster's kubeconfig and renames its context to $(PROJECT_NAME)-civo (the
+## civo CLI has no way to name the context directly). A manual/human
+## convenience target only - up/down/argo-up/argo-down/cluster-down/status
+## each configure their own kubeconfig internally instead of depending on
+## this, since the cluster may not exist yet (or anymore) when those run,
+## and a Make prerequisite can't be conditional.
+## Usage: make kubeconfig
+kubeconfig:
 ifeq ($(PROVIDER),civo)
-eks-kubeconfig:
-	@echo "eks-kubeconfig for PROVIDER=civo: implemented in a later Civo spec" >&2
-	@exit 1
+	@bash -c 'source scripts/lib/region.sh; source scripts/lib/provider.sh; configure_kubeconfig'
 else
-eks-kubeconfig:
 	aws eks update-kubeconfig --name $(PROJECT_NAME)-eks --region $(REGION) --alias $(PROJECT_NAME)-eks \
 		--role-arn "$$(aws iam get-role --role-name eks-access-identity --query Role.Arn --output text)"
 	kubectl config set-context --current --namespace=default
@@ -190,10 +196,10 @@ argo-up:
 ## Points local kubectl context at the disposable EKS cluster via
 ## eks-test-identity's read-only access (terraform/modules/eks/main.tf +
 ## gitops rbac/e2e-test-readonly.yaml), NOT eks-access-identity's
-## cluster-admin. A distinct alias from eks-kubeconfig's, so the
+## cluster-admin. A distinct alias from kubeconfig's, so the
 ## cluster-admin kubeconfig entry itself is never overwritten - but running
 ## `make test` still switches your shell's *current* context to this
-## read-only one; run `make eks-kubeconfig` afterward to switch back.
+## read-only one; run `make kubeconfig` afterward to switch back.
 ## Usage: make test-kubeconfig
 ifeq ($(PROVIDER),civo)
 test-kubeconfig:

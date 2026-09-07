@@ -18,7 +18,7 @@ convention, not yet confirmed against a live cluster in this repo.
 ```bash
 make persistent-up
 make cluster-up
-make eks-kubeconfig
+make kubeconfig
 make argo-up
 ```
 
@@ -112,7 +112,7 @@ Expect exactly one volume, `available` — not deleted, not still attached.
 
 ```bash
 make cluster-up
-make eks-kubeconfig
+make kubeconfig
 make argo-up
 kubectl -n argocd get applications
 kubectl -n kafka get kafka lab-kafka

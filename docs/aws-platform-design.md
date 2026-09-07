@@ -28,7 +28,7 @@ runs `clear-cache` first (`Makefile:23-53`). Variables: `PROJECT_NAME`
 constant `eu-west-1` declared once per layer (ADR 0024).
 
 Every script configures its own kubeconfig; nothing depends on a prior
-`make eks-kubeconfig` (`Makefile:132-139`).
+`make kubeconfig` (`Makefile:132-139`).
 
 ## 2. Stages and what they own
 

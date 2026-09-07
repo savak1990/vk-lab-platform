@@ -53,7 +53,7 @@ the pending pod that triggered the scale-up never gets a node.
 ```
 make cluster-up        # terragrunt apply, all units in this stack
 make cluster-down      # terragrunt destroy, all units in this stack
-make eks-kubeconfig        # points local kubectl at the cluster
+make kubeconfig        # points local kubectl at the cluster
 ```
 
 `cluster-up` (part of `make up`/`make full-up`) runs

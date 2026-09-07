@@ -9,7 +9,7 @@ min, needs `aws`/`kubectl`/`psql`/`terragrunt` CLIs.
 ```bash
 make persistent-up
 make cluster-up
-make eks-kubeconfig
+make kubeconfig
 ```
 
 ## 2. Verify Argo is healthy
@@ -96,7 +96,7 @@ disposable now, not the snapshot.
 
 ```bash
 make cluster-up
-make eks-kubeconfig
+make kubeconfig
 kubectl -n argocd get applications
 kubectl -n cnpg-system get cluster lab-postgres
 ```

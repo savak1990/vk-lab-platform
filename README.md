@@ -131,7 +131,7 @@ composite target already does.
 Other targets:
 
 ```bash
-make eks-kubeconfig                            # points kubectl at the disposable cluster
+make kubeconfig                            # points kubectl at the disposable cluster
 make clear-cache                               # clears .terragrunt-cache after switching PROJECT_NAME/SUBDOMAIN
 make secret-encrypt NAME=<name> VALUE=<value>  # encrypts one secrets/<project>/<name>.enc
 make secret-decrypt NAME=<name>                # prints one secret's plaintext to stdout

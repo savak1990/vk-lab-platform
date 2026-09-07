@@ -74,7 +74,7 @@ Merge the redesign to `main`, then:
 ## Phase 3 — GitHub-initiated up, workstation-initiated verification
 
 11. Dispatch `lab.yml` with `target=up`. Confirm the run succeeds.
-12. From your workstation: `make eks-kubeconfig && kubectl get nodes` —
+12. From your workstation: `make kubeconfig && kubectl get nodes` —
     confirms `eks-access-identity` gives you cluster access even though
     GitHub Actions created the cluster, and confirms `eks-access-identity`'s
     trust condition on `role/lab-role` (renamed from `personal-lab-role`)
