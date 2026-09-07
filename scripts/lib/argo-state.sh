@@ -27,7 +27,7 @@ argo_state() {
   local kubeconfig="${2:?argo_state: kubeconfig path required}"
   local sync_health app_count
 
-  if [ "$PROVIDER" = "civo" ]; then
+  if [ "${PROVIDER:-aws}" = "civo" ]; then
     civo_token
     if ! CLUSTER_NAME="$cluster" configure_kubeconfig "$kubeconfig" >/dev/null 2>&1 \
       || ! kubectl --kubeconfig "$kubeconfig" cluster-info --request-timeout=5s >/dev/null 2>&1; then

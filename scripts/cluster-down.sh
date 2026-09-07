@@ -72,7 +72,10 @@ if [ "$PROVIDER" = "civo" ]; then
 
   # --dangling limits this to volumes whose owning cluster is already gone,
   # so a still-attached persistent volume on a live cluster is never touched.
-  LEAKED_VOLUMES="$(civo_list_names volume --dangling | grep -- "^${PROJECT_NAME}" || true)"
+  # No project-name filter: Civo volume names carry the raw volumeHandle UUID
+  # with no project/cluster prefix (CIVO-020, specs/civo/research.md), so a
+  # name filter would silently never match a real leak.
+  LEAKED_VOLUMES="$(civo_list_names volume --dangling || true)"
   if [ -n "$LEAKED_VOLUMES" ]; then
     echo "CLUSTER-DOWN: leaked Civo dangling volume(s), deleting: $LEAKED_VOLUMES" >&2
     for vol in $LEAKED_VOLUMES; do
