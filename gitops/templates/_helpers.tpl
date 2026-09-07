@@ -1,8 +1,7 @@
 {{/*
-Validates .Values.target against the supported set. Included from
-templates/_validate.yaml, which always renders regardless of target - no
-platform file happens to gate on an unknown value, so without this an
-unknown target would silently render an empty chart instead of failing.
+Validates .Values.target against the supported set. Included from a
+template that always renders, so an unknown target fails loudly instead
+of silently rendering an empty chart.
 */}}
 {{- define "platform.validateTarget" -}}
 {{- if not (has .Values.target (list "aws" "civo" "local")) -}}
@@ -11,11 +10,9 @@ unknown target would silently render an empty chart instead of failing.
 {{- end -}}
 
 {{/*
-The CSI StorageClass name for the current target. aws/local use
-.Values.storage.className (default ebs-delete); civo uses civo-volume,
-which is preinstalled and owned by a k3s Addon - it must never be defined
-by a gitops template (a patch would be reverted by the Addon), only
-referenced by name. See specs/civo/research.md's Storage row.
+The CSI StorageClass name for the current target. civo uses civo-volume,
+preinstalled and owned by a k3s Addon (a patch to it gets reverted), so
+it must only be referenced here, never defined by a template we own.
 */}}
 {{- define "platform.storageClassName" -}}
 {{- if eq .Values.target "civo" -}}

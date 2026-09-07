@@ -49,6 +49,9 @@ roleRef:
   name: e2e-test-readonly
   apiGroup: rbac.authorization.k8s.io
 ---
+{{- if eq .Values.target "aws" }}
+# Stays gated: the observability namespace only exists once
+# kube-prometheus-stack's Application creates it (aws-only until CIVO-160).
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
@@ -65,6 +68,7 @@ roleRef:
   kind: ClusterRole
   name: e2e-test-readonly
   apiGroup: rbac.authorization.k8s.io
+{{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

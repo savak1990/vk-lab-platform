@@ -10,8 +10,7 @@ region: eu-west-1
 vpcId: ""
 
 # className/snapshotClassName name the CSI StorageClass/VolumeSnapshotClass
-# a target provides — aws provides ebs-delete/ebs-postgres-snapshot (spec
-# 005); civo provides its own equivalents (CIVO-050/120).
+# a target provides; each target supplies its own.
 storage:
   className: ebs-delete
   snapshotClassName: ebs-postgres-snapshot
@@ -22,13 +21,12 @@ capacity:
   spotAvoidance: true
 
 # cert-manager is off by default: aws terminates TLS at the NLB with an ACM
-# certificate (see envoyGateway.acmCertificateArn), so no in-cluster issuer
-# is needed until a target lacks that (civo, CIVO-065/070).
+# certificate, so no in-cluster issuer is needed until a target lacks that.
 certManager:
   enabled: false
 
-# podIdentity (EKS Pod Identity) is aws-only; other targets substitute their
-# own workload-identity mechanism (civo: IAM Roles Anywhere, ADR 0029).
+# podIdentity (EKS Pod Identity) is aws-only; other targets substitute
+# their own workload-identity mechanism.
 awsIdentity:
   mode: podIdentity
 
@@ -37,12 +35,13 @@ awsIdentity:
 # manual edit required. Empty means "no snapshot found, bootstrap fresh".
 # See ADR 0013. storageSize is operator-configurable (KARPENTER_INSTANCE_TYPES
 # sibling: POSTGRES_STORAGE_SIZE env var on argo-up.sh) — increase-only, see
-# scripts/argo-up.sh usage comment for why. nodeSelector pins Postgres off
-# spot (AZ-pinned PVC + interruption risk) — only meaningful where Karpenter's
-# on-demand pool exists (aws); empty on a target with no such pool.
+# scripts/argo-up.sh usage comment for why.
 postgres:
   recoverySnapshotHandle: ""
   storageSize: 20Gi
+  # Pins Postgres off spot (AZ-pinned PVC + interruption risk). Helm deep-
+  # merges values, so a target without an on-demand pool needs its own
+  # postgres/cluster.yaml (or a nodeSelector: null override), not {}.
   nodeSelector:
     workload-type: on-demand
 
@@ -74,11 +73,9 @@ karpenter:
 # carry kubernetes.io/role/elb (see envoy-gateway/gateway.yaml's comment).
 # fqdn is persistent/route53's fqdn output ("lab.<root-domain>") - the
 # HTTPRoutes' hostnames are built from this, not a literal domain string.
-# tls.mode names which layer terminates TLS - aws terminates at the NLB
-# (see the platform architecture: NLB -> Envoy Gateway, plaintext behind
-# it); a target with no such edge LB terminates in Envoy itself (civo:
-# CIVO-060/070). service.annotations carries the aws NLB provisioning
-# annotations (CIVO-060 makes this target-conditional); empty is a no-op.
+# tls.mode names which layer terminates TLS - aws terminates at the NLB,
+# plaintext behind it; a target with no such edge LB terminates in Envoy
+# itself. service.annotations carries LB-provisioning annotations; empty is a no-op.
 envoyGateway:
   acmCertificateArn: ""
   nlbSubnetIds: ""
