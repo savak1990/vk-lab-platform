@@ -23,10 +23,9 @@ source "$REPO_ROOT/scripts/lib/provider.sh"
 BACKUP_TIMEOUT="${ARGO_DOWN_BACKUP_TIMEOUT:-120s}"
 SNAPSHOT_TAG_FILTERS=("Name=tag:Project,Values=$PROJECT_NAME" "Name=tag:Component,Values=postgres")
 
-# Absence is checked against the provider's own API (cluster_exists), not
-# kubectl - a describe-cluster/kubernetes-show 404 is proof the cluster is
-# gone (safe to skip), whereas a kubectl failure only proves this shell has
-# no working kubeconfig, never proof of absence.
+# Absence is checked against the provider's own API, not kubectl - a 404
+# there proves the cluster is gone, whereas a kubectl failure only proves
+# this shell lacks a working kubeconfig, never proof of absence.
 if ! cluster_exists; then
   echo "ARGO-DOWN: cluster $CLUSTER_NAME does not exist - nothing to cascade, skipping."
   exit 0
