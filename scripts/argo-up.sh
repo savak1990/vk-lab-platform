@@ -396,7 +396,13 @@ operation_state() {
 # Blocks until root is Synced/Healthy, so a 0 exit means the whole platform
 # (including Postgres) is really ready. Only prints when something changes,
 # to stay readable over a long recovery-from-snapshot bootstrap.
-WATCH_SECONDS="${ARGO_UP_WATCH_SECONDS:-2700}"
+# TODO(civo): shorter default is a temporary workaround - nothing in civo's
+# root tree has an ArgoCD health check yet, so a full wait always times out.
+if [ "$PROVIDER" = civo ]; then
+  WATCH_SECONDS="${ARGO_UP_WATCH_SECONDS:-300}"
+else
+  WATCH_SECONDS="${ARGO_UP_WATCH_SECONDS:-2700}"
+fi
 POLL_INTERVAL="${ARGO_UP_POLL_INTERVAL:-5}"
 elapsed=0
 last_state=""
