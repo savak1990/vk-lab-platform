@@ -77,8 +77,45 @@ aws_resolve_inputs() {
   configure_kubeconfig
 }
 
+civo_resolve_inputs() {
+  civo_token
+  local civo_ssm_names=(
+    "/$PROJECT_NAME/bootstrap/route53/fqdn"
+    "/$PROJECT_NAME/persistent/argocd/admin_password_bcrypt"
+    "/$PROJECT_NAME/persistent-civo/reserved-ip/address"
+    "/$PROJECT_NAME/cluster-civo/network/lb_firewall_id"
+  )
+  local civo_ssm_batch_names=() civo_ssm_batch_values=()
+  while IFS=$'\t' read -r name value; do
+    civo_ssm_batch_names+=("$name")
+    civo_ssm_batch_values+=("$value")
+  done < <(aws ssm get-parameters --region "$LAB_REGION" --with-decryption \
+    --names "${civo_ssm_names[@]}" --query 'Parameters[].[Name,Value]' --output text)
+
+  local i
+  for i in "${!civo_ssm_names[@]}"; do
+    local found=""
+    local j
+    for j in "${!civo_ssm_batch_names[@]}"; do
+      [ "${civo_ssm_batch_names[$j]}" = "${civo_ssm_names[$i]}" ] && { found="${civo_ssm_batch_values[$j]}"; break; }
+    done
+    if [ -z "$found" ]; then
+      echo "ARGO-UP: missing SSM parameter ${civo_ssm_names[$i]} - has its owning terragrunt unit been applied?" >&2
+      exit 1
+    fi
+    case "${civo_ssm_names[$i]}" in
+      */fqdn) LAB_FQDN="$found" ;;
+      */admin_password_bcrypt) ADMIN_PASSWORD_BCRYPT_HASH="$found" ;;
+      */reserved-ip/address) RESERVED_IP="$found" ;;
+      */lb_firewall_id) FIREWALL_ID="$found" ;;
+    esac
+  done
+
+  configure_kubeconfig
+}
+
 if [ "$PROVIDER" = civo ]; then
-  civo_resolve_inputs   # added in Task 4
+  civo_resolve_inputs
 else
   aws_resolve_inputs
 fi
@@ -118,6 +155,29 @@ dns_status() {
     fi
   done
 }
+
+civo_wait_for_dns() {
+  local watch_seconds="${CIVO_ARGO_UP_DNS_WATCH_SECONDS:-60}"
+  local poll_interval="${ARGO_UP_POLL_INTERVAL:-5}"
+  local elapsed=0 svc_ip="" dig_ip=""
+  while [ "$elapsed" -lt "$watch_seconds" ]; do
+    svc_ip="$(kubectl get svc -n envoy -l gateway.envoyproxy.io/owning-gateway-name=platform-gateway \
+      -o jsonpath='{.items[0].status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)"
+    [ -z "$svc_ip" ] && svc_ip="$RESERVED_IP"
+    dig_ip="$(dig +short "argo.$LAB_FQDN" 2>/dev/null | tail -n1 || true)"
+    if [ -n "$dig_ip" ] && [ -n "$svc_ip" ] && [ "$dig_ip" = "$svc_ip" ]; then
+      echo "ARGO-UP: DNS resolved (argo.<fqdn> -> matches Envoy Service/reserved IP)."
+      echo "ARGO-UP: root Synced/Healthy and DNS resolved - platform ready."
+      return 0
+    fi
+    sleep "$poll_interval"
+    elapsed=$((elapsed + poll_interval))
+  done
+  echo "ARGO-UP: DNS not resolved for argo.<fqdn> after ${watch_seconds}s - non-fatal on civo (external-dns/spec 110 and the Envoy LB/spec 060 aren't implemented in this baseline yet)." >&2
+  echo "ARGO-UP: root Synced/Healthy - platform ready (DNS not yet resolved, non-fatal on civo)."
+  return 0
+}
+
 aws_wait_for_dns() {
   local watch_seconds="${ARGO_UP_DNS_WATCH_SECONDS:-300}"
   local poll_interval="${ARGO_UP_POLL_INTERVAL:-5}"
@@ -278,8 +338,24 @@ aws_install_root_application() {
     --set envoyGateway.fqdn="$LAB_FQDN"
 }
 
+civo_install_root_application() {
+  helm upgrade --install root-application "$REPO_ROOT/gitops/bootstrap" \
+    --namespace argocd \
+    --server-side=true --force-conflicts \
+    --set target=civo \
+    --set project="$PROJECT_NAME" \
+    --set repoURL="$REPO_URL" \
+    --set targetRevision="$TARGET_REVISION" \
+    --set postgres.recoverySnapshotHandle="$RECOVERY_SNAPSHOT_HANDLE" \
+    --set postgres.storageSize="$POSTGRES_STORAGE_SIZE" \
+    --set envoyGateway.fqdn="$LAB_FQDN" \
+    --set envoyGateway.reservedIp="$RESERVED_IP" \
+    --set envoyGateway.firewallId="$FIREWALL_ID" \
+    --set externalDns.txtOwnerId="$PROJECT_NAME"
+}
+
 if [ "$PROVIDER" = civo ]; then
-  civo_install_root_application   # added in Task 4
+  civo_install_root_application
 else
   aws_install_root_application
 fi
