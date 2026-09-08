@@ -60,8 +60,12 @@ REQUIRED_OBJECTS="Application__argocd__envoy-gateway Application__argocd__cnpg-o
 Application__argocd__external-secrets PriorityClass__cluster__postgres-critical \
 ClusterRole__cluster__e2e-test-readonly HTTPRoute__argocd__argocd \
 RoleBinding__cnpg-system__e2e-test-readonly RoleBinding__argocd__e2e-test-readonly"
-FORBIDDEN_KINDS="StorageClass VolumeSnapshotClass VolumeSnapshotContent VolumeSnapshot \
+REQUIRED_OBJECTS_CIVO="EnvoyProxy__envoy__envoy-proxy-config Gateway__envoy__platform-gateway \
+GatewayClass__cluster__envoy-gateway"
+FORBIDDEN_KINDS_LOCAL="StorageClass VolumeSnapshotClass VolumeSnapshotContent VolumeSnapshot \
 ClusterSecretStore ExternalSecret Cluster NodePool EC2NodeClass EnvoyProxy Gateway GatewayClass"
+FORBIDDEN_KINDS_CIVO="StorageClass VolumeSnapshotClass VolumeSnapshotContent VolumeSnapshot \
+ClusterSecretStore ExternalSecret Cluster NodePool EC2NodeClass"
 FORBIDDEN_APPLICATIONS="aws-load-balancer-controller cert-manager ebs-csi-driver karpenter \
 kube-prometheus-stack loki metrics-server alloy external-snapshotter external-snapshotter-crds \
 external-dns"
@@ -70,13 +74,20 @@ HTTPRoute__observability__grafana RoleBinding__observability__e2e-test-readonly"
 
 verify_object_set() {
   local dir="$1" target="$2" obj name kind
-  for obj in $REQUIRED_OBJECTS; do
+  local required="$REQUIRED_OBJECTS" forbidden_kinds="$FORBIDDEN_KINDS_LOCAL"
+  case "$target" in
+    civo)
+      required="$REQUIRED_OBJECTS $REQUIRED_OBJECTS_CIVO"
+      forbidden_kinds="$FORBIDDEN_KINDS_CIVO"
+      ;;
+  esac
+  for obj in $required; do
     if [ ! -e "$dir/$obj.yaml" ]; then
       echo "GITOPS-RENDER-CHECK: target=$target is missing required object $obj" >&2
       return 1
     fi
   done
-  for kind in $FORBIDDEN_KINDS; do
+  for kind in $forbidden_kinds; do
     if compgen -G "$dir/${kind}__*.yaml" >/dev/null; then
       echo "GITOPS-RENDER-CHECK: target=$target unexpectedly renders a $kind (aws/ebs/karpenter-only kind leaked into shared/civo)" >&2
       return 1
