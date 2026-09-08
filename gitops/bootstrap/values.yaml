@@ -29,3 +29,8 @@ envoyGateway:
   acmCertificateArn: ""
   nlbSubnetIds: ""
   fqdn: ""
+  reservedIp: ""
+  firewallId: ""
+
+externalDns:
+  txtOwnerId: ""
