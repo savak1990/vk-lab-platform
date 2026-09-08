@@ -93,3 +93,23 @@ configure_kubeconfig() {
   fi
   kubectl ${kcfg[@]:+"${kcfg[@]}"} config set-context --current --namespace=default >/dev/null
 }
+
+# No restore mechanism exists on civo yet, so every argo-up bootstraps fresh.
+# Returning empty keeps the call site identical once a real handle lands.
+civo_recovery_handle() {
+  echo "ARGO-UP: no recovery configured for civo yet (CIVO-120) - bootstrapping fresh." >&2
+  printf ''
+}
+
+# Fail closed: no backup path exists on civo yet, so refuse to tear down a
+# cluster that still holds Postgres data. A missing CNPG CRD means "no
+# cluster", not a failed check, hence the two-step probe.
+civo_backup() {
+  if kubectl get clusters.postgresql.cnpg.io -A >/dev/null 2>&1; then
+    if [ -n "$(kubectl get clusters.postgresql.cnpg.io -A -o name 2>/dev/null)" ]; then
+      echo "ARGO-DOWN: a CNPG Cluster exists on civo but CIVO-120's backup path isn't implemented yet - refusing to tear down and risk losing Postgres data." >&2
+      exit 1
+    fi
+  fi
+  echo "ARGO-DOWN: no CNPG Cluster found on civo - nothing to back up."
+}
