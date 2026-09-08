@@ -1,0 +1,2 @@
++ aws eks update-kubeconfig --name vk-lab-platform-eks --region eu-west-1 --alias vk-lab-platform-eks --role-arn arn:aws:iam::753939038916:role/eks-access-identity
++ kubectl config set-context --current --namespace=default
