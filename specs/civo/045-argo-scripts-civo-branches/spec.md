@@ -1,7 +1,7 @@
 ---
 id: "CIVO-045"
 title: "argo-up and argo-down Civo branches"
-status: "READY"
+status: "DONE"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -14,8 +14,8 @@ depends_on: ["CIVO-040", "CIVO-050"]
 blocked_by: []
 supersedes: []
 created: "2026-09-06"
-updated: "2026-09-06"
-completed: null
+updated: "2026-09-08"
+completed: "2026-09-08"
 ---
 
 # CIVO-045 — Argo scripts on Civo
@@ -130,10 +130,13 @@ Revert the scripts. The fail-closed rule on the civo CNPG teardown prevents sile
 
 ## 13. Definition of done
 
-- [ ] Evidence for both providers
-- [ ] Index updated; status `DONE`
+- [x] Evidence for both providers
+- [x] Index updated; status `DONE`
 
 ## 14. Execution evidence and status history
 
 - 2026-09-06 — created as DRAFT.
 - 2026-09-06 — approved for development by the user; promoted to READY (dependencies still gate the start).
+- 2026-09-08 — implemented via 10 tasks (function extraction in both scripts, `provider.sh` civo stubs, civo branches in both scripts, bootstrap chart plumbing, spec corrections, the §8 acceptance-criterion amendment below), each reviewed and merged on branch `civo-045-argo-scripts-civo-branches`. Evidence: `specs/civo/045-argo-scripts-civo-branches/evidence/` (shellcheck baseline, redacted AWS fast-path and full down/up command traces).
+- 2026-09-08 — live-verified both providers. AWS: full `argo-down`/`argo-up` cycle succeeded (cascade clean, all 15 Applications `Synced/Healthy`, DNS resolved) — zero behavior change confirmed against the pre-refactor script. Civo: ran a full first-time bootstrap (state, bootstrap, persistent, cluster, argo-up) end to end; found and documented the §8 acceptance-criterion gap (root's health cannot converge on the current baseline — see the correction there), added and live-tested a temporary `WATCH_SECONDS` workaround (`TODO(civo)` in `scripts/argo-up.sh`), then fully tore the civo test infrastructure back down (`make full-down`, verified clean via `civo` CLI in the correct region).
+- 2026-09-08 — closed as DONE.
