@@ -17,24 +17,21 @@ set -euo pipefail
 
 TIMEOUT="${ARGO_DOWN_TIMEOUT:-900s}"
 POLL_INTERVAL="${ARGO_DOWN_POLL_INTERVAL:-5}"
-PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
-source "$(dirname "${BASH_SOURCE[0]}")/lib/region.sh"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$REPO_ROOT/scripts/lib/region.sh"
+source "$REPO_ROOT/scripts/lib/provider.sh"
 BACKUP_TIMEOUT="${ARGO_DOWN_BACKUP_TIMEOUT:-120s}"
 SNAPSHOT_TAG_FILTERS=("Name=tag:Project,Values=$PROJECT_NAME" "Name=tag:Component,Values=postgres")
 
-CLUSTER_NAME="${PROJECT_NAME}-eks"
-
-# Absence is checked against the AWS API, not kubectl - a describe-cluster
-# 404 is proof the cluster is gone (safe to skip), whereas a kubectl failure
-# only proves this shell has no working kubeconfig, never proof of absence.
-if ! aws eks describe-cluster --name "$CLUSTER_NAME" --region "$LAB_REGION" >/dev/null 2>&1; then
+# Absence is checked against the provider's own API, not kubectl - a 404
+# there proves the cluster is gone, whereas a kubectl failure only proves
+# this shell lacks a working kubeconfig, never proof of absence.
+if ! cluster_exists; then
   echo "ARGO-DOWN: cluster $CLUSTER_NAME does not exist - nothing to cascade, skipping."
   exit 0
 fi
 
-aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$LAB_REGION" --alias "$CLUSTER_NAME" \
-  --role-arn "$(aws iam get-role --role-name eks-access-identity --query Role.Arn --output text)" >/dev/null
-kubectl config set-context --current --namespace=default >/dev/null
+configure_kubeconfig
 
 if ! kubectl cluster-info --request-timeout=5s >/dev/null 2>&1; then
   echo "ARGO-DOWN: ERROR - cluster $CLUSTER_NAME exists but is unreachable via kubectl (cluster-info failed)." >&2
@@ -42,6 +39,10 @@ if ! kubectl cluster-info --request-timeout=5s >/dev/null 2>&1; then
   echo "ARGO-DOWN: controller to drain nodes and delete load balancers before the control plane is destroyed -" >&2
   echo "ARGO-DOWN: proceeding blind orphans them. Investigate cluster/API-server health before retrying." >&2
   exit 1
+fi
+
+if [ "$PROVIDER" = civo ]; then
+  civo_backup
 fi
 
 # Disarming automated sync is the first thing done to a reachable cluster:
@@ -66,7 +67,11 @@ done
 # operator who stops here on a backup failure would otherwise have no way
 # to know the cluster's reconciliation is off.
 if [ "$DISARMED" -gt 0 ]; then
-  echo "ARGO-DOWN: automated sync disarmed on $DISARMED Application(s) - re-arm with 'make argo-up' if you stop here."
+  if [ "$PROVIDER" = civo ]; then
+    echo "ARGO-DOWN: automated sync disarmed on $DISARMED Application(s) - re-arm with 'PROVIDER=civo make argo-up' if you stop here."
+  else
+    echo "ARGO-DOWN: automated sync disarmed on $DISARMED Application(s) - re-arm with 'make argo-up' if you stop here."
+  fi
 fi
 
 # Forces a cold VolumeSnapshot backup of Postgres before the cluster (and
@@ -76,6 +81,7 @@ fi
 # the cascade delete starts: the Cluster/pod need to still be alive.
 # Aborts loudly on failure rather than proceeding - proceeding would
 # destroy the only copy.
+aws_cnpg_backup_and_prune() {
 if kubectl get cluster lab-postgres -n cnpg-system >/dev/null 2>&1; then
   BACKUP_NAME="lab-postgres-teardown-$(date +%s 2>/dev/null || echo manual)"
   echo "ARGO-DOWN: forcing a pre-teardown Postgres volume-snapshot backup ($BACKUP_NAME)..."
@@ -136,6 +142,11 @@ EOF
 else
   echo "ARGO-DOWN: no lab-postgres Cluster found - skipping pre-teardown backup."
 fi
+}
+
+if [ "$PROVIDER" != civo ]; then
+  aws_cnpg_backup_and_prune
+fi
 
 # Argo deletes one sync wave at a time and refuses to start the next while
 # any object it manages still has a deletionTimestamp - so a single object
@@ -150,6 +161,14 @@ volumesnapshot.snapshot.storage.k8s.io volumesnapshotcontent.snapshot.storage.k8
 volumesnapshotclass.snapshot.storage.k8s.io storageclass.storage.k8s.io \
 clustersecretstore.external-secrets.io externalsecret.external-secrets.io \
 volumeattachment.storage.k8s.io persistentvolume"
+
+if [ "$PROVIDER" = civo ]; then
+  filtered_kinds=""
+  for kind in $TERMINATING_KINDS; do
+    kubectl get "$kind" -A >/dev/null 2>&1 && filtered_kinds="$filtered_kinds $kind"
+  done
+  TERMINATING_KINDS="$filtered_kinds"
+fi
 
 report_remaining() {
   local stuck=""
@@ -190,7 +209,6 @@ kubectl delete httproute -A --all >/dev/null 2>&1 || true
 # constitution S7: a controller must stay alive until what it manages is
 # actually cleaned up). Poll Route 53 directly for its own TXT ownership
 # records under the lab zone until none remain, instead of trusting timing.
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SUBDOMAIN="${SUBDOMAIN:-lab}"
 ROOT_DOMAIN="$("$REPO_ROOT/scripts/secret-decrypt.sh" root-domain)"
 FQDN="${SUBDOMAIN}.${ROOT_DOMAIN}"

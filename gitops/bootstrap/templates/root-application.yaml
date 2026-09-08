@@ -39,6 +39,12 @@ spec:
           value: {{ .Values.envoyGateway.nlbSubnetIds | quote }}
         - name: envoyGateway.fqdn
           value: {{ .Values.envoyGateway.fqdn | quote }}
+        - name: envoyGateway.reservedIp
+          value: {{ .Values.envoyGateway.reservedIp | quote }}
+        - name: envoyGateway.firewallId
+          value: {{ .Values.envoyGateway.firewallId | quote }}
+        - name: externalDns.txtOwnerId
+          value: {{ .Values.externalDns.txtOwnerId | quote }}
       # karpenter.{spot,onDemand}.instanceTypes are lists - `parameters`
       # only carries scalar string overrides (Argo CD's own documented
       # limitation), so these go through valuesObject instead, which Argo

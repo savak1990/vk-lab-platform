@@ -1,0 +1,23 @@
++ aws eks update-kubeconfig --name vk-lab-platform-eks --region eu-west-1 --alias vk-lab-platform-eks --role-arn arn:aws:iam::753939038916:role/eks-access-identity
++ kubectl config set-context --current --namespace=default
++ helm upgrade --install argocd argo-cd --repo https://argoproj.github.io/argo-helm --version 10.4.0 --namespace argocd --create-namespace -f /Users/savak/Proj/Lab/vk-lab-platform/gitops/argocd/values.yaml --set server.service.type=ClusterIP --set 'configs.params.server\.insecure=true' --set 'configs.secret.argocdServerAdminPassword=<redacted>' --set configs.secret.argocdServerAdminPasswordMtime=2026-08-20T00:00:00Z --set controller.metrics.enabled=true --set server.metrics.enabled=true --set repoServer.metrics.enabled=true --set applicationSet.metrics.enabled=true --set notifications.metrics.enabled=true --set-json 'controller.resources={"requests":{"cpu":"20m","memory":"512Mi"},"limits":{"memory":"768Mi"}}' --set-json 'repoServer.resources={"requests":{"cpu":"10m","memory":"192Mi"},"limits":{"memory":"320Mi"}}' --set-json 'server.resources={"requests":{"cpu":"10m","memory":"64Mi"},"limits":{"memory":"128Mi"}}' --set-json 'applicationSet.resources={"requests":{"cpu":"5m","memory":"48Mi"},"limits":{"memory":"96Mi"}}' --set-json 'dex.resources={"requests":{"cpu":"5m","memory":"48Mi"},"limits":{"memory":"96Mi"}}' --set-json 'notifications.resources={"requests":{"cpu":"5m","memory":"48Mi"},"limits":{"memory":"96Mi"}}' --set-json 'redis.resources={"requests":{"cpu":"5m","memory":"32Mi"},"limits":{"memory":"64Mi"}}' --set global.affinity.nodeAffinity.type=hard --set-json 'global.affinity.nodeAffinity.matchExpressions=[{"key":"karpenter.sh/capacity-type","operator":"NotIn","values":["spot"]}]' --wait
++ helm upgrade --install root-application /Users/savak/Proj/Lab/vk-lab-platform/gitops/bootstrap --namespace argocd --server-side=true --force-conflicts --set target=aws --set project=vk-lab-platform --set vpcId=vpc-0947c7d57600dba93 --set repoURL=https://github.com/savak1990/vk-lab-platform --set targetRevision=main --set postgres.recoverySnapshotHandle=snap-07cadc720ef2a78d8 --set postgres.storageSize=20Gi --set karpenter.spot.cpuLimit=4 --set karpenter.onDemand.cpuLimit=4 --set-json 'karpenter.spot.instanceTypes=["t4g.medium","t4g.large","m6g.medium","m6g.large","m7g.medium","m7g.large"]' --set-json 'karpenter.onDemand.instanceTypes=["t4g.medium","t4g.large","m6g.medium","m6g.large","m7g.medium","m7g.large"]' --set envoyGateway.acmCertificateArn=arn:aws:acm:eu-west-1:753939038916:certificate/a24197e6-3c34-4f69-94ad-a4de1aa5a359 --set envoyGateway.nlbSubnetIds=subnet-0570eca1f31411fca --set envoyGateway.fqdn=lab.vkdev1.com
++ kubectl get applications -n argocd -o json
++ kubectl get applications -n argocd -o json
++ kubectl get applications -n argocd -o json
++ kubectl get applications -n argocd -o json
++ kubectl get applications -n argocd -o json
++ kubectl get applications -n argocd -o json
++ kubectl get applications -n argocd -o json
++ kubectl get applications -n argocd -o json
++ kubectl get applications -n argocd -o json
++ kubectl get applications -n argocd -o json
++ kubectl get applications -n argocd -o json
++ kubectl get applications -n argocd -o json
++ kubectl get applications -n argocd -o json
++ kubectl get applications -n argocd -o json
++ kubectl get applications -n argocd -o json
++ kubectl get applications -n argocd -o json
++ kubectl get applications -n argocd -o json
++ kubectl get applications -n argocd -o json
++ kubectl get applications -n argocd -o json

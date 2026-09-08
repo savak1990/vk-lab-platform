@@ -1,0 +1,45 @@
++ aws eks describe-cluster --name vk-lab-platform-eks --region eu-west-1
++ aws eks update-kubeconfig --name vk-lab-platform-eks --region eu-west-1 --alias vk-lab-platform-eks --role-arn arn:aws:iam::753939038916:role/eks-access-identity
++ kubectl config set-context --current --namespace=default
++ kubectl cluster-info --request-timeout=5s
++ kubectl patch application alloy -n argocd --type=merge -p '{"spec":{"syncPolicy":{"automated":null}}}'
++ kubectl patch application alloy -n argocd --type=merge -p '{"operation":null}'
++ kubectl patch application aws-load-balancer-controller -n argocd --type=merge -p '{"spec":{"syncPolicy":{"automated":null}}}'
++ kubectl patch application aws-load-balancer-controller -n argocd --type=merge -p '{"operation":null}'
++ kubectl patch application cert-manager -n argocd --type=merge -p '{"spec":{"syncPolicy":{"automated":null}}}'
++ kubectl patch application cert-manager -n argocd --type=merge -p '{"operation":null}'
++ kubectl patch application cnpg-operator -n argocd --type=merge -p '{"spec":{"syncPolicy":{"automated":null}}}'
++ kubectl patch application cnpg-operator -n argocd --type=merge -p '{"operation":null}'
++ kubectl patch application ebs-csi-driver -n argocd --type=merge -p '{"spec":{"syncPolicy":{"automated":null}}}'
++ kubectl patch application ebs-csi-driver -n argocd --type=merge -p '{"operation":null}'
++ kubectl patch application envoy-gateway -n argocd --type=merge -p '{"spec":{"syncPolicy":{"automated":null}}}'
++ kubectl patch application envoy-gateway -n argocd --type=merge -p '{"operation":null}'
++ kubectl patch application external-dns -n argocd --type=merge -p '{"spec":{"syncPolicy":{"automated":null}}}'
++ kubectl patch application external-dns -n argocd --type=merge -p '{"operation":null}'
++ kubectl patch application external-secrets -n argocd --type=merge -p '{"spec":{"syncPolicy":{"automated":null}}}'
++ kubectl patch application external-secrets -n argocd --type=merge -p '{"operation":null}'
++ kubectl patch application external-snapshotter -n argocd --type=merge -p '{"spec":{"syncPolicy":{"automated":null}}}'
++ kubectl patch application external-snapshotter -n argocd --type=merge -p '{"operation":null}'
++ kubectl patch application external-snapshotter-crds -n argocd --type=merge -p '{"spec":{"syncPolicy":{"automated":null}}}'
++ kubectl patch application external-snapshotter-crds -n argocd --type=merge -p '{"operation":null}'
++ kubectl patch application karpenter -n argocd --type=merge -p '{"spec":{"syncPolicy":{"automated":null}}}'
++ kubectl patch application karpenter -n argocd --type=merge -p '{"operation":null}'
++ kubectl patch application kube-prometheus-stack -n argocd --type=merge -p '{"spec":{"syncPolicy":{"automated":null}}}'
++ kubectl patch application kube-prometheus-stack -n argocd --type=merge -p '{"operation":null}'
++ kubectl patch application loki -n argocd --type=merge -p '{"spec":{"syncPolicy":{"automated":null}}}'
++ kubectl patch application loki -n argocd --type=merge -p '{"operation":null}'
++ kubectl patch application metrics-server -n argocd --type=merge -p '{"spec":{"syncPolicy":{"automated":null}}}'
++ kubectl patch application metrics-server -n argocd --type=merge -p '{"operation":null}'
++ kubectl patch application root -n argocd --type=merge -p '{"spec":{"syncPolicy":{"automated":null}}}'
++ kubectl patch application root -n argocd --type=merge -p '{"operation":null}'
++ kubectl get cluster lab-postgres -n cnpg-system
++ kubectl apply -f -
++ kubectl delete httproute -A --all
++ kubectl delete gateway platform-gateway -n envoy --ignore-not-found
++ kubectl get jobs -A -o json
++ kubectl get application root -n argocd
++ kubectl delete application root -n argocd --cascade=foreground --wait --timeout=900s
++ helm status root-application -n argocd
++ helm uninstall root-application -n argocd --wait
++ helm status argocd -n argocd
++ helm uninstall argocd -n argocd --wait
