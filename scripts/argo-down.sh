@@ -41,6 +41,10 @@ if ! kubectl cluster-info --request-timeout=5s >/dev/null 2>&1; then
   exit 1
 fi
 
+if [ "$PROVIDER" = civo ]; then
+  civo_backup
+fi
+
 # Disarming automated sync is the first thing done to a reachable cluster:
 # everything below takes minutes, and a commit landing on the tracked
 # branch inside that window starts a sync whose hooks then deadlock the
@@ -63,7 +67,11 @@ done
 # operator who stops here on a backup failure would otherwise have no way
 # to know the cluster's reconciliation is off.
 if [ "$DISARMED" -gt 0 ]; then
-  echo "ARGO-DOWN: automated sync disarmed on $DISARMED Application(s) - re-arm with 'make argo-up' if you stop here."
+  if [ "$PROVIDER" = civo ]; then
+    echo "ARGO-DOWN: automated sync disarmed on $DISARMED Application(s) - re-arm with 'PROVIDER=civo make argo-up' if you stop here."
+  else
+    echo "ARGO-DOWN: automated sync disarmed on $DISARMED Application(s) - re-arm with 'make argo-up' if you stop here."
+  fi
 fi
 
 # Forces a cold VolumeSnapshot backup of Postgres before the cluster (and
@@ -153,6 +161,14 @@ volumesnapshot.snapshot.storage.k8s.io volumesnapshotcontent.snapshot.storage.k8
 volumesnapshotclass.snapshot.storage.k8s.io storageclass.storage.k8s.io \
 clustersecretstore.external-secrets.io externalsecret.external-secrets.io \
 volumeattachment.storage.k8s.io persistentvolume"
+
+if [ "$PROVIDER" = civo ]; then
+  filtered_kinds=""
+  for kind in $TERMINATING_KINDS; do
+    kubectl get "$kind" -A >/dev/null 2>&1 && filtered_kinds="$filtered_kinds $kind"
+  done
+  TERMINATING_KINDS="$filtered_kinds"
+fi
 
 report_remaining() {
   local stuck=""
