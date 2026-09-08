@@ -105,6 +105,10 @@ CIVO-040 (the kubeconfig and the existence proof). CIVO-050 (`target: civo` rend
 - The AWS `make argo-up` fast path and full path produce the same Helm command lines as before. Record the lines with a `set -x` diff and redact the secrets.
 - The scripts print no token value and no bcrypt value.
 
+**Correction (2026-09-08):** the second bullet's "`root` Application is `Synced/Healthy` on civo" is not achievable at this spec's dependency level (CIVO-040, CIVO-050 only). Confirmed live: `root`'s own resource tree on the civo baseline contains only child `Application` objects, an `HTTPRoute`, and RBAC/`PriorityClass` objects — none of which ArgoCD assigns a health status to (verified via the full `.status.resources[].health` object, not just its collapsed string). AWS's `root` gets its "Healthy" signal from resources the civo baseline doesn't render yet, chiefly the CNPG Postgres `Cluster` (CIVO-120's scope). Redefine this criterion for civo as: `root` reaches `Synced`, and every child Application reaches `Synced`/`Healthy` — which it reliably does. Re-tighten back to "`root` itself Healthy" once a later spec (CIVO-120 or similar) adds a resource ArgoCD can assess.
+
+As a temporary consequence, `scripts/argo-up.sh`'s `WATCH_SECONDS` default is shortened to 300s on civo (was sharing AWS's 2700s) so a run that structurally cannot converge fails in minutes, not 45 — see the `TODO(civo)` comment at that line. Remove the civo-specific default once the criterion above is re-tightened.
+
 ## 9. Validation
 
 Offline: `shellcheck` and `bash -n`. Real cloud: one civo up/down (~0.15 USD). AWS: a fast-path run only.
