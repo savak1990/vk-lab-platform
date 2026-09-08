@@ -156,6 +156,24 @@ dns_status() {
   done
 }
 
+civo_wait_for_lb_ip() {
+  local watch_seconds="${CIVO_ARGO_UP_LB_WATCH_SECONDS:-300}"
+  local poll_interval="${ARGO_UP_POLL_INTERVAL:-5}"
+  local elapsed=0 svc_ip=""
+  while [ "$elapsed" -lt "$watch_seconds" ]; do
+    svc_ip="$(kubectl get svc -n envoy -l gateway.envoyproxy.io/owning-gateway-name=platform-gateway \
+      -o jsonpath='{.items[0].status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)"
+    if [ -n "$svc_ip" ] && [ "$svc_ip" = "$RESERVED_IP" ]; then
+      echo "ARGO-UP: Envoy Service LB has the reserved IP ($RESERVED_IP)."
+      return 0
+    fi
+    sleep "$poll_interval"
+    elapsed=$((elapsed + poll_interval))
+  done
+  echo "ARGO-UP: timed out after ${watch_seconds}s waiting for Envoy Service LB to get reserved IP $RESERVED_IP - last observed: ${svc_ip:-none}." >&2
+  return 1
+}
+
 civo_wait_for_dns() {
   local watch_seconds="${CIVO_ARGO_UP_DNS_WATCH_SECONDS:-60}"
   local poll_interval="${ARGO_UP_POLL_INTERVAL:-5}"
@@ -219,6 +237,7 @@ EXISTING_STATUS="$(kubectl get application root -n argocd \
 if [ "$EXISTING_STATUS" = "Synced/Healthy" ]; then
   echo "ARGO-UP: root Application already Synced/Healthy - checking DNS."
   if [ "$PROVIDER" = civo ]; then
+    civo_wait_for_lb_ip || exit 1
     civo_wait_for_dns
   else
     aws_wait_for_dns
@@ -443,6 +462,7 @@ if [ "$overall" != "Synced/Healthy" ]; then
 fi
 echo "ARGO-UP: root Synced/Healthy - waiting for external-dns to publish records."
 if [ "$PROVIDER" = civo ]; then
+  civo_wait_for_lb_ip || exit 1
   civo_wait_for_dns
 else
   aws_wait_for_dns
