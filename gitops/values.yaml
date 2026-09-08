@@ -79,6 +79,8 @@ karpenter:
 envoyGateway:
   acmCertificateArn: ""
   nlbSubnetIds: ""
+  reservedIp: ""
+  firewallId: ""
   fqdn: ""
   tls:
     mode: nlb
