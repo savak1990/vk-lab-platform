@@ -1,7 +1,7 @@
 ---
 id: "CIVO-065"
-title: "cert-manager installed behind a toggle, off on AWS"
-status: "READY"
+title: "cert-manager installed on civo, unrelated to aws's existing webhook-cert install"
+status: "IN_PROGRESS"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -14,7 +14,7 @@ depends_on: ["CIVO-050"]
 blocked_by: []
 supersedes: []
 created: "2026-09-06"
-updated: "2026-09-06"
+updated: "2026-09-09"
 completed: null
 ---
 
@@ -23,33 +23,43 @@ completed: null
 ## 1. Outcome and rationale
 
 cert-manager runs on the Civo target with the Gateway API HTTP-01 solver
-enabled. cert-manager is absent on AWS unless `certManager.enabled=true`.
+enabled. cert-manager already runs on AWS unconditionally, for the ALB
+controller's own webhook cert (added 2026-09-07, unrelated to this spec);
+this spec's civo install is gated on `target == "civo"` alone, not a toggle.
 Both CIVO-070 (public TLS) and CIVO-085 (workload identity certificates)
 need it. For that reason, it is its own small slice.
 
 ## 2. Scope and non-goals
 
-In scope: the Application, the CRDs, the namespace, the wave, and the
-ServiceMonitor gating. Not in scope: the issuers and the certificates
-(CIVO-070, CIVO-085).
+In scope: the Application, the CRDs, the namespace, and the wave. Not in
+scope: the issuers and the certificates (CIVO-070, CIVO-085); the monitors
+gating, deferred to CIVO-160 (`kube-prometheus-stack` is forbidden on civo
+entirely, so no `ServiceMonitor` gating applies here).
 
 ## 3. Current state / evidence
 
 No cert-manager objects exist in `gitops/` (verified negative). ADR 0011
-rejects cert-manager for AWS. CIVO-015's ADR 0028 allows it on Civo.
+rejects cert-manager for AWS's public-edge TLS termination. CIVO-015's
+ADR 0028 allows it on Civo.
+
+- **Correction (2026-09-09):** `gitops/templates/platform/aws/cert-manager/application.yaml` already exists (added 2026-09-07) — an unconditional, `target=="aws"`-gated cert-manager install that exists solely to serve aws-load-balancer-controller's own webhook certificate. It is unrelated to this spec's civo/ACME use case and this spec does not touch it.
 
 ## 4. Design and contracts
 
-- `gitops/templates/platform/shared/cert-manager/application.yaml` is gated by `{{- if .Values.certManager.enabled }}`. The chart is `cert-manager` from `https://charts.jetstack.io`. Pin the version at implementation (latest 1.x). Set `crds.enabled: true`. Set `config.gatewayAPI.enabled: true` (current docs; https://cert-manager.io/docs/configuration/acme/http01/) or the key for the pinned version. Set `ServerSideApply=true`. Wave: the first candidate was -2 (before ESO/consumers, after the Envoy chart CRDs at -1). cert-manager must be Established before the Certificates at wave 0. Place it at -3. Note that the Gateway API CRDs come from Envoy Gateway at -1. The HTTP-01 Gateway solver needs that CRD only at runtime, not at install.
+- `gitops/templates/platform/shared/cert-manager/application.yaml` is gated by `{{- if .Values.certManager.enabled }}`. **Correction (2026-09-09):** the implemented path is `gitops/templates/platform/civo/cert-manager/application.yaml`, not `shared/` — this install and AWS's existing one are unrelated, so it isn't a shared/target-branched file (see the §12 deviation on the gate choice). The chart is `cert-manager` from `https://charts.jetstack.io`. Pin the version at implementation (latest 1.x). Set `crds.enabled: true`. Set `config.gatewayAPI.enabled: true` (current docs; https://cert-manager.io/docs/configuration/acme/http01/) or the key for the pinned version. Set `ServerSideApply=true`. Wave: the first candidate was -2 (before ESO/consumers, after the Envoy chart CRDs at -1). cert-manager must be Established before the Certificates at wave 0. Place it at -3. Note that the Gateway API CRDs come from Envoy Gateway at -1. The HTTP-01 Gateway solver needs that CRD only at runtime, not at install.
 - Resources: requests 50m/64Mi per component.
 - `certManager.enabled` defaults to false. The civo values set it to true.
 
 **Review amendments (2026-09-06, kubernetes-architect):**
 - Add a `PreSync` hook Job on the consumers' Applications (or on the cert-manager Application's dependents) that waits for `certificates.cert-manager.io` to report `Established`, per this repository's rule that sync waves do not gate CRD readiness across Applications.
 
+**Correction (2026-09-09):** the wave placement above is wrong — wave -3 syncs before Envoy Gateway's Application (wave -1, the CRD source), not after. The implementation uses wave 0, the minimum integer that syncs strictly after -1. This is also a forward note for CIVO-070: its Certificates must sit at a wave strictly greater than cert-manager's (0), not both at wave 0 as this section's original text assumed.
+
 ## 5. Files/components affected
 
-The new file above; `gitops/values.yaml`; the monitors gating in CIVO-160.
+`gitops/templates/platform/civo/cert-manager/application.yaml` (the new
+file above, per the §4 correction); `gitops/values.yaml`; the monitors
+gating in CIVO-160.
 
 ## 6. Implementation steps
 
@@ -64,7 +74,7 @@ The CIVO-050 layout. This spec runs in parallel with CIVO-060.
 ## 8. Acceptance criteria
 
 - On civo: the cert-manager pods are Ready. The CRDs are Established. The Gateway API solver is accepted.
-- On aws: no cert-manager objects exist. The golden diff is empty.
+- On aws: this spec adds no cert-manager objects to the AWS render (the pre-existing aws-load-balancer-controller cert-manager install is untouched). The golden diff is empty.
 
 ## 9. Validation
 
@@ -72,7 +82,7 @@ Offline: the golden diff and kubeconform. Real cloud: civo (~cents).
 
 ## 10. AWS regression protection
 
-The chart is gated off by default. The golden diff protects AWS.
+The chart only renders when `target == civo`; AWS is unaffected. The golden diff protects AWS.
 
 ## 11. Rollout and rollback/recovery
 
@@ -81,6 +91,9 @@ Revert the change. Argo prunes the objects. There is no data risk.
 ## 12. Risks and unresolved questions
 
 - The flag name for Gateway API support varies by chart version. Verify it at pin time.
+- **Deviation from §4 (2026-09-09):** the civo cert-manager Application is gated on `target == "civo"` alone, not on the `certManager.enabled` value flag §4 describes. That flag had no genuine second position (civo always true, aws never reads it, local never wants it) and wiring it through `gitops/bootstrap/values.yaml`/`root-application.yaml`/`argo-up.sh` plus regenerating the bootstrap golden fixture was avoidable plumbing. The dead `certManager.enabled` key was removed from `gitops/values.yaml`.
+- **Deviation from §4 (2026-09-09):** resource requests use aws's proven cert-manager values (10m cpu / 32Mi memory request, 64Mi memory limit per component) instead of §4's unexamined 50m/64Mi — the identical chart at the identical pinned version already runs at the lower values on aws with no stated reason for civo to need 5x the CPU request.
+- **Open question, findings (2026-09-09):** upstream cert-manager docs say the Gateway API CRD check runs only at controller startup, and the documented remedy for a missed check is a manual `kubectl rollout restart deployment cert-manager -n cert-manager` — meaning the expected failure mode, if the wave-0 ordering loses its race against Envoy Gateway's CRDs, is a silent miss (the pod stays healthy, the feature is just off), not a crash-loop. Root's `syncPolicy.retry` does not cover this: it retries failed applies (`no matches for kind`), not a running pod's already-cached feature set, and `selfHeal` never triggers because the manifest never changes. A miss here is invisible to every gate this spec adds and would surface later as CIVO-070's Certificates hanging forever. No hook is added speculatively (Ruling 2, above), but Task 4's live check for the feature being registered in the cert-manager controller's own log is treated as required evidence before this spec can close DONE, not as optional exploration.
 
 ## 13. Definition of done
 
@@ -90,3 +103,4 @@ Revert the change. Argo prunes the objects. There is no data risk.
 
 - 2026-09-06 — created as DRAFT.
 - 2026-09-06 — approved for development by the user; promoted to READY (dependencies still gate the start).
+- 2026-09-09 — dependency CIVO-050 confirmed DONE; started via subagent-driven development on branch `civo-065-cert-manager`; promoted to IN_PROGRESS.

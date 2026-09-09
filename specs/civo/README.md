@@ -87,7 +87,7 @@ verified in this environment.
 | CIVO-045 | [045-argo-scripts-civo-branches](045-argo-scripts-civo-branches/spec.md) | `argo-up`/`argo-down` Civo branches | DONE | P1 | M | standard | 040, 050 | M1 |
 | CIVO-050 | [050-gitops-civo-target-baseline](050-gitops-civo-target-baseline/spec.md) | Hoist portable components; `target: civo` tree; golden AWS render | DONE | P1 | M | standard | 010 | M1 |
 | CIVO-060 | [060-civo-ingress-envoy-lb](060-civo-ingress-envoy-lb/spec.md) | Civo LB via Envoy Service, Gateway 80/443 | DONE | P1 | M | standard | 045 | M1 |
-| CIVO-065 | [065-cert-manager-install](065-cert-manager-install/spec.md) | cert-manager install behind a toggle | READY | P1 | S | standard | 050 | M1 |
+| CIVO-065 | [065-cert-manager-install](065-cert-manager-install/spec.md) | cert-manager installed on civo, target-gated | IN_PROGRESS | P1 | S | standard | 050 | M1 |
 | CIVO-070 | [070-letsencrypt-http01-tls](070-letsencrypt-http01-tls/spec.md) | Let's Encrypt HTTP-01 TLS at Envoy, Secret persistence | READY | P1 | M | standard | 060, 065, 110 | M1 |
 | CIVO-080 | [080-rolesanywhere-ca-ceremony](080-rolesanywhere-ca-ceremony/spec.md) | Offline CA ceremony and committed material | READY | P0 | M | strongest | 015 | M1 |
 | CIVO-082 | [082-rolesanywhere-terraform](082-rolesanywhere-terraform/spec.md) | Trust anchor, profile, roles, lab-role additions | READY | P0 | M | strongest | 080 | M1 |
