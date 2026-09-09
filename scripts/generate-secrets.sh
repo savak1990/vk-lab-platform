@@ -24,11 +24,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
-SECRETS_DIR="$REPO_ROOT/secrets/$PROJECT_NAME"
 ROOT_DOMAIN="${ROOT_DOMAIN:-}"
 FIXED_TEST_PASSWORDS="${FIXED_TEST_PASSWORDS:-false}"
 source "$SCRIPT_DIR/lib/region.sh"
+source "$SCRIPT_DIR/lib/provider.sh"
+SECRETS_DIR="$REPO_ROOT/secrets/$PROJECT_NAME"
 
 random_password() {
   aws secretsmanager get-random-password --region "$LAB_REGION" --exclude-punctuation \
@@ -70,6 +70,22 @@ fi
 
 generate_password_if_missing postgres-app-password
 generate_password_if_missing grafana-admin-password
+
+# The CA is civo-only (Roles Anywhere); aws never touches these files.
+generate_ca_if_missing() {
+  local file="$SECRETS_DIR/civo-ca-cert.pem"
+  if [ "$PROVIDER" != "civo" ]; then
+    echo "Skipping civo-ca-cert - PROVIDER is not civo"
+    return
+  fi
+  if [ -f "$file" ]; then
+    echo "Skipping civo-ca-cert - $file already exists"
+    return
+  fi
+  PROJECT_NAME="$PROJECT_NAME" "$SCRIPT_DIR/civo-ca-init.sh"
+}
+
+generate_ca_if_missing
 
 # argocd-admin-password.bcrypt is plaintext-committed (not KMS-encrypted -
 # secret-encrypt.sh doesn't apply, see secrets/README.md), generated in
