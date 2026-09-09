@@ -1,7 +1,7 @@
 ---
 id: "CIVO-065"
 title: "cert-manager installed on civo, unrelated to aws's existing webhook-cert install"
-status: "IN_PROGRESS"
+status: "DONE"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -15,7 +15,7 @@ blocked_by: []
 supersedes: []
 created: "2026-09-06"
 updated: "2026-09-09"
-completed: null
+completed: "2026-09-09"
 ---
 
 # CIVO-065 — cert-manager install
@@ -94,13 +94,18 @@ Revert the change. Argo prunes the objects. There is no data risk.
 - **Deviation from §4 (2026-09-09):** the civo cert-manager Application is gated on `target == "civo"` alone, not on the `certManager.enabled` value flag §4 describes. That flag had no genuine second position (civo always true, aws never reads it, local never wants it) and wiring it through `gitops/bootstrap/values.yaml`/`root-application.yaml`/`argo-up.sh` plus regenerating the bootstrap golden fixture was avoidable plumbing. The dead `certManager.enabled` key was removed from `gitops/values.yaml`.
 - **Deviation from §4 (2026-09-09):** resource requests use aws's proven cert-manager values (10m cpu / 32Mi memory request, 64Mi memory limit per component) instead of §4's unexamined 50m/64Mi — the identical chart at the identical pinned version already runs at the lower values on aws with no stated reason for civo to need 5x the CPU request.
 - **Open question, findings (2026-09-09):** upstream cert-manager docs say the Gateway API CRD check runs only at controller startup, and the documented remedy for a missed check is a manual `kubectl rollout restart deployment cert-manager -n cert-manager` — meaning the expected failure mode, if the wave-0 ordering loses its race against Envoy Gateway's CRDs, is a silent miss (the pod stays healthy, the feature is just off), not a crash-loop. Root's `syncPolicy.retry` does not cover this: it retries failed applies (`no matches for kind`), not a running pod's already-cached feature set, and `selfHeal` never triggers because the manifest never changes. A miss here is invisible to every gate this spec adds and would surface later as CIVO-070's Certificates hanging forever. No hook is added speculatively (Ruling 2, above), but Task 4's live check for the feature being registered in the cert-manager controller's own log is treated as required evidence before this spec can close DONE, not as optional exploration.
+  **Resolved (2026-09-09):** the live run's cert-manager controller log showed `"enabling the sig-network Gateway API certificate-shim and HTTP-01 solver"`, the `gateway-shim` controller started, and its `*v1.Gateway` cache populated — the feature registered correctly, with 0 pod restarts across controller/webhook/cainjector. The wave-0 ordering won the race on this run; no hook was needed. This is one data point, not proof it holds every cycle — CIVO-070's first live run (the actual consumer of this feature) is the next real test.
+- **Operational note (2026-09-09):** Argo's root Application only reconciles against `repoURL`+`targetRevision` (`main`) via `origin` — a local `git merge --no-ff` is invisible to a running cluster until `git push origin main` happens. This branch's merge was pushed before live verification could see any of it; the same PROVIDER-env-leak-shaped mistake is easy to repeat with the merge step itself. Worth a standing reminder alongside the "push before argo-up" note this repeats from CIVO-060's session.
 
 ## 13. Definition of done
 
-- [ ] Evidence recorded; index updated; status `DONE`
+- [x] Evidence recorded; index updated; status `DONE`
 
 ## 14. Execution evidence and status history
 
 - 2026-09-06 — created as DRAFT.
 - 2026-09-06 — approved for development by the user; promoted to READY (dependencies still gate the start).
 - 2026-09-09 — dependency CIVO-050 confirmed DONE; started via subagent-driven development on branch `civo-065-cert-manager`; promoted to IN_PROGRESS.
+- 2026-09-09 — implemented via subagent-driven development: 3 tasks (Application file, structural-check wiring, spec-text corrections) each with a fresh implementer + task review, then a final whole-branch review (opus) with 3 Important + 3 Minor findings, one bundled fix round + scoped re-review (all addressed, no code changes needed - all findings were documentation/spec-prose). Merged to `main` (`0d4d911`), no PR.
+- 2026-09-09 — offline evidence: `make gitops-check` clean (aws golden diff empty; civo/local structural check correct) at every task, after the fix round, and after merge. `bash -n`/shellcheck clean on `scripts/gitops-render-check.sh`.
+- 2026-09-09 — live evidence (civo, region LON1): fresh bring-up via `PROVIDER=civo ARGO_UP_WATCH_SECONDS=900 make full-up` against merged `main` (pushed to `origin` first - Argo only reads git, a local merge is invisible until pushed, see §12's operational note). `root` reached Synced/Healthy a second time on civo (first was CIVO-060), now with `cert-manager` Application also Synced/Healthy alongside cnpg-operator/envoy-gateway/external-secrets. `kubectl get crd certificates.cert-manager.io`/`gateways.gateway.networking.k8s.io` both `Established=True`. All 3 cert-manager pods (controller/webhook/cainjector) `Running`, 0 restarts. Controller log confirmed the Gateway API HTTP-01 solver registered (`"enabling the sig-network Gateway API certificate-shim and HTTP-01 solver"`, `gateway-shim` controller started, `*v1.Gateway` cache populated) - the load-bearing check from §12's open question, resolved. Throwaway `ClusterIssuer` with a `gatewayHTTPRoute` solver dry-run accepted. `make gitops-check` clean against the merged tree; live AWS `argocd app diff root` deferred (no AWS cluster running this session, same as CIVO-060), golden diff is the AWS gate actually exercised. `PROVIDER=civo make full-down` (with `CONFIRM_DESTROY=vk-civo-lab` for the persistent/bootstrap stages) tore down the LB, cluster, firewalls, reserved IP, network, secrets, and Route 53 delegation in the expected order; final check (`civo kubernetes/volume/loadbalancer/ip ls`, `aws s3 ls`) confirmed zero Civo resources and no state bucket, matching the pre-run baseline exactly. Status: `DONE`.
