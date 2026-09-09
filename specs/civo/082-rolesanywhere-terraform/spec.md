@@ -1,7 +1,7 @@
 ---
 id: "CIVO-082"
 title: "Roles Anywhere Terraform: trust anchor, profile, per-consumer roles, lab-role additions"
-status: "READY"
+status: "IN_PROGRESS"
 priority: "P0"
 milestone: "M1"
 type: "implementation"
@@ -14,7 +14,7 @@ depends_on: ["CIVO-080"]
 blocked_by: []
 supersedes: []
 created: "2026-09-06"
-updated: "2026-09-06"
+updated: "2026-09-09"
 completed: null
 ---
 
@@ -99,3 +99,4 @@ The unit is guarded. The AWS plan is unchanged. The `lab-role` additions are add
 
 - 2026-09-06 — created as DRAFT.
 - 2026-09-06 — approved for development by the user; promoted to READY (dependencies still gate the start).
+- 2026-09-09 — CIVO-080 (dependency) done; started implementation on branch `civo-082-rolesanywhere-terraform`, promoted to IN_PROGRESS.
