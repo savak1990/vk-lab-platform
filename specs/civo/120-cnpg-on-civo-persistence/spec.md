@@ -99,7 +99,7 @@ Data risk: yes. Test with disposable data only. Rollback: revert the change. The
 - The dump and restore duration for a 20 GiB volume sets the teardown timeout. Measure once and adjust.
 - A logical dump restores to the moment of the dump. Rows written after the last dump and before an unplanned cluster loss are gone. The teardown gate bounds that window for planned teardowns; the daily schedule bounds it otherwise.
 - The restore Job must detect an empty schema reliably. Counting tables in the application schema is the chosen test.
-- `scripts/argo-up.sh` currently shortens `WATCH_SECONDS` to 300s on civo (`TODO(civo)` comment at the assignment) because nothing in `root`'s tree gets an ArgoCD health check yet (CIVO-045 §8). Once this spec adds the CNPG `Cluster` resource, check whether `root` can reach `Synced/Healthy` on civo and, if so, remove that shortened default so civo shares AWS's 2700s timeout again.
+- **Update (2026-09-09, from CIVO-060):** `root` now reaches `Synced/Healthy` on civo — CIVO-060's `Gateway` resource is the first thing in civo's root tree with a real ArgoCD health check, and a live bring-up reached `Synced/Healthy` well inside the shortened 300s window (with one transient `Degraded` blip while the Gateway's conditions settled). `scripts/argo-up.sh` still keeps `WATCH_SECONDS` at 300s on civo (`TODO(civo)` comment at the assignment), deliberately, because this was observed on one run, not proven stable across repeated cycles. This spec should re-run a few civo up/down cycles once the CNPG `Cluster` resource lands, confirm `Synced/Healthy` is reached reliably every time (not just once), and only then remove the shortened default so civo shares AWS's 2700s timeout again.
 
 ## 13. Definition of done
 

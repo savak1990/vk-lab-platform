@@ -1,7 +1,7 @@
 ---
 id: "CIVO-060"
 title: "Civo ingress: Envoy Service LoadBalancer with Civo annotations and Gateway listeners 80/443"
-status: "READY"
+status: "DONE"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -14,8 +14,8 @@ depends_on: ["CIVO-045"]
 blocked_by: []
 supersedes: []
 created: "2026-09-06"
-updated: "2026-09-06"
-completed: null
+updated: "2026-09-09"
+completed: "2026-09-09"
 ---
 
 # CIVO-060 — Civo ingress
@@ -103,13 +103,20 @@ Revert the change. Argo reconciles the resources. There is no data risk.
 ## 12. Risks and unresolved questions
 
 - The annotation key for the reserved IP differs across documents (`kubernetes.civo.com/ipv4-address` vs `civo.com/reserved-ip`). The CCM README is authoritative. Confirm the key in the spike.
+- **Resolved (2026-09-09):** `kubernetes.civo.com/ipv4-address` is correct - confirmed against the live CCM source (`civo/civo-cloud-controller-manager`, `loadbalancer.go`), not just documentation. `civo.com/reserved-ip` does not appear anywhere in that repo.
+- **Deviations from §3/§4 (2026-09-09):** the `kubernetes.civo.com/protocol` annotation from §3's list was deliberately dropped - CCM's HTTP default is correct here, nothing needs overriding. Civo gets an HTTP:80-only listener; no HTTPS:443/TLS listener exists yet (§4's mention of one is corrected below). `scripts/gitops-render-check.sh`'s structural check, not named in §5, needed a per-target split - `EnvoyProxy`/`Gateway`/`GatewayClass` were forbidden for both `civo` and `local`; now required for `civo`, still forbidden for `local`.
+- **Plan defect, not implementation defect (2026-09-09):** the implementation plan's own text said Gateway listeners would be values-driven so a later spec's HTTPS listener would be a values change. What was actually built is a literal per-target template block (§2's TLS-out-of-scope boundary and §1's "plain HTTP until CIVO-070" both argue for exactly this, and the plan's own contradiction was resolved that way). CIVO-070 will need to add the HTTPS:443 listener itself as a template change - corrected in `specs/civo/070-letsencrypt-http01-tls/spec.md` §3/§5.
+- **New observation (2026-09-09):** a live bring-up reached `root` `Synced/Healthy` on civo for the first time - the `Gateway`'s ArgoCD health check (`Accepted`/`Programmed`, already present in `gitops/argocd/values.yaml` before this spec) is the first real health signal anywhere in civo's root tree. `scripts/argo-up.sh` still keeps the shortened 300s `WATCH_SECONDS` default from CIVO-045 deliberately, since one successful run doesn't prove it holds every time - see the tracking note added to `specs/civo/120-cnpg-on-civo-persistence/spec.md` §12.
 
 ## 13. Definition of done
 
-- [ ] Evidence for both providers
-- [ ] Index updated; status `DONE`
+- [x] Evidence for both providers
+- [x] Index updated; status `DONE`
 
 ## 14. Execution evidence and status history
 
 - 2026-09-06 — created as DRAFT.
 - 2026-09-06 — approved for development by the user; promoted to READY (dependencies still gate the start).
+- 2026-09-09 — implemented via subagent-driven development on branch `civo-060-envoy-lb`; advisor-reviewed plan, per-task reviews, final whole-branch review (one fix round, all findings addressed) all clean. Merged to `main` (`e2a3d2c`), no PR.
+- 2026-09-09 — offline evidence: `make gitops-check` clean (AWS golden diff empty, civo/local structural check correct) at every task and after merge. `bash -n`/shellcheck clean on `scripts/argo-up.sh`.
+- 2026-09-09 — live evidence (civo, ~region LON1): fresh bring-up via `PROVIDER=civo make argo-up` against merged `main` reached `root` `Synced/Healthy` (first time ever on civo). `civo_wait_for_lb_ip()` (this spec's readiness gate) confirmed the Envoy Service's LB got the reserved IP. `curl -H 'Host: argo.<fqdn>' http://<reserved-ip>/` returned HTTP 200 (ArgoCD login page). Port check: only 80 open on the reserved IP; 443 and other common ports closed/filtered, matching the HTTP-only scope. `PROVIDER=civo make argo-down` deleted the Envoy-managed LB Service and confirmed it gone before the cascade; `civo loadbalancer ls` empty afterward. Full teardown (`cluster-down`, `persistent-down`, `bootstrap-down`) afterward left zero Civo resources and no state bucket - verified via `civo kubernetes/network/volume/firewall/ip/loadbalancer ls` and `aws s3 ls`, matching the pre-run baseline exactly. Status: `DONE`.

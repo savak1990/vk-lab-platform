@@ -43,7 +43,7 @@ Not in scope: the workload identity certs (CIVO-085) and DNS-01.
 ## 3. Current state / evidence
 
 - ADR 0011 gives two reasons. The limit is 5 duplicate certificates per week under CI up/down cycles. No Secret persistence bridge existed.
-- The Gateway listeners are values-driven since CIVO-060. cert-manager has the Gateway API solver since CIVO-065. The DNS records exist since CIVO-110 (HTTP-01 needs the hostname to resolve to the LB).
+- **Correction (2026-09-09, from CIVO-060):** CIVO-060 shipped Civo with an HTTP:80-only Gateway listener; no HTTPS:443 listener exists yet, and the civo branch of `shared/envoy-gateway/gateway.yaml` is a literal template block, not values-driven. This spec must add the HTTPS:443 listener itself (a template change) alongside its `certificateRefs`, not just set a value on an existing listener. cert-manager has the Gateway API solver since CIVO-065. The DNS records exist since CIVO-110 (HTTP-01 needs the hostname to resolve to the LB).
 - The SSM `SecureString` pattern exists (`modules/persistent-secrets`; `argo-up.sh:41-54` reads with decryption).
 
 ## 4. Design and contracts
@@ -66,7 +66,7 @@ Not in scope: the workload identity certs (CIVO-085) and DNS-01.
 
 ## 5. Files/components affected
 
-`gitops/templates/platform/civo/tls/{issuers,certificate}.yaml`; `shared/envoy-gateway/gateway.yaml` (the listener certificateRefs come from values); `gitops/values.yaml`; `scripts/argo-up.sh`; `scripts/argo-down.sh`.
+`gitops/templates/platform/civo/tls/{issuers,certificate}.yaml`; `shared/envoy-gateway/gateway.yaml` (adds the HTTPS:443 listener - see correction above); `gitops/values.yaml`; `scripts/argo-up.sh`; `scripts/argo-down.sh`.
 
 ## 6. Implementation steps
 
