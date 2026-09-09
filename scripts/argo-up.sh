@@ -191,7 +191,7 @@ civo_wait_for_dns() {
     sleep "$poll_interval"
     elapsed=$((elapsed + poll_interval))
   done
-  echo "ARGO-UP: DNS not resolved for argo.<fqdn> after ${watch_seconds}s - non-fatal on civo (external-dns/spec 110 and the Envoy LB/spec 060 aren't implemented in this baseline yet)." >&2
+  echo "ARGO-UP: DNS not resolved for argo.<fqdn> after ${watch_seconds}s - non-fatal on civo (external-dns isn't implemented yet, so no DNS record is created automatically)." >&2
   echo "ARGO-UP: root Synced/Healthy - platform ready (DNS not yet resolved, non-fatal on civo)."
   return 0
 }

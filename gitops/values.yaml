@@ -73,19 +73,14 @@ karpenter:
 # carry kubernetes.io/role/elb (see envoy-gateway/gateway.yaml's comment).
 # fqdn is persistent/route53's fqdn output ("lab.<root-domain>") - the
 # HTTPRoutes' hostnames are built from this, not a literal domain string.
-# tls.mode names which layer terminates TLS - aws terminates at the NLB,
-# plaintext behind it; a target with no such edge LB terminates in Envoy
-# itself. service.annotations carries LB-provisioning annotations; empty is a no-op.
+# reservedIp/firewallId are Civo-target equivalents of acmCertificateArn/
+# nlbSubnetIds - Terraform-derived values the Civo Gateway LB needs.
 envoyGateway:
   acmCertificateArn: ""
   nlbSubnetIds: ""
   reservedIp: ""
   firewallId: ""
   fqdn: ""
-  tls:
-    mode: nlb
-  service:
-    annotations: {}
 
 # txtOwnerId is external-dns's TXT-registry ownership marker - stable across
 # make down/up cycles. Empty means "use .Values.project" (aws's current

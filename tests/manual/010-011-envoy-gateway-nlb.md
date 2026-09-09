@@ -1,6 +1,7 @@
 # Manual test plan: specs 010 + 011 — Envoy Gateway + NLB edge
 
-Covers `gitops/templates/platform/aws/envoy-gateway/{application,gateway,httproutes,policies}.yaml`,
+Covers `gitops/templates/platform/shared/envoy-gateway/{application,gateway,httproutes}.yaml`,
+`gitops/templates/platform/aws/envoy-gateway/policies.yaml`,
 `gitops/templates/platform/aws/aws-load-balancer-controller/application.yaml`,
 `terraform/modules/aws-lb-controller-pod-identity/`, `terraform/live/cluster/aws-lb-controller-pod-identity/`,
 the `scripts/argo-up.sh`/`scripts/argo-down.sh` edits, and the metrics wiring added to
