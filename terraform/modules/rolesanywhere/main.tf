@@ -126,3 +126,30 @@ resource "aws_rolesanywhere_profile" "this" {
   role_arns        = [for k, r in aws_iam_role.consumer : r.arn]
   duration_seconds = var.session_duration
 }
+
+# Terraform owns AWS, Argo CD owns Kubernetes - these values are read by a
+# later Argo-deployed credential-helper sidecar, not by anything in this
+# state, so they're handed off via SSM (the same pattern as root_domain/fqdn).
+resource "aws_ssm_parameter" "trust_anchor_arn" {
+  count = local.create ? 1 : 0
+
+  name  = "/${var.project}/bootstrap/rolesanywhere/trust_anchor_arn"
+  type  = "String"
+  value = aws_rolesanywhere_trust_anchor.this[0].arn
+}
+
+resource "aws_ssm_parameter" "profile_arn" {
+  count = local.create ? 1 : 0
+
+  name  = "/${var.project}/bootstrap/rolesanywhere/profile_arn"
+  type  = "String"
+  value = aws_rolesanywhere_profile.this[0].arn
+}
+
+resource "aws_ssm_parameter" "role_arn" {
+  for_each = local.consumers
+
+  name  = "/${var.project}/bootstrap/rolesanywhere/role_arn/${each.key}"
+  type  = "String"
+  value = aws_iam_role.consumer[each.key].arn
+}
