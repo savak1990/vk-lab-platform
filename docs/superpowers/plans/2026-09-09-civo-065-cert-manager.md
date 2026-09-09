@@ -156,7 +156,7 @@ argo-up chain needs a change — this is the plumbing Ruling 1 avoids.
 
 ## Tasks
 
-**Task 1 — add the Application, remove the dead value.**
+### Task 1 — add the Application, remove the dead value
 1. Create `gitops/templates/platform/civo/cert-manager/application.yaml` as above.
 2. Delete `certManager:` block from `gitops/values.yaml`.
 3. `make gitops-check` — aws golden diff must stay empty (untouched file/path);
@@ -166,7 +166,7 @@ argo-up chain needs a change — this is the plumbing Ruling 1 avoids.
    (repo's existing kubeconform invocation/CRD schema set) for the new object.
 5. `bash -n`/shellcheck N/A (no script changes this task).
 
-**Task 2 — wire the structural check.**
+### Task 2 — wire the structural check
 1. `scripts/gitops-render-check.sh`: add `Application__argocd__cert-manager`
    to `REQUIRED_OBJECTS_CIVO`.
 2. Split `FORBIDDEN_APPLICATIONS` into `FORBIDDEN_APPLICATIONS_LOCAL` (keeps
@@ -182,7 +182,7 @@ argo-up chain needs a change — this is the plumbing Ruling 1 avoids.
 4. `make gitops-check` clean end to end (aws golden diff empty, civo/local
    structural check passing with the new required object).
 
-**Task 3 — spec text corrections (§3/§4/§8/§12), no code.**
+### Task 3 — spec text corrections (§3/§4/§8/§12), no code
 1. §3: append a correction note recording the AWS cert-manager file's
    existence since 2026-09-07 and its unrelated purpose.
 2. §4: correct the wave placement text (was: "Place it at -3" — now: wave 0,
@@ -196,7 +196,7 @@ argo-up chain needs a change — this is the plumbing Ruling 1 avoids.
 4. §12: record Ruling 1/2/3 above (gate choice, no hook yet, resource sizing)
    as spec-level "Deviations from §4" notes, same shape as CIVO-060's §12.
 
-**Task 4 — live verification on civo.**
+### Task 4 — live verification on civo
 1. `PROVIDER=civo make argo-up` against this branch's `TARGET_REVISION`
    (branch not yet merged — same pre-merge-testing question CIVO-060 hit;
    default to the same resolution unless told otherwise: merge to `main`
@@ -226,7 +226,7 @@ argo-up chain needs a change — this is the plumbing Ruling 1 avoids.
    `bootstrap-down`), verified zero Civo resources left, matching the
    CIVO-060 teardown-verification shape.
 
-**Task 5 — close the spec.**
+### Task 5 — close the spec
 Set `status: DONE`, `completed`, record execution evidence (Task 1-4
 results, live restart-count/log evidence, rulings) per README protocol
 step 7; update `specs/civo/README.md` index row.
