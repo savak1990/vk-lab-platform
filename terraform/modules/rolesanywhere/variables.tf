@@ -9,7 +9,7 @@ variable "ca_cert_pem" {
 }
 
 variable "hosted_zone_id" {
-  description = "Route 53 hosted zone ID for the external_dns consumer's policy."
+  description = "Route 53 hosted zone ID for the external-dns consumer's policy."
   type        = string
 }
 

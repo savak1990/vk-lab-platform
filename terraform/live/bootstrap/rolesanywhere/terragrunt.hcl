@@ -17,7 +17,10 @@ dependency "route53" {
 }
 
 locals {
-  project      = get_env("PROJECT_NAME", "vk-civo-lab")
+  # Same default as every sibling unit (root.hcl, acm, route53) - fails
+  # closed to the AWS project's state/tags if PROJECT_NAME is ever unset,
+  # rather than silently targeting the Civo project's real resources.
+  project      = get_env("PROJECT_NAME", "vk-lab-platform")
   ca_cert_path = "${get_repo_root()}/secrets/${local.project}/civo-ca-cert.pem"
 }
 

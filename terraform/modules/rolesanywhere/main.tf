@@ -14,8 +14,8 @@ locals {
   grafana_password_arn  = "arn:aws:ssm:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:parameter/${var.project}/persistent/grafana/admin_password"
 
   consumers = local.create ? {
-    eso          = data.aws_iam_policy_document.eso.json
-    external_dns = data.aws_iam_policy_document.external_dns.json
+    eso            = data.aws_iam_policy_document.eso.json
+    "external-dns" = data.aws_iam_policy_document.external_dns.json
   } : {}
 }
 
