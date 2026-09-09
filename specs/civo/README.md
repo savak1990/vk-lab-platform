@@ -90,7 +90,7 @@ verified in this environment.
 | CIVO-065 | [065-cert-manager-install](065-cert-manager-install/spec.md) | cert-manager installed on civo, target-gated | DONE | P1 | S | standard | 050 | M1 |
 | CIVO-070 | [070-letsencrypt-http01-tls](070-letsencrypt-http01-tls/spec.md) | Let's Encrypt HTTP-01 TLS at Envoy, Secret persistence | READY | P1 | M | standard | 060, 065, 110 | M1 |
 | CIVO-080 | [080-rolesanywhere-ca-ceremony](080-rolesanywhere-ca-ceremony/spec.md) | Offline CA ceremony and committed material | DONE | P0 | M | strongest | 015 | M1 |
-| CIVO-082 | [082-rolesanywhere-terraform](082-rolesanywhere-terraform/spec.md) | Trust anchor, profile, roles, lab-role additions | IN_PROGRESS | P0 | M | strongest | 080 | M1 |
+| CIVO-082 | [082-rolesanywhere-terraform](082-rolesanywhere-terraform/spec.md) | Trust anchor, profile, roles, lab-role additions | DONE | P0 | M | strongest | 080 | M1 |
 | CIVO-085 | [085-workload-certificate-issuance](085-workload-certificate-issuance/spec.md) | CA issuer Secret at argo-up, per-consumer Certificates | READY | P0 | M | strongest | 045, 050, 065, 080 | M1 |
 | CIVO-090 | [090-credential-helper-sidecar](090-credential-helper-sidecar/spec.md) | Credential helper image and sidecar pattern | READY | P0 | M | standard | 082, 085 | M1 |
 | CIVO-100 | [100-eso-on-civo](100-eso-on-civo/spec.md) | External Secrets on Civo via sidecar | READY | P1 | S | standard | 090 | M1 |
