@@ -140,8 +140,8 @@ What the shared GitOps tree needs from any provider, and where it comes from.
 | Kubernetes API access | yes | `aws eks update-kubeconfig` via `eks-access-identity` | `civo kubernetes config --save` using the decrypted token | kubeconfig context in scripts only |
 | Environment/domain | yes | SSM `/<project>/bootstrap/route53/fqdn` | same | `envoyGateway.fqdn` |
 | Dynamic RWO storage | yes | `ebs-delete` StorageClass | `civo-volume` (or `civo-retain`) | `storage.className` |
-| Ingress endpoint | yes | NLB via ALB controller annotations | Civo LB via CCM annotations, reserved IP | `envoyGateway.service.annotations`, `envoyGateway.tls.mode` |
-| DNS/TLS | yes | ExternalDNS + ACM at NLB | ExternalDNS + cert-manager at Envoy | `externalDns.txtOwnerId`, `certManager.enabled` |
+| Ingress endpoint | yes | NLB via ALB controller annotations | Civo LB via CCM annotations, reserved IP | `envoyGateway.reservedIp`, `envoyGateway.firewallId` |
+| DNS/TLS | yes | ExternalDNS + ACM at NLB | ExternalDNS + cert-manager at Envoy | `externalDns.txtOwnerId` (cert-manager is gated by `target`, not a values flag) |
 | AWS identity for controllers | yes | EKS Pod Identity | Roles Anywhere sidecar | `awsIdentity.mode = podIdentity \| rolesAnywhere` |
 | Secrets | yes | ESO → SSM | same, via sidecar | unchanged manifests |
 | Schedulable capacity | yes | Karpenter NodePools | fixed pool + autoscaler | `capacity.spotAvoidance`, `postgres.nodeSelector` |

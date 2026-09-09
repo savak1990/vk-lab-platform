@@ -74,7 +74,7 @@ provider contract. Summary of what changes per layer:
 
 - **Make/scripts**: `PROVIDER` dispatch; `scripts/lib/provider.sh` *(proposed)* exporting `PROVIDER`, project/subdomain defaults, stack dir names, and `civo_token()`; branches in `argo-up.sh`, `argo-down.sh`, `cluster-down.sh`, `status.sh`, guards.
 - **Terraform**: three new stack directories (`bootstrap/rolesanywhere` unit, `persistent-civo/`, `cluster-civo/`), three new modules, `root.hcl` provider generation and lifecycle lookup, `lab-role` additions. No moved resources.
-- **GitOps**: `gitops/templates/platform/shared/` *(proposed)* for hoisted components; `gitops/templates/platform/civo/` *(proposed)* for provider files; new values keys (`storage.className`, `capacity.spotAvoidance`, `postgres.nodeSelector`, `envoyGateway.service.annotations`, `envoyGateway.tls.mode`, `certManager.enabled`, `awsIdentity.mode`, `externalDns.txtOwnerId`, `observability.k3s`).
+- **GitOps**: `gitops/templates/platform/shared/` *(proposed)* for hoisted components; `gitops/templates/platform/civo/` *(proposed)* for provider files; new values keys (`storage.className`, `capacity.spotAvoidance`, `postgres.nodeSelector`, `envoyGateway.reservedIp`, `envoyGateway.firewallId`, `awsIdentity.mode`, `externalDns.txtOwnerId`, `observability.k3s`).
 - **Identity**: CA ceremony script, `secrets/<project>/civo-ca-cert.pem` + `civo-ca-key.enc`, Roles Anywhere unit, cert-manager CA ClusterIssuer Secret at `argo-up`, per-consumer Certificates, helper sidecar image workflow.
 - **Tests/CI**: `CivoEnvironment` shim (reuse), SA-token context, `lab.yml` provider input.
 
@@ -88,12 +88,11 @@ provider contract. Summary of what changes per layer:
 | `CIVO_TOKEN` | string | `secrets/civo-token.enc` | — | non-empty | yes | scripts | never; Terraform/CLI env only |
 | Civo region | constant | `root.hcl`, `scripts/lib/region.sh` | `LON1` | none | no | repo | not templated |
 | `fqdn` | string | SSM `/<project>/bootstrap/route53/fqdn` | — | non-empty | hygiene | route53 unit | `envoyGateway.fqdn` |
-| `reservedIp` | string | SSM `/<project>/persistent-civo/reserved-ip/address` *(proposed)* | — | IPv4 | no | persistent-civo | `envoyGateway.service.annotations` |
-| `firewallId` | string | SSM `/<project>/cluster-civo/network/firewall_id` *(proposed)* | — | non-empty | no | cluster-civo | `envoyGateway.service.annotations` |
+| `reservedIp` | string | SSM `/<project>/persistent-civo/reserved-ip/address` *(proposed)* | — | IPv4 | no | persistent-civo | `envoyGateway.reservedIp` |
+| `firewallId` | string | SSM `/<project>/cluster-civo/network/firewall_id` *(proposed)* | — | non-empty | no | cluster-civo | `envoyGateway.firewallId` |
 | `rolesAnywhere.{trustAnchorArn,profileArn,roleArns}` | strings | SSM `/<project>/bootstrap/rolesanywhere/*` *(proposed)* | — | ARN | no | bootstrap | sidecar args via values |
 | `storage.className` | string | values per target | `ebs-delete` / `civo-volume` | exists in cluster | no | gitops | direct |
 | `postgres.recoverySnapshotHandle` | string | discovered at argo-up | `""` | provider-specific | no | scripts | `--set` |
-| `certManager.enabled` | bool | values per target | false / true | — | no | gitops | direct |
 | `awsIdentity.mode` | enum podIdentity\|rolesAnywhere | values per target | podIdentity / rolesAnywhere | enum | no | gitops | direct |
 
 Provider-specific configuration (EC2NodeClass, EBS parameters, NLB or Civo
