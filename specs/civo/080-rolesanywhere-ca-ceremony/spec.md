@@ -1,7 +1,7 @@
 ---
 id: "CIVO-080"
 title: "Offline CA ceremony: generate, encrypt, commit, rotate"
-status: "READY"
+status: "DONE"
 priority: "P0"
 milestone: "M1"
 type: "implementation"
@@ -14,8 +14,8 @@ depends_on: ["CIVO-015"]
 blocked_by: []
 supersedes: []
 created: "2026-09-06"
-updated: "2026-09-06"
-completed: null
+updated: "2026-09-09"
+completed: "2026-09-09"
 ---
 
 # CIVO-080 — CA ceremony
@@ -36,6 +36,14 @@ public file, the rotation runbook, and the `.gitignore` guard against
 `*.key`. Not in scope: Terraform (CIVO-082) and the in-cluster issuer
 (CIVO-085).
 
+**Addition (2026-09-09):** also wired disposable, generate-if-missing CA
+creation into `scripts/generate-secrets.sh` for arbitrary/throwaway
+`PROJECT_NAME`s (civo-only, gated on `PROVIDER`) — the same treatment
+already given to the Postgres/Grafana passwords there, so a CI run against
+an ephemeral project gets its own disposable trust root without a manual
+ceremony. Never committed by that script; local-only for the run's
+duration, per operator decision during planning.
+
 ## 3. Current state / evidence
 
 - `scripts/secret-encrypt.sh:16-17,32` reads `SECRET_VALUE` from the environment. It pipes the value to `aws kms encrypt` with `alias/lab-secrets`. Multi-line values work. The KMS plaintext limit is 4096 bytes.
@@ -51,7 +59,7 @@ public file, the rotation runbook, and the `.gitignore` guard against
 
 ## 5. Files/components affected
 
-`scripts/civo-ca-init.sh` (new); `secrets/README.md`; `.gitignore` (`*.key`, `*-key.pem`); the `Makefile` target `civo-ca-init`.
+`scripts/civo-ca-init.sh` (new); `secrets/README.md`; `.gitignore` (`*.key`, `*-key.pem`, plus `!secrets/*/*.pem` to allow the public cert); the `Makefile` target `civo-ca-init`; `scripts/generate-secrets.sh` (the throwaway-project wiring, §2's addition).
 
 ## 6. Implementation steps
 
@@ -85,12 +93,21 @@ Rollback: delete the two files and rotate. Nothing depends on them until CIVO-08
 ## 12. Risks and unresolved questions
 
 - Should the key also be stored as a `SecureString` in SSM for CI convenience? No. CI decrypts the `.enc` like every other secret.
+- **Deviation from §4 (2026-09-09):** kept `civo` in the CN and filenames (`${project}-civo-workload-ca`, `civo-ca-cert.pem`/`civo-ca-key.enc`) rather than a provider-agnostic name, per explicit operator decision — considered generalizing since Roles Anywhere itself isn't Civo-specific and `pathlen:1` already anticipates a future intermediate (CIVO-200), but kept the original naming to match CIVO-082's already-written §4 verbatim, with no cross-spec correction needed. A future second non-EKS provider would need this CA renamed via the rotation runbook if this choice is ever revisited.
+- **Finding (2026-09-09):** on this machine's LibreSSL 3.3.6, `openssl req -x509 ... -extfile` silently does NOT apply the extension file — it produces a root cert missing `basicConstraints`/`keyUsage` entirely, which Roles Anywhere would reject as a trust anchor. The implemented script uses the two-step CSR-then-self-sign form (`req -new` then `x509 -req -extfile`) instead, verified empirically to apply extensions correctly. Worth knowing if this script is ever ported to a different OpenSSL build.
+- **Finding (2026-09-09):** a bare `$(cat "$KEY_FILE"; echo)` does not restore a PEM's stripped trailing newline — bash command substitution strips all trailing newlines regardless of what follows in the substitution. Fixed with a sentinel-byte trick (`$(cat "$KEY_FILE"; printf 'x')` then strip the trailing `x`), verified byte-for-byte via independent review.
+- **Deviation from §8 (2026-09-09):** the stated acceptance check `git grep -l "BEGIN EC PRIVATE KEY"` only searches tracked files — at the point this check runs, a leaked key in an untracked scratch file would pass clean. Used `grep -rl "BEGIN EC PRIVATE KEY" . --exclude-dir=.git` instead, which covers tracked and untracked alike.
+- **Ruling (2026-09-09):** `generate-secrets.sh`'s new CA wiring is also reachable via `persistent-up`'s automatic call to that script — so a `PROVIDER=civo make persistent-up`/`bootstrap-up` run for a brand-new civo project, run *before* its deliberate `make civo-ca-init` ceremony, would silently auto-generate that project's real CA as a side effect (same crypto properties, printed fingerprint, but without the deliberate standalone step). Not code-gated, since hardcoding "this project name is special" into a general-purpose throwaway-secrets script would be worse coupling than documenting the correct operating order: **run the ceremony (`make civo-ca-init`) before the first-ever `persistent-up`/`bootstrap-up` for a new civo project**, not after.
 
 ## 13. Definition of done
 
-- [ ] Files committed; evidence of extensions; runbooks; index updated; status `DONE`
+- [x] Files committed; evidence of extensions; runbooks; index updated; status `DONE`
 
 ## 14. Execution evidence and status history
 
 - 2026-09-06 — created as DRAFT.
 - 2026-09-06 — approved for development by the user; promoted to READY (dependencies still gate the start).
+- 2026-09-09 — dependency CIVO-015 confirmed DONE; started via subagent-driven development on branch `civo-080-ca-ceremony`; promoted to IN_PROGRESS.
+- 2026-09-09 — implemented via subagent-driven development: 5 tasks (script + throwaway test, gitignore/README, Makefile target, generate-secrets.sh wiring, the real ceremony) each with a fresh implementer + task review; the real ceremony (Task 5) was controller-run directly, gated on explicit operator go-ahead, and verified transparently rather than dispatched to a subagent. No fix loops needed — every task review came back clean on the first pass; two Minor findings on Task 4 were parked with rulings (recorded above in §12) rather than looped on.
+- 2026-09-09 — offline evidence: `scripts/civo-ca-init.sh` shellcheck-clean; certificate extensions (`CA:TRUE`, `pathlen:1`, `keyCertSign`/`cRLSign` critical, `Subject Key Identifier`, `ecdsa-with-SHA256`, P-256, 5-year validity, correct CN/O) independently verified by task review against a throwaway project, and again by the controller against the real `vk-civo-lab` cert. Key round-trip verified byte-for-byte (throwaway) and via pubkey-match (real ceremony — the decrypted key's derived public key matches the committed certificate's public key exactly, `sha256sum` `01778632...`). `ROTATE=1` behavior verified: writes `-next` files, leaves originals untouched, `-next` key round-trips identically. Refusal-without-`ROTATE=1` verified non-destructive. `.gitignore` rules verified for both the primary and `-next` name shapes (`.pem` trackable, `-key.pem`/`.key` ignored). `generate-secrets.sh` wiring verified: civo generates a fresh throwaway CA, a second run skips it, aws never touches CA files. Repo-wide `grep -rl "BEGIN EC PRIVATE KEY" . --exclude-dir=.git` (tracked and untracked) returns only this spec's and the plan's own prose mentioning the string — no actual key material anywhere.
+- 2026-09-09 — real ceremony: `make civo-ca-init PROJECT_NAME=vk-civo-lab` generated and committed `secrets/vk-civo-lab/civo-ca-cert.pem` (public) and `secrets/vk-civo-lab/civo-ca-key.enc` (KMS ciphertext via `alias/lab-secrets`, a real `aws kms encrypt` call). SHA256 fingerprint `26:FC:8B:F7:E3:36:1B:2F:35:0D:11:EB:36:6B:5E:B5:88:75:30:B0:7D:D4:B7:0C:62:EF:A0:08:82:48:81:4E`. No cloud resources beyond the KMS encrypt call (no AWS regression risk; no cluster involved). Status: `DONE`.
