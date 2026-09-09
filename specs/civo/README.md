@@ -82,8 +82,8 @@ verified in this environment.
 | CIVO-015 | [015-governance-adrs-constitution](015-governance-adrs-constitution/spec.md) | ADRs 0027–0031, constitution §20, architecture §10a | DONE | P0 | M | strongest | — | M0 |
 | CIVO-020 | [020-civo-feasibility-spike](020-civo-feasibility-spike/spec.md) | Throwaway-cluster feasibility spike and report | DONE | P0 | M | standard | — | M0 |
 | CIVO-025 | [025-civo-persistent-stack](025-civo-persistent-stack/spec.md) | `persistent-civo` network and reserved IP | DONE | P1 | S | standard | 010, 015 | M1 |
-| CIVO-030 | [030-civo-terraform-cluster](030-civo-terraform-cluster/spec.md) | `cluster-civo` firewall and k3s cluster | READY | P1 | M | standard | 010, 015, 020, 025 | M1 |
-| CIVO-040 | [040-civo-cluster-scripts](040-civo-cluster-scripts/spec.md) | Cluster scripts, kubeconfig, guards, leak sweep | READY | P1 | M | standard | 030 | M1 |
+| CIVO-030 | [030-civo-terraform-cluster](030-civo-terraform-cluster/spec.md) | `cluster-civo` firewall and k3s cluster | DONE | P1 | M | standard | 010, 015, 020, 025 | M1 |
+| CIVO-040 | [040-civo-cluster-scripts](040-civo-cluster-scripts/spec.md) | Cluster scripts, kubeconfig, guards, leak sweep | DONE | P1 | M | standard | 030 | M1 |
 | CIVO-045 | [045-argo-scripts-civo-branches](045-argo-scripts-civo-branches/spec.md) | `argo-up`/`argo-down` Civo branches | DONE | P1 | M | standard | 040, 050 | M1 |
 | CIVO-050 | [050-gitops-civo-target-baseline](050-gitops-civo-target-baseline/spec.md) | Hoist portable components; `target: civo` tree; golden AWS render | DONE | P1 | M | standard | 010 | M1 |
 | CIVO-060 | [060-civo-ingress-envoy-lb](060-civo-ingress-envoy-lb/spec.md) | Civo LB via Envoy Service, Gateway 80/443 | DONE | P1 | M | standard | 045 | M1 |
