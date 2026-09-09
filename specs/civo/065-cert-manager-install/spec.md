@@ -1,7 +1,7 @@
 ---
 id: "CIVO-065"
 title: "cert-manager installed behind a toggle, off on AWS"
-status: "READY"
+status: "IN_PROGRESS"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -14,7 +14,7 @@ depends_on: ["CIVO-050"]
 blocked_by: []
 supersedes: []
 created: "2026-09-06"
-updated: "2026-09-06"
+updated: "2026-09-09"
 completed: null
 ---
 
@@ -90,3 +90,4 @@ Revert the change. Argo prunes the objects. There is no data risk.
 
 - 2026-09-06 — created as DRAFT.
 - 2026-09-06 — approved for development by the user; promoted to READY (dependencies still gate the start).
+- 2026-09-09 — dependency CIVO-050 confirmed DONE; started via subagent-driven development on branch `civo-065-cert-manager`; promoted to IN_PROGRESS.
