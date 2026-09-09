@@ -96,11 +96,8 @@ metadata:
   namespace: argocd
   annotations:
     # Envoy Gateway (wave -1) supplies the Gateway API CRDs this chart's
-    # config.gatewayAPI.enabled needs present at controller boot - wave 0
-    # is the minimum integer that syncs strictly after it. Wave order only
-    # gates Application *creation*, not CRD-Established timing across
-    # siblings; see the live-verification step for what happens if that
-    # race is lost.
+    # gatewayAPI.enabled needs present at controller boot - wave 0 is the
+    # minimum integer that syncs strictly after it (creation order only).
     argocd.argoproj.io/sync-wave: "0"
   finalizers:
     - resources-finalizer.argocd.argoproj.io
