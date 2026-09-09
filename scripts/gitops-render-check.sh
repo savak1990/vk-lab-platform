@@ -61,12 +61,15 @@ Application__argocd__external-secrets PriorityClass__cluster__postgres-critical 
 ClusterRole__cluster__e2e-test-readonly HTTPRoute__argocd__argocd \
 RoleBinding__cnpg-system__e2e-test-readonly RoleBinding__argocd__e2e-test-readonly"
 REQUIRED_OBJECTS_CIVO="EnvoyProxy__envoy__envoy-proxy-config Gateway__envoy__platform-gateway \
-GatewayClass__cluster__envoy-gateway"
+GatewayClass__cluster__envoy-gateway Application__argocd__cert-manager"
 FORBIDDEN_KINDS_LOCAL="StorageClass VolumeSnapshotClass VolumeSnapshotContent VolumeSnapshot \
 ClusterSecretStore ExternalSecret Cluster NodePool EC2NodeClass EnvoyProxy Gateway GatewayClass"
 FORBIDDEN_KINDS_CIVO="StorageClass VolumeSnapshotClass VolumeSnapshotContent VolumeSnapshot \
 ClusterSecretStore ExternalSecret Cluster NodePool EC2NodeClass"
-FORBIDDEN_APPLICATIONS="aws-load-balancer-controller cert-manager ebs-csi-driver karpenter \
+FORBIDDEN_APPLICATIONS_LOCAL="aws-load-balancer-controller cert-manager ebs-csi-driver karpenter \
+kube-prometheus-stack loki metrics-server alloy external-snapshotter external-snapshotter-crds \
+external-dns"
+FORBIDDEN_APPLICATIONS_CIVO="aws-load-balancer-controller ebs-csi-driver karpenter \
 kube-prometheus-stack loki metrics-server alloy external-snapshotter external-snapshotter-crds \
 external-dns"
 FORBIDDEN_OBJECTS="BackendTrafficPolicy__observability__grafana-traffic-policy \
@@ -74,11 +77,12 @@ HTTPRoute__observability__grafana RoleBinding__observability__e2e-test-readonly"
 
 verify_object_set() {
   local dir="$1" target="$2" obj name kind
-  local required="$REQUIRED_OBJECTS" forbidden_kinds="$FORBIDDEN_KINDS_LOCAL"
+  local required="$REQUIRED_OBJECTS" forbidden_kinds="$FORBIDDEN_KINDS_LOCAL" forbidden_apps="$FORBIDDEN_APPLICATIONS_LOCAL"
   case "$target" in
     civo)
       required="$REQUIRED_OBJECTS $REQUIRED_OBJECTS_CIVO"
       forbidden_kinds="$FORBIDDEN_KINDS_CIVO"
+      forbidden_apps="$FORBIDDEN_APPLICATIONS_CIVO"
       ;;
   esac
   for obj in $required; do
@@ -93,9 +97,9 @@ verify_object_set() {
       return 1
     fi
   done
-  for name in $FORBIDDEN_APPLICATIONS; do
+  for name in $forbidden_apps; do
     if [ -e "$dir/Application__argocd__$name.yaml" ]; then
-      echo "GITOPS-RENDER-CHECK: target=$target unexpectedly renders Application/$name (aws-only until a later spec)" >&2
+      echo "GITOPS-RENDER-CHECK: target=$target unexpectedly renders Application/$name (this application is not yet part of this target's baseline)" >&2
       return 1
     fi
   done
