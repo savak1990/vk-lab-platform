@@ -32,9 +32,14 @@ secrets/*
 secrets/*/*
 !secrets/*/*.enc
 !secrets/*/*.bcrypt
+!secrets/*/*.pem
 !secrets/root-domain.enc
 !secrets/civo-token.enc
 !secrets/README.md
+
+# Raw key material — ignore even under secrets/ directories
+*.key
+*-key.pem
 
 # Editors
 .vscode/
