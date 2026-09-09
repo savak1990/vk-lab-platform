@@ -20,11 +20,6 @@ storage:
 capacity:
   spotAvoidance: true
 
-# cert-manager is off by default: aws terminates TLS at the NLB with an ACM
-# certificate, so no in-cluster issuer is needed until a target lacks that.
-certManager:
-  enabled: false
-
 # podIdentity (EKS Pod Identity) is aws-only; other targets substitute
 # their own workload-identity mechanism.
 awsIdentity:
