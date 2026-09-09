@@ -119,19 +119,23 @@ re-encrypt under a new key at your own judgment.
 
 When a root CA certificate needs rotation:
 
-1. Generate a new certificate pair by running `scripts/civo-ca-init.sh` with
-   `ROTATE=1`. This creates `civo-ca-cert-next.pem` and `civo-ca-key-next.enc`
-   alongside the current pair.
+1. Generate a new certificate pair by running `make civo-ca-init ROTATE=1`.
+   This creates `civo-ca-cert-next.pem` and `civo-ca-key-next.enc` alongside
+   the current pair.
 2. Commit the new certificate and encrypted key.
-3. In a later spec, register `civo-ca-cert-next.pem` as a second trust anchor
-   with AWS IAM Roles Anywhere.
+3. Register the new certificate as a second AWS IAM Roles Anywhere trust
+   anchor.
 4. Update the cluster's certificate issuer to sign new workload certificates
    with the new root CA.
 5. Wait at least 24 hours (the maximum workload certificate lifetime) for all
    outstanding certificates signed by the old root to naturally expire.
 6. Remove the old trust anchor from AWS IAM Roles Anywhere.
-7. Delete `civo-ca-cert.pem`, `civo-ca-key.enc`, and the rotation-candidate
-   `-next` files; commit the removal.
+7. Promote the new pair: `git mv civo-ca-cert-next.pem civo-ca-cert.pem` and
+   `git mv civo-ca-key-next.enc civo-ca-key.enc`; commit the rename. The old
+   pair no longer exists under its old name, so there is nothing left to
+   delete — the issuer is already pointed at what is now the current pair.
+8. If any old-named files remain (e.g. the promotion step above used copies
+   instead of renames), delete them now and commit the removal.
 
 ### Revoking an IAM Roles Anywhere root CA certificate
 

@@ -5,13 +5,14 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
+# shellcheck source=lib/provider.sh
+source "$REPO_ROOT/scripts/lib/provider.sh"
 ROTATE="${ROTATE:-}"
 
 SECRETS_DIR="$REPO_ROOT/secrets/$PROJECT_NAME"
 mkdir -p "$SECRETS_DIR"
 
-if [ -n "$ROTATE" ]; then
+if [ "$ROTATE" = "1" ]; then
   CERT_FILE="$SECRETS_DIR/civo-ca-cert-next.pem"
   KEY_NAME="civo-ca-key-next"
 else
@@ -19,8 +20,12 @@ else
   KEY_NAME="civo-ca-key"
 fi
 
-if [ -f "$CERT_FILE" ] && [ -z "$ROTATE" ]; then
-  echo "$CERT_FILE already exists. Set ROTATE=1 to generate a rotation candidate." >&2
+if [ -f "$CERT_FILE" ]; then
+  if [ "$ROTATE" = "1" ]; then
+    echo "$CERT_FILE already exists; a rotation candidate already exists. Remove it first if you intend to regenerate it." >&2
+  else
+    echo "$CERT_FILE already exists. Set ROTATE=1 to generate a rotation candidate." >&2
+  fi
   exit 1
 fi
 
@@ -33,7 +38,7 @@ cleanup() {
   fi
   rm -rf "$WORKDIR"
 }
-trap cleanup EXIT
+trap cleanup EXIT INT TERM
 umask 077
 
 KEY_FILE="$WORKDIR/ca.key"

@@ -82,7 +82,7 @@ generate_ca_if_missing() {
     echo "Skipping civo-ca-cert - $file already exists"
     return
   fi
-  PROJECT_NAME="$PROJECT_NAME" "$SCRIPT_DIR/civo-ca-init.sh"
+  ROTATE='' PROJECT_NAME="$PROJECT_NAME" "$SCRIPT_DIR/civo-ca-init.sh"
 }
 
 generate_ca_if_missing
