@@ -107,5 +107,6 @@ verified in this environment.
 | CIVO-186 | [186-cross-provider-backup-promotion](186-cross-provider-backup-promotion/spec.md) | Promote dumps between providers; restore either target from the other | READY | P2 | S | standard | 180, 185 | M2 |
 | CIVO-190 | [190-proxy-protocol-client-ip](190-proxy-protocol-client-ip/spec.md) | Proxy protocol and client IP | READY | P3 | S | fast | 060 | M2 |
 | CIVO-200 | [200-identity-hardening](200-identity-hardening/spec.md) | Intermediate CA and Certificate approval policy | READY | P2 | M | strongest | 085 | M2 |
+| CIVO-205 | [205-lab-role-least-privilege-review](205-lab-role-least-privilege-review/spec.md) | `lab-role` least-privilege review for civo-related statements | DRAFT | P2 | M | strongest | 082, 200 | M2 |
 
 The headers in each `spec.md` are the source of truth. Keep this table in sync.
