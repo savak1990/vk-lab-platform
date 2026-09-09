@@ -143,12 +143,27 @@ data "aws_iam_policy_document" "permissions" {
       # live, DeleteRole denied on every one of these roles at teardown.
       "iam:ListInstanceProfilesForRole",
     ]
-    # Every role this platform's disposable/persistent units create is
-    # prefixed with the cluster name ("<project>-eks-...": cluster role,
-    # node-group role, karpenter controller/node roles, the four
-    # pod-identity controller roles) - "*-eks-*", not "*-*", so this never
-    # matches this role's own name or eks-access-identity's.
-    resources = ["arn:aws:iam::${local.account}:role/*-eks-*"]
+    # Every role this platform's units create is prefixed with either the
+    # cluster name ("*-eks-*") or a Roles Anywhere consumer name ("*-ra-*") -
+    # never "*-*", so this never matches this role's own name or eks-access-identity's.
+    resources = [
+      "arn:aws:iam::${local.account}:role/*-eks-*",
+      "arn:aws:iam::${local.account}:role/*-ra-*",
+    ]
+  }
+
+  statement {
+    sid = "RolesAnywhereManagement"
+    actions = [
+      "rolesanywhere:CreateTrustAnchor", "rolesanywhere:UpdateTrustAnchor",
+      "rolesanywhere:DeleteTrustAnchor", "rolesanywhere:GetTrustAnchor",
+      "rolesanywhere:CreateProfile", "rolesanywhere:UpdateProfile",
+      "rolesanywhere:DeleteProfile", "rolesanywhere:GetProfile",
+      "rolesanywhere:TagResource", "rolesanywhere:UntagResource",
+      "rolesanywhere:ListTagsForResource",
+      "rolesanywhere:DisableTrustAnchor", "rolesanywhere:EnableTrustAnchor",
+    ]
+    resources = ["arn:aws:rolesanywhere:eu-west-1:${local.account}:*"]
   }
 
   # Karpenter dynamically creates/owns an EC2 instance profile per
