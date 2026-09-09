@@ -6,6 +6,13 @@ it can't be reversed back into the original password, only checked against
 a login attempt. It's committed as plain text on purpose; nothing here
 decrypts it, and `make secret-decrypt`/`secret-encrypt` don't apply to it.
 
+**Exception — `.pem` certificate files:** a public certificate (e.g.
+`civo-ca-cert.pem`) is not secret by design. IAM Roles Anywhere trust
+anchors are public X.509 certificates; the private key is the only secret
+(stored in the adjacent `.enc` file). The certificate is committed in the
+clear for readability and to allow offline validation of signed objects;
+nothing here encrypts it, and `make secret-decrypt`/`secret-encrypt` don't apply.
+
 Each file here is one value — a runtime secret or a piece of non-secret
 private configuration (like the root domain, constitution §14) — encrypted
 independently with the shared, account-global secrets KMS key
@@ -105,3 +112,42 @@ Once that key is gone (after its deletion window), every `*.enc` file here
 becomes permanently undecryptable ciphertext. `make bootstrap-down` does
 not delete these files itself — they're left as-is for you to remove or
 re-encrypt under a new key at your own judgment.
+
+## Runbooks
+
+### Rotating an IAM Roles Anywhere root CA certificate
+
+When a root CA certificate needs rotation:
+
+1. Generate a new certificate pair by running `make civo-ca-init ROTATE=1`.
+   This creates `civo-ca-cert-next.pem` and `civo-ca-key-next.enc` alongside
+   the current pair.
+2. Commit the new certificate and encrypted key.
+3. Register the new certificate as a second AWS IAM Roles Anywhere trust
+   anchor.
+4. Update the cluster's certificate issuer to sign new workload certificates
+   with the new root CA.
+5. Wait at least 24 hours (the maximum workload certificate lifetime) for all
+   outstanding certificates signed by the old root to naturally expire.
+6. Remove the old trust anchor from AWS IAM Roles Anywhere.
+7. Promote the new pair: `git mv civo-ca-cert-next.pem civo-ca-cert.pem` and
+   `git mv civo-ca-key-next.enc civo-ca-key.enc`; commit the rename. The old
+   pair no longer exists under its old name, so there is nothing left to
+   delete — the issuer is already pointed at what is now the current pair.
+8. If any old-named files remain (e.g. the promotion step above used copies
+   instead of renames), delete them now and commit the removal.
+
+### Revoking an IAM Roles Anywhere root CA certificate
+
+To immediately stop new sessions from being created with a root CA that is
+compromised or no longer trusted:
+
+```
+aws rolesanywhere disable-trust-anchor --trust-anchor-id <id>
+```
+
+This stops the trust anchor from accepting new credential requests immediately.
+Sessions already issued will continue to work until they expire naturally
+(configured per-role, typically 1 hour). To force existing sessions to
+terminate, you must also update or delete the IAM role that trusted the
+certificate.

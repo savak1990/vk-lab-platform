@@ -1,4 +1,4 @@
-.PHONY: up down full-up full-down platform-up platform-down state-up state-down status clusters require-valid-project-name account-up account-down bootstrap-up bootstrap-down secret-encrypt secret-decrypt generate-secrets persistent-up persistent-down clear-cache cluster-up cluster-down kubeconfig test-kubeconfig argo-up argo-down test
+.PHONY: up down full-up full-down platform-up platform-down state-up state-down status clusters require-valid-project-name account-up account-down bootstrap-up bootstrap-down secret-encrypt secret-decrypt generate-secrets civo-ca-init persistent-up persistent-down clear-cache cluster-up cluster-down kubeconfig test-kubeconfig argo-up argo-down test
 
 .NOTPARALLEL:
 
@@ -267,6 +267,14 @@ generate-secrets: export ROOT_DOMAIN := $(ROOT_DOMAIN)
 generate-secrets: export FIXED_TEST_PASSWORDS := true
 generate-secrets:
 	@./scripts/generate-secrets.sh
+
+## Generates the Roles Anywhere root CA: a public cert (secrets/$(PROJECT_NAME)/civo-ca-cert.pem)
+## and its KMS-encrypted private key. Refuses to overwrite; set ROTATE=1 for a rotation candidate.
+## Usage: make civo-ca-init [PROJECT_NAME=vk-civo-lab] [ROTATE=1]
+civo-ca-init: export PROJECT_NAME := $(PROJECT_NAME)
+civo-ca-init: export ROTATE := $(ROTATE)
+civo-ca-init:
+	@./scripts/civo-ca-init.sh
 
 ## Renders gitops/ and gitops/bootstrap/ for aws/civo/local and verifies:
 ## the aws render against the committed golden baseline (tests/golden/gitops-aws),
