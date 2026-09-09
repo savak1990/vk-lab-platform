@@ -1,7 +1,7 @@
 ---
 id: "CIVO-082"
 title: "Roles Anywhere Terraform: trust anchor, profile, per-consumer roles, lab-role additions"
-status: "READY"
+status: "DONE"
 priority: "P0"
 milestone: "M1"
 type: "implementation"
@@ -14,8 +14,8 @@ depends_on: ["CIVO-080"]
 blocked_by: []
 supersedes: []
 created: "2026-09-06"
-updated: "2026-09-06"
-completed: null
+updated: "2026-09-10"
+completed: "2026-09-10"
 ---
 
 # CIVO-082 — Roles Anywhere Terraform
@@ -43,17 +43,21 @@ certificates (CIVO-085), the sidecar (CIVO-090), and the application roles
 
 ## 4. Design and contracts
 
-- The module `rolesanywhere` has these inputs: `project`, `ca_cert_pem` (file content), a `consumers` map `{ eso = { policy_json }, external_dns = { policy_json } }`, `hosted_zone_id`, and `session_duration = 3600`.
+- The module `rolesanywhere` has these inputs: `project`, `ca_cert_pem` (file content), `hosted_zone_id`, `x509_issuer_cn` (optional), and `session_duration` (optional, default `3600`). Deviation from this section's original wording: the two consumers (`eso`, `external-dns`) are hardcoded inside the module rather than taken as a generic `consumers` map input — terragrunt HCL has no clean way to build `data.aws_iam_policy_document` JSON to pass in as a map, so the module builds both consumers' policies internally the same way `external-secrets-pod-identity`/`external-dns-pod-identity` already do, keeping the terragrunt unit a thin wiring layer.
 - The module creates `aws_rolesanywhere_trust_anchor` (source `CERTIFICATE_BUNDLE`, the PEM). It creates `aws_rolesanywhere_profile` (`role_arns` = all consumer roles, `duration_seconds = 3600`, no session policy in M1). It creates one `aws_iam_role` per consumer, named `${project}-ra-${consumer}`. The trust policy of each role has the principal `rolesanywhere.amazonaws.com` and the actions `sts:AssumeRole`, `sts:TagSession`, and `sts:SetSourceIdentity`. The trust policy has three conditions: `ArnEquals aws:SourceArn = trust anchor`, `StringEquals aws:PrincipalTag/x509Subject/CN = ${project}-civo-${consumer}`, and `StringEquals aws:PrincipalTag/x509Issuer/CN = ${project}-civo-workload-ca`. The inline policies are copied from the Pod Identity modules (parameterized by zone id and project).
-- The SSM outputs (String) are `/${project}/bootstrap/rolesanywhere/trust_anchor_arn`, `profile_arn`, `role_arn/eso`, and `role_arn/external_dns`.
+- The SSM outputs (String) are `/${project}/bootstrap/rolesanywhere/trust_anchor_arn`, `profile_arn`, `role_arn/eso`, and `role_arn/external-dns` (kebab-case, matching the AWS-side sibling role's own naming convention, not the spec's original underscore wording).
 - The unit `bootstrap/rolesanywhere/terragrunt.hcl` declares `dependency route53` for the zone id. It sets `inputs.ca_cert_pem = fileexists(path) ? file(path) : ""`. The module sets `count = var.ca_cert_pem == "" ? 0 : 1` on every resource. For that reason, AWS-only projects render nothing.
 - `x509Issuer/CN` is a module variable. It is the root CN in M1. It becomes the intermediate CN once CIVO-200 lands.
-- `lab-role` gets `iam:PassRole` on `role/*-ra-*`. `rolesanywhere:CreateProfile` with `role_arns` needs this; verify it at plan time. It also gets `rolesanywhere:CreateTrustAnchor|UpdateTrustAnchor|DeleteTrustAnchor|GetTrustAnchor|CreateProfile|UpdateProfile|DeleteProfile|GetProfile|TagResource|UntagResource|ListTagsForResource|DisableTrustAnchor|EnableTrustAnchor` on `arn:aws:rolesanywhere:eu-west-1:<acct>:*`. It gets IAM role CRUD on `role/*-ra-*`. It gets the SSM paths `*/persistent-civo/*`, `*/cluster-civo/*`, and `*/bootstrap/rolesanywhere/*`.
+- `lab-role` gets `iam:PassRole` on `role/*-ra-*` via extending the existing `PlatformIamRoles` statement's resource list (already carries `iam:PassRole` and the rest of the role-CRUD actions) rather than a new statement. It also gets `rolesanywhere:CreateTrustAnchor|UpdateTrustAnchor|DeleteTrustAnchor|GetTrustAnchor|CreateProfile|UpdateProfile|DeleteProfile|GetProfile|TagResource|UntagResource|ListTagsForResource|DisableTrustAnchor|EnableTrustAnchor` on `arn:aws:rolesanywhere:eu-west-1:<acct>:*`. Deviation: no new SSM statement was added — the existing `PlatformConfigSsmParameters` statement's `*/bootstrap/*` wildcard already matches `*/bootstrap/rolesanywhere/*`, confirmed against the live file; `*/persistent-civo/*`/`*/cluster-civo/*` were already present from an earlier task, unrelated to this one.
 - Tags: the standard four via `default_tags` (Lifecycle=bootstrap).
 
 ## 5. Files/components affected
 
-The new module and unit; `terraform/modules/lab-role/main.tf`; `terraform/live/account/lab-role`, re-applied via `make account-up` (outside the composites; a documented step).
+`terraform/modules/rolesanywhere/{main,variables,outputs,versions}.tf`;
+`terraform/live/bootstrap/rolesanywhere/terragrunt.hcl`;
+`terraform/modules/lab-role/main.tf`; `terraform/live/account/lab-role`,
+re-applied via `make account-up` (outside the composites; a documented
+step).
 
 ## 6. Implementation steps
 
@@ -93,9 +97,42 @@ The unit is guarded. The AWS plan is unchanged. The `lab-role` additions are add
 
 ## 13. Definition of done
 
-- [ ] Evidence incl. negative tests; index updated; status `DONE`
+- [x] Evidence incl. negative tests; index updated; status `DONE`
 
 ## 14. Execution evidence and status history
 
 - 2026-09-06 — created as DRAFT.
 - 2026-09-06 — approved for development by the user; promoted to READY (dependencies still gate the start).
+- 2026-09-09 — CIVO-080 (dependency) done; started implementation on branch `civo-082-rolesanywhere-terraform`, promoted to IN_PROGRESS.
+- 2026-09-10 — Implemented via subagent-driven-development (module, unit,
+  lab-role additions each independently reviewed clean). A gap in this
+  session's own plan was found after the real apply: the module wrote
+  Terraform outputs but not the four required SSM parameters (§4/§8) —
+  fixed and re-applied before proceeding, `4 to add, 0 to change, 0 to
+  destroy`, all four values verified against the real ARNs.
+  `PROVIDER=civo make account-up` and `bootstrap-up` both applied
+  cleanly for `vk-civo-lab`: `lab-role`'s diff was exactly the two listed
+  statement changes (nothing else); `rolesanywhere` created the trust
+  anchor (`ENABLED`), profile, 2 roles, 2 inline policies, 4 SSM
+  parameters. Negative/positive trust-policy test run with AWS's real
+  `aws_signing_helper` v1.8.5 (SHA-256 verified before use) and a
+  temporarily-decrypted CA key (pubkey-hash-verified as genuine before
+  use, deleted immediately after, never printed in full): a foreign
+  self-signed cert → `403 Untrusted certificate` (rejected at the X.509
+  chain-of-trust level, before any IAM condition); a real-CA-issued leaf
+  with the wrong subject CN → `403 Unable to assume role` (the
+  certificate is trusted, but the role's `x509Subject/CN` trust-policy
+  condition denies it); a real-CA-issued leaf with the correct CN →
+  succeeded, real temporary credentials issued. Note: M1 has only one CA,
+  so "wrong issuer" and "foreign CA" collapse into the same test
+  (foreign-CA case) until CIVO-200 adds an intermediate — not three
+  independently distinguishable failure modes yet. After the test, per
+  the user's explicit choice, ran `PROVIDER=civo CONFIRM_DESTROY=
+  vk-civo-lab make bootstrap-down` to tear the real resources back down
+  (fully recreatable later from the committed CA cert+key in git/KMS,
+  which this teardown never touched) — verified empirically afterward
+  that the trust anchor, IAM roles, and SSM parameters are gone. All
+  three per-task reviews and one scoped fix-round re-review came back
+  approved/clean (see git history on branch
+  `civo-082-rolesanywhere-terraform` for the full record); no findings
+  were parked open.
