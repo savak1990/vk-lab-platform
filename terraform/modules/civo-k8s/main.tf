@@ -25,6 +25,13 @@ resource "civo_kubernetes_cluster" "this" {
     size       = "g4s.kube.medium"
     node_count = 3
   }
+
+  # Civo's create API accepts tags but its update API rejects them
+  # (400 invalid_parameter_name) - without this, every apply after the
+  # first tries to "fix" the resulting drift and fails.
+  lifecycle {
+    ignore_changes = [tags]
+  }
 }
 
 resource "aws_ssm_parameter" "cluster_id" {
