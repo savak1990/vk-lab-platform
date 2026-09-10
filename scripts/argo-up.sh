@@ -407,7 +407,9 @@ civo_install_root_application() {
     --set awsIdentity.rolesAnywhere.trustAnchorArn="$TRUST_ANCHOR_ARN" \
     --set awsIdentity.rolesAnywhere.profileArn="$PROFILE_ARN" \
     --set awsIdentity.rolesAnywhere.roleArns.eso="$ESO_ROLE_ARN" \
-    --set awsIdentity.rolesAnywhere.roleArns.external-dns="$EXTERNAL_DNS_ROLE_ARN"
+    --set awsIdentity.rolesAnywhere.roleArns.external-dns="$EXTERNAL_DNS_ROLE_ARN" \
+    --set tls.issuer="${TLS_ISSUER:-letsencrypt-staging}" \
+    --set tls.acmeEmail="${TLS_ACME_EMAIL:-}"
 }
 
 if [ "$PROVIDER" = civo ]; then
