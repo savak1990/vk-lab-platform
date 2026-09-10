@@ -108,5 +108,6 @@ verified in this environment.
 | CIVO-190 | [190-proxy-protocol-client-ip](190-proxy-protocol-client-ip/spec.md) | Proxy protocol and client IP | READY | P3 | S | fast | 060 | M2 |
 | CIVO-200 | [200-identity-hardening](200-identity-hardening/spec.md) | Intermediate CA and Certificate approval policy | READY | P2 | M | strongest | 085 | M2 |
 | CIVO-205 | [205-lab-role-least-privilege-review](205-lab-role-least-privilege-review/spec.md) | `lab-role` review + ESO ClusterRole scoping (CA-Secret read) | DRAFT | P2 | M | strongest | 082, 085, 200 | M2 |
+| CIVO-210 | [210-argocd-grafana-login](210-argocd-grafana-login/spec.md) | Real login for Argo CD and Grafana (beyond shared local admin) | DRAFT | P3 | M | standard | — | M2 |
 
 The headers in each `spec.md` are the source of truth. Keep this table in sync.
