@@ -58,7 +58,7 @@ Not in scope: wiring into ESO/ExternalDNS (CIVO-100/110).
 2. Add the helper template. Render it in a test pod. Apply the pod on civo.
 3. Positive test: `get-caller-identity` returns the `eso` role ARN with the source identity `CN=<project>-civo-eso`.
 4. Negative tests: a wrong-CA cert gives `AccessDeniedException`. An expired cert is denied. A wrong role ARN for the CN is denied.
-5. Reload test: trigger a Certificate renewal. Confirm that the helper logs a reload. Confirm that the next credential refresh succeeds without a restart.
+5. Reload test: trigger a Certificate renewal. Confirm the mounted certificate file's content (not a log line — upstream's `serve` mode emits no reload-specific log line, and its only refresh-related log line is gated behind a `Debug` flag this task's sidecar args do not enable) updates inside the still-running, non-restarted container, e.g. via reading the file through `/proc/1/root` from a `kubectl debug --target --profile=sysadmin` ephemeral container (the credential helper's own image has no shell), and matches the renewed Secret's serial number. Confirm the next credential check still succeeds. Confirm `restartCount` stays unchanged throughout.
 6. Clean up the test pods.
 
 ## 7. Dependencies and blockers
@@ -91,7 +91,7 @@ Remove the sidecar. The consumers lose AWS access (fail closed).
 
 ## 13. Definition of done
 
-- [ ] Evidence incl. negative and reload tests; index updated; status `DONE`
+- [x] Evidence incl. negative and reload tests; index updated; status `DONE`
 
 ## 14. Execution evidence and status history
 
@@ -130,9 +130,10 @@ Remove the sidecar. The consumers lose AWS access (fail closed).
       both role ARNs), not empty strings.
     - Positive test: `aws sts get-caller-identity` from a pod with the
       `eso` sidecar returned `assumed-role/vk-civo-lab-ra-eso/...` — exact
-      match. Also confirms the `runAsUser: 65534` defensive default
-      (Task 1's unresolved `Config.User` gap) didn't prevent the sidecar
-      from starting.
+      match. Also confirmed the sidecar starts under an explicit
+      `runAsUser`. The image's actual `Config.User` (pulled and inspected
+      after this test) is `65532:65532` — a distroless nonroot image —
+      and the sidecar's `runAsUser` was aligned to that discovered value.
     - Wrong-CA negative test: a throwaway self-signed `ClusterIssuer` +
       `Certificate` (same CN, different issuer) produced sidecar log
       `AccessDeniedException: Untrusted signing certificate`.
@@ -146,11 +147,15 @@ Remove the sidecar. The consumers lose AWS access (fail closed).
       §8.
     - Refresh test (900 s session duration): direct queries against the
       sidecar's own IMDSv2-style credential endpoint showed `LastUpdated`
-      stable across two 5-second-apart queries (proving genuine
-      background caching, not per-request regeneration), and `Expiration`
-      later than the original t=0 session's expiry would have been —
-      proves the helper performed a real, automatic `CreateSession`
-      refresh, with the pod's restart count staying `0` throughout.
+      stable across two 5-second-apart queries (proving the credential
+      was cached, not regenerated on every single request), and
+      `Expiration` later than the original t=0 session's expiry would
+      have been — proves the helper performed a real, automatic
+      `CreateSession` refresh, with the pod's restart count staying `0`
+      throughout. Per upstream's `serve.go`, this refresh is
+      request-driven and throttled (min 5-minute interval) inside the
+      credential-serving handler on each call, not a background refresh
+      goroutine on a timer.
     - Reload-without-restart test: `cmctl renew eso -n external-secrets`
       triggered in-place reissuance — the Secret's `resourceVersion`
       changed while `creationTimestamp` stayed fixed (proving an in-place
@@ -173,9 +178,16 @@ Remove the sidecar. The consumers lose AWS access (fail closed).
     throwaway `Certificate` + its Secret) were deleted and confirmed
     absent afterward; only the real CIVO-085 resources remain.
   - One self-flagged process lapse: a credential-endpoint query used for
-    the refresh test was not filtered and printed a real (though
-    narrowly-scoped, ~15-minute-lived) temporary AWS credential in full
-    into tool output — caught immediately, subsequent queries filtered to
-    only non-sensitive fields. No further remediation needed (the
-    credential was role-scoped, expired naturally within the session, and
-    the account/cluster is being fully torn down).
+    the refresh test was not filtered and printed a real temporary AWS
+    credential in full into tool output — caught immediately, subsequent
+    queries filtered to only non-sensitive fields. What matters here is
+    the capability the leaked credential carried, not just how long it
+    was valid: per `terraform/modules/rolesanywhere/main.tf`, the `eso`
+    role's policy grants `ssm:GetParameter` on the Postgres app password
+    and Grafana admin password SSM parameters, plus `kms:Decrypt` scoped
+    to exactly those two — and those two secrets outlive the credential's
+    ~15-minute token lifetime. The practical risk here was low because
+    the output only reached local tooling, not because the token
+    itself was short-lived. If those specific passwords are believed to
+    have been exposed beyond this session, rotation — not merely waiting
+    for token expiry — is the correct remediation.

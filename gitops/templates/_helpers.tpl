@@ -53,7 +53,7 @@ named template can't reach a sibling container in the same Pod spec.
   securityContext:
     readOnlyRootFilesystem: true
     runAsNonRoot: true
-    runAsUser: 65534
+    runAsUser: 65532
     allowPrivilegeEscalation: false
   resources:
     requests:

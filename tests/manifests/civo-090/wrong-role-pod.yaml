@@ -39,7 +39,7 @@ spec:
       securityContext:
         readOnlyRootFilesystem: true
         runAsNonRoot: true
-        runAsUser: 65534
+        runAsUser: 65532
         allowPrivilegeEscalation: false
       resources:
         requests:
