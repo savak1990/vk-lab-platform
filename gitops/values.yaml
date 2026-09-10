@@ -82,3 +82,14 @@ envoyGateway:
 # behavior); a target may pass its own project-scoped id instead.
 externalDns:
   txtOwnerId: ""
+
+# consumers list drives civo/identity/certificates.yaml's Certificate loop -
+# name/namespace must match the Roles Anywhere trust-policy keys in
+# terraform/modules/rolesanywhere (name is also the commonName/secretName
+# suffix), civo-only.
+civoIdentity:
+  consumers:
+    - name: eso
+      namespace: external-secrets
+    - name: external-dns
+      namespace: kube-system

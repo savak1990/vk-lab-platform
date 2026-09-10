@@ -1,0 +1,12 @@
+{{- if eq .Values.target "civo" }}
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: civo-workload-ca
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  ca:
+    secretName: civo-workload-ca
+{{- end }}

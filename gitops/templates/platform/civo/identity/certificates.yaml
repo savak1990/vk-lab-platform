@@ -1,0 +1,29 @@
+{{- if eq .Values.target "civo" }}
+{{- range .Values.civoIdentity.consumers }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ .name }}
+  namespace: {{ .namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  commonName: {{ printf "%s-civo-%s" $.Values.project .name | quote }}
+  subject:
+    organizations: [{{ $.Values.project | quote }}]
+  usages: ["digital signature"]
+  isCA: false
+  duration: 24h
+  renewBefore: 8h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  secretName: {{ printf "%s-ra-cert" .name | quote }}
+  issuerRef:
+    name: civo-workload-ca
+    kind: ClusterIssuer
+---
+{{- end }}
+{{- end }}
