@@ -1,7 +1,7 @@
 ---
 id: "CIVO-085"
 title: "Workload certificate issuance: CA issuer Secret at argo-up, per-consumer Certificates, RBAC, rotation"
-status: "IN_PROGRESS"
+status: "DONE"
 priority: "P0"
 milestone: "M1"
 type: "implementation"
@@ -15,7 +15,7 @@ blocked_by: []
 supersedes: []
 created: "2026-09-06"
 updated: "2026-09-10"
-completed: null
+completed: "2026-09-10"
 ---
 
 # CIVO-085 — Workload certificate issuance
@@ -91,7 +91,7 @@ Delete the CA Secret and the Certificates. The consumers lose AWS access (fail c
 
 ## 13. Definition of done
 
-- [ ] Evidence incl. RBAC check and rotation; index updated; status `DONE`
+- [x] Evidence incl. RBAC check and rotation; index updated; status `DONE`
 
 ## 14. Execution evidence and status history
 
@@ -99,3 +99,43 @@ Delete the CA Secret and the Certificates. The consumers lose AWS access (fail c
 - 2026-09-06 — approved for development by the user; promoted to READY (dependencies still gate the start).
 - 2026-09-10 — CIVO-082 (dependency) done; started implementation on branch
   `civo-085-workload-certificate-issuance`, promoted to IN_PROGRESS.
+- 2026-09-10 — Implemented via subagent-driven-development (offline
+  `ensure_ca_secret()` addition and the `ClusterIssuer`/`Certificate`
+  templates each independently reviewed, one fix round on a comment
+  exceeding the repo's 3-line limit; a read-only RBAC audit of `gitops/`
+  confirmed no RoleBinding/ClusterRoleBinding anywhere grants
+  `cert-manager.io` create/update to any workload ServiceAccount).
+  `PROVIDER=civo make bootstrap-up`/`persistent-up`/`cluster-up` re-ran
+  first (the cluster was down) — `bootstrap-up` recreated the Roles
+  Anywhere trust anchor/profile/roles/SSM params torn down after
+  CIVO-082's own test, `10 to add, 0 to change, 0 to destroy`. Mid-task
+  finding: Argo CD's `root` Application syncs from a pushed git revision
+  (`repoURL`/`targetRevision`, default `main`), not local working-tree
+  state, so the new manifests were invisible until the branch was merged
+  and pushed to `main` — merged and pushed ahead of the plan's own final
+  whole-branch review at the user's explicit instruction ("just push
+  changes to main"), which the review (below) still covers. `argo-up`
+  run twice pre-merge proved `ensure_ca_secret()`'s idempotency
+  (`secret/civo-workload-ca unchanged`, identical resourceVersion both
+  runs); a third run post-push (after a forced Argo git refresh) synced
+  the new resources. Verified live: `ClusterIssuer/civo-workload-ca`
+  Ready; both `Certificate`s (`eso` in `external-secrets`,
+  `external-dns` in `kube-system`) Ready with `secretName`
+  `eso-ra-cert`/`external-dns-ra-cert`; the issued `eso` leaf cert has
+  Issuer CN `vk-civo-lab-civo-workload-ca`, Subject CN
+  `vk-civo-lab-civo-eso`, `X509v3 Key Usage: critical / Digital
+  Signature`, `X509v3 Basic Constraints: critical / CA:FALSE`, ECDSA
+  P-256 — exactly the CN pair AWS IAM's trust policy (CIVO-082) already
+  expects, including the `critical` flags CIVO-082's own negative test
+  found Roles Anywhere requires; private key is SEC1-encoded
+  (`-----BEGIN EC PRIVATE KEY-----`), not PKCS#8 (recorded for
+  CIVO-090). RBAC: `kubectl auth can-i create certificates.cert-manager.io
+  --as=system:serviceaccount:default:default` → `no`. Negative test
+  (live): applying a `Certificate` requesting CN `vk-civo-lab-civo-eso`
+  as `system:serviceaccount:default:default` → `Forbidden` (cannot even
+  `get` the resource). Rotation: deleted the `eso-ra-cert` Secret;
+  cert-manager reissued within ~5s (new resourceVersion, creation
+  timestamp `2026-09-10T08:44:40Z`) — recorded as the renewal evidence
+  CIVO-090's reload test needs. AWS unaffected: the `target: aws` render
+  showed zero new resources in Task 2's offline check (the two new
+  templates are unconditionally gated on `target: civo`).
