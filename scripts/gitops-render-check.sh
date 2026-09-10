@@ -63,11 +63,12 @@ RoleBinding__cnpg-system__e2e-test-readonly RoleBinding__argocd__e2e-test-readon
 REQUIRED_OBJECTS_CIVO="EnvoyProxy__envoy__envoy-proxy-config Gateway__envoy__platform-gateway \
 GatewayClass__cluster__envoy-gateway Application__argocd__cert-manager \
 ClusterIssuer__cluster__civo-workload-ca Certificate__external-secrets__eso \
-Certificate__kube-system__external-dns"
+Certificate__kube-system__external-dns ClusterSecretStore__cluster__aws-parameter-store \
+ExternalSecret__cnpg-system__lab-postgres-app"
 FORBIDDEN_KINDS_LOCAL="StorageClass VolumeSnapshotClass VolumeSnapshotContent VolumeSnapshot \
 ClusterSecretStore ExternalSecret Cluster NodePool EC2NodeClass EnvoyProxy Gateway GatewayClass"
 FORBIDDEN_KINDS_CIVO="StorageClass VolumeSnapshotClass VolumeSnapshotContent VolumeSnapshot \
-ClusterSecretStore ExternalSecret Cluster NodePool EC2NodeClass"
+Cluster NodePool EC2NodeClass"
 FORBIDDEN_APPLICATIONS_LOCAL="aws-load-balancer-controller cert-manager ebs-csi-driver karpenter \
 kube-prometheus-stack loki metrics-server alloy external-snapshotter external-snapshotter-crds \
 external-dns"

@@ -42,6 +42,19 @@ spec:
               memory: 64Mi
             limits:
               memory: 128Mi
+{{- if eq .Values.target "civo" }}
+        extraContainers:
+          {{- include "platform.rolesAnywhereSidecar" (dict "consumer" "eso" "root" $) | nindent 10 }}
+        extraVolumes:
+          - name: ra-cert
+            secret:
+              secretName: eso-ra-cert
+        extraEnv:
+          - name: AWS_EC2_METADATA_SERVICE_ENDPOINT
+            value: http://127.0.0.1:9911
+          - name: AWS_REGION
+            value: {{ .Values.region | quote }}
+{{- end }}
   destination:
     server: https://kubernetes.default.svc
     namespace: external-secrets
