@@ -196,6 +196,20 @@ civo_wait_for_dns() {
   return 0
 }
 
+ensure_ca_secret() {
+  local ca_cert_path="${REPO_ROOT}/secrets/${PROJECT_NAME}/civo-ca-cert.pem"
+  kubectl create namespace cert-manager \
+    --dry-run=client -o yaml | kubectl apply -f -
+  "$REPO_ROOT/scripts/secret-decrypt.sh" civo-ca-key | \
+    kubectl create secret tls civo-workload-ca \
+      --cert="$ca_cert_path" \
+      --key=/dev/stdin \
+      --namespace cert-manager \
+      --dry-run=client -o yaml \
+    | kubectl label --local -f - app.kubernetes.io/managed-by=argo-up -o yaml \
+    | kubectl apply -f -
+}
+
 aws_wait_for_dns() {
   local watch_seconds="${ARGO_UP_DNS_WATCH_SECONDS:-300}"
   local poll_interval="${ARGO_UP_POLL_INTERVAL:-5}"
@@ -222,6 +236,10 @@ aws_wait_for_dns() {
     return 1
   fi
 }
+
+if [ "$PROVIDER" = civo ]; then
+  ensure_ca_secret
+fi
 
 # Idempotency guard: if the root Application is already Synced/Healthy,
 # there's nothing to do beyond confirming DNS - see wait_for_dns above for

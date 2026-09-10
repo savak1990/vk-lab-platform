@@ -1,7 +1,7 @@
 ---
 id: "CIVO-085"
 title: "Workload certificate issuance: CA issuer Secret at argo-up, per-consumer Certificates, RBAC, rotation"
-status: "READY"
+status: "IN_PROGRESS"
 priority: "P0"
 milestone: "M1"
 type: "implementation"
@@ -14,7 +14,7 @@ depends_on: ["CIVO-045", "CIVO-050", "CIVO-065", "CIVO-080"]
 blocked_by: []
 supersedes: []
 created: "2026-09-06"
-updated: "2026-09-06"
+updated: "2026-09-10"
 completed: null
 ---
 
@@ -97,3 +97,5 @@ Delete the CA Secret and the Certificates. The consumers lose AWS access (fail c
 
 - 2026-09-06 — created as DRAFT.
 - 2026-09-06 — approved for development by the user; promoted to READY (dependencies still gate the start).
+- 2026-09-10 — CIVO-082 (dependency) done; started implementation on branch
+  `civo-085-workload-certificate-issuance`, promoted to IN_PROGRESS.
