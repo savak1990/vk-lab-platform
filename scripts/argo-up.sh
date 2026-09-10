@@ -331,6 +331,9 @@ install_argocd() {
       --set-json 'global.affinity.nodeAffinity.matchExpressions=[{"key":"karpenter.sh/capacity-type","operator":"NotIn","values":["spot"]}]'
     )
   fi
+  # dex.enabled=false below: dex is unused (local bcrypt admin password, no
+  # SSO) and its bundled image segfaults on some clusters. Kept outside the
+  # backslash-continued command below - a `#` comment mid-continuation ends it early.
   helm upgrade --install argocd argo-cd \
     --repo https://argoproj.github.io/argo-helm \
     --version "$ARGOCD_CHART_VERSION" \
@@ -338,8 +341,6 @@ install_argocd() {
     -f "$REPO_ROOT/gitops/argocd/values.yaml" \
     --set server.service.type=ClusterIP \
     --set configs.params."server\.insecure"=true \
-    # dex is unused (local bcrypt admin password, no SSO configured) and its
-    # bundled image segfaults on some clusters - disabled rather than fought.
     --set dex.enabled=false \
     --set configs.secret.argocdServerAdminPassword="$ADMIN_PASSWORD_BCRYPT_HASH" \
     --set configs.secret.argocdServerAdminPasswordMtime="2026-08-20T00:00:00Z" \
