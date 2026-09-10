@@ -84,6 +84,10 @@ civo_resolve_inputs() {
     "/$PROJECT_NAME/persistent/argocd/admin_password_bcrypt"
     "/$PROJECT_NAME/persistent-civo/reserved-ip/address"
     "/$PROJECT_NAME/cluster-civo/network/lb_firewall_id"
+    "/$PROJECT_NAME/bootstrap/rolesanywhere/trust_anchor_arn"
+    "/$PROJECT_NAME/bootstrap/rolesanywhere/profile_arn"
+    "/$PROJECT_NAME/bootstrap/rolesanywhere/role_arn/eso"
+    "/$PROJECT_NAME/bootstrap/rolesanywhere/role_arn/external-dns"
   )
   local civo_ssm_batch_names=() civo_ssm_batch_values=()
   while IFS=$'\t' read -r name value; do
@@ -108,6 +112,10 @@ civo_resolve_inputs() {
       */admin_password_bcrypt) ADMIN_PASSWORD_BCRYPT_HASH="$found" ;;
       */reserved-ip/address) RESERVED_IP="$found" ;;
       */lb_firewall_id) FIREWALL_ID="$found" ;;
+      */rolesanywhere/trust_anchor_arn) TRUST_ANCHOR_ARN="$found" ;;
+      */rolesanywhere/profile_arn) PROFILE_ARN="$found" ;;
+      */rolesanywhere/role_arn/eso) ESO_ROLE_ARN="$found" ;;
+      */rolesanywhere/role_arn/external-dns) EXTERNAL_DNS_ROLE_ARN="$found" ;;
     esac
   done
 
@@ -392,7 +400,11 @@ civo_install_root_application() {
     --set envoyGateway.fqdn="$LAB_FQDN" \
     --set envoyGateway.reservedIp="$RESERVED_IP" \
     --set envoyGateway.firewallId="$FIREWALL_ID" \
-    --set externalDns.txtOwnerId="$PROJECT_NAME"
+    --set externalDns.txtOwnerId="$PROJECT_NAME" \
+    --set awsIdentity.rolesAnywhere.trustAnchorArn="$TRUST_ANCHOR_ARN" \
+    --set awsIdentity.rolesAnywhere.profileArn="$PROFILE_ARN" \
+    --set awsIdentity.rolesAnywhere.roleArns.eso="$ESO_ROLE_ARN" \
+    --set awsIdentity.rolesAnywhere.roleArns.external-dns="$EXTERNAL_DNS_ROLE_ARN"
 }
 
 if [ "$PROVIDER" = civo ]; then

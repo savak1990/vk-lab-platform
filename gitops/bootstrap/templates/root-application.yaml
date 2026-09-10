@@ -45,6 +45,14 @@ spec:
           value: {{ .Values.envoyGateway.firewallId | quote }}
         - name: externalDns.txtOwnerId
           value: {{ .Values.externalDns.txtOwnerId | quote }}
+        - name: awsIdentity.rolesAnywhere.trustAnchorArn
+          value: {{ .Values.awsIdentity.rolesAnywhere.trustAnchorArn | quote }}
+        - name: awsIdentity.rolesAnywhere.profileArn
+          value: {{ .Values.awsIdentity.rolesAnywhere.profileArn | quote }}
+        - name: awsIdentity.rolesAnywhere.roleArns.eso
+          value: {{ .Values.awsIdentity.rolesAnywhere.roleArns.eso | quote }}
+        - name: awsIdentity.rolesAnywhere.roleArns.external-dns
+          value: {{ index .Values.awsIdentity.rolesAnywhere.roleArns "external-dns" | quote }}
       # karpenter.{spot,onDemand}.instanceTypes are lists - `parameters`
       # only carries scalar string overrides (Argo CD's own documented
       # limitation), so these go through valuesObject instead, which Argo
