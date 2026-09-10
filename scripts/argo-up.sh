@@ -198,6 +198,7 @@ civo_wait_for_dns() {
 
 ensure_ca_secret() {
   local ca_cert_path="${REPO_ROOT}/secrets/${PROJECT_NAME}/civo-ca-cert.pem"
+  [ -f "$ca_cert_path" ] || { echo "ARGO-UP: no CA cert at $ca_cert_path - run 'PROVIDER=civo make civo-ca-init' first." >&2; exit 1; }
   kubectl create namespace cert-manager \
     --dry-run=client -o yaml | kubectl apply -f -
   "$REPO_ROOT/scripts/secret-decrypt.sh" civo-ca-key | \
@@ -237,6 +238,9 @@ aws_wait_for_dns() {
   fi
 }
 
+# Runs above the fast-path guard below so repeated argo-up runs still repair
+# the Secret even on the fast path, and creates the cert-manager namespace
+# itself, since it runs before cert-manager's own Application can CreateNamespace=true it.
 if [ "$PROVIDER" = civo ]; then
   ensure_ca_secret
 fi

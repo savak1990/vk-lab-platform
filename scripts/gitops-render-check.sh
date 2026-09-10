@@ -61,7 +61,9 @@ Application__argocd__external-secrets PriorityClass__cluster__postgres-critical 
 ClusterRole__cluster__e2e-test-readonly HTTPRoute__argocd__argocd \
 RoleBinding__cnpg-system__e2e-test-readonly RoleBinding__argocd__e2e-test-readonly"
 REQUIRED_OBJECTS_CIVO="EnvoyProxy__envoy__envoy-proxy-config Gateway__envoy__platform-gateway \
-GatewayClass__cluster__envoy-gateway Application__argocd__cert-manager"
+GatewayClass__cluster__envoy-gateway Application__argocd__cert-manager \
+ClusterIssuer__cluster__civo-workload-ca Certificate__external-secrets__eso \
+Certificate__kube-system__external-dns"
 FORBIDDEN_KINDS_LOCAL="StorageClass VolumeSnapshotClass VolumeSnapshotContent VolumeSnapshot \
 ClusterSecretStore ExternalSecret Cluster NodePool EC2NodeClass EnvoyProxy Gateway GatewayClass"
 FORBIDDEN_KINDS_CIVO="StorageClass VolumeSnapshotClass VolumeSnapshotContent VolumeSnapshot \

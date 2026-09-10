@@ -55,6 +55,18 @@ every role's CN and reach every role's AWS permissions, including
 `lab-role`'s `kms:*`. **A `CIVO_TOKEN` compromise is therefore
 equivalent, in the worst case, to a `lab-role` compromise.**
 
+**This blast radius is reachable one hop earlier than `CIVO_TOKEN`
+compromise, too:** cluster-admin is not required to read the CA Secret —
+any controller whose ClusterRole already grants cluster-wide Secret read
+reaches it directly. `external-secrets-controller` (unrelated to this ADR,
+already present in this repo) is a concrete example: its ClusterRole
+grants cluster-wide `get`/`list`/`watch` on Secrets, so it can read the CA
+private key and mint a certificate for any CN without `CIVO_TOKEN` ever
+being compromised. CIVO-200's Certificate-approval policy does not close
+this path — it gates approval, not Secret reads. Scoping that
+controller's RBAC (ESO's chart-supported `scopedNamespace`/`scopedRBAC`
+config) is a tracked, deferred follow-up, not implemented here.
+
 **Mitigations**, none of which eliminate the above, all of which bound
 it:
 
