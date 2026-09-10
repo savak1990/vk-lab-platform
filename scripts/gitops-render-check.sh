@@ -64,7 +64,7 @@ REQUIRED_OBJECTS_CIVO="EnvoyProxy__envoy__envoy-proxy-config Gateway__envoy__pla
 GatewayClass__cluster__envoy-gateway Application__argocd__cert-manager \
 ClusterIssuer__cluster__civo-workload-ca Certificate__external-secrets__eso \
 Certificate__kube-system__external-dns ClusterSecretStore__cluster__aws-parameter-store \
-ExternalSecret__cnpg-system__lab-postgres-app"
+ExternalSecret__cnpg-system__lab-postgres-app Application__argocd__external-dns"
 FORBIDDEN_KINDS_LOCAL="StorageClass VolumeSnapshotClass VolumeSnapshotContent VolumeSnapshot \
 ClusterSecretStore ExternalSecret Cluster NodePool EC2NodeClass EnvoyProxy Gateway GatewayClass"
 FORBIDDEN_KINDS_CIVO="StorageClass VolumeSnapshotClass VolumeSnapshotContent VolumeSnapshot \
@@ -73,8 +73,7 @@ FORBIDDEN_APPLICATIONS_LOCAL="aws-load-balancer-controller cert-manager ebs-csi-
 kube-prometheus-stack loki metrics-server alloy external-snapshotter external-snapshotter-crds \
 external-dns"
 FORBIDDEN_APPLICATIONS_CIVO="aws-load-balancer-controller ebs-csi-driver karpenter \
-kube-prometheus-stack loki metrics-server alloy external-snapshotter external-snapshotter-crds \
-external-dns"
+kube-prometheus-stack loki metrics-server alloy external-snapshotter external-snapshotter-crds"
 FORBIDDEN_OBJECTS="BackendTrafficPolicy__observability__grafana-traffic-policy \
 HTTPRoute__observability__grafana RoleBinding__observability__e2e-test-readonly"
 

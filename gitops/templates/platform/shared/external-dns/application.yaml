@@ -1,4 +1,4 @@
-{{- if eq .Values.target "aws" }}
+{{- if ne .Values.target "local" }}
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -31,17 +31,32 @@ spec:
         registry: txt
         # Stable across make down/up cycles - must never be a regenerated
         # cluster UID, or every TXT record orphans on the first cycle.
-        txtOwnerId: {{ .Values.project | quote }}
+        txtOwnerId: {{ .Values.externalDns.txtOwnerId | default .Values.project | quote }}
         # sync (not upsert-only) - upsert-only leaves orphaned records behind
         # on make down, breaking this spec's own cleanup requirement.
         policy: sync
         serviceAccount:
           create: true
           name: external-dns
+{{- if eq .Values.target "aws" }}
         # Pod Identity, not IRSA (terraform/modules/external-dns-pod-identity) -
         # no OIDC annotation needed on the ServiceAccount.
         nodeSelector:
           node-type: system
+{{- end }}
+{{- if eq .Values.target "civo" }}
+        extraContainers:
+          {{- include "platform.rolesAnywhereSidecar" (dict "consumer" "external-dns" "root" $) | nindent 10 }}
+        extraVolumes:
+          - name: ra-cert
+            secret:
+              secretName: external-dns-ra-cert
+        env:
+          - name: AWS_EC2_METADATA_SERVICE_ENDPOINT
+            value: http://127.0.0.1:9911
+          - name: AWS_REGION
+            value: {{ .Values.region | quote }}
+{{- end }}
         resources:
           requests:
             cpu: 10m
