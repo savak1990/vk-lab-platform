@@ -83,10 +83,9 @@ envoyGateway:
 externalDns:
   txtOwnerId: ""
 
-# consumers list drives civo/identity/certificates.yaml's Certificate loop -
-# name/namespace must match the Roles Anywhere trust-policy keys in
-# terraform/modules/rolesanywhere (name is also the commonName/secretName
-# suffix), civo-only.
+# civo-only: each name/namespace here must match a Roles Anywhere trust-policy
+# key in terraform/modules/rolesanywhere - name also becomes the
+# commonName/secretName suffix.
 civoIdentity:
   consumers:
     - name: eso
