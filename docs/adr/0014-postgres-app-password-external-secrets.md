@@ -57,7 +57,7 @@ credential, as spec `007-2-secrets-for-postgres`:
 - `gitops/templates/platform/aws/external-secrets/application.yaml` — the
   ESO Argo Application (official chart, bundles its own CRDs), sync-wave
   -2.
-- `gitops/templates/platform/aws/external-secrets/secretstore.yaml` — a
+- `gitops/templates/platform/shared/external-secrets/secretstore.yaml` — a
   `ClusterSecretStore` (AWS Secrets Manager, no explicit `auth:` — Pod
   Identity credentials are ambient) and an `ExternalSecret` populating
   `lab-postgres-app` (`username: vkdb` static, `password` from the Secrets

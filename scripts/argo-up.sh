@@ -324,8 +324,6 @@ else
 fi
 
 install_argocd() {
-  # dex is unused (local bcrypt admin password, no SSO configured) and its
-  # bundled image segfaults on some clusters - disabled rather than fought.
   local antiaffinity_args=()
   if [ "$PROVIDER" != civo ]; then
     antiaffinity_args=(
@@ -340,6 +338,8 @@ install_argocd() {
     -f "$REPO_ROOT/gitops/argocd/values.yaml" \
     --set server.service.type=ClusterIP \
     --set configs.params."server\.insecure"=true \
+    # dex is unused (local bcrypt admin password, no SSO configured) and its
+    # bundled image segfaults on some clusters - disabled rather than fought.
     --set dex.enabled=false \
     --set configs.secret.argocdServerAdminPassword="$ADMIN_PASSWORD_BCRYPT_HASH" \
     --set configs.secret.argocdServerAdminPasswordMtime="2026-08-20T00:00:00Z" \
@@ -352,7 +352,6 @@ install_argocd() {
     --set-json 'repoServer.resources={"requests":{"cpu":"10m","memory":"192Mi"},"limits":{"memory":"320Mi"}}' \
     --set-json 'server.resources={"requests":{"cpu":"10m","memory":"64Mi"},"limits":{"memory":"128Mi"}}' \
     --set-json 'applicationSet.resources={"requests":{"cpu":"5m","memory":"48Mi"},"limits":{"memory":"96Mi"}}' \
-    --set-json 'dex.resources={"requests":{"cpu":"5m","memory":"48Mi"},"limits":{"memory":"96Mi"}}' \
     --set-json 'notifications.resources={"requests":{"cpu":"5m","memory":"48Mi"},"limits":{"memory":"96Mi"}}' \
     --set-json 'redis.resources={"requests":{"cpu":"5m","memory":"32Mi"},"limits":{"memory":"64Mi"}}' \
     ${antiaffinity_args[@]:+"${antiaffinity_args[@]}"} \
