@@ -1,0 +1,26 @@
+{{- if eq .Values.target "civo" }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: platform-public
+  namespace: envoy
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    # Resolves the HTTPS listener during the very first order, before any
+    # real certificate exists yet (matches CIVO-060's temporary-cert amendment).
+    cert-manager.io/issue-temporary-certificate: "true"
+spec:
+  secretName: platform-public-tls
+  dnsNames:
+    - "argo.{{ .Values.envoyGateway.fqdn }}"
+    - "grafana.{{ .Values.envoyGateway.fqdn }}"
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  issuerRef:
+    name: {{ .Values.tls.issuer | quote }}
+    kind: ClusterIssuer
+    group: cert-manager.io
+{{- end }}

@@ -64,7 +64,9 @@ REQUIRED_OBJECTS_CIVO="EnvoyProxy__envoy__envoy-proxy-config Gateway__envoy__pla
 GatewayClass__cluster__envoy-gateway Application__argocd__cert-manager \
 ClusterIssuer__cluster__civo-workload-ca Certificate__external-secrets__eso \
 Certificate__kube-system__external-dns ClusterSecretStore__cluster__aws-parameter-store \
-ExternalSecret__cnpg-system__lab-postgres-app Application__argocd__external-dns"
+ExternalSecret__cnpg-system__lab-postgres-app Application__argocd__external-dns \
+ClusterIssuer__cluster__letsencrypt-staging ClusterIssuer__cluster__letsencrypt-prod \
+Certificate__envoy__platform-public HTTPRoute__envoy__https-redirect"
 FORBIDDEN_KINDS_LOCAL="StorageClass VolumeSnapshotClass VolumeSnapshotContent VolumeSnapshot \
 ClusterSecretStore ExternalSecret Cluster NodePool EC2NodeClass EnvoyProxy Gateway GatewayClass"
 FORBIDDEN_KINDS_CIVO="StorageClass VolumeSnapshotClass VolumeSnapshotContent VolumeSnapshot \

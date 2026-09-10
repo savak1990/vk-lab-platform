@@ -146,4 +146,15 @@ spec:
       allowedRoutes:
         namespaces:
           from: All
+    # Civo has no NLB terminating TLS upstream (unlike aws) - Envoy holds
+    # the certificate itself and terminates TLS directly.
+    - name: https
+      protocol: HTTPS
+      port: 443
+      tls:
+        certificateRefs:
+          - name: platform-public-tls
+      allowedRoutes:
+        namespaces:
+          from: All
 {{- end }}

@@ -92,6 +92,14 @@ envoyGateway:
 externalDns:
   txtOwnerId: ""
 
+# civo-only: which cert-manager ClusterIssuer the public Certificate uses.
+# Staging avoids Let's Encrypt's real rate limits during automated/CI runs;
+# prod is switched on explicitly for the real personal lab. acmeEmail is
+# not a secret (Let's Encrypt account contact only).
+tls:
+  issuer: "letsencrypt-staging"
+  acmeEmail: ""
+
 # civo-only: each name/namespace here must match a Roles Anywhere trust-policy
 # key in terraform/modules/rolesanywhere - name also becomes the
 # commonName/secretName suffix.
