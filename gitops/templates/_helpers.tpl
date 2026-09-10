@@ -21,3 +21,46 @@ civo-volume
 {{- .Values.storage.className -}}
 {{- end -}}
 {{- end -}}
+
+{{/*
+Renders the Roles Anywhere credential-helper sidecar container only - the
+caller owns the ra-cert volume and the main container's env vars, since a
+named template can't reach a sibling container in the same Pod spec.
+*/}}
+{{- define "platform.rolesAnywhereSidecar" -}}
+- name: aws-signing-helper
+  image: {{ .root.Values.awsIdentity.rolesAnywhere.image | quote }}
+  args:
+    - serve
+    - --certificate
+    - /ra/tls.crt
+    - --private-key
+    - /ra/tls.key
+    - --trust-anchor-arn
+    - {{ .root.Values.awsIdentity.rolesAnywhere.trustAnchorArn | quote }}
+    - --profile-arn
+    - {{ .root.Values.awsIdentity.rolesAnywhere.profileArn | quote }}
+    - --role-arn
+    - {{ index .root.Values.awsIdentity.rolesAnywhere.roleArns .consumer | quote }}
+    - --session-duration
+    - "3600"
+    - --hop-limit
+    - "1"
+    - --port
+    - "9911"
+    - --region
+    - {{ .root.Values.region | quote }}
+  securityContext:
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+    runAsUser: 65534
+    allowPrivilegeEscalation: false
+  resources:
+    requests:
+      cpu: 10m
+      memory: 16Mi
+  volumeMounts:
+    - name: ra-cert
+      mountPath: /ra
+      readOnly: true
+{{- end -}}
