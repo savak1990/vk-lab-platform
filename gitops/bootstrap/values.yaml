@@ -34,3 +34,11 @@ envoyGateway:
 
 externalDns:
   txtOwnerId: ""
+
+awsIdentity:
+  rolesAnywhere:
+    trustAnchorArn: ""
+    profileArn: ""
+    roleArns:
+      eso: ""
+      external-dns: ""
