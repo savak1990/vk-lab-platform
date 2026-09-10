@@ -92,7 +92,7 @@ verified in this environment.
 | CIVO-080 | [080-rolesanywhere-ca-ceremony](080-rolesanywhere-ca-ceremony/spec.md) | Offline CA ceremony and committed material | DONE | P0 | M | strongest | 015 | M1 |
 | CIVO-082 | [082-rolesanywhere-terraform](082-rolesanywhere-terraform/spec.md) | Trust anchor, profile, roles, lab-role additions | DONE | P0 | M | strongest | 080 | M1 |
 | CIVO-085 | [085-workload-certificate-issuance](085-workload-certificate-issuance/spec.md) | CA issuer Secret at argo-up, per-consumer Certificates | DONE | P0 | M | strongest | 045, 050, 065, 080 | M1 |
-| CIVO-090 | [090-credential-helper-sidecar](090-credential-helper-sidecar/spec.md) | Credential helper image and sidecar pattern | READY | P0 | M | standard | 082, 085 | M1 |
+| CIVO-090 | [090-credential-helper-sidecar](090-credential-helper-sidecar/spec.md) | Credential helper image and sidecar pattern | DONE | P0 | M | standard | 082, 085 | M1 |
 | CIVO-100 | [100-eso-on-civo](100-eso-on-civo/spec.md) | External Secrets on Civo via sidecar | READY | P1 | S | standard | 090 | M1 |
 | CIVO-110 | [110-external-dns-on-civo](110-external-dns-on-civo/spec.md) | ExternalDNS on Civo via sidecar | READY | P1 | S | standard | 090, 060 | M1 |
 | CIVO-120 | [120-cnpg-on-civo-persistence](120-cnpg-on-civo-persistence/spec.md) | CNPG on Civo with persistence through object-store backups | READY | P1 | L | strongest | 050, 100, 180 | M1 |
