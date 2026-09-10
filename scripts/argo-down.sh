@@ -43,6 +43,7 @@ fi
 
 if [ "$PROVIDER" = civo ]; then
   civo_backup
+  civo_export_tls_secret
 fi
 
 # Disarming automated sync is the first thing done to a reachable cluster:

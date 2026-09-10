@@ -113,3 +113,28 @@ civo_backup() {
   fi
   echo "ARGO-DOWN: no CNPG Cluster found on civo - nothing to back up."
 }
+
+# Exports the whole Secret manifest (not just cert/key fields) so its
+# cert-manager.io/* annotations round-trip exactly - splitting them out
+# risks cert-manager reissuing on next import (SecretPublicKeysDiffer /
+# IncorrectIssuer policy checks). Missing Secret (first-ever run, or the
+# Certificate hasn't issued yet) is not fatal - argo-up simply bootstraps
+# a fresh order in that case.
+civo_export_tls_secret() {
+  if ! kubectl get secret platform-public-tls -n envoy >/dev/null 2>&1; then
+    echo "ARGO-DOWN: no platform-public-tls Secret found - nothing to export."
+    return 0
+  fi
+  local manifest
+  manifest="$(kubectl get secret platform-public-tls -n envoy -o yaml \
+    | yq 'del(.metadata.resourceVersion, .metadata.uid, .metadata.creationTimestamp, .metadata.managedFields)')"
+  aws ssm put-parameter \
+    --region "$LAB_REGION" \
+    --name "/${PROJECT_NAME}/persistent/civo/tls/platform-public" \
+    --type SecureString \
+    --tier Advanced \
+    --key-id alias/lab-secrets \
+    --overwrite \
+    --value "$manifest" >/dev/null
+  echo "ARGO-DOWN: exported platform-public-tls Secret to SSM."
+}
