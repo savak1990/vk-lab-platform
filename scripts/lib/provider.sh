@@ -135,3 +135,41 @@ civo_export_tls_secret() {
     --value "$manifest" >/dev/null
   echo "ARGO-DOWN: exported platform-public-tls Secret to SSM."
 }
+
+# Restoring before the root Application creates the Certificate avoids a
+# redundant ACME order. A cert already past its renewal time is skipped -
+# importing it would just trigger an immediate reissue anyway.
+civo_import_tls_secret() {
+  if kubectl get secret platform-public-tls -n envoy >/dev/null 2>&1; then
+    echo "ARGO-UP: platform-public-tls Secret already present - leaving the live one alone."
+    return 0
+  fi
+
+  local manifest
+  manifest="$(aws ssm get-parameter \
+    --region "$LAB_REGION" \
+    --name "/${PROJECT_NAME}/persistent/civo/tls/platform-public" \
+    --with-decryption \
+    --query 'Parameter.Value' --output text 2>/dev/null || true)"
+  if [ -z "$manifest" ] || [ "$manifest" = "None" ]; then
+    echo "ARGO-UP: no stored platform-public-tls Secret in SSM - a fresh certificate will be ordered."
+    return 0
+  fi
+
+  local not_after renew_before
+  not_after="$(echo "$manifest" | yq '.metadata.annotations["cert-manager.io/certificate-not-after"] // ""')"
+  renew_before="$(echo "$manifest" | yq '.metadata.annotations["cert-manager.io/renewal-time"] // ""')"
+  if [ -n "$renew_before" ]; then
+    local renew_epoch now_epoch
+    renew_epoch="$(date -u -d "$renew_before" +%s 2>/dev/null || date -u -jf "%Y-%m-%dT%H:%M:%SZ" "$renew_before" +%s 2>/dev/null || echo 0)"
+    now_epoch="$(date -u +%s)"
+    if [ "$renew_epoch" -gt 0 ] && [ "$now_epoch" -ge "$renew_epoch" ]; then
+      echo "ARGO-UP: stored platform-public-tls Secret is past its renewal time ($renew_before) - skipping import, a fresh certificate will be ordered."
+      return 0
+    fi
+  fi
+
+  kubectl create namespace envoy --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  echo "$manifest" | kubectl apply -f - >/dev/null
+  echo "ARGO-UP: restored platform-public-tls Secret from SSM (not-after: ${not_after:-unknown})."
+}

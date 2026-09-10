@@ -128,6 +128,10 @@ else
   aws_resolve_inputs
 fi
 
+if [ "$PROVIDER" = civo ]; then
+  civo_import_tls_secret
+fi
+
 # Parallel arrays, not an associative array: DNS_HOST_LABELS[i]/DNS_HOST_FQDNS[i],
 # so this stays bash-3.2-compatible (stock macOS /bin/bash predates `declare -A`).
 # Labels, not full hostnames, keep $LAB_FQDN out of any echoed output. dig
@@ -199,8 +203,8 @@ civo_wait_for_dns() {
     sleep "$poll_interval"
     elapsed=$((elapsed + poll_interval))
   done
-  echo "ARGO-UP: DNS not resolved for argo.<fqdn> after ${watch_seconds}s - non-fatal on civo (external-dns isn't implemented yet, so no DNS record is created automatically)." >&2
-  echo "ARGO-UP: root Synced/Healthy - platform ready (DNS not yet resolved, non-fatal on civo)."
+  echo "ARGO-UP: DNS not resolved for argo.<fqdn> after ${watch_seconds}s - non-fatal, but check ExternalDNS's Application health and Route 53 directly before assuming the platform is reachable." >&2
+  echo "ARGO-UP: root Synced/Healthy - platform ready (DNS not yet resolved within the watch window)."
   return 0
 }
 
