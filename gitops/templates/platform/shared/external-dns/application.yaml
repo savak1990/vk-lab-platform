@@ -25,7 +25,7 @@ spec:
         # needed on any generated Service, no second source of truth.
         sources:
           - gateway-httproute
-        # Scoped to lab.<root-domain> only - never the parent/root zone.
+        # Scoped to this target's own FQDN only - never the parent/root zone.
         domainFilters:
           - {{ .Values.envoyGateway.fqdn | quote }}
         registry: txt

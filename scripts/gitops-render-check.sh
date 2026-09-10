@@ -75,7 +75,8 @@ external-dns"
 FORBIDDEN_APPLICATIONS_CIVO="aws-load-balancer-controller ebs-csi-driver karpenter \
 kube-prometheus-stack loki metrics-server alloy external-snapshotter external-snapshotter-crds"
 FORBIDDEN_OBJECTS="BackendTrafficPolicy__observability__grafana-traffic-policy \
-HTTPRoute__observability__grafana RoleBinding__observability__e2e-test-readonly"
+HTTPRoute__observability__grafana RoleBinding__observability__e2e-test-readonly \
+ExternalSecret__observability__grafana-admin-credentials"
 
 verify_object_set() {
   local dir="$1" target="$2" obj name kind

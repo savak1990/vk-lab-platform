@@ -133,7 +133,7 @@ Revert the change. The `argo-down` gate cleans stale records. Otherwise, clean t
     keys — `env`, not `extraEnv`, unlike the ESO chart used in CIVO-100).
   - Live verification on a real Civo cluster (`vk-civo-lab`): `external-dns`
     Application `Synced/Healthy`, controller pod `2/2 Running`
-    (`external-dns` + `aws-signing-helper`). `argo.civo.vkdev1.com` A
+    (`external-dns` + `aws-signing-helper`). `argo.civo.<root-domain>` A
     record resolved to the reserved IP; the matching TXT record read
     `heritage=external-dns,external-dns/owner=vk-civo-lab,...` — confirmed
     directly via `aws route53 list-resource-record-sets`, project-scoped
