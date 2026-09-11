@@ -16,6 +16,7 @@ locals {
   consumers = local.create ? {
     eso            = data.aws_iam_policy_document.eso.json
     "external-dns" = data.aws_iam_policy_document.external_dns.json
+    "cert-manager" = data.aws_iam_policy_document.cert_manager.json
   } : {}
 }
 
@@ -90,6 +91,29 @@ data "aws_iam_policy_document" "external_dns" {
 
   statement {
     actions   = ["route53:ListHostedZones", "route53:GetChange"]
+    resources = ["*"]
+  }
+}
+
+# TXT-only, scoped to the Civo zone - cert-manager's DNS-01 solver never
+# needs to touch the A records ExternalDNS owns, so the change permission
+# is restricted by record type, not just by zone. No ListHostedZones*: the
+# zone ID reaches this workload as a value (see route53-zone's zone_id SSM
+# parameter), it never has to look the zone up.
+data "aws_iam_policy_document" "cert_manager" {
+  statement {
+    actions   = ["route53:ChangeResourceRecordSets", "route53:ListResourceRecordSets"]
+    resources = ["arn:aws:route53:::hostedzone/${var.hosted_zone_id}"]
+
+    condition {
+      test     = "ForAllValues:StringEquals"
+      variable = "route53:ChangeResourceRecordSetsRecordTypes"
+      values   = ["TXT"]
+    }
+  }
+
+  statement {
+    actions   = ["route53:GetChange"]
     resources = ["*"]
   }
 }
