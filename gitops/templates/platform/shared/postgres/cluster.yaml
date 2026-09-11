@@ -1,4 +1,4 @@
-{{- if eq .Values.target "aws" }}
+{{- if ne .Values.target "local" }}
 apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 metadata:
@@ -12,7 +12,12 @@ metadata:
 spec:
   instances: 1
   priorityClassName: postgres-critical
-  {{- if .Values.postgres.nodeSelector }}
+  {{- if eq .Values.target "civo" }}
+  # CNPG creates a PodDisruptionBudget even for a single instance, and that
+  # budget blocks a node from ever draining.
+  enablePDB: false
+  {{- end }}
+  {{- if and (eq .Values.target "aws") .Values.postgres.nodeSelector }}
   affinity:
     nodeSelector:
       {{- .Values.postgres.nodeSelector | toYaml | nindent 6 }}
@@ -22,7 +27,7 @@ spec:
       cpu: 250m
       memory: 256Mi
   bootstrap:
-    {{- if .Values.postgres.recoverySnapshotHandle }}
+    {{- if and (eq .Values.target "aws") .Values.postgres.recoverySnapshotHandle }}
     # No initdb fallback: a loud failure beats silently wiping a recoverable
     # database. database/owner enable CNPG's app-user password reconciler on
     # this path - without them the pinned password is never re-applied.
@@ -44,7 +49,8 @@ spec:
     # snapshot-recovery path (above) the new PVC must be >= the snapshot's
     # restore size or it never binds.
     size: {{ .Values.postgres.storageSize | quote }}
-    storageClass: {{ .Values.storage.className }}
+    storageClass: {{ include "platform.storageClassName" . }}
+  {{- if eq .Values.target "aws" }}
   # Cold (online: false) volume-snapshot backup - confirmed via CNPG docs
   # to need neither an object store nor WAL archiving, just a CSI driver
   # that supports snapshots. instances: 1 means this briefly fences the
@@ -54,6 +60,7 @@ spec:
     volumeSnapshot:
       className: ebs-postgres-snapshot
       online: false
+  {{- end }}
   postgresql:
     parameters:
       max_wal_senders: "10"
