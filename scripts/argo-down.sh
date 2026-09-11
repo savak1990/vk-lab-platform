@@ -21,6 +21,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$REPO_ROOT/scripts/lib/region.sh"
 source "$REPO_ROOT/scripts/lib/provider.sh"
 BACKUP_TIMEOUT="${ARGO_DOWN_BACKUP_TIMEOUT:-120s}"
+PVC_WAIT_TIMEOUT="${ARGO_DOWN_PVC_WAIT_TIMEOUT:-180s}"
 SNAPSHOT_TAG_FILTERS=("Name=tag:Project,Values=$PROJECT_NAME" "Name=tag:Component,Values=postgres")
 
 # Absence is checked against the provider's own API, not kubectl - a 404
@@ -301,6 +302,22 @@ if kubectl get application root -n argocd >/dev/null 2>&1; then
   echo "ARGO-DOWN: cascade complete."
 else
   echo "ARGO-DOWN: root Application already gone - skipping cascade."
+fi
+
+# The PVC/PV teardown is async relative to the Cluster object going away,
+# and a Civo volume that outlives the cluster keeps billing - cluster-down
+# treats one as a cascade bug and fails, so confirm it here instead.
+if [ "$PROVIDER" = civo ]; then
+  if [ -n "$(kubectl get pvc -n cnpg-system -o name 2>/dev/null)" ]; then
+    echo "ARGO-DOWN: waiting for cnpg-system PVCs to finish deleting..."
+    if ! kubectl wait --for=delete pvc -n cnpg-system --all --timeout="$PVC_WAIT_TIMEOUT"; then
+      echo "ARGO-DOWN: WARNING - cnpg-system PVCs still present after ${PVC_WAIT_TIMEOUT}; the Civo volume may" >&2
+      echo "ARGO-DOWN: outlive the cluster. cluster-down's dangling-volume sweep will catch and delete it, and" >&2
+      echo "ARGO-DOWN: will fail the run so this surfaces rather than being absorbed." >&2
+    fi
+  else
+    echo "ARGO-DOWN: no cnpg-system PVCs present - nothing to wait on."
+  fi
 fi
 
 # Final step: remove Argo CD itself. By now everything it managed is

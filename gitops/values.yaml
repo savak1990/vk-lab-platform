@@ -44,9 +44,9 @@ awsIdentity:
 postgres:
   recoverySnapshotHandle: ""
   storageSize: 20Gi
-  # Pins Postgres off spot (AZ-pinned PVC + interruption risk). Helm deep-
-  # merges values, so a target without an on-demand pool needs its own
-  # postgres/cluster.yaml (or a nodeSelector: null override), not {}.
+  # Pins Postgres off spot (AZ-pinned PVC + interruption risk). aws-only:
+  # Helm deep-merges values, so the shared Cluster template gates this on
+  # target rather than relying on a per-target override.
   nodeSelector:
     workload-type: on-demand
 

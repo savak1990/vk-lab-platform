@@ -24,6 +24,7 @@ flowchart TD
   030 --> 170[170 autoscaler]
   040 --> 045[045 argo scripts]
   050 --> 045
+  045 --> 055[055 bring-up resilience]
   045 --> 060[060 ingress LB]
   050 --> 065[065 cert-manager]
   080 --> 082[082 Roles Anywhere TF]
@@ -42,8 +43,9 @@ flowchart TD
   082 --> 180[180 Backup jobs + S3]
   085 --> 180
   100 --> 180
-  050 --> 120[120 CNPG persistence]
-  100 --> 120
+  050 --> 115[115 CNPG Cluster on civo]
+  100 --> 115
+  115 --> 120[120 CNPG persistence]
   180 --> 120
   120 --> 185[185 AWS migration]
   180 --> 185
@@ -68,7 +70,7 @@ flowchart TD
 
 ## Critical path
 
-015 → 010 → 025 → 030 → 040 → 045 (with 050) → 065 → 080 → 082 → 085 → 090 → 100 → 180 → 120 → 150.
+015 → 010 → 025 → 030 → 040 → 045 (with 050) → 065 → 080 → 082 → 085 → 090 → 100 → 115 → 180 → 120 → 150.
 
 Parallel tracks once 045/050 land: ingress (060 → 070), identity (080 → 082 →
 090 → 110), observability (160), tests (130), CI (140), autoscaler (170).

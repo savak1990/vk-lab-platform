@@ -86,6 +86,7 @@ verified in this environment.
 | CIVO-040 | [040-civo-cluster-scripts](040-civo-cluster-scripts/spec.md) | Cluster scripts, kubeconfig, guards, leak sweep | DONE | P1 | M | standard | 030 | M1 |
 | CIVO-045 | [045-argo-scripts-civo-branches](045-argo-scripts-civo-branches/spec.md) | `argo-up`/`argo-down` Civo branches | DONE | P1 | M | standard | 040, 050 | M1 |
 | CIVO-050 | [050-gitops-civo-target-baseline](050-gitops-civo-target-baseline/spec.md) | Hoist portable components; `target: civo` tree; golden AWS render | DONE | P1 | M | standard | 010 | M1 |
+| CIVO-055 | [055-argo-bringup-resilience](055-argo-bringup-resilience/spec.md) | Fail fast on CRDs that never establish; reliable bring-up | READY | P1 | M | standard | 045 | M1 |
 | CIVO-060 | [060-civo-ingress-envoy-lb](060-civo-ingress-envoy-lb/spec.md) | Civo LB via Envoy Service, Gateway 80/443 | DONE | P1 | M | standard | 045 | M1 |
 | CIVO-065 | [065-cert-manager-install](065-cert-manager-install/spec.md) | cert-manager installed on civo, target-gated | DONE | P1 | S | standard | 050 | M1 |
 | CIVO-070 | [070-letsencrypt-http01-tls](070-letsencrypt-http01-tls/spec.md) | Let's Encrypt HTTP-01 TLS at Envoy, Secret persistence | DONE | P1 | M | standard | 060, 065, 110 | M1 |
@@ -96,7 +97,8 @@ verified in this environment.
 | CIVO-090 | [090-credential-helper-sidecar](090-credential-helper-sidecar/spec.md) | Credential helper image and sidecar pattern | DONE | P0 | M | standard | 082, 085 | M1 |
 | CIVO-100 | [100-eso-on-civo](100-eso-on-civo/spec.md) | External Secrets on Civo via sidecar | DONE | P1 | S | standard | 090 | M1 |
 | CIVO-110 | [110-external-dns-on-civo](110-external-dns-on-civo/spec.md) | ExternalDNS on Civo via sidecar | DONE | P1 | S | standard | 090, 060 | M1 |
-| CIVO-120 | [120-cnpg-on-civo-persistence](120-cnpg-on-civo-persistence/spec.md) | CNPG on Civo with persistence through object-store backups | READY | P1 | L | strongest | 050, 100, 180 | M1 |
+| CIVO-115 | [115-cnpg-cluster-on-civo](115-cnpg-cluster-on-civo/spec.md) | CNPG Cluster on Civo, data disposable | DONE | P1 | M | standard | 050, 100 | M1 |
+| CIVO-120 | [120-cnpg-on-civo-persistence](120-cnpg-on-civo-persistence/spec.md) | CNPG on Civo with persistence through object-store backups | READY | P1 | L | strongest | 050, 100, 115, 180 | M1 |
 | CIVO-130 | [130-e2e-tests-civo](130-e2e-tests-civo/spec.md) | E2E suite on Civo | READY | P1 | M | standard | 045, 060 | M1 |
 | CIVO-140 | [140-ci-workflow-civo](140-ci-workflow-civo/spec.md) | `lab.yml` provider input, token decrypt, concurrency, cleanup | READY | P1 | M | standard | 045, 015 | M1 |
 | CIVO-150 | [150-teardown-recreate-validation](150-teardown-recreate-validation/spec.md) | Full lifecycle validation on Civo | READY | P1 | M | strongest | 120, 110, 070, 130 | M1 |

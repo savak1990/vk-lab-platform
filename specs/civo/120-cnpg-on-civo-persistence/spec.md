@@ -10,11 +10,11 @@ recommended_model_tier: "strongest"
 model_rationale: "Data-safety path across cluster destruction; backup and restore must be reasoned through with failure modes"
 effort_estimate: "One to two sessions (6–10 h) including two full down/up cycles"
 estimate_confidence: "medium"
-depends_on: ["CIVO-050", "CIVO-100", "CIVO-180"]
+depends_on: ["CIVO-050", "CIVO-100", "CIVO-115", "CIVO-180"]
 blocked_by: []
 supersedes: []
 created: "2026-09-06"
-updated: "2026-09-06"
+updated: "2026-09-11"
 completed: null
 ---
 
@@ -45,6 +45,7 @@ Not in scope:
 - `recovered-snapshot.yaml` holds a `VolumeSnapshotContent` with `driver ebs.csi.aws.com`, `deletionPolicy Retain`, and a `snapshotHandle` from values. It uses client-side apply.
 - `argo-down.sh:54-113` creates a CNPG `Backup` (volumeSnapshot) and prunes. `argo-up.sh:167-197` discovers the newest handle.
 - The Civo `civo-volume` class is RWO and WaitForFirstConsumer, with Delete reclaim. The volumes survive cluster deletion (research.md).
+- The `Cluster` template now lives at `gitops/templates/platform/shared/postgres/cluster.yaml` and renders on civo, delivered by CIVO-115.
 
 ## 4. Design and contracts
 
@@ -62,13 +63,12 @@ Not in scope:
 ## 6. Implementation steps
 
 1. Confirm CIVO-180 delivered the bucket, the image, the CronJob and the restore Job.
-2. Template the `Cluster` with values. Run `make gitops-check`; the AWS golden diff must be empty.
-3. Run `PROVIDER=civo make up`. Write test rows through the end-to-end Postgres test or `psql`.
-4. Run `make down`. Confirm the teardown dump completed and the object is in S3.
-5. Run `make up`. Confirm the restore Job loaded the dump and the rows are present.
-6. Repeat steps 4 and 5 once more.
-7. Re-sync Argo without a teardown. Confirm the restore Job exits successfully and changes nothing, because the schema is not empty.
-8. Failure paths: a failed teardown dump exits non-zero and leaves the cluster; a corrupt or missing dump fails the restore Job visibly instead of leaving an empty database that looks healthy.
+2. Run `PROVIDER=civo make up`. Write test rows through the end-to-end Postgres test or `psql`.
+3. Run `make down`. Confirm the teardown dump completed and the object is in S3.
+4. Run `make up`. Confirm the restore Job loaded the dump and the rows are present.
+5. Repeat steps 3 and 4 once more.
+6. Re-sync Argo without a teardown. Confirm the restore Job exits successfully and changes nothing, because the schema is not empty.
+7. Failure paths: a failed teardown dump exits non-zero and leaves the cluster; a corrupt or missing dump fails the restore Job visibly instead of leaving an empty database that looks healthy.
 
 ## 7. Dependencies and blockers
 
@@ -114,4 +114,6 @@ Data risk: yes. Test with disposable data only. Rollback: revert the change. The
 - 2026-09-06 — kubernetes-architect review: `csi.civo.com` advertises no `CREATE_DELETE_SNAPSHOT` or `CLONE_VOLUME` capability (https://github.com/civo/civo-csi/blob/master/pkg/driver/controller_server.go). Snapshot and PVC-datasource recovery dropped; redesigned around object-store backups; blocker removed; status READY with new dependency CIVO-180.
 
 - 2026-09-06 — user decision: persistence moves from object-store barman backups to shared logical dumps in S3. The Civo Object Store bills a 500 GB minimum; S3 bills bytes stored. This spec now depends on CIVO-180 for the mechanism.
+
+- 2026-09-11 — CNPG Cluster delivery split out to CIVO-115 (runs on civo with disposable data); this spec keeps the persistence proof.
 
