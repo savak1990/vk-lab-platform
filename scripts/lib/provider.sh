@@ -101,13 +101,18 @@ civo_recovery_handle() {
   printf ''
 }
 
-# Fail closed: no backup path exists on civo yet, so refuse to tear down a
-# cluster that still holds Postgres data. A missing CNPG CRD means "no
-# cluster", not a failed check, hence the two-step probe.
+# Fail closed: no backup path exists on civo yet, so tearing down destroys
+# the database. The override makes that an explicit operator choice. A
+# missing CNPG CRD means "no cluster", not a failed check - hence two probes.
 civo_backup() {
   if kubectl get clusters.postgresql.cnpg.io -A >/dev/null 2>&1; then
     if [ -n "$(kubectl get clusters.postgresql.cnpg.io -A -o name 2>/dev/null)" ]; then
-      echo "ARGO-DOWN: a CNPG Cluster exists on civo but CIVO-120's backup path isn't implemented yet - refusing to tear down and risk losing Postgres data." >&2
+      if [ "${CI_TEARDOWN_ALLOW_DATA_LOSS:-}" = "1" ]; then
+        echo "ARGO-DOWN: CI_TEARDOWN_ALLOW_DATA_LOSS=1 - tearing down and discarding all Postgres data on civo."
+        return 0
+      fi
+      echo "ARGO-DOWN: a CNPG Cluster exists on civo and no backup path is implemented yet - refusing to tear down and silently lose Postgres data." >&2
+      echo "ARGO-DOWN: re-run with CI_TEARDOWN_ALLOW_DATA_LOSS=1 to discard the database deliberately." >&2
       exit 1
     fi
   fi
