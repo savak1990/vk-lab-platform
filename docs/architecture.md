@@ -564,7 +564,7 @@ The three targets diverge in kind, not just in values, on several points:
 - **TLS.** `aws`: ACM certificate, terminated at the NLB's TLS listener
   (§12) — Envoy never holds a certificate. `civo`: no ACM/NLB equivalent;
   TLS terminates at Envoy Gateway itself via cert-manager and Let's
-  Encrypt HTTP-01, with the Secret persisted across down/up as an SSM
+  Encrypt DNS-01, with the Secret persisted across down/up as an SSM
   `SecureString` (ADR 0028). `local`: plain HTTP, no TLS anywhere in the
   request path.
 - **Secrets.** `aws`: SSM Parameter Store (ADR 0023) reached via EKS Pod

@@ -64,10 +64,11 @@ resource outside Terraform state, and it is an exception on purpose:
   Kept outside Terraform, a `full-up` of the same project name and
   subdomain restores the certificate and orders nothing; only the first
   bootstrap of a new project or subdomain, and the 60-day renewal, order.
-- The certificate is keyed by its hostnames (`argo.`/`grafana.<subdomain>.<root-domain>`).
-  If the subdomain changes under the same project name, cert-manager sees
-  a Secret that no longer matches the `Certificate` and reissues on its
-  own; nothing needs manual repair.
+- The certificate is keyed by the wildcard pair (`<subdomain>.<root-domain>`
+  and `*.<subdomain>.<root-domain>`), so any hostname under the subdomain
+  matches. If the subdomain changes under the same project name,
+  cert-manager sees a Secret that no longer matches the `Certificate` and
+  reissues on its own; nothing needs manual repair.
 - The cost of the exception is one Advanced-tier parameter per project
   (~0.05 USD/month) that survives a project's full teardown. Delete it by
   hand when a project is retired:
@@ -77,6 +78,20 @@ resource outside Terraform state, and it is an exception on purpose:
 - The parameter depends on the account-global `alias/lab-secrets` key; an
   `account-down` makes any surviving parameter undecryptable, which
   `argo-up` treats as "nothing stored".
+
+*Amended 2026-09-11 (DNS-01 verification).* **The solver switched from
+HTTP-01 to DNS-01, and the certificate switched from per-hostname to a
+wildcard pair.** The CIVO-075 spec covers the full rationale; this amends
+the Decision line above, which named HTTP-01 specifically. One
+consequence worth recording here: DNS-01 answers Let's Encrypt's challenge
+by creating a TXT record in the Civo subdomain's zone, which means Civo's TLS issuance
+now depends on an AWS IAM identity (a Roles Anywhere Route53 role) to
+write that record — a coupling this original decision did not need, since
+HTTP-01 required nothing more than Envoy serving the challenge path over
+the existing plaintext listener. This is a deliberate accepted tradeoff,
+not a regression: DNS-01 is what makes wildcard issuance possible at all,
+and it removes the reverse dependency HTTP-01 had on the HTTPRoutes whose
+DNS the challenge needed to already resolve.
 
 **ADR 0011 is unchanged for AWS.** This is a Civo-only variant, not a
 replacement — the AWS target keeps NLB + ACM termination exactly as ADR

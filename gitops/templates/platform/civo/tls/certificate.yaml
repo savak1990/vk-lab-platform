@@ -5,14 +5,13 @@ metadata:
   name: platform-public
   namespace: envoy
   annotations:
-    # Wave 2: DNS-01 only needs the wave-0 Gateway (for the HTTPS listener
-    # it targets) and the wave-1 identity Certificates (cert-manager's own
-    # signing sidecar) - unlike HTTP-01, it never waits on application
-    # HTTPRoutes or their DNS records.
+    # Wave 2: DNS-01 only needs the wave-0 Gateway and wave-1 identity
+    # Certificates, unlike HTTP-01, which also needed application
+    # HTTPRoutes and their DNS records.
     argocd.argoproj.io/sync-wave: "2"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
     # Resolves the HTTPS listener during the very first order, before any
-    # real certificate exists yet (matches CIVO-060's temporary-cert amendment).
+    # real certificate exists yet.
     cert-manager.io/issue-temporary-certificate: "true"
 spec:
   secretName: platform-public-tls

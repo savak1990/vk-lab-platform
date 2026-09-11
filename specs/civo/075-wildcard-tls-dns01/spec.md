@@ -127,7 +127,10 @@ consumer renders from the list; verify the loop covers it);
    Check that `/${project}/bootstrap/rolesanywhere/role_arn/cert-manager`
    and `/${project}/bootstrap/route53/zone_id` exist.
 2. GitOps: add the consumer, the sidecar and the values. Run
-   `scripts/gitops-render-check.sh`. The AWS golden diff is empty.
+   `scripts/gitops-render-check.sh`. The AWS golden render changes only by
+   the root Application's relay parameter list (two new empty-valued
+   entries, matching the existing `roleArns.eso`/`roleArns.external-dns`
+   pattern) — no civo-only object appears in it.
 3. Switch the issuers and the Certificate. Keep the staging issuer for the
    first cycle. Run `PROVIDER=civo make up`. Check the `Challenge` reaches
    `valid` through DNS-01 and the Certificate is `Ready`.
@@ -153,7 +156,9 @@ policy structure), CIVO-090 (sidecar template).
 - The cert-manager role denies A-record changes on the Civo zone and any
   change on the AWS zone (negative tests with the `aws` CLI).
 - A `make down`/`make up` cycle creates no new `Order`; the serial is unchanged.
-- The AWS golden diff is empty. The `argo-up.sh` SSM batch has 10 names.
+- The AWS golden render changes only by two new empty-valued relay
+  parameters (the `roleArns.eso`/`roleArns.external-dns` pattern); no
+  civo-only object appears in it. The `argo-up.sh` SSM batch has 10 names.
 
 ## 9. Validation
 
@@ -165,13 +170,24 @@ until step 6.
 
 All objects are under `civo/` or gated on `target == civo`. The Terraform
 role is created only for the civo project (`PROVIDER=civo`). The golden
-render proves the AWS tree is unchanged.
+render proves no civo-only object enters the AWS tree. One exception: the `zone_id` SSM
+parameter lives in `terraform/modules/route53-zone`, a module shared by
+both projects' bootstrap stacks, so the AWS project's next `bootstrap-up`
+creates it too — additive and unused on AWS, but not civo-exclusive.
 
 ## 11. Rollout and rollback/recovery
 
 Revert the change; HTTP-01 and the enumerated names return. Delete the SSM
 TLS parameter to force a fresh order if the stored Secret carries the
 wildcard names. Data risk: none.
+
+Forward upgrade: on the first `make up` after this change runs against an
+already-existing cluster from before it, the old (pre-wildcard,
+HTTP-01-issued) certificate gets restored from the SSM-backed Secret
+persistence (CIVO-070's mechanism, unchanged by this spec) and served
+until cert-manager notices the `dnsNames` no longer match the `Certificate`
+spec and reissues on its own — self-healing, one to three minutes on
+DNS-01, no manual action needed.
 
 ## 12. Risks and unresolved questions
 
@@ -185,6 +201,19 @@ wildcard names. Data risk: none.
 - The chart's `volumes` and `volumeMounts` apply to the controller only,
   which is the pod that runs the solver. Confirm no other component needs
   the sidecar.
+- `scripts/argo-up.sh`'s idempotency fast-path guard exits early once
+  `kubectl get application root` reports `Synced/Healthy`, before reaching
+  its own `helm upgrade` call — so a plain `TLS_ISSUER=letsencrypt-prod
+  make up` does not switch the issuer on an already-running cluster; the
+  fast path never re-applies the new value. To force a resync of a running
+  cluster's Helm parameters (e.g. to switch issuers), re-issue the
+  underlying `helm upgrade --install root-application ... --server-side
+  --force-conflicts` command directly with the new `--set
+  tls.issuer=letsencrypt-prod` — the same command
+  `civo_install_root_application()` runs. This is safe because of
+  `--server-side --force-conflicts`; it is just not exposed as a
+  convenient re-run path yet (a follow-up to give `argo-up.sh` a real
+  force-re-apply escape hatch is out of scope for this spec).
 
 ## 13. Definition of done
 
@@ -203,7 +232,7 @@ wildcard names. Data risk: none.
   `vk-civo-lab` cluster (Task 5):
   - **DNS-01 issuance**: the completed staging `Order`
     (`envoy/platform-public-2-4038833104`) shows
-    `spec.dnsNames: [civo.vkdev1.com, *.civo.vkdev1.com]` and
+    `spec.dnsNames: [civo.<root-domain>, *.civo.<root-domain>]` and
     `status.authorizations[].challenges[].type: dns-01`; `Certificate
     cert-manager` and `Certificate platform-public` both reached
     `Ready: True`. No solver `HTTPRoute` was created
@@ -217,7 +246,7 @@ wildcard names. Data risk: none.
     true` volume design works as intended.
   - **Wildcard SANs (staging)**: `openssl x509` on the
     `platform-public-tls` Secret showed
-    `DNS:*.civo.vkdev1.com, DNS:civo.vkdev1.com` under the
+    `DNS:*.civo.<root-domain>, DNS:civo.<root-domain>` under the
     `(STAGING)` Let's Encrypt issuer.
   - **Negative tests**: using a throwaway pod carrying the real
     `cert-manager` Roles Anywhere sidecar (same trust-anchor/profile/role
@@ -225,8 +254,8 @@ wildcard names. Data risk: none.
     allowed Civo zone (`Z089258123NOYWF13YBZ0`) was denied
     (`AccessDenied` — the `ForAllValues:StringEquals` record-type
     condition), and a TXT `ChangeResourceRecordSets` against the AWS
-    account's root zone `vkdev1.com` (`Z00765244550N5OIUMQC`, substituted
-    for the AWS `lab` zone — `lab.vkdev1.com` does not exist in this
+    account's root zone `<root-domain>` (`Z00765244550N5OIUMQC`, substituted
+    for the AWS `lab` zone — `lab.<root-domain>` does not exist in this
     account, since the `vk-lab-platform` AWS project's persistent
     Route 53/ACM stack has never been applied there) was also denied
     (`AccessDenied` — the resource-scoped policy statement only names the
@@ -241,21 +270,21 @@ wildcard names. Data risk: none.
     same wildcard pair — the new prod `Order`
     (`envoy/platform-public-1-3845236320`) and `Challenge`
     (`envoy/platform-public-1-3845236320-2957023773`) both reached
-    `valid` for `civo.vkdev1.com` (a fresh SAN-set bucket, separate from
+    `valid` for `civo.<root-domain>` (a fresh SAN-set bucket, separate from
     CIVO-070's staging cert, as expected). `Certificate/platform-public`
     shows `issuerRef.name: letsencrypt-prod`, `Ready: True`. The live
-    certificate's SANs are `DNS:*.civo.vkdev1.com, DNS:civo.vkdev1.com`,
+    certificate's SANs are `DNS:*.civo.<root-domain>, DNS:civo.<root-domain>`,
     issuer `/C=US/O=Let's Encrypt/CN=YE1` (production, not staging),
     serial `05F4DB49913F65315EC4337334CF0001AF50`.
-    `curl -sv https://argo.civo.vkdev1.com/` succeeded with no
+    `curl -sv https://argo.civo.<root-domain>/` succeeded with no
     `--insecure` flag (`SSL certificate verify ok`, HTTP/2 200) —
-    confirming a trusted public-CA chain end-to-end. `grafana.civo.vkdev1.com`
+    confirming a trusted public-CA chain end-to-end. `grafana.civo.<root-domain>`
     could not be cross-checked: this verification cluster has no
     observability stack deployed (only the `argocd` `HTTPRoute` exists;
     `kubectl get httproute -A` confirms), so the hostname has no DNS
     record at all. This is not a CIVO-075 gap — the spec's acceptance
     criterion is the one wildcard certificate's SAN set and trusted
-    chain, both fully confirmed on `argo.civo.vkdev1.com`; there is
+    chain, both fully confirmed on `argo.civo.<root-domain>`; there is
     simply no second live hostname on this cluster to compare against.
   - No code defects were found in the implementation. The only issues
     encountered during verification were environmental/process gaps
