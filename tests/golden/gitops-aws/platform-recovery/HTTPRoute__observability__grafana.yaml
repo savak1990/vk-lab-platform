@@ -15,6 +15,7 @@ spec:
   parentRefs:
     - name: platform-gateway
       namespace: envoy
+      sectionName: https
   rules:
     - backendRefs:
         - name: kube-prometheus-stack-grafana

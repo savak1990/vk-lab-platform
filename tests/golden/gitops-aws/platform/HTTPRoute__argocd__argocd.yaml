@@ -11,9 +11,12 @@ spec:
   # an /etc/hosts entry pointing the hostname at the NLB's address.
   hostnames:
     - argo.
+  # https listener only: on civo the http listener carries just the
+  # HTTP->HTTPS redirect and the ACME solver routes.
   parentRefs:
     - name: platform-gateway
       namespace: envoy
+      sectionName: https
   rules:
     - backendRefs:
         - name: argocd-server
