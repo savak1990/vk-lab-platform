@@ -5,7 +5,9 @@ metadata:
   name: lab-postgres
   namespace: cnpg-system
   annotations:
-    argocd.argoproj.io/sync-wave: "2"
+    # After the wave-2 ExternalSecret: CNPG generates its own lab-postgres-app
+    # password Secret if none exists yet, and ESO then collides with it.
+    argocd.argoproj.io/sync-wave: "3"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
   instances: 1

@@ -5,7 +5,9 @@ metadata:
   name: platform-public
   namespace: envoy
   annotations:
-    argocd.argoproj.io/sync-wave: "1"
+    # Wave 3: HTTP-01 needs the wave-2 HTTPRoutes and their DNS records, and
+    # ExternalDNS itself only runs once its wave-1 identity cert is issued.
+    argocd.argoproj.io/sync-wave: "3"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
     # Resolves the HTTPS listener during the very first order, before any
     # real certificate exists yet (matches CIVO-060's temporary-cert amendment).

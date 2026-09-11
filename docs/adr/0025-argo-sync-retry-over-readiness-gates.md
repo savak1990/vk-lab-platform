@@ -109,6 +109,31 @@ where retry provably cannot help.
    for Argo CD's own release rather than `--set`, since the key carries a
    multi-line Lua body.
 
+6. **A wave must never contain a resource whose health depends on a later wave.**
+   *Amended 2026-09-11, from a Civo cold-bootstrap deadlock.* Retry only fires when
+   the whole operation terminates, and gitops-engine never re-applies a task that
+   already holds a `SyncFailed` result while the operation is still `Running`: the
+   result is persisted in `status.operationState.syncResult` and merely re-printed on
+   every resume, so it survives controller restarts. A wave therefore has to settle
+   — every resource in it Healthy, Failed or without a health check — before a
+   raced failure in that wave can ever be retried.
+
+   On Civo, `ClusterSecretStore`/`ExternalSecret` sat in wave 0 while the Roles
+   Anywhere `Certificate` that lets ESO's pod start sat in wave 1 (ADR 0029). Argo
+   ships built-in health checks for both ESO kinds, so wave 0 could never settle,
+   the `GatewayClass`/`Gateway`/`EnvoyProxy` failures from instance 2 above were
+   never retried, and `root` stayed `Running` indefinitely — 40 minutes, restart-
+   immune. On AWS the same race self-heals in ~11 minutes only because ESO uses
+   Pod Identity and wave 0 settles.
+
+   Waves are the same for a component on both targets. `ClusterSecretStore` and
+   `ExternalSecret` move to wave 2, strictly after the identity Certificates;
+   `Cluster/lab-postgres` moves to wave 3 so ESO's pinned password Secret still
+   exists before CNPG bootstraps (CNPG otherwise generates its own); the public
+   TLS `Certificate` (CIVO-070) lands at wave 3, after the HTTPRoutes whose DNS
+   its HTTP-01 challenge needs. `argo-up.sh`'s watch ceiling is 2700s on both
+   targets.
+
 ## Consequences
 
 A cross-Application race now costs minutes of retry instead of a broken cluster and
