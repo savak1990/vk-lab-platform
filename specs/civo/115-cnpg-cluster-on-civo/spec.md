@@ -1,7 +1,7 @@
 ---
 id: "CIVO-115"
 title: "CNPG Cluster on Civo with disposable data"
-status: "IN_PROGRESS"
+status: "DONE"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -15,7 +15,7 @@ blocked_by: []
 supersedes: []
 created: "2026-09-11"
 updated: "2026-09-11"
-completed: null
+completed: "2026-09-11"
 ---
 
 # CIVO-115 — CNPG Cluster on Civo with disposable data
@@ -141,6 +141,15 @@ unchanged in substance.
 
 ## 12. Risks and unresolved questions
 
+- **The PVC wait is unproven, not proven.** Every teardown in this session took
+  its empty-set branch, because Argo's foreground cascade already blocks
+  through PVC deletion (§14). So the wait costs nothing and has never fired.
+  Two readings, both untested: it is redundant insurance against a future
+  cascade whose `--wait` stops covering PVCs, or it is dead code. Do not cite
+  it as verified teardown protection. A future spec that wants it proven must
+  induce the condition deliberately — e.g. a PVC held by a finalizer — rather
+  than waiting for a normal cycle to exercise it.
+
 - The hoisted template carries two pre-existing comment-rule violations
   verbatim: a 5-line comment block and a `See ADR 0013` reference. The
   repo's rule caps comments at 3 lines and forbids document references.
@@ -155,11 +164,86 @@ unchanged in substance.
 
 ## 13. Definition of done
 
-- [ ] Template hoisted and gated; AWS golden diff byte-identical
-- [ ] Teardown gate and PVC wait implemented and exercised on one civo cycle
-- [ ] Index updated; status `DONE`
+- [x] Template hoisted and gated; AWS golden diff byte-identical
+- [x] Teardown gate implemented and exercised (both paths) on one civo cycle;
+      PVC wait implemented but never triggered — see §12
+- [x] Index updated; status `DONE`
 
 ## 14. Execution evidence and status history
 
 - 2026-09-11 — created as `IN_PROGRESS`. Implementation (Tasks 1–3) already
   landed in commits `ffd2375`, `645f18a`, `db35b73`; this spec records it.
+
+- 2026-09-11 — real-cloud verification on `vk-civo-lab` (Civo LON1), branch
+  deployed via `TARGET_REVISION`, `AWS_PROFILE=viacheslav-dev`. Real domain
+  redacted as `<root-domain>`; no password material recorded.
+
+  **Bring-up.** `PROVIDER=civo make up` exited 0 —
+  `ARGO-UP: root Synced/Healthy and DNS resolved - platform ready.`,
+  reserved IP attached, `argo.civo.<root-domain>` resolving.
+
+  **Cluster and storage.** `Cluster/lab-postgres` reached
+  `Cluster in healthy state`, `readyInstances 1`, pod `lab-postgres-1` 1/1.
+  PVC `lab-postgres-1` `Bound`, `20Gi`, `RWO`, StorageClass `civo-volume` —
+  the `platform.storageClassName` helper resolving for `target: civo`.
+
+  **Target gating, read off the live object.** `affinity.nodeSelector` absent,
+  `backup` absent, `enablePDB: false`, `bootstrap: [initdb]`,
+  `storage: civo-volume 20Gi`. `kubectl get pdb -n cnpg-system` →
+  `No resources found`, confirming `enablePDB: false` took effect.
+
+  **Database shape matches AWS.** `\l vkdb` → database `vkdb`, owner `vkdb`,
+  `UTF8` — the same `database`/`owner` the shared template specifies for both
+  targets. Roles present: `vkdb`, `postgres`, `streaming_replica`,
+  `cnpg_metrics_exporter`.
+
+  **Credential chain proven end to end.** Connected as `vkdb` over TCP through
+  the `lab-postgres-rw` Service using the password External Secrets synced from
+  SSM — `current_user vkdb`, `current_database vkdb`, non-null
+  `inet_server_addr`. A TCP connection verifies the password itself; the local
+  socket would have passed under peer auth regardless. This exercises
+  KMS ciphertext → SSM → ESO → Kubernetes Secret → CNPG role.
+
+  **Read/write workload.** As `vkdb`: `CREATE TABLE` (serial PK, `numeric`,
+  `timestamptz`), `INSERT 0 4`, aggregate `SELECT`
+  (`count 4, sum 364.74, avg 91.19`), filtered and ordered `SELECT`,
+  arithmetic `UPDATE 1`, `CREATE INDEX`. `pg_tables.tableowner` = `vkdb`,
+  so the app role owns its own objects without an explicit grant.
+
+  **Teardown gate, refusal path.** `PROVIDER=civo make down` with the override
+  unset printed
+  `a CNPG Cluster exists on civo and no backup path is implemented yet -
+  refusing to tear down and silently lose Postgres data`
+  plus the re-run hint, and failed with `make: *** [argo-down] Error 1`.
+  The cluster stayed `Cluster in healthy state` and the rows survived
+  (`4 rows, total 368.99`, including the earlier `UPDATE`).
+
+  **Teardown gate, deliberate path.** `CI_TEARDOWN_ALLOW_DATA_LOSS=1
+  PROVIDER=civo make down` proceeded and exited 0, with `cluster-down`
+  reporting no leaked disposable-lifecycle resources. Terraform state
+  afterwards: `cluster-civo/k8s` and `cluster-civo/network` at 0 resources,
+  `persistent-civo/network` and `persistent-civo/reserved-ip` intact — the
+  Disposable/Persistent split holding.
+
+  **The PVC wait was never actually exercised, and this is worth stating
+  plainly.** Even with a live 20Gi PVC minutes earlier, the wait logged
+  `no cnpg-system PVCs present - nothing to wait on`. The log shows why:
+  `cascade complete.` is the line immediately before it, so Argo's
+  `kubectl delete application root --cascade=foreground --wait` had already
+  blocked until the `Cluster`, its pod and its PVC were gone. The wait
+  therefore observed an empty set on every run of this session. It is
+  defensive code that has not yet met the condition it was written for — see
+  §12.
+
+  **Incidental coverage.** An earlier teardown in the same session exercised
+  the two branches the main run cannot reach: `civo_backup()`'s
+  "no CNPG Cluster found on civo - nothing to back up" path, and the PVC
+  wait's "no cnpg-system PVCs present - nothing to wait on" empty-set guard.
+
+  **Infrastructure fault, not a regression (see CIVO-055).** A first bring-up
+  attempt was abandoned when k3s `v1.35.0+k3s1` left fourteen envoy-gateway
+  CRDs created but never `Established`, so the API server refused to serve
+  those kinds and cert-manager crashlooped on missing Gateway API CRDs. The
+  branch changes no CRD, no envoy-gateway and no cert-manager; a rebuilt
+  cluster established all 43 CRDs with none stuck, so the fault did not
+  reproduce. CIVO-055 was opened to make that failure loud instead of silent.
