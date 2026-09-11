@@ -50,6 +50,34 @@ only:
   environment, which has its own, much looser, rate limits, so repeated
   CI lifecycle runs never touch the production issuance limit.
 
+*Amended 2026-09-11 (CIVO-070 verification).* **The stored certificate
+deliberately outlives `full-down`.** The SSM parameter
+`/<project>/persistent/civo/tls/platform-public` is written by `argo-down`
+and read by `argo-up`, not created by Terraform, so `persistent-down` and
+`bootstrap-down` do not delete it. This is the one per-project persistent
+resource outside Terraform state, and it is an exception on purpose:
+
+- Let's Encrypt allows **5 duplicate certificates per rolling week** for
+  one name set. Tying the parameter's life to the persistent stack would
+  make every `full-down`/`full-up` cycle a production order and cap full
+  cycles at five a week — too small for how this lab is actually used.
+  Kept outside Terraform, a `full-up` of the same project name and
+  subdomain restores the certificate and orders nothing; only the first
+  bootstrap of a new project or subdomain, and the 60-day renewal, order.
+- The certificate is keyed by its hostnames (`argo.`/`grafana.<subdomain>.<root-domain>`).
+  If the subdomain changes under the same project name, cert-manager sees
+  a Secret that no longer matches the `Certificate` and reissues on its
+  own; nothing needs manual repair.
+- The cost of the exception is one Advanced-tier parameter per project
+  (~0.05 USD/month) that survives a project's full teardown. Delete it by
+  hand when a project is retired:
+  `aws ssm delete-parameter --region eu-west-1 --name /<project>/persistent/civo/tls/platform-public`.
+  CI projects on the staging issuer hold a worthless certificate; the civo
+  CI workflow (CIVO-140) deletes theirs in its cleanup step.
+- The parameter depends on the account-global `alias/lab-secrets` key; an
+  `account-down` makes any surviving parameter undecryptable, which
+  `argo-up` treats as "nothing stored".
+
 **ADR 0011 is unchanged for AWS.** This is a Civo-only variant, not a
 replacement — the AWS target keeps NLB + ACM termination exactly as ADR
 0011 specifies. Constitution §20 states this variant explicitly under its
