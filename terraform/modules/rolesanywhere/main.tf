@@ -95,11 +95,8 @@ data "aws_iam_policy_document" "external_dns" {
   }
 }
 
-# TXT-only, scoped to the Civo zone - cert-manager's DNS-01 solver never
-# needs to touch the A records ExternalDNS owns, so the change permission
-# is restricted by record type, not just by zone. No ListHostedZones*: the
-# zone ID reaches this workload as a value (see route53-zone's zone_id SSM
-# parameter), it never has to look the zone up.
+# TXT-only, scoped to the Civo zone. No ListHostedZones needed - zone ID
+# is provided via SSM parameter, not looked up dynamically.
 data "aws_iam_policy_document" "cert_manager" {
   statement {
     actions   = ["route53:ChangeResourceRecordSets", "route53:ListResourceRecordSets"]

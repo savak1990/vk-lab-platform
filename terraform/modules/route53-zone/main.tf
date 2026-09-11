@@ -60,10 +60,9 @@ resource "aws_ssm_parameter" "fqdn" {
   description = "This project's fully-qualified lab domain."
 }
 
-# Plain String - the zone ID is not a credential (constitution §14's
-# root_domain/fqdn rationale applies equally here). Read by cert-manager's
-# ClusterIssuer (dns01.route53.hostedZoneID) so the DNS-01 solver never
-# needs route53:ListHostedZones to find its own zone.
+# Plain String - zone ID is private/hygiene data, not a credential,
+# like root_domain/fqdn. DNS-01 solver reads this so it never needs
+# route53:ListHostedZones to discover the zone.
 resource "aws_ssm_parameter" "zone_id" {
   name        = "/${var.project}/bootstrap/route53/zone_id"
   type        = "String"
