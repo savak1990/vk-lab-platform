@@ -93,11 +93,11 @@ externalDns:
   txtOwnerId: ""
 
 # civo-only: which cert-manager ClusterIssuer the public Certificate uses.
-# Staging avoids Let's Encrypt's real rate limits during automated/CI runs;
-# prod is switched on explicitly for the real personal lab. acmeEmail is
-# not a secret (Let's Encrypt account contact only).
+# prod is the personal-lab default; automated runs pass
+# TLS_ISSUER=letsencrypt-staging to stay off the real rate limits. acmeEmail
+# is not a secret (Let's Encrypt account contact only).
 tls:
-  issuer: "letsencrypt-staging"
+  issuer: "letsencrypt-prod"
   acmeEmail: ""
 
 # civo-only: each name/namespace here must match a Roles Anywhere trust-policy

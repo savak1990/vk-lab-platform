@@ -37,7 +37,7 @@ externalDns:
 
 # civo-only; must match gitops/values.yaml's tls block.
 tls:
-  issuer: "letsencrypt-staging"
+  issuer: "letsencrypt-prod"
   acmeEmail: ""
 
 awsIdentity:
