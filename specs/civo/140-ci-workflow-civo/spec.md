@@ -57,6 +57,17 @@ Not in scope: PR validation workflows (spec 019), Kind CI (spec 024).
 - The `test` job has `needs: lifecycle` and the same provider env. It calls `civo_token` again first, because `::add-mask::` is per job. Then it runs `make test`.
 - Emit the mask to the step's stdout directly. Never emit it inside a `$(...)` capture.
 - Secrets: none added. `permissions` is unchanged.
+- **Public TLS issuer (from CIVO-070):** every civo `up`-like step sets
+  `TLS_ISSUER=letsencrypt-staging`. CI uses a fresh project per run, so the
+  SSM-persisted certificate Secret never carries over and each run places a
+  new ACME order for the same names. Let's Encrypt production allows 5
+  duplicate certificates per name set per week and 50 per registered domain
+  per week; that quota is shared with the personal lab, so a few retried
+  pipelines would lock the real `argo.civo.<root-domain>` out of renewals
+  for a week. Staging has ~30x the limits and exercises the same code path;
+  tests must not require a browser-trusted chain (`curl -k`). The variable
+  must be on the `make` step's environment: `argo-up.sh` relays it into the
+  root Application only on a cold install, not on the idempotent fast path.
 
 ## 5. Files/components affected
 
@@ -79,6 +90,7 @@ Not in scope: PR validation workflows (spec 019), Kind CI (spec 024).
 - Two simultaneous dispatches for the same project-provider queue.
 - The cleanup step runs on failure of up-like targets.
 - An AWS dispatch of `status`/`up`/`down` behaves as before.
+- A civo `full-up` run shows `Certificate platform-public` `Ready` with `issuerRef.name: letsencrypt-staging`; no production order appears in the run.
 
 ## 9. Validation
 

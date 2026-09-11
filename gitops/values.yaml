@@ -93,9 +93,9 @@ externalDns:
   txtOwnerId: ""
 
 # civo-only: which cert-manager ClusterIssuer the public Certificate uses.
-# prod is the personal-lab default; automated runs pass
-# TLS_ISSUER=letsencrypt-staging to stay off the real rate limits. acmeEmail
-# is not a secret (Let's Encrypt account contact only).
+# prod is the personal-lab default. CI must pass TLS_ISSUER=letsencrypt-staging
+# on its make step: a fresh project per run means a new order every run, and
+# prod's duplicate-certificate limit is shared with the personal lab (CIVO-140).
 tls:
   issuer: "letsencrypt-prod"
   acmeEmail: ""
