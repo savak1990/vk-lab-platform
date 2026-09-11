@@ -155,3 +155,12 @@ Revert the change. Delete the SSM parameter to force a fresh order. Data risk: n
     only. Recorded in CIVO-140 §4.
   - Follow-up: CIVO-075 (wildcard through DNS-01) created READY.
   - Cluster torn down afterwards (`full-down`), no leaks.
+  - Post-closure fix (same day): the first prod `make down` failed in
+    `argo-down` — the exported manifest was 15354 chars, over the Advanced
+    tier's 8192, because the earlier client-side `kubectl apply` import had
+    stamped a `last-applied-configuration` annotation holding a full copy
+    of the Secret. Export now strips that annotation, import uses
+    server-side apply, and a failed export is a warning (one extra order)
+    rather than an aborted teardown. Stored size with a two-certificate
+    prod chain: 7390 chars, ~10% headroom — CIVO-075 must re-check this
+    with the wildcard chain.

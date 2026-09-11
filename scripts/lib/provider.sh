@@ -124,16 +124,22 @@ civo_export_tls_secret() {
   fi
   local manifest
   manifest="$(kubectl get secret platform-public-tls -n envoy -o yaml \
-    | yq 'del(.metadata.resourceVersion, .metadata.uid, .metadata.creationTimestamp, .metadata.managedFields)')"
-  aws ssm put-parameter \
+    | yq 'del(.metadata.resourceVersion, .metadata.uid, .metadata.creationTimestamp, .metadata.managedFields,
+              .metadata.annotations["kubectl.kubernetes.io/last-applied-configuration"])')"
+  # Best effort: a failed export costs one ACME order on the next argo-up,
+  # while aborting here would leave the whole cluster running.
+  if aws ssm put-parameter \
     --region "$LAB_REGION" \
     --name "/${PROJECT_NAME}/persistent/civo/tls/platform-public" \
     --type SecureString \
     --tier Advanced \
     --key-id alias/lab-secrets \
     --overwrite \
-    --value "$manifest" >/dev/null
-  echo "ARGO-DOWN: exported platform-public-tls Secret to SSM."
+    --value "$manifest" >/dev/null; then
+    echo "ARGO-DOWN: exported platform-public-tls Secret to SSM (${#manifest} chars)."
+  else
+    echo "ARGO-DOWN: WARNING - could not store platform-public-tls in SSM (${#manifest} chars, limit 8192) - the next argo-up orders a fresh certificate." >&2
+  fi
 }
 
 # Restoring before the root Application creates the Certificate avoids a
@@ -173,6 +179,8 @@ civo_import_tls_secret() {
   fi
 
   kubectl create namespace envoy --dry-run=client -o yaml | kubectl apply -f - >/dev/null
-  echo "$manifest" | kubectl apply -f - >/dev/null
+  # Server-side apply: client-side apply would stamp a last-applied annotation
+  # holding a full copy of the Secret, doubling the next export past 8 KiB.
+  echo "$manifest" | kubectl apply --server-side --force-conflicts -f - >/dev/null
   echo "ARGO-UP: restored platform-public-tls Secret from SSM (not-after: ${not_after:-unknown})."
 }
