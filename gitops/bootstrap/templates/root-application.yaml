@@ -45,6 +45,10 @@ spec:
           value: {{ .Values.envoyGateway.firewallId | quote }}
         - name: externalDns.txtOwnerId
           value: {{ .Values.externalDns.txtOwnerId | quote }}
+        - name: tls.issuer
+          value: {{ .Values.tls.issuer | quote }}
+        - name: tls.acmeEmail
+          value: {{ .Values.tls.acmeEmail | quote }}
         - name: awsIdentity.rolesAnywhere.trustAnchorArn
           value: {{ .Values.awsIdentity.rolesAnywhere.trustAnchorArn | quote }}
         - name: awsIdentity.rolesAnywhere.profileArn

@@ -35,6 +35,11 @@ envoyGateway:
 externalDns:
   txtOwnerId: ""
 
+# civo-only; must match gitops/values.yaml's tls block.
+tls:
+  issuer: "letsencrypt-staging"
+  acmeEmail: ""
+
 awsIdentity:
   rolesAnywhere:
     trustAnchorArn: ""

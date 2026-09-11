@@ -53,6 +53,10 @@ spec:
           value: ""
         - name: externalDns.txtOwnerId
           value: ""
+        - name: tls.issuer
+          value: letsencrypt-staging
+        - name: tls.acmeEmail
+          value: ""
         - name: awsIdentity.rolesAnywhere.trustAnchorArn
           value: ""
         - name: awsIdentity.rolesAnywhere.profileArn
