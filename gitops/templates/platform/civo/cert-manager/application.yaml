@@ -47,13 +47,8 @@ spec:
         extraContainers:
           {{- include "platform.rolesAnywhereSidecar" (dict "consumer" "cert-manager" "root" $) | nindent 10 }}
         volumes:
-          # optional: true - unlike eso/external-dns, this consumer's own
-          # Certificate can only be issued once this controller is running,
-          # so the Secret does not exist yet on a fresh make up. The pod
-          # starts anyway (sidecar crashloops until the Secret appears),
-          # cert-manager's wave-1 Certificate still gets reconciled, and the
-          # sidecar recovers on its next restart once kubelet refills the
-          # volume.
+          # optional: true - this Secret doesn't exist until cert-manager
+          # issues its own Certificate; the sidecar recovers on restart.
           - name: ra-cert
             secret:
               secretName: cert-manager-ra-cert
