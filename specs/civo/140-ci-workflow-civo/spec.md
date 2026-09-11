@@ -68,6 +68,10 @@ Not in scope: PR validation workflows (spec 019), Kind CI (spec 024).
   tests must not require a browser-trusted chain (`curl -k`). The variable
   must be on the `make` step's environment: `argo-up.sh` relays it into the
   root Application only on a cold install, not on the idempotent fast path.
+  The `test` job on civo sets `E2E_INSECURE_TLS=1` for the same reason: the
+  suite's `--insecure-skip-tls-verify` flag (`tests/e2e/framework/config.go`)
+  is the only way a Go client accepts the staging root. AWS runs and a
+  prod-issuer civo run leave it unset so a certificate regression still fails.
 
 ## 5. Files/components affected
 

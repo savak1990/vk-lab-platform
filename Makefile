@@ -215,12 +215,15 @@ endif
 ## Runs the black-box E2E suite (tests/e2e) against the disposable cluster.
 ## Depends on test-kubeconfig so it works standalone, not just chained after
 ## argo-up/up. Never wired into up/argo-up itself - run explicitly.
+## E2E_INSECURE_TLS=1 skips TLS verification of the public endpoints - only
+## for a civo cluster on the Let's Encrypt staging issuer (CIVO-070/140).
 ## Usage: make test | make test-postgres | make test-grafana | make test-argocd
+E2E_TLS_FLAG := $(if $(filter 1 true,$(E2E_INSECURE_TLS)),--insecure-skip-tls-verify,)
 test: test-kubeconfig
-	go test ./tests/e2e/... -v -args --context=$(PROJECT_NAME)-eks-test --ginkgo.v
+	go test ./tests/e2e/... -v -args --context=$(PROJECT_NAME)-eks-test $(E2E_TLS_FLAG) --ginkgo.v
 
 test-%: test-kubeconfig
-	go test ./tests/e2e/... -v -args --context=$(PROJECT_NAME)-eks-test --ginkgo.label-filter=$* --ginkgo.v
+	go test ./tests/e2e/... -v -args --context=$(PROJECT_NAME)-eks-test $(E2E_TLS_FLAG) --ginkgo.label-filter=$* --ginkgo.v
 
 ## Cascades away everything Argo CD manages (Karpenter, CNPG, EBS CSI,
 ## Postgres CRs, ...), then removes Argo CD itself - before
