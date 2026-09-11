@@ -1,7 +1,7 @@
 ---
 id: "HETZ-030"
 title: "cluster-hetzner stack: firewall and a self-bootstrapped k3s cluster on three CAX21 servers"
-status: "DRAFT"
+status: "READY"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -130,3 +130,4 @@ The destroy is the rollback. Nothing persistent is created. A failed cloud-init 
 ## 14. Execution evidence and status history
 
 - 2026-09-11 — created as DRAFT.
+- 2026-09-11 — reviewed and approved by the user; promoted to READY.

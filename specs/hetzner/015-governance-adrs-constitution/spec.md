@@ -1,7 +1,7 @@
 ---
 id: "HETZ-015"
 title: "Governance for a third target: ADR 0032, amendments to ADR 0029/0030/0024/0002/0022, per-provider constitution §20, architecture §10a, HLD Hetzner column"
-status: "DRAFT"
+status: "READY"
 priority: "P0"
 milestone: "M0"
 type: "documentation"
@@ -155,3 +155,4 @@ One PR. A revert removes the documents. Nothing depends on them at run time.
 ## 14. Execution evidence and status history
 
 - 2026-09-11 — created as DRAFT.
+- 2026-09-11 — reviewed and approved by the user; promoted to READY.

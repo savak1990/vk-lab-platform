@@ -1,7 +1,7 @@
 ---
 id: "HETZ-016"
 title: "Non-AWS generalisation: civo-only script branches and Helm gates become non-AWS, with Civo and AWS byte-identical"
-status: "DRAFT"
+status: "READY"
 priority: "P0"
 milestone: "M0"
 type: "implementation"
@@ -149,3 +149,4 @@ One PR (PR 3 in `roadmap.md`, together with HETZ-018). Revert restores the branc
 ## 14. Execution evidence and status history
 
 - 2026-09-11 — created as DRAFT.
+- 2026-09-11 — reviewed and approved by the user; promoted to READY.

@@ -1,7 +1,7 @@
 ---
 id: "HETZ-025"
 title: "persistent-hetzner stack: private network, subnet, and SSH key, with additive persistent-up dispatch"
-status: "DRAFT"
+status: "READY"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -118,3 +118,4 @@ Revert Make and `root.hcl`; `persistent-down` removes the units. Deleting the SS
 ## 14. Execution evidence and status history
 
 - 2026-09-11 — created as DRAFT.
+- 2026-09-11 — reviewed and approved by the user; promoted to READY.

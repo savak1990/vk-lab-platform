@@ -1,7 +1,7 @@
 ---
 id: "HETZ-050"
 title: "GitOps baseline for target=hetzner: CSI Application, storage class, values defaults, render check, golden diffs"
-status: "DRAFT"
+status: "READY"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -121,3 +121,4 @@ data risk.
 ## 14. Execution evidence and status history
 
 - 2026-09-11 — created as DRAFT.
+- 2026-09-11 — reviewed and approved by the user; promoted to READY.

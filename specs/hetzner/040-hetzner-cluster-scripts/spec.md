@@ -1,7 +1,7 @@
 ---
 id: "HETZ-040"
 title: "Cluster scripts for Hetzner: SSH kubeconfig, k3s readiness wait, status, node-ssh, label-based leak sweep"
-status: "DRAFT"
+status: "READY"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -128,3 +128,4 @@ the persistent units, because they live in a separate stack directory.
 ## 14. Execution evidence and status history
 
 - 2026-09-11 — created as DRAFT.
+- 2026-09-11 — reviewed and approved by the user; promoted to READY.

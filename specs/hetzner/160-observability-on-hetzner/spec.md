@@ -1,7 +1,7 @@
 ---
 id: "HETZ-160"
 title: "Observability stack on Hetzner: control-plane scrapes enabled, ARM images, hcloud-volumes with the 10 GB floor"
-status: "DRAFT"
+status: "READY"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -163,3 +163,4 @@ Revert the values. Argo prunes. Volumes are deleted with the PVCs.
 ## 14. Execution evidence and status history
 
 - 2026-09-11 — created as DRAFT.
+- 2026-09-11 — reviewed and approved by the user; promoted to READY.

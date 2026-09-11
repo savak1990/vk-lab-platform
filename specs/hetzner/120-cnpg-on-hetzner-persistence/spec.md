@@ -1,7 +1,7 @@
 ---
 id: "HETZ-120"
 title: "CloudNativePG on Hetzner with data surviving make down and make up"
-status: "DRAFT"
+status: "READY"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -161,3 +161,4 @@ until `persistent-down`.
 ## 14. Execution evidence and status history
 
 - 2026-09-11 — created as DRAFT.
+- 2026-09-11 — reviewed and approved by the user; promoted to READY.

@@ -1,7 +1,7 @@
 ---
 id: "HETZ-010"
 title: "PROVIDER=hetzner operator input with Hetzner project defaults, token helper, and Make dispatch"
-status: "DRAFT"
+status: "READY"
 priority: "P1"
 milestone: "M0"
 type: "implementation"
@@ -126,3 +126,4 @@ One PR together with `specs/hetzner/`. A revert restores the previous Makefile a
 ## 14. Execution evidence and status history
 
 - 2026-09-11 — created as DRAFT.
+- 2026-09-11 — reviewed and approved by the user; promoted to READY.

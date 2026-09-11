@@ -1,7 +1,7 @@
 ---
 id: "HETZ-080"
 title: "CA ceremony and bootstrap/rolesanywhere for the Hetzner project, before its first bootstrap-up"
-status: "DRAFT"
+status: "READY"
 priority: "P0"
 milestone: "M1"
 type: "implementation"
@@ -125,3 +125,4 @@ until expiry (at most one hour).
 ## 14. Execution evidence and status history
 
 - 2026-09-11 — created as DRAFT.
+- 2026-09-11 — reviewed and approved by the user; promoted to READY.

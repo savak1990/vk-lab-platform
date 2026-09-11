@@ -1,7 +1,7 @@
 ---
 id: "HETZ-045"
 title: "argo-up and argo-down Hetzner branches: hcloud Secret, CCM helm install, taint wait, LB and DNS waits"
-status: "DRAFT"
+status: "READY"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -127,3 +127,4 @@ none beyond the dump gate, which fails closed.
 ## 14. Execution evidence and status history
 
 - 2026-09-11 — created as DRAFT.
+- 2026-09-11 — reviewed and approved by the user; promoted to READY.

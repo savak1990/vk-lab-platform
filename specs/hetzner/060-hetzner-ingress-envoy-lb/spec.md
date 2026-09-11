@@ -1,7 +1,7 @@
 ---
 id: "HETZ-060"
 title: "Hetzner ingress: Envoy Service LoadBalancer as an hcloud LB11 with private-IP targets and Gateway listeners 80/443"
-status: "DRAFT"
+status: "READY"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -124,3 +124,4 @@ Service. No data risk.
 ## 14. Execution evidence and status history
 
 - 2026-09-11 — created as DRAFT.
+- 2026-09-11 — reviewed and approved by the user; promoted to READY.

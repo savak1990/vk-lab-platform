@@ -1,7 +1,7 @@
 ---
 id: "HETZ-170"
 title: "Cluster autoscaler with cloudProvider hetzner: zero to two extra CAX21 workers joined by cloud-init"
-status: "DRAFT"
+status: "READY"
 priority: "P3"
 milestone: "M2"
 type: "implementation"
@@ -150,3 +150,4 @@ if it is removed while nodes exist, the sweep reaps them at `cluster-down`.
 ## 14. Execution evidence and status history
 
 - 2026-09-11 — created as DRAFT at P3/M2, mirroring CIVO-170's placement.
+- 2026-09-11 — reviewed and approved by the user; promoted to READY.

@@ -1,7 +1,7 @@
 ---
 id: "HETZ-085"
 title: "Workload identity on Hetzner: CA issuer Secret, per-consumer Certificates, multi-arch credential-helper sidecars for ESO and ExternalDNS on ARM"
-status: "DRAFT"
+status: "READY"
 priority: "P0"
 milestone: "M1"
 type: "implementation"
@@ -121,3 +121,4 @@ CN mismatch against the role trust policy (compare with HETZ-080 §4).
 ## 14. Execution evidence and status history
 
 - 2026-09-11 — created as DRAFT.
+- 2026-09-11 — reviewed and approved by the user; promoted to READY.

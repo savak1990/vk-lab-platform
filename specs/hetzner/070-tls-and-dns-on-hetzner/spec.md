@@ -1,7 +1,7 @@
 ---
 id: "HETZ-070"
 title: "TLS and DNS on Hetzner: wildcard DNS-01 certificate, ExternalDNS following a dynamic LB address, TLS Secret persistence"
-status: "DRAFT"
+status: "READY"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -122,3 +122,4 @@ wrong. Data risk: none.
 ## 14. Execution evidence and status history
 
 - 2026-09-11 — created as DRAFT.
+- 2026-09-11 — reviewed and approved by the user; promoted to READY.

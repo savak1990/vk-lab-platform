@@ -1,7 +1,7 @@
 ---
 id: "HETZ-175"
 title: "Stock-aware SKU fallback (CAX to CPX) and right-sizing on measured data"
-status: "DRAFT"
+status: "READY"
 priority: "P2"
 milestone: "M2"
 type: "implementation"
@@ -115,3 +115,4 @@ reverted with one values commit.
 ## 14. Execution evidence and status history
 
 - 2026-09-11 — created as DRAFT.
+- 2026-09-11 — reviewed and approved by the user; promoted to READY.

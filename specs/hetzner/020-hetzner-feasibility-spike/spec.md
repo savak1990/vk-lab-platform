@@ -1,7 +1,7 @@
 ---
 id: "HETZ-020"
 title: "Feasibility spike: a throwaway k3s cluster on hcloud servers, with a written report"
-status: "DRAFT"
+status: "READY"
 priority: "P0"
 milestone: "M0"
 type: "research"
@@ -130,3 +130,4 @@ Nothing to roll back. If a resource resists deletion, delete it in the Console a
 ## 14. Execution evidence and status history
 
 - 2026-09-11 — created as DRAFT.
+- 2026-09-11 — reviewed and approved by the user; promoted to READY.

@@ -1,7 +1,7 @@
 ---
 id: "HETZ-130"
 title: "E2E test suite on Hetzner through the ServiceAccount token context"
-status: "DRAFT"
+status: "READY"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -124,3 +124,4 @@ Revert. No data risk.
 ## 14. Execution evidence and status history
 
 - 2026-09-11 — created as DRAFT.
+- 2026-09-11 — reviewed and approved by the user; promoted to READY.

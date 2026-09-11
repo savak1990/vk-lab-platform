@@ -1,7 +1,7 @@
 ---
 id: "HETZ-018"
 title: "Roles Anywhere chain names parametrized by provider, with Civo names byte-identical"
-status: "DRAFT"
+status: "READY"
 priority: "P0"
 milestone: "M0"
 type: "implementation"
@@ -111,3 +111,4 @@ One PR with HETZ-016. A revert restores the literals; because the Civo names nev
 ## 14. Execution evidence and status history
 
 - 2026-09-11 — created as DRAFT.
+- 2026-09-11 — reviewed and approved by the user; promoted to READY.

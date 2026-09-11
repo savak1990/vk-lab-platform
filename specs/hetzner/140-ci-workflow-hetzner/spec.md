@@ -1,7 +1,7 @@
 ---
 id: "HETZ-140"
 title: "lab.yml third provider value, hcloud CLI, token mask, label sweep in cleanup-on-failure"
-status: "DRAFT"
+status: "READY"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -154,3 +154,4 @@ Revert the workflow.
 ## 14. Execution evidence and status history
 
 - 2026-09-11 — created as DRAFT.
+- 2026-09-11 — reviewed and approved by the user; promoted to READY.

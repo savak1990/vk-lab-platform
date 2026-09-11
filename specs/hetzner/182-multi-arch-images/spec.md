@@ -1,7 +1,7 @@
 ---
 id: "HETZ-182"
 title: "Repo-built images published for linux/arm64 as well as linux/amd64"
-status: "DRAFT"
+status: "READY"
 priority: "P0"
 milestone: "M1"
 type: "implementation"
@@ -106,3 +106,4 @@ Rollback is the previous digest pin. The workflow change is additive.
 ## 14. Execution evidence and status history
 
 - 2026-09-11 — created as DRAFT.
+- 2026-09-11 — reviewed and approved by the user; promoted to READY.

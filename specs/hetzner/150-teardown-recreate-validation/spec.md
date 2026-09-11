@@ -1,7 +1,7 @@
 ---
 id: "HETZ-150"
 title: "Full lifecycle validation on Hetzner: create, write, destroy, verify, recreate, verify, destroy, no leaks"
-status: "DRAFT"
+status: "READY"
 priority: "P1"
 milestone: "M1"
 type: "validation"
@@ -145,3 +145,4 @@ needed.
 ## 14. Execution evidence and status history
 
 - 2026-09-11 — created as DRAFT. Not run.
+- 2026-09-11 — reviewed and approved by the user; promoted to READY.

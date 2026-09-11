@@ -1,7 +1,7 @@
 ---
 id: "HETZ-115"
 title: "CNPG Cluster on Hetzner with disposable data on hcloud-volumes"
-status: "DRAFT"
+status: "READY"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -155,3 +155,4 @@ values entry; the render check then fails until the set is reverted too.
 ## 14. Execution evidence and status history
 
 - 2026-09-11 — created as DRAFT.
+- 2026-09-11 — reviewed and approved by the user; promoted to READY.
