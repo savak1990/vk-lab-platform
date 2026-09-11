@@ -96,7 +96,8 @@ verified in this environment.
 | CIVO-090 | [090-credential-helper-sidecar](090-credential-helper-sidecar/spec.md) | Credential helper image and sidecar pattern | DONE | P0 | M | standard | 082, 085 | M1 |
 | CIVO-100 | [100-eso-on-civo](100-eso-on-civo/spec.md) | External Secrets on Civo via sidecar | DONE | P1 | S | standard | 090 | M1 |
 | CIVO-110 | [110-external-dns-on-civo](110-external-dns-on-civo/spec.md) | ExternalDNS on Civo via sidecar | DONE | P1 | S | standard | 090, 060 | M1 |
-| CIVO-120 | [120-cnpg-on-civo-persistence](120-cnpg-on-civo-persistence/spec.md) | CNPG on Civo with persistence through object-store backups | READY | P1 | L | strongest | 050, 100, 180 | M1 |
+| CIVO-115 | [115-cnpg-cluster-on-civo](115-cnpg-cluster-on-civo/spec.md) | CNPG Cluster on Civo, data disposable | IN_PROGRESS | P1 | M | standard | 050, 100 | M1 |
+| CIVO-120 | [120-cnpg-on-civo-persistence](120-cnpg-on-civo-persistence/spec.md) | CNPG on Civo with persistence through object-store backups | READY | P1 | L | strongest | 050, 100, 115, 180 | M1 |
 | CIVO-130 | [130-e2e-tests-civo](130-e2e-tests-civo/spec.md) | E2E suite on Civo | READY | P1 | M | standard | 045, 060 | M1 |
 | CIVO-140 | [140-ci-workflow-civo](140-ci-workflow-civo/spec.md) | `lab.yml` provider input, token decrypt, concurrency, cleanup | READY | P1 | M | standard | 045, 015 | M1 |
 | CIVO-150 | [150-teardown-recreate-validation](150-teardown-recreate-validation/spec.md) | Full lifecycle validation on Civo | READY | P1 | M | strongest | 120, 110, 070, 130 | M1 |
