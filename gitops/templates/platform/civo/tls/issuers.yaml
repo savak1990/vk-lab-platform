@@ -13,12 +13,10 @@ spec:
     privateKeySecretRef:
       name: letsencrypt-staging-account-key
     solvers:
-      - http01:
-          gatewayHTTPRoute:
-            parentRefs:
-              - name: platform-gateway
-                namespace: envoy
-                kind: Gateway
+      - dns01:
+          route53:
+            region: {{ .Values.region | quote }}
+            hostedZoneID: {{ .Values.tls.hostedZoneId | quote }}
 ---
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
@@ -34,10 +32,8 @@ spec:
     privateKeySecretRef:
       name: letsencrypt-prod-account-key
     solvers:
-      - http01:
-          gatewayHTTPRoute:
-            parentRefs:
-              - name: platform-gateway
-                namespace: envoy
-                kind: Gateway
+      - dns01:
+          route53:
+            region: {{ .Values.region | quote }}
+            hostedZoneID: {{ .Values.tls.hostedZoneId | quote }}
 {{- end }}
