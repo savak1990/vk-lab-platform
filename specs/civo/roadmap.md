@@ -24,6 +24,7 @@ flowchart TD
   030 --> 170[170 autoscaler]
   040 --> 045[045 argo scripts]
   050 --> 045
+  045 --> 055[055 bring-up resilience]
   045 --> 060[060 ingress LB]
   050 --> 065[065 cert-manager]
   080 --> 082[082 Roles Anywhere TF]
