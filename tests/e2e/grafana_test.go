@@ -14,9 +14,10 @@ const grafanaNamespace = "observability"
 var _ = Describe("Grafana", Label("grafana"), func() {
 	It("is healthy and accepts authenticated requests", func() {
 		url := env.ServiceURL("grafana")
+		client := cfg.HTTPClient()
 
 		Eventually(func() (int, error) {
-			resp, err := http.Get(url + "/api/health")
+			resp, err := client.Get(url + "/api/health")
 			if err != nil {
 				return 0, err
 			}
@@ -31,7 +32,7 @@ var _ = Describe("Grafana", Label("grafana"), func() {
 		Expect(err).NotTo(HaveOccurred())
 		req.SetBasicAuth(string(secret.Data["admin-user"]), string(secret.Data["admin-password"]))
 
-		resp, err := http.DefaultClient.Do(req)
+		resp, err := client.Do(req)
 		Expect(err).NotTo(HaveOccurred())
 		defer resp.Body.Close()
 		Expect(resp.StatusCode).To(Equal(http.StatusOK), "authenticated call must succeed with the synced admin credentials")

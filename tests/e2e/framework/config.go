@@ -3,8 +3,10 @@
 package framework
 
 import (
+	"crypto/tls"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 )
 
@@ -12,8 +14,9 @@ import (
 // must never silently fall back to whatever kubeconfig context happens to
 // be current, since that could point the suite at an unrelated cluster.
 type Config struct {
-	Context        string
-	KubeconfigPath string
+	Context               string
+	KubeconfigPath        string
+	InsecureSkipTLSVerify bool
 }
 
 // ParseFlags registers and parses the suite's flags, exiting with a clear
@@ -23,6 +26,8 @@ func ParseFlags() *Config {
 	cfg := &Config{}
 	flag.StringVar(&cfg.Context, "context", "", "kubeconfig context to run against (required)")
 	flag.StringVar(&cfg.KubeconfigPath, "kubeconfig", os.Getenv("KUBECONFIG"), "path to kubeconfig (defaults to $KUBECONFIG)")
+	flag.BoolVar(&cfg.InsecureSkipTLSVerify, "insecure-skip-tls-verify", false,
+		"skip TLS chain verification for HTTPS service checks (needed against a civo cluster on the Let's Encrypt staging issuer, CIVO-070)")
 	flag.Parse()
 
 	if cfg.Context == "" {
@@ -30,4 +35,20 @@ func ParseFlags() *Config {
 		os.Exit(1)
 	}
 	return cfg
+}
+
+// HTTPClient returns the client every service check should use to reach a
+// ServiceURL. AWS's ACM certificate and civo's prod Let's Encrypt issuer
+// both verify normally; only a civo cluster left on the staging issuer
+// needs InsecureSkipTLSVerify, since staging's root is deliberately
+// untrusted everywhere.
+func (c *Config) HTTPClient() *http.Client {
+	if !c.InsecureSkipTLSVerify {
+		return http.DefaultClient
+	}
+	return &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // opt-in via flag, staging-issuer testing only
+		},
+	}
 }
