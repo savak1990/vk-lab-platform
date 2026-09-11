@@ -110,7 +110,11 @@ the app password through External Secrets.
   `CI_TEARDOWN_ALLOW_DATA_LOSS` exits non-zero and leaves the cluster
   running.
 - A civo teardown with `CI_TEARDOWN_ALLOW_DATA_LOSS=1` proceeds and the
-  cascade completes.
+  cascade completes. In plain terms: this destroys the Civo Postgres
+  database along with the cluster. That is expected interim behaviour —
+  there is no backup or restore mechanism on civo until CIVO-180 and
+  CIVO-120 land, so every successful civo teardown before then is a
+  deliberate, total data loss, not a side effect to be surprised by.
 - The bounded PVC wait either observes deletion or warns within
   `ARGO_DOWN_PVC_WAIT_TIMEOUT` without aborting the teardown.
 - `enablePDB: false` and the civo storage class are present in the
