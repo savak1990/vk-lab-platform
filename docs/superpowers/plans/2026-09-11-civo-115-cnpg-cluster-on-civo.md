@@ -505,8 +505,13 @@ to:
 Run: `git diff --cached; git diff` and grep the new spec for a real domain:
 
 ```bash
-grep -rn 'vkdev1\|\.com' specs/civo/115-cnpg-cluster-on-civo/spec.md
+grep -rniE "$(make -s print-root-domain 2>/dev/null || echo 'NEVER-MATCH')" \
+  specs/civo/115-cnpg-cluster-on-civo/spec.md
 ```
+
+If that helper does not exist, grep for the real root domain interactively and
+do not paste it into any file — the literal domain must never be committed,
+including inside a grep pattern.
 
 Expected: no hits, or only `<root-domain>`-style placeholders.
 
