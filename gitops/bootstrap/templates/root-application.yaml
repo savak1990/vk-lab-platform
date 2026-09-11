@@ -49,6 +49,8 @@ spec:
           value: {{ .Values.tls.issuer | quote }}
         - name: tls.acmeEmail
           value: {{ .Values.tls.acmeEmail | quote }}
+        - name: tls.hostedZoneId
+          value: {{ .Values.tls.hostedZoneId | quote }}
         - name: awsIdentity.rolesAnywhere.trustAnchorArn
           value: {{ .Values.awsIdentity.rolesAnywhere.trustAnchorArn | quote }}
         - name: awsIdentity.rolesAnywhere.profileArn
@@ -57,6 +59,8 @@ spec:
           value: {{ .Values.awsIdentity.rolesAnywhere.roleArns.eso | quote }}
         - name: awsIdentity.rolesAnywhere.roleArns.external-dns
           value: {{ index .Values.awsIdentity.rolesAnywhere.roleArns "external-dns" | quote }}
+        - name: awsIdentity.rolesAnywhere.roleArns.cert-manager
+          value: {{ index .Values.awsIdentity.rolesAnywhere.roleArns "cert-manager" | quote }}
       # karpenter.{spot,onDemand}.instanceTypes are lists - `parameters`
       # only carries scalar string overrides (Argo CD's own documented
       # limitation), so these go through valuesObject instead, which Argo

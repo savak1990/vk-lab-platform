@@ -59,3 +59,13 @@ resource "aws_ssm_parameter" "fqdn" {
   value       = local.fqdn
   description = "This project's fully-qualified lab domain."
 }
+
+# Plain String - zone ID is private/hygiene data, not a credential,
+# like root_domain/fqdn. DNS-01 solver reads this so it never needs
+# route53:ListHostedZones to discover the zone.
+resource "aws_ssm_parameter" "zone_id" {
+  name        = "/${var.project}/bootstrap/route53/zone_id"
+  type        = "String"
+  value       = aws_route53_zone.this.zone_id
+  description = "This project's Route53 hosted zone ID."
+}

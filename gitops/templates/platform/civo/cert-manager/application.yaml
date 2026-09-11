@@ -44,6 +44,20 @@ spec:
               memory: 32Mi
             limits:
               memory: 64Mi
+        extraContainers:
+          {{- include "platform.rolesAnywhereSidecar" (dict "consumer" "cert-manager" "root" $) | nindent 10 }}
+        volumes:
+          # optional: true - this Secret doesn't exist until cert-manager
+          # issues its own Certificate; the sidecar recovers on restart.
+          - name: ra-cert
+            secret:
+              secretName: cert-manager-ra-cert
+              optional: true
+        extraEnv:
+          - name: AWS_EC2_METADATA_SERVICE_ENDPOINT
+            value: http://127.0.0.1:9911
+          - name: AWS_REGION
+            value: {{ .Values.region | quote }}
   destination:
     server: https://kubernetes.default.svc
     namespace: cert-manager

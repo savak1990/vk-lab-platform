@@ -63,7 +63,8 @@ RoleBinding__cnpg-system__e2e-test-readonly RoleBinding__argocd__e2e-test-readon
 REQUIRED_OBJECTS_CIVO="EnvoyProxy__envoy__envoy-proxy-config Gateway__envoy__platform-gateway \
 GatewayClass__cluster__envoy-gateway Application__argocd__cert-manager \
 ClusterIssuer__cluster__civo-workload-ca Certificate__external-secrets__eso \
-Certificate__kube-system__external-dns ClusterSecretStore__cluster__aws-parameter-store \
+Certificate__kube-system__external-dns Certificate__cert-manager__cert-manager \
+ClusterSecretStore__cluster__aws-parameter-store \
 ExternalSecret__cnpg-system__lab-postgres-app Application__argocd__external-dns \
 ClusterIssuer__cluster__letsencrypt-staging ClusterIssuer__cluster__letsencrypt-prod \
 Certificate__envoy__platform-public HTTPRoute__envoy__https-redirect"

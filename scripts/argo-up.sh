@@ -79,8 +79,11 @@ aws_resolve_inputs() {
 
 civo_resolve_inputs() {
   civo_token
+  # 10 names - this is the batch cap (aws ssm get-parameters' own limit).
+  # The next new consumer/value must split this into two calls.
   local civo_ssm_names=(
     "/$PROJECT_NAME/bootstrap/route53/fqdn"
+    "/$PROJECT_NAME/bootstrap/route53/zone_id"
     "/$PROJECT_NAME/persistent/argocd/admin_password_bcrypt"
     "/$PROJECT_NAME/persistent-civo/reserved-ip/address"
     "/$PROJECT_NAME/cluster-civo/network/lb_firewall_id"
@@ -88,6 +91,7 @@ civo_resolve_inputs() {
     "/$PROJECT_NAME/bootstrap/rolesanywhere/profile_arn"
     "/$PROJECT_NAME/bootstrap/rolesanywhere/role_arn/eso"
     "/$PROJECT_NAME/bootstrap/rolesanywhere/role_arn/external-dns"
+    "/$PROJECT_NAME/bootstrap/rolesanywhere/role_arn/cert-manager"
   )
   local civo_ssm_batch_names=() civo_ssm_batch_values=()
   while IFS=$'\t' read -r name value; do
@@ -109,6 +113,7 @@ civo_resolve_inputs() {
     fi
     case "${civo_ssm_names[$i]}" in
       */fqdn) LAB_FQDN="$found" ;;
+      */route53/zone_id) ROUTE53_ZONE_ID="$found" ;;
       */admin_password_bcrypt) ADMIN_PASSWORD_BCRYPT_HASH="$found" ;;
       */reserved-ip/address) RESERVED_IP="$found" ;;
       */lb_firewall_id) FIREWALL_ID="$found" ;;
@@ -116,6 +121,7 @@ civo_resolve_inputs() {
       */rolesanywhere/profile_arn) PROFILE_ARN="$found" ;;
       */rolesanywhere/role_arn/eso) ESO_ROLE_ARN="$found" ;;
       */rolesanywhere/role_arn/external-dns) EXTERNAL_DNS_ROLE_ARN="$found" ;;
+      */rolesanywhere/role_arn/cert-manager) CERT_MANAGER_ROLE_ARN="$found" ;;
     esac
   done
 
@@ -412,8 +418,10 @@ civo_install_root_application() {
     --set awsIdentity.rolesAnywhere.profileArn="$PROFILE_ARN" \
     --set awsIdentity.rolesAnywhere.roleArns.eso="$ESO_ROLE_ARN" \
     --set awsIdentity.rolesAnywhere.roleArns.external-dns="$EXTERNAL_DNS_ROLE_ARN" \
+    --set awsIdentity.rolesAnywhere.roleArns.cert-manager="$CERT_MANAGER_ROLE_ARN" \
     --set tls.issuer="${TLS_ISSUER:-letsencrypt-prod}" \
-    --set tls.acmeEmail="${TLS_ACME_EMAIL:-}"
+    --set tls.acmeEmail="${TLS_ACME_EMAIL:-}" \
+    --set tls.hostedZoneId="$ROUTE53_ZONE_ID"
 }
 
 if [ "$PROVIDER" = civo ]; then

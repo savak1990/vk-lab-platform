@@ -130,9 +130,10 @@ where retry provably cannot help.
    `ExternalSecret` move to wave 2, strictly after the identity Certificates;
    `Cluster/lab-postgres` moves to wave 3 so ESO's pinned password Secret still
    exists before CNPG bootstraps (CNPG otherwise generates its own); the public
-   TLS `Certificate` (CIVO-070) lands at wave 3, after the HTTPRoutes whose DNS
-   its HTTP-01 challenge needs. `argo-up.sh`'s watch ceiling is 2700s on both
-   targets.
+   TLS `Certificate` (CIVO-070, switched to DNS-01 by CIVO-075) lands at wave 2 —
+   DNS-01 only needs the wave-0 Gateway and the wave-1 identity Certificates, not
+   the application HTTPRoutes HTTP-01 used to depend on. `argo-up.sh`'s watch
+   ceiling is 2700s on both targets.
 
 ## Consequences
 
