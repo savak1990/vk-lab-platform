@@ -52,3 +52,6 @@ secrets/*/*
 # every fresh clone, neither of which sees a machine-local settings file.
 .claude/*
 !.claude/settings.json
+
+# Subagent-driven-development scratch (ledger, briefs, review packages).
+.superpowers/
