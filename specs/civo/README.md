@@ -89,7 +89,7 @@ verified in this environment.
 | CIVO-060 | [060-civo-ingress-envoy-lb](060-civo-ingress-envoy-lb/spec.md) | Civo LB via Envoy Service, Gateway 80/443 | DONE | P1 | M | standard | 045 | M1 |
 | CIVO-065 | [065-cert-manager-install](065-cert-manager-install/spec.md) | cert-manager installed on civo, target-gated | DONE | P1 | S | standard | 050 | M1 |
 | CIVO-070 | [070-letsencrypt-http01-tls](070-letsencrypt-http01-tls/spec.md) | Let's Encrypt HTTP-01 TLS at Envoy, Secret persistence | DONE | P1 | M | standard | 060, 065, 110 | M1 |
-| CIVO-075 | [075-wildcard-tls-dns01](075-wildcard-tls-dns01/spec.md) | Wildcard TLS through DNS-01; cert-manager Roles Anywhere consumer | READY | P2 | M | standard | 070, 082, 090 | M2 |
+| CIVO-075 | [075-wildcard-tls-dns01](075-wildcard-tls-dns01/spec.md) | Wildcard TLS through DNS-01; cert-manager Roles Anywhere consumer | DONE | P2 | M | standard | 070, 082, 090 | M2 |
 | CIVO-080 | [080-rolesanywhere-ca-ceremony](080-rolesanywhere-ca-ceremony/spec.md) | Offline CA ceremony and committed material | DONE | P0 | M | strongest | 015 | M1 |
 | CIVO-082 | [082-rolesanywhere-terraform](082-rolesanywhere-terraform/spec.md) | Trust anchor, profile, roles, lab-role additions | DONE | P0 | M | strongest | 080 | M1 |
 | CIVO-085 | [085-workload-certificate-issuance](085-workload-certificate-issuance/spec.md) | CA issuer Secret at argo-up, per-consumer Certificates | DONE | P0 | M | strongest | 045, 050, 065, 080 | M1 |
