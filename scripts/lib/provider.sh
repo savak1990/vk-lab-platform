@@ -156,15 +156,18 @@ civo_import_tls_secret() {
     return 0
   fi
 
-  local not_after renew_before
-  not_after="$(echo "$manifest" | yq '.metadata.annotations["cert-manager.io/certificate-not-after"] // ""')"
-  renew_before="$(echo "$manifest" | yq '.metadata.annotations["cert-manager.io/renewal-time"] // ""')"
-  if [ -n "$renew_before" ]; then
-    local renew_epoch now_epoch
-    renew_epoch="$(date -u -d "$renew_before" +%s 2>/dev/null || date -u -jf "%Y-%m-%dT%H:%M:%SZ" "$renew_before" +%s 2>/dev/null || echo 0)"
+  # cert-manager keeps notAfter/renewalTime on the Certificate, not the Secret,
+  # so read the leaf's own expiry. Inside the default renewal window (last 30
+  # days) an import only triggers an immediate renewal order anyway.
+  local not_after not_after_epoch now_epoch
+  not_after="$(echo "$manifest" | yq '.data["tls.crt"] // ""' | base64 -d 2>/dev/null \
+    | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2)"
+  if [ -n "$not_after" ]; then
+    not_after_epoch="$(date -u -d "$not_after" +%s 2>/dev/null \
+      || date -u -jf "%b %e %H:%M:%S %Y %Z" "$not_after" +%s 2>/dev/null || echo 0)"
     now_epoch="$(date -u +%s)"
-    if [ "$renew_epoch" -gt 0 ] && [ "$now_epoch" -ge "$renew_epoch" ]; then
-      echo "ARGO-UP: stored platform-public-tls Secret is past its renewal time ($renew_before) - skipping import, a fresh certificate will be ordered."
+    if [ "$not_after_epoch" -gt 0 ] && [ $((not_after_epoch - now_epoch)) -le $((30 * 24 * 3600)) ]; then
+      echo "ARGO-UP: stored platform-public-tls certificate expires $not_after (inside the renewal window) - skipping import, a fresh certificate will be ordered."
       return 0
     fi
   fi
