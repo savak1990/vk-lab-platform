@@ -33,6 +33,7 @@ awsIdentity:
     roleArns:
       eso: ""
       external-dns: ""
+      cert-manager: ""
 
 # recoverySnapshotHandle is set automatically by scripts/argo-up.sh, which
 # discovers the latest retained EBS snapshot (if any) via the AWS API — no
@@ -99,6 +100,10 @@ externalDns:
 tls:
   issuer: "letsencrypt-prod"
   acmeEmail: ""
+  # civo-only: the Civo zone's Route53 zone ID, read from
+  # /${project}/bootstrap/route53/zone_id - lets the dns01.route53 solver
+  # skip route53:ListHostedZones entirely.
+  hostedZoneId: ""
 
 # civo-only: each name/namespace here must match a Roles Anywhere trust-policy
 # key in terraform/modules/rolesanywhere - name also becomes the
@@ -109,3 +114,5 @@ civoIdentity:
       namespace: external-secrets
     - name: external-dns
       namespace: kube-system
+    - name: cert-manager
+      namespace: cert-manager

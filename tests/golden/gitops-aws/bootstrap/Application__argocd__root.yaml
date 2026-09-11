@@ -57,6 +57,8 @@ spec:
           value: letsencrypt-prod
         - name: tls.acmeEmail
           value: ""
+        - name: tls.hostedZoneId
+          value: ""
         - name: awsIdentity.rolesAnywhere.trustAnchorArn
           value: ""
         - name: awsIdentity.rolesAnywhere.profileArn
@@ -64,6 +66,8 @@ spec:
         - name: awsIdentity.rolesAnywhere.roleArns.eso
           value: ""
         - name: awsIdentity.rolesAnywhere.roleArns.external-dns
+          value: ""
+        - name: awsIdentity.rolesAnywhere.roleArns.cert-manager
           value: ""
       # karpenter.{spot,onDemand}.instanceTypes are lists - `parameters`
       # only carries scalar string overrides (Argo CD's own documented

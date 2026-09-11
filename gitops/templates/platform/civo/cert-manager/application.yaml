@@ -44,6 +44,25 @@ spec:
               memory: 32Mi
             limits:
               memory: 64Mi
+        extraContainers:
+          {{- include "platform.rolesAnywhereSidecar" (dict "consumer" "cert-manager" "root" $) | nindent 10 }}
+        volumes:
+          # optional: true - unlike eso/external-dns, this consumer's own
+          # Certificate can only be issued once this controller is running,
+          # so the Secret does not exist yet on a fresh make up. The pod
+          # starts anyway (sidecar crashloops until the Secret appears),
+          # cert-manager's wave-1 Certificate still gets reconciled, and the
+          # sidecar recovers on its next restart once kubelet refills the
+          # volume.
+          - name: ra-cert
+            secret:
+              secretName: cert-manager-ra-cert
+              optional: true
+        extraEnv:
+          - name: AWS_EC2_METADATA_SERVICE_ENDPOINT
+            value: http://127.0.0.1:9911
+          - name: AWS_REGION
+            value: {{ .Values.region | quote }}
   destination:
     server: https://kubernetes.default.svc
     namespace: cert-manager

@@ -39,6 +39,7 @@ externalDns:
 tls:
   issuer: "letsencrypt-prod"
   acmeEmail: ""
+  hostedZoneId: ""
 
 awsIdentity:
   rolesAnywhere:
@@ -47,3 +48,4 @@ awsIdentity:
     roleArns:
       eso: ""
       external-dns: ""
+      cert-manager: ""
