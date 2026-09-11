@@ -1,7 +1,7 @@
 ---
 id: "CIVO-070"
 title: "Public TLS at Envoy with Let's Encrypt HTTP-01 and Secret persistence across down/up"
-status: "READY"
+status: "DONE"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -14,8 +14,8 @@ depends_on: ["CIVO-060", "CIVO-065", "CIVO-110"]
 blocked_by: []
 supersedes: []
 created: "2026-09-06"
-updated: "2026-09-06"
-completed: null
+updated: "2026-09-11"
+completed: "2026-09-11"
 ---
 
 # CIVO-070 — Let's Encrypt TLS at Envoy
@@ -107,10 +107,51 @@ Revert the change. Delete the SSM parameter to force a fresh order. Data risk: n
 
 ## 13. Definition of done
 
-- [ ] Evidence for staging and prod; down/up without new order
-- [ ] Index updated; status `DONE`
+- [x] Evidence for staging and prod; down/up without new order
+- [x] Index updated; status `DONE`
 
 ## 14. Execution evidence and status history
 
 - 2026-09-06 — created as DRAFT.
 - 2026-09-06 — approved for development by the user; promoted to READY (dependencies still gate the start).
+- 2026-09-11 — implemented via subagent-driven-development (plan
+  `docs/superpowers/plans/2026-09-10-civo-070-letsencrypt-tls.md`) and
+  verified on `vk-civo-lab`. Closed as DONE.
+  - Objects: `civo/tls/{issuers,certificate,redirect}.yaml`; HTTPS:443
+    listener in the civo branch of `shared/envoy-gateway/gateway.yaml`;
+    Secret export in `argo-down` and import in `argo-up`
+    (`scripts/lib/provider.sh`), SSM `SecureString`, Advanced tier,
+    `alias/lab-secrets`. `tls.issuer`/`tls.acmeEmail` relayed through the
+    bootstrap chart.
+  - Blocker found first, not in this spec's scope: a cold civo `full-up`
+    deadlocked at root wave 0. gitops-engine never re-applies a `SyncFailed`
+    task while the operation is `Running`, and wave 0 could not settle
+    because `ClusterSecretStore`/`ExternalSecret` waited for ESO's pod, which
+    waits for the wave-1 identity Certificate. Fixed by wave ordering
+    (ESO consumers 2, aws Cluster 3, this Certificate 3); ADR 0025 amended.
+  - Ruling: app `HTTPRoute`s bind to the `https` listener (`sectionName`);
+    without it their hostname match beat the redirect on port 80.
+  - Ruling: the import guard reads the leaf's expiry from `tls.crt`;
+    cert-manager keeps `notAfter`/`renewalTime` on the Certificate, not the
+    Secret.
+  - Staging evidence: `Certificate platform-public` `Ready`; issuer
+    `(STAGING) Artificial Amaranth YE1`; `Order` `valid`; DNS resolved to
+    the Gateway address; `http://` → `301` to `https://`.
+  - Down/up evidence: `argo-down` exported the Secret; `argo-up` logged
+    `restored platform-public-tls Secret from SSM`; the served serial was
+    unchanged (`2CFB2E35…A62E`); `kubectl get order -A` empty; all
+    `cert-manager.io/*` annotations round-tripped. Rate-limit math: one
+    order per issuance, none per cycle; ≤ 1 prod order per week under
+    normal use, renewal at day 60.
+  - Prod evidence: default issuer `letsencrypt-prod`; issuer `CN=YE1`,
+    serial `0652E7BE…59C4`, `notAfter 2026-12-10T05:07:15Z`; `curl` without
+    `-k` returns 200 (`ssl_verify=0`); one prod `Order`; the login API
+    returns 401 for a wrong password. Browser login deferred by the user:
+    the civo admin hash had been generated with a random password
+    (commit 6021b98) and was replaced (commit 5b4e367); the SSM parameter
+    updates on the next `persistent-up`.
+  - Note: `argo-up`'s fast path skips the `root-application` Helm upgrade on
+    a healthy cluster, so `TLS_ISSUER` overrides apply on a cold `argo-up`
+    only. Recorded in CIVO-140 §4.
+  - Follow-up: CIVO-075 (wildcard through DNS-01) created READY.
+  - Cluster torn down afterwards (`full-down`), no leaks.
