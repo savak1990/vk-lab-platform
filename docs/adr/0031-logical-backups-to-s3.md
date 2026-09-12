@@ -1,5 +1,39 @@
 # ADR 0031: Logical dumps to S3 as the single PostgreSQL backup mechanism
 
+> **Amendment (2026-09-12):** the decision below stands — logical dumps to
+> S3, one mechanism for both providers, point-in-time recovery accepted as
+> lost. Three mechanics it describes were replaced after the operator
+> reviewed the full set of options for reaching S3 from a Civo cluster.
+>
+> 1. **The job holds no AWS identity.** The "Decision" section below says
+>    the job container uses `credential_process` with the Roles Anywhere
+>    helper on Civo (ADR 0029) and Pod Identity on AWS. It uses neither.
+>    The lifecycle script, which already holds AWS credentials on both
+>    paths (`scripts/lib/provider.sh:136,160`), presigns a URL scoped to one
+>    HTTP method on one object key for a few minutes; the job fetches or
+>    uploads through that URL and carries no credential at all. This is an
+>    explicit, recorded exemption from `CLAUDE.md`'s rule that a Kubernetes
+>    workload reaching AWS uses Pod Identity or Roles Anywhere — the rule
+>    exists to keep bearer credentials out of the cluster, and this design
+>    removes the credential rather than choosing a better one. It also makes
+>    the job manifest identical on both targets, which the original design
+>    could not.
+> 2. **No image is built by this repository.** The image existed solely to
+>    host `credential_process`, and point 1 removes that need. The job runs
+>    the upstream CNPG PostgreSQL image for `pg_dump`/`pg_restore`/`psql`
+>    and an upstream `curl` image for the transfer, both pinned by digest,
+>    in two containers sharing an `emptyDir`. One Helm value feeds both the
+>    server's `imageName` and the job's PostgreSQL container, so client and
+>    server versions cannot drift apart.
+> 3. **"A shared S3 bucket" means a shared mechanism, not one bucket.** Each
+>    project gets `${project}-backups`. CIVO-186's cross-provider promotion
+>    depends on there being two, and ADR 0027's project isolation is easier
+>    to keep true this way.
+>
+> The Consequences section's ownership line names spec CIVO-180 for the
+> CronJob and Job; those moved to CIVO-120 on 2026-09-11. The bucket
+> remains Terraform-owned and Persistent-lifecycle as stated.
+
 ## Status
 
 Accepted

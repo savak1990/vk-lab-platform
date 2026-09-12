@@ -14,7 +14,7 @@ depends_on: ["CIVO-180", "CIVO-185"]
 blocked_by: []
 supersedes: []
 created: "2026-09-07"
-updated: "2026-09-07"
+updated: "2026-09-12"
 completed: null
 ---
 
@@ -29,16 +29,16 @@ the other provider, and finds the same rows. The command is
 
 It copies the newest PostgreSQL dump from one project's backup bucket to
 the other's. The next `make up` on the destination restores it through
-the restore Job that CIVO-180 already ships.
+the restore path CIVO-120 already ships.
 
 This proves the data layer is coupled to neither cloud. It is a stronger
 statement than the constitution's existing destroy-and-recreate loop,
 which only proves data survives within one provider.
 
-Two decisions already taken make this nearly free. CIVO-180 dumps with
+Two decisions already taken make this nearly free. CIVO-120 dumps with
 `pg_dump --format=custom --no-owner --no-privileges`, and those two flags
 strip the role and ACL ownership that would otherwise bind a dump to the
-cluster that produced it. CIVO-180's restore Job decides for itself
+cluster that produced it. CIVO-120's restore path decides for itself
 whether the schema is empty and loads the newest dump if it is, so it
 does not care which cluster wrote the object. No restore-side change is
 needed.
@@ -63,7 +63,8 @@ Not in scope:
 ## 3. Current state / evidence
 
 - `scripts/lib/provider.sh:9,17` sets `PROJECT_NAME` to `vk-civo-lab` or `vk-lab-platform`. `terraform/live/root.hcl:8` reads it into `local.project`. CIVO-180 §4 names the bucket `${project}-backups`, so the two targets have two buckets, in one AWS account, under two projects.
-- CIVO-180 §4: the dump is `pg_dump --format=custom --no-owner --no-privileges` piped to `s3://${bucket}/postgres/${cluster}-$(date -u +%Y%m%dT%H%M%SZ).dump`.
+- CIVO-180 §4 fixes the object layout: `postgres/${cluster}-${YYYYMMDDTHHMMSSZ}.dump`, one flat prefix per bucket. CIVO-120 §4 writes it with `pg_dump --format=custom --no-owner --no-privileges`.
+- Neither target's cluster holds an AWS identity (CIVO-180 §4): the lifecycle script presigns a URL and the Job speaks plain HTTP through it. That makes this spec's "operator's own credentials" framing the *only* credential model in play, rather than a second one alongside a cluster identity.
 - CIVO-120 §4: the restore job counts tables, and when the count is zero and a dump exists it downloads the newest **key** and runs `pg_restore`. When the count is not zero it exits successfully without touching data. (This contract moved from CIVO-180 to CIVO-120 on 2026-09-11.)
 - CIVO-120 §4: the backup job keeps the newest two keys under `postgres/` and prunes the rest. There is no lifecycle rule on the bucket — S3 expiry is age-based and cannot express a count.
 - The AWS target backs up with ADR 0013's `VolumeSnapshot` until CIVO-185 lands. An EBS snapshot is not readable from Civo, so CIVO-185 is a hard gate, not a preference.
@@ -77,7 +78,7 @@ Not in scope:
 - **Credentials are the operator's own** — the same identity that runs `make persistent-up`, which already spans both projects because ADR 0027 puts them in one AWS account. The script creates no IAM resource, adds no Roles Anywhere consumer, and grants no cluster any cross-project access. ADR 0027's isolation statement stays literally true.
 - **The copy is server-side.** `aws s3 cp s3://<src> s3://<dst>` between two buckets in one account never streams the object through the operator's workstation, so the plaintext database contents do not land on local disk.
 - **The promoted object is renamed with a fresh UTC timestamp**, keeping the source cluster name: `<src-cluster>-<promoted-at>.dump`. This makes the object unambiguously newest whether the restore Job orders by the timestamp in the key or by S3 `LastModified`. Provenance is recorded in object metadata (`promoted-from=<src-project>`, `promoted-source-key=<original key>`), not in the name, so key ordering stays intact.
-- **Version guard.** The script reads the PostgreSQL major version each provider renders and refuses when they differ, naming both versions. CIVO-180 §12 already requires the dump image to match the server major; this extends the same rule across providers.
+- **Version guard.** The script reads the PostgreSQL major version each provider renders and refuses when they differ, naming both versions. CIVO-180 §4 pins one `postgres.imageName` value that feeds both the server and the dump container, so client/server skew cannot happen *within* a target; this guard extends the same protection *across* targets, where nothing else enforces it.
 - **Empty-schema warning.** The restore Job no-ops when the destination database already has tables. The script says so explicitly on success: a promotion takes effect on the next `make up` of a cluster whose database is empty, and does nothing to a populated one.
 - **Freshness guard.** The script refuses when the destination bucket already holds a dump newer than the source object, unless `--force` is given, so a promotion cannot silently lose newer data.
 - The script prints the plan — source key, size, age, destination key, both versions — and requires confirmation unless `-y` is passed.
@@ -89,7 +90,7 @@ Rejected: **one bucket shared by both projects, with per-provider prefixes and r
 
 - `scripts/backup-promote.sh` (new).
 - `Makefile` (one target).
-- `scripts/lib/provider.sh` (a bucket-name helper, if CIVO-180 did not already add one).
+- `scripts/lib/provider.sh` (a bucket-name helper, if CIVO-120 did not already add one).
 - `docs/architecture.md` (one line recording the capability).
 - `specs/civo/README.md` index and `specs/civo/roadmap.md`.
 
@@ -107,8 +108,8 @@ Rejected: **one bucket shared by both projects, with per-provider prefixes and r
 
 CIVO-185 is the hard gate: until the AWS target backs up with logical
 dumps, there is no AWS object a Civo cluster can read, and no AWS restore
-Job to receive a Civo object. CIVO-180 supplies the buckets, the dump
-format and the restore Job.
+Job to receive a Civo object. CIVO-180 supplies the two buckets and the
+object layout; CIVO-120 supplies the dump format and the restore path.
 
 ## 8. Acceptance criteria
 
@@ -160,3 +161,10 @@ next two backups on that target, without operator action.
 
 - 2026-09-07 — created as DRAFT. Raised by the operator while reviewing Civo backup storage: whether one set of dumps can serve whichever cluster is currently running. The design was chosen over a shared bucket to keep ADR 0027's isolation boundary intact. Promote to READY when the operator approves the design.
 - 2026-09-07 — approved for development by the operator; promoted to READY. CIVO-185 still gates the start.
+
+- 2026-09-12 — unchanged in substance, corrected in its references. CIVO-180's
+  scope narrowed to the bucket, the presigning helper and the image pin, so the
+  dump format and the restore path are cited to CIVO-120. The credential note in
+  §3 was added because the presigned-URL model (ADR 0031 amendment, 2026-09-12)
+  makes this spec's operator-credentials framing the platform's only credential
+  model for backups rather than one of two.

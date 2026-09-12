@@ -102,12 +102,17 @@ mirrored, and CNPG's PVC-datasource recovery clones a volume, which Civo
 also cannot do. The Civo Object Store bills a 500 GB minimum, about
 5.43 USD per month, while S3 bills bytes stored, about 0.25 USD.
 
-The backup job runs from an image this repository builds, so it needs no
-sidecar: on Civo the AWS CLI reads `credential_process` and calls the
-signing helper directly, and on AWS it uses Pod Identity. No permanent
-AWS key exists anywhere. The trade is point-in-time recovery, which
-logical dumps do not provide. CIVO-185 moves the AWS target onto the
-same mechanism after Civo proves it.
+Amended 2026-09-12: the backup job holds no AWS identity at all. The
+lifecycle script already holds AWS credentials on both paths and presigns
+a URL scoped to one HTTP method on one key; the job uploads or downloads
+through that URL over plain HTTP. It therefore runs upstream images —
+the CNPG PostgreSQL image for `pg_dump`/`pg_restore`/`psql` and a `curl`
+image for the transfer, both pinned by digest — rather than one this
+repository builds, and its manifest is identical on both providers. No
+AWS key, no certificate and no sidecar exists anywhere in the path. The
+trade is point-in-time recovery, which logical dumps do not provide.
+CIVO-185 moves the AWS target onto the same mechanism after Civo proves
+it.
 
 ### 4.4 State layout
 
@@ -162,7 +167,8 @@ subtrees; shared components read only the contract values.
 | 2026-09-06 | `PROVIDER` variable on existing targets | Constitution §17: one command pair per lifecycle class; spec 027 reached the same conclusion with `TARGET` | `make civo-up` family |
 | 2026-09-06 | `PROVIDER` is an operator input, not an ADR 0024 per-layer constant | It selects a stack directory; only the Civo region is a real constant | five-site declaration of PROVIDER |
 | 2026-09-06 | Fixed pool of three Medium nodes, soft 60–80 USD target | With the autoscaler deferred, three Medium nodes give 7.8 GiB inside the budget while one Large gives 5.9 GiB; two Large nodes would cost about 100 USD | 1 × Large (56 USD, 5.9 GiB, trimmed observability); 2 × Large (100 USD, over target) |
-| 2026-09-06 | Logical dumps to S3 as the single backup mechanism for both providers | Civo cannot snapshot or clone volumes; S3 bills bytes stored rather than a 500 GB minimum; an image we own needs no sidecar and no permanent key. Trade: no point-in-time recovery | barman to Civo Object Store (5.43 USD/month); barman to S3 with a permanent IAM user key |
+| 2026-09-06 | Logical dumps to S3 as the single backup mechanism for both providers | Civo cannot snapshot or clone volumes; S3 bills bytes stored rather than a 500 GB minimum. Trade: no point-in-time recovery | barman to Civo Object Store (5.43 USD/month); barman to S3 with a permanent IAM user key |
+| 2026-09-12 | The backup job reaches S3 through a presigned URL the lifecycle script mints, not through a cluster identity | The scripts already hold AWS credentials on both paths, so the cluster needs no identity; this also deletes the repo-owned image, the GHCR workflow and a fourth Roles Anywhere consumer, and makes the job manifest identical on both providers | a fourth Roles Anywhere consumer with `credential_process`; short-lived STS credentials injected into a Secret; static keys (forbidden) |
 | 2026-09-06 | Cluster autoscaler deferred to M2 at P3 | Civo issues one API key per personal account; the autoscaler needs that account-wide key in `kube-system`, where a Secret reader gains full account control. Research recorded in CIVO-170 §12 | running it in M1 and accepting the exposure |
 | 2026-09-06 | Right-sizing spec (CIVO-175) revisits requests/limits and memory-optimized SKUs | CPU is wasted on this workload; measured data first | deciding SKU now |
 | 2026-09-06 | Roles Anywhere with a single offline CA | Free; external CA allowed; Private CA costs 50 USD/month; no Civo ServiceAccount OIDC issuer documented for web-identity federation | AWS Private CA; static AWS keys; web identity |

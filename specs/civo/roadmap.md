@@ -40,11 +40,10 @@ flowchart TD
   060 --> 070[070 LE TLS]
   065 --> 070
   110 --> 070
-  082 --> 180[180 Backup jobs + S3]
-  085 --> 180
-  100 --> 180
+  040 --> 180[180 Backup bucket + presigning]
   050 --> 115[115 CNPG Cluster on civo]
   100 --> 115
+  115 --> 180
   115 --> 120[120 CNPG persistence]
   180 --> 120
   120 --> 185[185 AWS migration]
@@ -70,7 +69,11 @@ flowchart TD
 
 ## Critical path
 
-015 → 010 → 025 → 030 → 040 → 045 (with 050) → 065 → 080 → 082 → 085 → 090 → 100 → 115 → 180 → 120 → 150.
+015 → 010 → 025 → 030 → 040 → 045 (with 050) → 100 → 115 → 180 → 120 → 150.
+
+180 no longer depends on the identity chain (080 → 082 → 085 → 090): the backup
+jobs hold no AWS identity, so that chain is now only on the ingress/DNS/secrets
+path, not on the persistence path.
 
 Parallel tracks once 045/050 land: ingress (060 → 070), identity (080 → 082 →
 090 → 110), observability (160), tests (130), CI (140), autoscaler (170).
@@ -104,7 +107,7 @@ Parallel tracks once 045/050 land: ingress (060 → 070), identity (080 → 082 
 | DNS ownership, TXT owner IDs | 110, ADR 0002 note |
 | Certificate flows separated (TLS vs workload identity) | 070 vs 085 |
 | Storage verification list | 020, 120, 180 |
-| CNPG sizing, backups, restore | 180 (bucket, IAM, image), 120 (jobs, lifecycle wiring, cycle proof), 185 (AWS migration), 186 (cross-provider restore) |
+| CNPG sizing, backups, restore | 180 (bucket, presigning, image pin), 120 (shared library, jobs, cycle proof), 185 (AWS migration), 186 (cross-provider restore) |
 | Capacity comparison, fixed capacity allowed, autoscaler separate | 030 (fixed pool), 170 (deferred), 175 |
 | Identity chain items 1–9 | 080 (2), 082 (1, 8), 085 (3, 4), 090 (6, 7, 9), 085/090 (5) |
 | Civo token handling | 010, 040, 140, ADR 0030 |

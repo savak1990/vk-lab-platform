@@ -14,7 +14,7 @@ depends_on: ["CIVO-050", "CIVO-100", "CIVO-115", "CIVO-180"]
 blocked_by: []
 supersedes: []
 created: "2026-09-06"
-updated: "2026-09-11"
+updated: "2026-09-12"
 completed: null
 ---
 
@@ -32,20 +32,29 @@ teardown destroyed the database and needed `CI_TEARDOWN_ALLOW_DATA_LOSS=1` to
 proceed. After this spec that variable stops being a routine part of the
 operator's command line and goes back to meaning what its name says.
 
+The shared logic lands here, in `scripts/lib/pg-backup.sh`, written
+provider-agnostically from the start. CIVO-185 then points AWS at the same two
+functions rather than porting anything.
+
 ## 2. Scope and non-goals
 
 In scope:
-- The backup and restore job manifests, built on CIVO-180's image and identity.
-- Rewriting `civo_backup()` from a refusal into a real backup.
+- `scripts/lib/pg-backup.sh`: the backup and restore sequences, written once,
+  parameterised by bucket and cluster, with no provider branch inside them.
+- The two Job manifests, built on CIVO-180's bucket, presigning helper and
+  image pin.
+- Rewriting `civo_backup()` from a refusal into a call into that library.
 - A restore step in `argo-up`, and the empty-schema logic that makes it
   idempotent.
-- Retention: the newest two dumps, enforced by the backup job.
+- Retention: the newest two dumps, enforced script-side after a verified upload.
 - Three full down/up cycles carrying real rows, plus the failure paths.
 
 Not in scope:
-- The bucket, the IAM, the image and the certificate (CIVO-180).
+- The bucket, the signing helper and the image pin (CIVO-180).
 - Switching the AWS target to this mechanism (CIVO-185). AWS keeps its EBS
   snapshot path untouched through this spec.
+- Any Kubernetes-side AWS identity. CIVO-180 §4 establishes that the cluster
+  holds none; nothing here adds one.
 - Replicas. `instances: 1` is explicit: a second instance doubles volume and
   memory cost and protects nothing against cluster deletion, which is the only
   failure this platform actually plans for.
@@ -71,6 +80,14 @@ Not in scope:
   (`argo-down.sh:86-147`) backs up at teardown and prunes to the newest two;
   `aws_resolve_snapshot` (`argo-up.sh:296-328`) restores the latest at bring-up.
   The shape is proven. Only the artifact changes.
+- CNPG generates the `lab-postgres-app` Secret carrying `username`, `password`,
+  `dbname`, `host` and `port` for the application role that owns `vkdb`. That is
+  the identity both Jobs connect as, which is also what §12's highest-risk line
+  requires.
+- `kubectl create job --from=cronjob/<name>` copies the CronJob's pod template
+  verbatim. **It cannot inject an environment variable or an argument.**
+  Anything the script must hand the Job has to arrive through an object the pod
+  template already references.
 - `tests/e2e/postgres_test.go` already targets cluster `lab-postgres` and Secret
   `lab-postgres-app`.
 
@@ -83,6 +100,13 @@ taken immediately before the data is deleted. This mirrors what AWS has done
 since ADR 0013. An earlier draft of CIVO-180 specified `0 3 * * *`; that is
 dropped.
 
+**The script is the only S3 client.** It lists, presigns, verifies and prunes,
+using the AWS credentials it already holds on the Civo path
+(`provider.sh:136,160`). The Job speaks HTTP to one presigned URL and knows
+nothing about S3, AWS, or credentials. This is the division CIVO-180 §4
+establishes, and it is what makes the Job manifest byte-identical on both
+providers.
+
 **Pod specs live in GitOps; scripts only pull the trigger.** Two CronJobs in
 `cnpg-system`, `postgres-backup` and `postgres-restore`, both `suspend: true`,
 both gated on `.Values.postgres.backup.enabled`, on the same sync-wave on both
@@ -92,17 +116,54 @@ split `argo-down` already uses when it creates a CNPG `Backup` CR. Both
 `jobTemplate`s set `ttlSecondsAfterFinished`: a Job created this way carries no
 Argo tracking label, so nothing else will ever reap it.
 
-**Backup job.** `pg_dump --format=custom --no-owner --no-privileges` piped to
-`aws s3 cp - s3://$BUCKET/postgres/$CLUSTER-$(date -u +%Y%m%dT%H%M%SZ).dump`.
-Then, and only then, list the prefix and delete everything but the newest two
-keys.
+**The URL reaches the Job through a script-created Secret.** Because
+`--from=cronjob` cannot inject anything, the pod template references a fixed
+Secret name (`postgres-backup-url` / `postgres-restore-url`) through
+`secretKeyRef`. The script creates it immediately before creating the Job and
+deletes it on **every** exit path, through a trap rather than a line after the
+wait — an interrupted teardown must not leave a live PUT URL sitting in
+`cnpg-system` for the rest of its lifetime. A suspended CronJob never schedules, so the Secret
+being absent between runs is harmless and is the normal steady state. There is
+precedent for a script-owned Secret on the Civo path in `civo_import_tls_secret`
+(`provider.sh:160`).
 
-- `set -o pipefail`, and the upload is verified to exist with non-zero size
-  before anything is deleted. `aws s3 cp -` reads stdin to EOF, so a `pg_dump`
-  that dies part-way still commits a truncated object under the newest key; a
-  prune that trusted key order alone would then delete the last good copy.
-- On any failure the partial key is removed, so a failed backup leaves the
-  prefix exactly as it found it.
+**Two containers, one `emptyDir`, ordering enforced by Kubernetes.**
+
+*Backup*: an init container on the CNPG image runs
+`pg_dump --format=custom --no-owner --no-privileges` to `/work/db.dump`; the
+main container on the curl image runs `curl -T /work/db.dump "$URL"`. This is
+not a stylistic choice. A later container cannot start until an earlier init
+container exits zero, so **a failed or truncated `pg_dump` makes the upload
+physically impossible** — there is no partial object to prune around. That
+replaces the `set -o pipefail` reasoning an earlier streaming design needed.
+
+*Restore*: an init container on the curl image downloads to `/work/db.dump`; the
+main container on the CNPG image counts tables and either exits or runs
+`pg_restore`. A failed download fails the Job before any restore is attempted.
+The download happens even when the restore will turn out to be unnecessary; at
+lab dump sizes that waste is not worth designing away.
+
+Both Jobs: `restartPolicy: Never`, `backoffLimit: 0` — the script decides
+whether to retry, not the Job — and an explicit `fsGroup` so the two images'
+differing UIDs can both read the shared volume. `curl` runs with `-sS --fail`
+so an HTTP error is a non-zero exit rather than an error page written to the
+dump file.
+
+**Both containers use `postgres.imageName` and the pinned curl digest**, so the
+`pg_dump` that writes a dump and the `pg_restore` that reads it are the same
+build as the server that produced the data. CIVO-180 §4 makes that one value.
+
+**Backup sequence, in `pg_backup_to_s3`:**
+
+1. `s3_presign_require` — fail before touching the cluster if signing is
+   unavailable.
+2. Presign a PUT for `postgres/${cluster}-$(date -u +%Y%m%dT%H%M%SZ).dump`.
+3. Create the Secret, create the Job, wait for completion, delete the Secret.
+4. `aws s3api head-object` on the key. A missing object or a zero
+   `ContentLength` fails the whole sequence.
+5. **Only then** prune: list the prefix, keep the newest two keys, delete the
+   rest. Verification precedes deletion so a bad run can never cost the last
+   good copy.
 
 **Retention is the newest two keys**, enforced here rather than by an S3
 lifecycle rule, because lifecycle expiry is age-based and cannot express a
@@ -127,41 +188,59 @@ having endpoints are separate moments. `argo-up` waits on
 creating the restore Job, and the job itself opens with a bounded `pg_isready`
 loop.
 
-**Restore job decision table**, evaluated as the `vkdb` owner against `vkdb`'s
-`public` schema:
+**Restore sequence, in `pg_restore_from_s3`** — the decision splits across the
+script and the Job, because each knows something the other cannot:
 
-| Tables | Newest dump | Action |
+| Stage | Condition | Action |
 |---|---|---|
-| > 0 | any | Exit 0, touch nothing. Makes re-syncs idempotent |
-| 0 | exists | Download and `pg_restore`. A failure exits non-zero and leaves the cluster up but visibly unhealthy — ADR 0031 forbids a silent fall back to an empty database |
-| 0 | none | Exit 0 |
+| Script | `aws s3 ls` fails | Exit non-zero. An API error is not an empty bucket |
+| Script | prefix empty | Log "no dump, fresh environment" and exit 0 **without creating the Job** |
+| Script | newest key found | Presign a GET for it, create the Secret and the Job, wait |
+| Job | tables > 0 | Exit 0, touch nothing. Makes re-syncs idempotent |
+| Job | tables == 0 | `pg_restore`. A failure exits non-zero and leaves the cluster up but visibly unhealthy — ADR 0031 forbids a silent fall back to an empty database |
 
-That last row is the genuinely fresh environment, and it is a deliberate,
-narrow exception to ADR 0031's no-silent-fallback rule: an empty bucket is not
-a failed restore, it is a first bring-up. The exception is exactly "the list
-call succeeded and returned nothing".
+The fresh-environment row is a deliberate, narrow exception to ADR 0031's
+no-silent-fallback rule: an empty prefix is not a failed restore, it is a first
+bring-up. The exception is exactly "the list call succeeded and returned
+nothing", which is why the failed-list row sits above it.
 
-**A failed list is not an empty bucket.** If `aws s3 ls` fails, the job exits
-non-zero rather than treating the error as "no dump". `aws_resolve_snapshot`
-already draws this distinction on AWS (`argo-up.sh:296-301`); without it an IAM
-misconfiguration on a first bring-up is indistinguishable from a fresh
-environment, and the operator silently gets an empty database.
+`aws_resolve_snapshot` already draws that same distinction on AWS
+(`argo-up.sh:296-301`); without it an S3 permission error on a first bring-up is
+indistinguishable from a fresh environment, and the operator silently gets an
+empty database.
 
-**Teardown gate.** `civo_backup()` creates the backup Job, waits, and prunes.
-On failure or timeout it exits non-zero and leaves the cluster running, unless
+**The table count is evaluated as `lab-postgres-app`'s `username` against
+`vkdb`'s `public` schema**, using the credentials in that Secret. That role owns
+the schema, so it sees exactly the tables a restore would create.
+
+**Teardown gate.** `civo_backup()` calls `pg_backup_to_s3`. On failure or
+timeout it exits non-zero and leaves the cluster running, unless
 `CI_TEARDOWN_ALLOW_DATA_LOSS=1`. The variable name is fixed verbatim by this
 spec, CIVO-180 and CIVO-115 — do not invent a new one. The difference from
 CIVO-115's version is that the default path now succeeds.
 
+**The URL is signed for `LAB_REGION` explicitly.** `aws s3 presign`'s own
+documentation notes that SigV4 presigning needs the region configured
+explicitly; `boto3` is no different. A URL signed for the wrong region answers
+with a redirect, and `curl --fail` turns that into an unexplained non-zero exit
+rather than a legible error.
+
+**URL lifetime.** Presign for the dump or restore timeout plus a margin, and
+keep the total inside the signing credential's own lifetime — a URL signed by a
+CI OIDC session stops working when that session ends, whatever `--expires-in`
+said. CIVO-180 §12 records the constraint; this spec picks the numbers.
+
 ## 5. Files/components affected
 
-New: `gitops/templates/platform/shared/postgres/backup-cronjob.yaml` and
+New: `scripts/lib/pg-backup.sh`,
+`gitops/templates/platform/shared/postgres/backup-cronjob.yaml` and
 `restore-cronjob.yaml`.
 
-Modified: `scripts/lib/provider.sh` (`civo_backup` rewritten),
-`scripts/argo-up.sh` (restore step, `ARGO_UP_RESTORE_TIMEOUT`, bucket name read
-from SSM in the existing batched `get-parameters` call), `gitops/values.yaml`
-(`postgres.backup.*`), `scripts/gitops-render-check.sh`
+Modified: `scripts/lib/provider.sh` (`civo_backup` rewritten to call the
+library), `scripts/argo-up.sh` (restore step, `ARGO_UP_RESTORE_TIMEOUT`, bucket
+name read from SSM in the existing batched `get-parameters` call),
+`gitops/values.yaml` (`postgres.backup.*` and the `quay.io/curl/curl` digest,
+per CIVO-180 §4's choice of registry), `scripts/gitops-render-check.sh`
 (`CronJob__cnpg-system__postgres-backup` and
 `CronJob__cnpg-system__postgres-restore` added to `REQUIRED_OBJECTS_CIVO`).
 
@@ -169,43 +248,65 @@ The render-check additions are not optional bookkeeping: without them the check
 passes vacuously if the `postgres.backup.enabled` gate is wrong in either
 direction. That was CIVO-115's lesson.
 
+`scripts/lib/pg-backup.sh` takes no `PROVIDER` and contains no provider
+conditional. If one appears during implementation, that is the signal something
+was specified wrong, because CIVO-185's entire premise is that AWS can call
+these functions unchanged.
+
 ## 6. Implementation steps
 
-1. Confirm CIVO-180 is `DONE` — bucket, role, certificate and image digest all
-   resolvable.
+1. Confirm CIVO-180 is `DONE` — bucket, SSM parameter, signing helper and image
+   pin all in place.
 2. Write both CronJobs and the values. `make gitops-check`: the AWS golden diff
    must be empty, because `postgres.backup.enabled` is false on AWS.
-3. Rewrite `civo_backup()`. `shellcheck`, `bash -n`.
-4. Add the restore step to `argo-up.sh`. `shellcheck`, `bash -n`.
-5. `PROVIDER=civo make up`. Write rows.
-6. `PROVIDER=civo make down` with **no** override. Confirm it succeeds, the dump
+3. Write `scripts/lib/pg-backup.sh`. `shellcheck`, `bash -n`.
+4. Rewrite `civo_backup()` to call it. `shellcheck`, `bash -n`.
+5. Add the restore step to `argo-up.sh`. `shellcheck`, `bash -n`.
+6. `PROVIDER=civo make up`. Write rows.
+7. `PROVIDER=civo make down` with **no** override. Confirm it succeeds, the dump
    is in S3, and the message names the object.
-7. `PROVIDER=civo make up`. Confirm the rows are back and `argo-up` says so.
-8. Repeat 6 and 7 twice more, so that a third dump forces the first out and the
+8. `PROVIDER=civo make up`. Confirm the rows are back and `argo-up` says so.
+9. Repeat 7 and 8 twice more, so that a third dump forces the first out and the
    prefix is proven to hold exactly two objects.
-9. Re-sync Argo without a teardown; confirm the restore Job exits 0 and changes
-   nothing.
-10. Failure paths, each recorded: a backup that cannot reach S3 aborts the
-    teardown and leaves the cluster running; a corrupted dump fails the restore
-    loudly rather than leaving an empty database that looks healthy; a first
-    bring-up against an empty prefix succeeds.
+10. Re-sync Argo without a teardown; confirm the restore Job exits 0 and changes
+    nothing.
+11. Failure paths, each recorded: a backup whose upload cannot reach S3 aborts
+    the teardown and leaves the cluster running; a `pg_dump` that fails leaves
+    no object at all; a corrupted dump fails the restore loudly rather than
+    leaving an empty database that looks healthy; a first bring-up against an
+    empty prefix succeeds without creating a Job.
+12. Record the measured dump size, dump duration and restore duration, and
+    tighten the timeouts to them.
 
 ## 7. Dependencies and blockers
 
 CIVO-050 provides the layout, CIVO-100 the database password, CIVO-115 the
-running `Cluster` and the gate this rewrites, CIVO-180 the bucket, identity and
-image.
+running `Cluster` and the gate this rewrites, CIVO-180 the bucket, the signing
+helper and the image pin.
+
+`boto3` must be present wherever a Civo teardown runs. On the operator's machine
+that is a one-time `pip install boto3`; CIVO-180's preflight makes its absence a
+named failure rather than a mysterious one. A Civo CI path does not exist yet —
+when CIVO-140 adds one it must install it, and CIVO-185 adds the same step to
+`lifecycle-test.yml` for AWS.
 
 ## 8. Acceptance criteria
 
 - Rows survive three down/up cycles with no override variable on any command.
 - After the third cycle the prefix holds exactly two objects.
 - A re-sync without a teardown leaves data untouched.
-- A failed backup aborts the teardown with the cluster still running and the
-  prefix unchanged — no truncated object, and the previous dumps still present.
+- A failed `pg_dump` leaves **no** object in the prefix, and the previous dumps
+  are still present and still two.
+- A failed upload aborts the teardown with the cluster still running.
 - A corrupted dump fails the restore visibly; the cluster does not come up
   pretending to be empty.
-- A genuinely first bring-up against an empty prefix succeeds and says why.
+- A genuinely first bring-up against an empty prefix succeeds, says why, and
+  creates no restore Job.
+- A `grep` over `scripts/lib/pg-backup.sh` finds no `PROVIDER`, no `civo` and no
+  `aws` conditional.
+- No AWS credential, config file, certificate or ServiceAccount annotation
+  appears in either Job's rendered manifest. The only secret either pod mounts
+  is the presigned URL and the database password.
 - `cluster-down` never touches the bucket. `persistent-down` empties it only
   after its explicit confirmation.
 - The AWS golden diff is empty, and one AWS down/up cycle still restores from
@@ -227,8 +328,10 @@ holding it must not be deleted before this spec is `DONE`.
 both new manifests render to nothing there and the golden diff proves it.
 `scripts/argo-up.sh` and `scripts/lib/provider.sh` are shared by both targets:
 the restore step must be Civo-gated, and the AWS branch re-read for ordering
-assumptions before merge. One AWS down/up cycle is recorded as evidence, not
-assumed.
+assumptions before merge. `scripts/lib/pg-backup.sh` is new and sourced only
+from the Civo path in this spec, so it cannot affect AWS even though it is
+written to be target-agnostic. One AWS down/up cycle is recorded as evidence,
+not assumed.
 
 ## 11. Rollout and rollback/recovery
 
@@ -240,12 +343,28 @@ stack.
 
 ## 12. Risks and unresolved questions
 
-- **The dump and restore duration sets the teardown timeout** and is unmeasured.
-  Start generous, record the real number on the first cycle, tighten afterwards.
+- **The dump and restore duration sets both the teardown timeout and the URL
+  lifetime**, and is unmeasured. Start generous, record the real number on the
+  first cycle, tighten afterwards. The URL cannot outlive the credential that
+  signed it, so the generous first value still has a ceiling.
 - **The empty-schema probe is the single highest-risk line in the spec.** It
-  must run as the `vkdb` owner against `vkdb`'s `public` schema. Counting
-  against `postgres`, or as a superuser, or without the schema qualifier, gives
-  an answer that looks right and silently skips a restore.
+  must run as `lab-postgres-app`'s `username` against `vkdb`'s `public` schema.
+  Counting against `postgres`, or as a superuser, or without the schema
+  qualifier, gives an answer that looks right and silently skips a restore.
+- **The Civo SSM batch has one slot left.** CIVO-100 §4 records that
+  `argo-up.sh`'s batched `aws ssm get-parameters` call is at 8 names against a
+  hard cap of 10. Adding the bucket name takes it to 9. That fits, but it is the
+  last addition that will, and the next one must split the call.
+- **Whether the CNPG image carries `curl`** is unverified (CIVO-180 §12). If it
+  does, each Job collapses to one container and the `emptyDir` and `fsGroup`
+  disappear. Confirm on the first build; treat a collapse as a simplification to
+  take, not a correction to make.
+- **The presigned URL is visible in the pod's Secret** to anyone with read
+  access to `cnpg-system` for as long as it lives. It permits one method on one
+  key and then expires. That is narrower than any standing credential the
+  rejected designs would have left in the same namespace, but it is not nothing,
+  and the script deleting the Secret promptly is part of the design rather than
+  tidiness.
 - A logical dump restores to the moment of the dump. With backups taken only at
   teardown, an unplanned cluster loss costs everything since the last teardown.
   That is an accepted property of a disposable lab, not an oversight — but it is
@@ -263,9 +382,10 @@ stack.
 
 ## 13. Definition of done
 
-- [ ] Both jobs, the rewritten gate and the restore step in place
+- [ ] Library, both jobs, the rewritten gate and the restore step in place
 - [ ] Three cycles with row-count evidence; retention proven at exactly two
-- [ ] All three failure paths recorded, including the fresh-environment case
+- [ ] All four failure paths recorded, including the fresh-environment case
+- [ ] `pg-backup.sh` proven free of provider conditionals
 - [ ] One AWS cycle recorded; golden diff empty
 - [ ] Index updated; status `DONE`
 
@@ -287,13 +407,21 @@ stack.
   disposable data); this spec keeps the persistence proof.
 
 - 2026-09-11 — rescoped and corrected. This spec absorbed the backup and restore
-  jobs and the lifecycle wiring from CIVO-180, which now delivers only the
-  bucket, identity and image. Stale references to a snapshot-era design were
-  removed from §5 — `civo_recovery_handle`, a `persistent-civo-artifacts.sh`
-  that was to mirror the EBS one, and a `persistent-down` artifact sweep — all
+  jobs and the lifecycle wiring from CIVO-180. Stale references to a
+  snapshot-era design were removed from §5 — `civo_recovery_handle`, a
+  `persistent-civo-artifacts.sh`, and a `persistent-down` artifact sweep — all
   of which contradicted this spec's own §4. The restore trigger moved from an
   Argo `PostSync` hook to an `argo-up` step; the backup schedule became
-  teardown-only; `civo_backup()` is now described as a rewrite of the function
-  CIVO-115 shipped rather than a new addition; and the fresh-environment,
-  failed-list and truncated-upload cases were specified, none of which the
-  earlier text covered.
+  teardown-only; `civo_backup()` is now a rewrite rather than an addition.
+
+- 2026-09-12 — **rewritten for the presigned-URL credential model** chosen by
+  the operator (CIVO-180 §14). The Jobs no longer authenticate to AWS; the
+  script presigns and the Job speaks plain HTTP. Consequences absorbed here:
+  prune and upload-verification moved from the Job into the script, where they
+  are now sequential and cannot race; the truncated-upload hazard is gone,
+  replaced by init-container ordering that makes an upload after a failed
+  `pg_dump` impossible; the URL reaches the Job through a script-owned Secret,
+  because `kubectl create job --from=cronjob` cannot inject anything; the
+  fresh-environment case is now handled by the script declining to create the
+  Job at all; and the shared logic was pulled into `scripts/lib/pg-backup.sh`
+  so CIVO-185 becomes a wiring change rather than a port.
