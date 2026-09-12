@@ -104,7 +104,7 @@ Parallel tracks once 045/050 land: ingress (060 → 070), identity (080 → 082 
 | DNS ownership, TXT owner IDs | 110, ADR 0002 note |
 | Certificate flows separated (TLS vs workload identity) | 070 vs 085 |
 | Storage verification list | 020, 120, 180 |
-| CNPG sizing, backups, restore | 180 (bucket, jobs, IAM), 120 (cycle proof), 185 (AWS migration), 186 (cross-provider restore) |
+| CNPG sizing, backups, restore | 180 (bucket, IAM, image), 120 (jobs, lifecycle wiring, cycle proof), 185 (AWS migration), 186 (cross-provider restore) |
 | Capacity comparison, fixed capacity allowed, autoscaler separate | 030 (fixed pool), 170 (deferred), 175 |
 | Identity chain items 1–9 | 080 (2), 082 (1, 8), 085 (3, 4), 090 (6, 7, 9), 085/090 (5) |
 | Civo token handling | 010, 040, 140, ADR 0030 |

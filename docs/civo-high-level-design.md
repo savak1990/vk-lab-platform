@@ -89,9 +89,9 @@ because CNPG pods cannot host the sidecar.
 
 ```mermaid
 flowchart LR
-  PG[CNPG cluster<br/>civo-volume, 1 instance, disposable] -->|daily CronJob: pg_dump| S3[S3 bucket<br/>AWS persistent stack, 14d lifecycle]
-  AD[argo-down] -->|one-off Job from the CronJob<br/>wait, fail closed| S3
-  AU[argo-up] -->|PostSync restore Job<br/>only when the schema is empty| PG
+  PG[CNPG cluster<br/>civo-volume, 1 instance, disposable] -->|pg_dump at teardown| S3[S3 bucket<br/>AWS persistent stack, newest 2 dumps]
+  AD[argo-down] -->|one-off Job from the suspended CronJob<br/>wait, prune, fail closed| S3
+  AU[argo-up] -->|restore Job<br/>only when the schema is empty| PG
   S3 --> AU
 ```
 

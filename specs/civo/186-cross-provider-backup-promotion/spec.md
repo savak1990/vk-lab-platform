@@ -64,8 +64,8 @@ Not in scope:
 
 - `scripts/lib/provider.sh:9,17` sets `PROJECT_NAME` to `vk-civo-lab` or `vk-lab-platform`. `terraform/live/root.hcl:8` reads it into `local.project`. CIVO-180 §4 names the bucket `${project}-backups`, so the two targets have two buckets, in one AWS account, under two projects.
 - CIVO-180 §4: the dump is `pg_dump --format=custom --no-owner --no-privileges` piped to `s3://${bucket}/postgres/${cluster}-$(date -u +%Y%m%dT%H%M%SZ).dump`.
-- CIVO-180 §4: the restore Job counts tables, and when the count is zero and a dump exists it downloads the newest object and runs `pg_restore`. When the count is not zero it exits successfully without touching data.
-- CIVO-180 §4: the bucket lifecycle rule expires objects under `postgres/` after 14 days.
+- CIVO-120 §4: the restore job counts tables, and when the count is zero and a dump exists it downloads the newest **key** and runs `pg_restore`. When the count is not zero it exits successfully without touching data. (This contract moved from CIVO-180 to CIVO-120 on 2026-09-11.)
+- CIVO-120 §4: the backup job keeps the newest two keys under `postgres/` and prunes the rest. There is no lifecycle rule on the bucket — S3 expiry is age-based and cannot express a count.
 - The AWS target backs up with ADR 0013's `VolumeSnapshot` until CIVO-185 lands. An EBS snapshot is not readable from Civo, so CIVO-185 is a hard gate, not a preference.
 - `terraform/live/persistent/` currently holds `acm`, `route53`, `secrets`, `vpc`. There is no `backups` unit and no `s3-backups` module yet, so no dump exists on either target today.
 - ADR 0027 states that a leaked Civo credential cannot reach the AWS project's state or secrets. ADR 0030 states that a `CIVO_TOKEN` compromise transitively reaches every AWS role's permissions through the CA-key path.
@@ -138,13 +138,13 @@ evidence for that path as well as this one.
 ## 11. Rollout and rollback/recovery
 
 Roll back by deleting the script and the Make target. Objects already
-promoted are ordinary dumps in the destination bucket and expire on the
-existing 14-day lifecycle rule without operator action.
+promoted are ordinary dumps in the destination bucket and are pruned by the
+next two backups on that target, without operator action.
 
 ## 12. Risks and unresolved questions
 
-- The restore Job's selection rule — newest by key or newest by `LastModified` — must be confirmed against CIVO-180's implementation. The fresh-timestamp naming in §4 is safe under either, but the assumption should be verified rather than inherited.
-- The 14-day lifecycle rule bounds how long after a teardown a promotion is still possible. A longer-lived migration needs the operator to copy the dump somewhere durable first. Consider whether the window should be stated in the operator documentation.
+- **Resolved (2026-09-11):** the restore job selects the newest **key**, not the newest `LastModified` — fixed by CIVO-120 §4 precisely because a server-side copy rewrites `LastModified` while preserving the name. The fresh-timestamp naming in §4 is therefore load-bearing, not cosmetic: a promoted object must sort last.
+- **Retention is a count, not an age.** The 14-day lifecycle rule this bullet assumed was dropped: CIVO-120 keeps the newest two dumps and enforces it in the backup job, because an S3 lifecycle rule cannot express a count. So the promotion window is bounded by teardowns, not by days — two more teardowns on the source target and the dump you meant to promote is gone, however recently it was written. A longer-lived migration needs the operator to copy it somewhere durable first.
 - Nothing else in the platform pins the two targets to the same PostgreSQL major version. This spec's guard detects drift but does not prevent it.
 - A promoted dump carries real database contents into the other project. The projects share an AWS account, so this is not a cross-account transfer, but it is a deliberate crossing of the ADR 0027 project boundary and should be visible in the object metadata for exactly that reason.
 

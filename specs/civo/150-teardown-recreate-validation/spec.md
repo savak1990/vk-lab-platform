@@ -53,8 +53,8 @@ Fill the classification table during execution:
 | Resource | Lifecycle | Owner | On `argo-down` | On `cluster-down` | On `persistent-down` | On `bootstrap-down` |
 |---|---|---|---|---|---|---|
 | Civo LB | cluster | CCM via Envoy Service | deleted (gate) | must be absent | — | — |
-| Civo volumes (CNPG, observability) | cluster (Delete class) / persistent artifact | CSI / scripts | snapshot or retain per 120 | deleted or retained | artifacts deleted | — |
-| Civo snapshots | persistent artifact | scripts | created, pruned to 2 | untouched | deleted | — |
+| Civo volumes (CNPG, observability) | disposable | CSI | deleted with the cluster | absent | — | — |
+| Postgres dumps in S3 | persistent artifact | backup job | written at teardown, pruned to 2 | untouched | bucket emptied and deleted | — |
 | Civo cluster, firewall | cluster | Terraform | — | destroyed | — | — |
 | Civo network, reserved IP | persistent | Terraform | — | untouched | destroyed | — |
 | Route 53 records | cluster | ExternalDNS | deleted (gate) | must be absent | — | — |
