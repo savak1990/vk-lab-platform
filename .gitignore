@@ -35,6 +35,7 @@ secrets/*/*
 !secrets/*/civo-ca-cert*.pem
 !secrets/root-domain.enc
 !secrets/civo-token.enc
+!secrets/hetzner-token.enc
 !secrets/README.md
 
 # Raw key material — ignore even under secrets/ directories
