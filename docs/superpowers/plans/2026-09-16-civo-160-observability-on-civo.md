@@ -114,22 +114,27 @@ Steps:
 
 Pre-flight: each check takes under 1 minute, and each can stop the run before it costs money.
 - [ ] Run `aws ssm get-parameter --name /<project>/persistent/grafana/admin_password --profile viacheslav-dev --region eu-west-1 --query Parameter.Name`. It must exist for the civo project.
-- [ ] Run `git push -u origin civo-160-observability`, then `PROVIDER=civo TARGET_REVISION=civo-160-observability make up`. If the persistent stack is absent, use `full-up`.
-- [ ] As soon as the API is reachable (before observability syncs), record:
-  - `kubectl get apiservice v1beta1.metrics.k8s.io -o wide`, and `kubectl get pods -A | grep -i metrics-server`. If Civo already serves the APIService, set the civo literal in `platform.metricsServerEnabled` to `false`, push, and record why.
+- [ ] Run `PROVIDER=civo make cluster-up`, then `PROVIDER=civo make kubeconfig`. If the persistent stack is absent, bring it up first.
+- [ ] With the API reachable but before Argo CD installs anything, inspect:
+  - `kubectl get apiservice v1beta1.metrics.k8s.io -o yaml` and `kubectl -n kube-system get deploy metrics-server`. If Civo already ships metrics-server, set the civo literal in `platform.metricsServerEnabled` to `false`.
+  - `kubectl -n kube-system get ds otel-collector -o yaml | grep -iE 'hostPort|hostNetwork'`, checking for a port-9100 clash with the node-exporter that kube-prometheus-stack installs next.
   - `kubectl describe nodes | grep -A8 "Allocated resources"`, the baseline for all 3 nodes.
-  - `kubectl get ds -n kube-system otel-collector -o jsonpath='{.spec.template.spec.containers[*].resources}'`.
+  - `kubectl -n kube-system get ds otel-collector -o jsonpath='{.spec.template.spec.containers[*].resources}'`.
+- [ ] If `platform.metricsServerEnabled` changed, commit that change (`civo-160: disable metrics-server on civo, already shipped`).
+- [ ] Run `git push -u origin civo-160-observability` (needed even with no literal change - `TARGET_REVISION=civo-160-observability` resolves against the pushed branch), then `PROVIDER=civo TARGET_REVISION=civo-160-observability make argo-up`.
 
 Verify (spec §8):
-- [ ] Wait for `ARGO-UP: root Synced/Healthy and DNS resolved - platform ready.` Then `kubectl get pods -n observability` and `kubectl get pods -n kube-system -l app.kubernetes.io/name=metrics-server` must show all pods Ready.
+- [ ] Wait for `ARGO-UP: root Synced/Healthy and DNS resolved - platform ready.` That message covers only the root Application; it does not prove any child's health. Run `kubectl get applications -n argocd` and confirm every child Application is Synced/Healthy before trusting root.
+- [ ] `kubectl get pods -n observability` and `kubectl get pods -n kube-system -l app.kubernetes.io/name=metrics-server` (if enabled) must show all pods Ready.
 - [ ] `kubectl top nodes` must work. If metrics-server logs show `x509`, set the civo `platform.kubeletInsecureTls` literal to `true`, push, re-sync, and record both results.
 - [ ] `curl -k https://grafana.civo.<root-domain>/api/health` must return 200. A basic-auth call to `/api/dashboards/home` with the ESO Secret password must also return 200.
 - [ ] In the Grafana CNPG dashboard, `cnpg_collector_up{cluster="lab-postgres"}` must be 1. In Explore, `up{job=~".*argocd.*"}` and `up{namespace="envoy"}` must return series. In Loki Explore, `{namespace="cnpg-system"}` must return lines.
 - [ ] Record the up/down state of the kubelet, cAdvisor, node-exporter and control-plane targets from Prometheus `/api/v1/targets`.
 - [ ] Record `kubectl describe nodes` Allocated resources after sync, plus `kubectl top pods -n observability`, for CIVO-175.
+- [ ] If Prometheus stays Pending: record the node allocation figures above, finish every other check that doesn't depend on Prometheus, then proceed straight to teardown. Leave spec 160 `status` short of `DONE` and hand the sizing question to CIVO-175 rather than changing requests here.
 
 Teardown and leak proof:
-- [ ] Run `PROVIDER=civo make down`. The log must show `waiting for observability PVCs to finish deleting` and no WARNING.
+- [ ] Run `PROVIDER=civo make down`. The log must show `waiting for observability PVCs to finish deleting`, the new `waiting for PV ... (civo volume) to finish deleting` line for each observability/cnpg-system PV, and no WARNING.
 - [ ] `cluster-down` must report no `leaked Civo dangling volume(s)`, and `civo volume ls` must show no observability volume.
 - [ ] If a civo literal changed during the run, commit that change as `civo-160: set civo kubelet TLS / metrics-server to the measured result`. Run `make gitops-check` again.
 
