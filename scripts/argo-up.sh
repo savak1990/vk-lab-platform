@@ -25,6 +25,9 @@ ON_DEMAND_KARPENTER_CPU_LIMIT="${ON_DEMAND_KARPENTER_CPU_LIMIT:-4}"
 # Increase-only: Kubernetes rejects a PVC shrink, and shrinking below a
 # retained snapshot's restore size leaves the recovered PVC unable to bind.
 POSTGRES_STORAGE_SIZE="${POSTGRES_STORAGE_SIZE:-20Gi}"
+# civo-only. Never set below 2: recovery reads the previous generation while
+# the current one is still building its own first base backup.
+POSTGRES_BACKUP_KEEP_GENERATIONS="${POSTGRES_BACKUP_KEEP_GENERATIONS:-2}"
 SPOT_KARPENTER_INSTANCE_TYPES_JSON="$(jq -Rc 'split(",")' <<< "$SPOT_KARPENTER_INSTANCE_TYPES")"
 ON_DEMAND_KARPENTER_INSTANCE_TYPES_JSON="$(jq -Rc 'split(",")' <<< "$ON_DEMAND_KARPENTER_INSTANCE_TYPES")"
 # Project-scoped so two environments with different PROJECT_NAME values in
@@ -424,6 +427,53 @@ civo_publish_server_name() {
     --name "/$PROJECT_NAME/persistent-civo/postgres-backup/server_name" \
     --type String --overwrite --value "$BACKUP_SERVER_NAME" >/dev/null
   echo "ARGO-UP: recorded backup server name $BACKUP_SERVER_NAME."
+  civo_prune_backup_generations
+}
+
+# The plugin's own retentionPolicy prunes only inside a live cluster and only
+# within that cluster's serverName, so a generation nothing is running against
+# is never pruned by it and would sit until the bucket's 30-day rule expires
+# it. This is what actually bounds the stored backup count.
+civo_prune_backup_generations() {
+  local keep="$POSTGRES_BACKUP_KEEP_GENERATIONS"
+  if [ -z "$BACKUP_BUCKET" ]; then
+    return 0
+  fi
+
+  # Only generations this script minted are candidates. Anything else in the
+  # bucket was put there by hand and is not this function's to delete.
+  local generations
+  if ! generations="$(aws s3 ls "s3://$BACKUP_BUCKET/" --region "$LAB_REGION" 2>/dev/null \
+    | awk '{print $2}' | tr -d '/' \
+    | grep -E '^lab-postgres-[0-9]{8}T[0-9]{6}Z$' | sort)"; then
+    echo "ARGO-UP: WARNING - could not list backup generations; skipping the prune." >&2
+    return 0
+  fi
+  [ -z "$generations" ] && return 0
+
+  local total
+  total="$(printf '%s\n' "$generations" | wc -l | tr -d ' ')"
+  if [ "$total" -le "$keep" ]; then
+    echo "ARGO-UP: $total backup generation(s) stored, keeping $keep - nothing to prune."
+    return 0
+  fi
+
+  local doomed
+  doomed="$(printf '%s\n' "$generations" | head -n "$((total - keep))")"
+  local generation
+  for generation in $doomed; do
+    # The timestamp sort puts these oldest-first, but the current and the
+    # recovered-from generations are named explicitly rather than trusted to
+    # fall outside the window - deleting either loses the running database's
+    # own archive.
+    if [ "$generation" = "$BACKUP_SERVER_NAME" ] || [ "$generation" = "$RECOVER_SERVER_NAME" ]; then
+      continue
+    fi
+    echo "ARGO-UP: pruning old backup generation $generation..."
+    if ! aws s3 rm "s3://$BACKUP_BUCKET/$generation/" --recursive --region "$LAB_REGION" >/dev/null; then
+      echo "ARGO-UP: WARNING - failed to prune $generation; it will expire with the bucket lifecycle rule." >&2
+    fi
+  done
 }
 
 civo_install_root_application() {
