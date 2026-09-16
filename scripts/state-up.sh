@@ -21,10 +21,33 @@ if [ -f terragrunt.hcl.orig ]; then
   rm -rf .terragrunt-cache terraform.tfstate terraform.tfstate.backup
 fi
 
-if aws s3api head-bucket --bucket "$BUCKET" --region "$LAB_REGION" 2>/dev/null; then
+# An interrupted phase 1 leaves this unit's cache initialized against the
+# local backend, which makes the next apply fail with "Backend type changed".
+if grep -rqs 'backend "local"' .terragrunt-cache; then
+  echo "Found a local-backend cache from an interrupted previous run - clearing it."
+  rm -rf .terragrunt-cache
+fi
+
+# Probed separately because head-bucket reports missing credentials and a
+# missing bucket the same way, and treating the former as "no bucket" sends
+# this script down the two-phase path against a bucket that already exists.
+if ! aws sts get-caller-identity >/dev/null 2>&1; then
+  echo "No usable AWS credentials - set AWS_PROFILE or log in, then re-run." >&2
+  exit 1
+fi
+
+head_error="$(aws s3api head-bucket --bucket "$BUCKET" --region "$LAB_REGION" 2>&1)" && head_rc=0 || head_rc=$?
+
+if [ "$head_rc" -eq 0 ]; then
   echo "State bucket s3://$BUCKET already exists - applying terraform/live/state normally."
   terragrunt apply -auto-approve -input=false
   exit 0
+fi
+
+if ! printf '%s' "$head_error" | grep -q '(404)'; then
+  echo "Could not determine whether s3://$BUCKET exists - refusing to bootstrap over it." >&2
+  echo "$head_error" >&2
+  exit 1
 fi
 
 echo "State bucket does not exist yet - bootstrapping in two phases."
