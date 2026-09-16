@@ -132,14 +132,22 @@ verify_object_set() {
     fi
   done
   if [ "$target" = civo ]; then
-    if grep -rhEv '^[[:space:]]*#' "$dir" | grep -q -e 'ebs-delete' -e 'karpenter.sh/capacity-type'; then
+    local hits
+    # grep -q exits as soon as it finds a match, killing the upstream grep with
+    # SIGPIPE; under pipefail that turns a real match into a false "no match".
+    # Capture matched lines instead so the upstream always runs to completion.
+    hits="$(grep -rhEv '^[[:space:]]*#' "$dir" | grep -e 'ebs-delete' -e 'karpenter.sh/capacity-type' || true)"
+    if [ -n "$hits" ]; then
       echo "GITOPS-RENDER-CHECK: target=$target renders an aws-only storage class or spot affinity" >&2
       return 1
     fi
     local karpenter_rule="$dir/PrometheusRule__observability__observability-alerts.yaml"
-    if [ -e "$karpenter_rule" ] && grep -Ev '^[[:space:]]*#' "$karpenter_rule" | grep -q 'Karpenter'; then
-      echo "GITOPS-RENDER-CHECK: target=$target renders an aws-only Karpenter alert" >&2
-      return 1
+    if [ -e "$karpenter_rule" ]; then
+      hits="$(grep -Ev '^[[:space:]]*#' "$karpenter_rule" | grep 'Karpenter' || true)"
+      if [ -n "$hits" ]; then
+        echo "GITOPS-RENDER-CHECK: target=$target renders an aws-only Karpenter alert" >&2
+        return 1
+      fi
     fi
   fi
 }
