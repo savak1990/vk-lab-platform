@@ -1,7 +1,7 @@
 ---
 id: "HETZ-182"
 title: "Repo-built images published for linux/arm64 as well as linux/amd64"
-status: "READY"
+status: "DRAFT"
 priority: "P0"
 milestone: "M1"
 type: "implementation"
@@ -17,6 +17,22 @@ created: "2026-09-11"
 updated: "2026-09-11"
 completed: ""
 ---
+
+
+> **Re-scoped on 2026-09-16. The named image changed.**
+>
+> This spec targets `images/pg-backup`, which was never built — ADR 0032
+> withdrew the logical-dump design. The repository's own image is now
+> `images/cnpg-barman-sidecar` (the upstream CNPG barman-cloud sidecar plus
+> `aws_signing_helper`), built by `.github/workflows/sidecar-image.yml` and
+> pinned by digest in `gitops/values.yaml`.
+>
+> The requirement is unchanged and still real: that image is built
+> `linux/amd64` only, because Civo's `g4s.kube.medium` is x86_64. Hetzner's
+> CAX family is ARM, so the build must become multi-arch and the
+> `aws_signing_helper` download must select its architecture from
+> `TARGETARCH`. Substitute the new image name throughout, and amend
+> CIVO-180 §4 rather than its withdrawn predecessor.
 
 # HETZ-182 — Multi-arch images
 

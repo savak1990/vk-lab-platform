@@ -128,7 +128,7 @@ had hidden.
 | Reserved IP keeps the load balancer's address stable | Primary IPs attach to servers only, not load balancers; the LB gets a new address every `make up`; DNS-01 wildcard TLS is used instead of HTTP-01 to avoid depending on a fixed address |
 | Cluster deletion reaps its load balancer | The LB, volumes, and primary IPs are independent resources; teardown must sweep them by label |
 | One API token, used only outside the cluster | The Hetzner token must also live in-cluster (`kube-system/hcloud`) for the CCM and CSI driver — a materially larger blast radius, mitigated by a dedicated per-project token |
-| No architecture concern (Civo images are whatever Civo runs) | Every platform image must be proven arm64; only the repository's own `pg-backup` image needed a multi-arch rebuild (`HETZ-182`) |
+| No architecture concern (Civo images are whatever Civo runs) | Every platform image must be proven arm64; only the repository's own `cnpg-barman-sidecar` image needs a multi-arch rebuild (`HETZ-182`) |
 
 ## 5. Where things live
 
