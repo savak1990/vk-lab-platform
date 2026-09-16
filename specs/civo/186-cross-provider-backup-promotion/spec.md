@@ -1,7 +1,7 @@
 ---
 id: "CIVO-186"
 title: "Cross-provider backup promotion: restore either target from the other target's dumps"
-status: "READY"
+status: "BLOCKED"
 priority: "P2"
 milestone: "M2"
 type: "implementation"
@@ -11,14 +11,36 @@ model_rationale: "One script and a Make target; the credential path and the rest
 effort_estimate: "Half a session (2-3 h) plus one AWS and one Civo cycle"
 estimate_confidence: "high"
 depends_on: ["CIVO-180", "CIVO-185"]
-blocked_by: []
+blocked_by: ["CIVO-185"]
 supersedes: []
 created: "2026-09-07"
-updated: "2026-09-07"
+updated: "2026-09-16"
 completed: null
 ---
 
 # CIVO-186 — Cross-provider backup promotion
+
+> **BLOCKED on 2026-09-16, on CIVO-185.**
+>
+> The assumption this spec is built on has been withdrawn, and its
+> replacement has not been assessed.
+>
+> §1 below argues the work is "nearly free" because CIVO-180 dumps with
+> `pg_dump --format=custom --no-owner --no-privileges` and ships a restore Job
+> that loads the newest dump into an empty schema. Neither exists. ADR 0032
+> replaced logical dumps with physical base backups plus a WAL archive, and
+> recovery is CNPG's own `bootstrap.recovery` against a generation prefix.
+>
+> This does **not** mean promotion is impossible. Copying a generation prefix
+> between the two projects' buckets and pointing `externalClusters` at it is
+> plausible at an equal PostgreSQL major version. It is simply untested, and
+> the portability argument that made this spec cheap no longer applies — a
+> physical backup is coupled to the server major version and to the instance's
+> own configuration in ways a `--no-owner` dump is not.
+>
+> Unblock when CIVO-185 has decided the AWS mechanism. Then reassess whether
+> the promotion is a prefix copy, a `pg_dump` bridge run on demand, or not
+> worth the surface.
 
 ## 1. Outcome and rationale
 

@@ -16,7 +16,7 @@ controller manager (CCM) before Argo CD, because no node schedules
 anything until the CCM runs, and Argo CD then installs the CSI driver as
 an ordinary Application. Civo pre-installs both. Everything above that
 line — Envoy, cert-manager, ESO, ExternalDNS, CNPG, observability, the
-Roles Anywhere identity chain, logical dumps to S3 — is the Civo design,
+Roles Anywhere identity chain, barman-cloud plugin backups to S3 — is the Civo design,
 reused through the generalisation specs HETZ-016 and HETZ-018.
 
 ## 2. Target flow (condensed)
@@ -70,7 +70,7 @@ equivalent; **n/a** = not applicable on Hetzner.
 | TLS | HTTP-01 then DNS-01 wildcard (CIVO-075) | start at the DNS-01 end state; HTTP-01 never used | reuse | 070 |
 | DNS | ExternalDNS via sidecar, waits on the reserved IP | same chart; waits use the discovered LB address | reuse + branch | 070 |
 | Workload identity | Roles Anywhere chain, x86 sidecar digest | same chain; CA ceremony and Roles Anywhere unit for the Hetzner project (080); certificates and multi-arch sidecars (085) | reuse | 080, 085 |
-| PostgreSQL | CNPG on `civo-volume`, logical dumps to S3 | CNPG on `hcloud-volumes`; same dumps; `pg-backup` image must be arm64 | mirror | 115, 120, 182 |
+| PostgreSQL | CNPG on `civo-volume`, barman-cloud plugin to S3 | CNPG on `hcloud-volumes`; same plugin; the `cnpg-barman-sidecar` image must be arm64 | mirror | 115, 120, 182 |
 | Observability | control-plane scrapes off (managed k3s hides it) | control-plane scrapes **on** (k3s flags bind scheduler/controller-manager/etcd metrics); k3s bundled metrics-server kept; 10 GB volume floor | mirror | 160 |
 | Tests | SA-token context `${PROJECT_NAME}-civo-test` | `${PROJECT_NAME}-hetzner-test` | mirror | 130 |
 | CI | `lab.yml` provider input aws\|civo | three values; `hcloud` CLI; cleanup sweeps volumes/LBs/IPs | mirror | 140 |
@@ -152,7 +152,7 @@ Two traps have no Civo precedent and shape 030, 045 and 050:
 | A boundary/state/contract | own project `vk-hetzner-lab`; `-hetzner` stack dirs; contract above | 010, 025, 030, 050 |
 | B lifecycle and Argo | same stage model; non-AWS branches generalised; CCM helm-installed by `argo-up` before Argo CD | 016, 040, 045 |
 | C cluster/networking/ingress | firewall 22 + 6443 public, everything else private; LB11 with private-IP targets; no reserved IP | 025, 030, 060 |
-| D storage/CNPG | `hcloud-volumes`; logical dumps; no snapshots | 050, 115, 120 |
+| D storage/CNPG | `hcloud-volumes`; barman-cloud plugin to S3; no snapshots | 050, 115, 120 |
 | E capacity | 3 × CAX21 ARM; autoscaler 0–2 in M2; stock fallback to CPX | 030, 170, 175 |
 | F identity/secrets | Roles Anywhere per project, names per provider; ceremony before the first `bootstrap-up`; token in-cluster | 018, 080, 085, 015 |
 | G destruction/recovery | label sweep for LBs, volumes, IPs, extra servers | 040, 140, 150 |

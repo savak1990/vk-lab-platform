@@ -1,7 +1,7 @@
 ---
 id: "CIVO-185"
 title: "Migrate the AWS target from EBS snapshots to the shared logical backups"
-status: "READY"
+status: "DRAFT"
 priority: "P2"
 milestone: "M2"
 type: "implementation"
@@ -14,11 +14,34 @@ depends_on: ["CIVO-120", "CIVO-180"]
 blocked_by: []
 supersedes: []
 created: "2026-09-06"
-updated: "2026-09-06"
+updated: "2026-09-16"
 completed: null
 ---
 
 # CIVO-185 — Move the AWS target to the shared backup mechanism
+
+> **Returned to DRAFT on 2026-09-16. Needs a redesign before it is READY.**
+>
+> This spec is written against CIVO-180's logical-dump design, which was
+> withdrawn. It expects a `pg_dump` CronJob, a `PostSync` restore Job and an
+> AWS Pod Identity role that were never built.
+>
+> The goal still holds and is now **more** attractive, not less: one mechanism
+> for both providers, with point-in-time recovery on AWS too, which the
+> logical-dump design would have cost. The redesign target is the barman-cloud
+> plugin (ADR 0032) on AWS, which is simpler there than on Civo — EKS Pod
+> Identity plus `s3Credentials.inheritFromIAMRole: true`, and **none** of the
+> `aws_signing_helper`, `credential_process`, `projectedVolumeTemplate` or
+> custom-image machinery. The upstream sidecar image would be used unmodified.
+>
+> Retirement scope is unchanged: the snapshot classes, the
+> `recovered-snapshot` template, the root Application's `ignoreDifferences`
+> entry, the external-snapshotter Application, and the snapshot code paths in
+> `argo-up.sh` and `argo-down.sh`. ADR 0013 would be superseded rather than
+> amended.
+>
+> Read §§2 onward as intent, not as a contract. Every mention below of a dump,
+> a CronJob or a restore Job is stale.
 
 ## 1. Outcome and rationale
 

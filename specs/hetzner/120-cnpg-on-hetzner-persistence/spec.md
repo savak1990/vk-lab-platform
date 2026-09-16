@@ -1,7 +1,7 @@
 ---
 id: "HETZ-120"
 title: "CloudNativePG on Hetzner with data surviving make down and make up"
-status: "READY"
+status: "DRAFT"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -17,6 +17,28 @@ created: "2026-09-11"
 updated: "2026-09-11"
 completed: ""
 ---
+
+
+> **Returned to DRAFT on 2026-09-16. Needs a rewrite before it is READY.**
+>
+> This spec is written against CIVO-180's logical-dump design, which was
+> withdrawn (ADR 0032). The `images/pg-backup` image, the daily `CronJob`, the
+> `PostSync` restore Job and the `retentionDays` values it depends on were
+> never built and do not exist.
+>
+> The replacement carries over from Civo essentially unchanged: CNPG's
+> barman-cloud plugin, an `ObjectStore` pointing at this project's own S3
+> bucket, a `pgbackup` Roles Anywhere role, a generation-scoped `serverName`
+> published to SSM, `bootstrap.recovery` at bring-up and a best-effort
+> `Backup` at teardown. The one Hetzner-specific requirement is that the
+> `cnpg-barman-sidecar` image must publish `linux/arm64` (HETZ-182), because
+> the CAX node family is ARM.
+>
+> §8's criterion *"The teardown gate fails closed on a failed dump"* is the
+> opposite of what now ships. Constitution §4 makes a continuously archiving
+> workload's pre-shutdown backup best-effort.
+>
+> Read the body as intent, not as a contract.
 
 # HETZ-120 — CNPG on Hetzner with persistence
 
