@@ -18,6 +18,7 @@ updated: "2026-09-11"
 completed: ""
 ---
 
+# HETZ-120 — CNPG on Hetzner with persistence
 
 > **Returned to DRAFT on 2026-09-16. Needs a rewrite before it is READY.**
 >
@@ -39,8 +40,6 @@ completed: ""
 > workload's pre-shutdown backup best-effort.
 >
 > Read the body as intent, not as a contract.
-
-# HETZ-120 — CNPG on Hetzner with persistence
 
 ## 1. Outcome and rationale
 

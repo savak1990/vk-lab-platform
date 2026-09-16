@@ -37,6 +37,8 @@ In scope:
 - The classification table.
 - Leak checks.
 - The cost record.
+- **Civo Postgres backup assertions in `tests/e2e/postgres_test.go`** (carried from CIVO-120). No test asserts `ContinuousArchiving=True` on the Cluster, or that at least one `Backup` is `completed`, so a silent archiving failure would not fail anything — and the whole persistence design rests on that condition being true at teardown. The e2e identity is read-only, so the test reads only and never creates a `Backup`. The read-only ClusterRole in `gitops/templates/platform/shared/rbac/e2e-test-readonly.yaml` needs `backups.postgresql.cnpg.io` and `objectstores.barmancloud.cnpg.io` added, which **does** change the AWS golden.
+- **Exercising "the SSM pointer exists but the bucket is empty"** (carried from CIVO-120 §12). The Civo recovery branch has no `initdb` fallback by design, so this state must fail loudly rather than start an empty database that looks healthy. It has never been reached. `persistent-down` deletes the pointer together with the bucket, which is what normally keeps the two in agreement.
 
 Not in scope: code changes beyond small fixes found during the run. Those
 fixes go to the owning spec.
