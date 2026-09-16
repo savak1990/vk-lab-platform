@@ -1,0 +1,35 @@
+{{- if and (eq .Values.target "civo") .Values.postgres.backup.enabled }}
+{{- if not .Values.postgres.backup.bucket }}
+{{- fail "postgres.backup.bucket must be set when postgres.backup.enabled is true" }}
+{{- end }}
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: lab-postgres-backups
+  namespace: cnpg-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+    # Its CRD arrives with the wave-1 Application, and Argo can report that
+    # Application healthy before the CRD is registered.
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  # A recovery window, not a backup count - the field accepts no other form.
+  retentionPolicy: {{ .Values.postgres.backup.retention | quote }}
+  configuration:
+    destinationPath: {{ printf "s3://%s/" .Values.postgres.backup.bucket | quote }}
+    s3Credentials:
+      # Mandatory. Any other setting makes barman append its own AWS_* to the
+      # child process, which wins over the config file through exec's last-wins.
+      inheritFromIAMRole: true
+    wal:
+      compression: gzip
+    data:
+      compression: gzip
+  instanceSidecarConfiguration:
+    resources:
+      requests:
+        cpu: 10m
+        memory: 64Mi
+      limits:
+        memory: 256Mi
+{{- end }}

@@ -1,0 +1,16 @@
+{{- if and (eq .Values.target "civo") .Values.postgres.backup.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pgbackup-aws-config
+  namespace: cnpg-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+data:
+  # botocore runs credential_process on demand and caches the result, so the
+  # helper always reads the certificate that is on disk now, not at pod start.
+  config: |
+    [default]
+    region = {{ .Values.region }}
+    credential_process = /usr/local/bin/aws_signing_helper credential-process --certificate /projected/ra/tls.crt --private-key /projected/ra/tls.key --trust-anchor-arn {{ .Values.awsIdentity.rolesAnywhere.trustAnchorArn }} --profile-arn {{ .Values.awsIdentity.rolesAnywhere.profileArn }} --role-arn {{ .Values.awsIdentity.rolesAnywhere.roleArns.pgbackup }} --session-duration 3600 --region {{ .Values.region }}
+{{- end }}

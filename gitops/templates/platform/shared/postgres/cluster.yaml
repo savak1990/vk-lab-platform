@@ -39,11 +39,26 @@ spec:
           apiGroup: snapshot.storage.k8s.io
           kind: VolumeSnapshot
           name: lab-postgres-recovered
+    {{- else if and (eq .Values.target "civo") .Values.postgres.backup.enabled .Values.postgres.backup.recoverServerName }}
+    # Same rule as the aws branch above: no initdb fallback on a recovery path.
+    recovery:
+      database: vkdb
+      owner: vkdb
+      source: lab-postgres-previous
     {{- else }}
     initdb:
       database: vkdb
       owner: vkdb
     {{- end }}
+  {{- if and (eq .Values.target "civo") .Values.postgres.backup.enabled .Values.postgres.backup.recoverServerName }}
+  externalClusters:
+    - name: lab-postgres-previous
+      plugin:
+        name: barman-cloud.cloudnative-pg.io
+        parameters:
+          barmanObjectName: lab-postgres-backups
+          serverName: {{ .Values.postgres.backup.recoverServerName | quote }}
+  {{- end }}
   storage:
     # Increase-only: shrinking a PVC is rejected by Kubernetes, and on the
     # snapshot-recovery path (above) the new PVC must be >= the snapshot's
@@ -60,6 +75,45 @@ spec:
     volumeSnapshot:
       className: ebs-postgres-snapshot
       online: false
+  {{- end }}
+  {{- if and (eq .Values.target "civo") .Values.postgres.backup.enabled }}
+  # The backup sidecar has no volumeMounts field of its own; it inherits this
+  # container's, which is the only way the certificate reaches it. optional
+  # keeps a not-yet-issued certificate from wedging pod creation.
+  projectedVolumeTemplate:
+    sources:
+      - secret:
+          name: pgbackup-ra-cert
+          optional: true
+          items:
+            - key: tls.crt
+              path: ra/tls.crt
+            - key: tls.key
+              path: ra/tls.key
+      - configMap:
+          name: pgbackup-aws-config
+          items:
+            - key: config
+              path: aws/config
+  # Set here rather than on the sidecar: this container's env is merged first
+  # and wins, and a change here rolls the instance so it is actually applied.
+  # Both region names are needed - inheritFromIAMRole returns before barman
+  # sets either.
+  env:
+    - name: AWS_CONFIG_FILE
+      value: /projected/aws/config
+    - name: AWS_REGION
+      value: {{ .Values.region | quote }}
+    - name: AWS_DEFAULT_REGION
+      value: {{ .Values.region | quote }}
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: lab-postgres-backups
+        # Per bring-up, so a recovered cluster never archives into the prefix
+        # it just recovered from and collides with that timeline history.
+        serverName: {{ .Values.postgres.backup.serverName | quote }}
   {{- end }}
   postgresql:
     parameters:

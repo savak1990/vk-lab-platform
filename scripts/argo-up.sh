@@ -79,26 +79,33 @@ aws_resolve_inputs() {
 
 civo_resolve_inputs() {
   civo_token
-  # 10 names - this is the batch cap (aws ssm get-parameters' own limit).
-  # The next new consumer/value must split this into two calls.
+  # aws ssm get-parameters accepts at most 10 names per call, so the list is
+  # fetched in batches rather than one request.
   local civo_ssm_names=(
     "/$PROJECT_NAME/bootstrap/route53/fqdn"
     "/$PROJECT_NAME/bootstrap/route53/zone_id"
     "/$PROJECT_NAME/persistent/argocd/admin_password_bcrypt"
     "/$PROJECT_NAME/persistent-civo/reserved-ip/address"
+    "/$PROJECT_NAME/persistent-civo/backups/bucket_name"
     "/$PROJECT_NAME/cluster-civo/network/lb_firewall_id"
     "/$PROJECT_NAME/bootstrap/rolesanywhere/trust_anchor_arn"
     "/$PROJECT_NAME/bootstrap/rolesanywhere/profile_arn"
     "/$PROJECT_NAME/bootstrap/rolesanywhere/role_arn/eso"
     "/$PROJECT_NAME/bootstrap/rolesanywhere/role_arn/external-dns"
     "/$PROJECT_NAME/bootstrap/rolesanywhere/role_arn/cert-manager"
+    "/$PROJECT_NAME/bootstrap/rolesanywhere/role_arn/pgbackup"
   )
   local civo_ssm_batch_names=() civo_ssm_batch_values=()
-  while IFS=$'\t' read -r name value; do
-    civo_ssm_batch_names+=("$name")
-    civo_ssm_batch_values+=("$value")
-  done < <(aws ssm get-parameters --region "$LAB_REGION" --with-decryption \
-    --names "${civo_ssm_names[@]}" --query 'Parameters[].[Name,Value]' --output text)
+  local batch_start=0
+  while [ "$batch_start" -lt "${#civo_ssm_names[@]}" ]; do
+    while IFS=$'\t' read -r name value; do
+      civo_ssm_batch_names+=("$name")
+      civo_ssm_batch_values+=("$value")
+    done < <(aws ssm get-parameters --region "$LAB_REGION" --with-decryption \
+      --names "${civo_ssm_names[@]:$batch_start:10}" \
+      --query 'Parameters[].[Name,Value]' --output text)
+    batch_start=$((batch_start + 10))
+  done
 
   local i
   for i in "${!civo_ssm_names[@]}"; do
@@ -122,8 +129,18 @@ civo_resolve_inputs() {
       */rolesanywhere/role_arn/eso) ESO_ROLE_ARN="$found" ;;
       */rolesanywhere/role_arn/external-dns) EXTERNAL_DNS_ROLE_ARN="$found" ;;
       */rolesanywhere/role_arn/cert-manager) CERT_MANAGER_ROLE_ARN="$found" ;;
+      */rolesanywhere/role_arn/pgbackup) PGBACKUP_ROLE_ARN="$found" ;;
+      */backups/bucket_name) BACKUP_BUCKET="$found" ;;
     esac
   done
+
+  # Absent on the first bring-up, so it cannot go through the fail-hard loop
+  # above. Empty means "nothing to recover from - bootstrap fresh".
+  RECOVER_SERVER_NAME="$(aws ssm get-parameter --region "$LAB_REGION" \
+    --name "/$PROJECT_NAME/persistent-civo/postgres-backup/server_name" \
+    --query 'Parameter.Value' --output text 2>/dev/null || true)"
+  [ "$RECOVER_SERVER_NAME" = "None" ] && RECOVER_SERVER_NAME=""
+  BACKUP_SERVER_NAME="lab-postgres-$(date -u +%Y%m%dT%H%M%SZ)"
 
   configure_kubeconfig
 }
@@ -400,6 +417,15 @@ aws_install_root_application() {
     --set envoyGateway.fqdn="$LAB_FQDN"
 }
 
+# Written only after the platform is healthy: a failed bring-up must leave the
+# previous generation as the one the next run recovers from.
+civo_publish_server_name() {
+  aws ssm put-parameter --region "$LAB_REGION" \
+    --name "/$PROJECT_NAME/persistent-civo/postgres-backup/server_name" \
+    --type String --overwrite --value "$BACKUP_SERVER_NAME" >/dev/null
+  echo "ARGO-UP: recorded backup server name $BACKUP_SERVER_NAME."
+}
+
 civo_install_root_application() {
   helm upgrade --install root-application "$REPO_ROOT/gitops/bootstrap" \
     --namespace argocd \
@@ -419,6 +445,11 @@ civo_install_root_application() {
     --set awsIdentity.rolesAnywhere.roleArns.eso="$ESO_ROLE_ARN" \
     --set awsIdentity.rolesAnywhere.roleArns.external-dns="$EXTERNAL_DNS_ROLE_ARN" \
     --set awsIdentity.rolesAnywhere.roleArns.cert-manager="$CERT_MANAGER_ROLE_ARN" \
+    --set awsIdentity.rolesAnywhere.roleArns.pgbackup="$PGBACKUP_ROLE_ARN" \
+    --set postgres.backup.enabled=true \
+    --set postgres.backup.bucket="$BACKUP_BUCKET" \
+    --set postgres.backup.serverName="$BACKUP_SERVER_NAME" \
+    --set postgres.backup.recoverServerName="$RECOVER_SERVER_NAME" \
     --set tls.issuer="${TLS_ISSUER:-letsencrypt-prod}" \
     --set tls.acmeEmail="${TLS_ACME_EMAIL:-}" \
     --set tls.hostedZoneId="$ROUTE53_ZONE_ID"
@@ -511,6 +542,7 @@ echo "ARGO-UP: root Synced/Healthy - waiting for external-dns to publish records
 if [ "$PROVIDER" = civo ]; then
   civo_wait_for_lb_ip || exit 1
   civo_wait_for_dns
+  civo_publish_server_name
 else
   aws_wait_for_dns
   echo "ARGO-UP: root Synced/Healthy and DNS resolved - platform ready."

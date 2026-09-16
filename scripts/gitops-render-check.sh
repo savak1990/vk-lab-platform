@@ -68,14 +68,19 @@ ClusterSecretStore__cluster__aws-parameter-store \
 ExternalSecret__cnpg-system__lab-postgres-app Application__argocd__external-dns \
 ClusterIssuer__cluster__letsencrypt-staging ClusterIssuer__cluster__letsencrypt-prod \
 Certificate__envoy__platform-public HTTPRoute__envoy__https-redirect \
-Cluster__cnpg-system__lab-postgres"
+Cluster__cnpg-system__lab-postgres Certificate__cnpg-system__pgbackup \
+ConfigMap__cnpg-system__pgbackup-aws-config \
+ObjectStore__cnpg-system__lab-postgres-backups \
+ScheduledBackup__cnpg-system__lab-postgres \
+Application__argocd__barman-cloud-plugin"
 FORBIDDEN_KINDS_LOCAL="StorageClass VolumeSnapshotClass VolumeSnapshotContent VolumeSnapshot \
-ClusterSecretStore ExternalSecret Cluster NodePool EC2NodeClass EnvoyProxy Gateway GatewayClass"
+ClusterSecretStore ExternalSecret Cluster NodePool EC2NodeClass EnvoyProxy Gateway GatewayClass \
+ObjectStore ScheduledBackup"
 FORBIDDEN_KINDS_CIVO="StorageClass VolumeSnapshotClass VolumeSnapshotContent VolumeSnapshot \
 NodePool EC2NodeClass"
 FORBIDDEN_APPLICATIONS_LOCAL="aws-load-balancer-controller cert-manager ebs-csi-driver karpenter \
 kube-prometheus-stack loki metrics-server alloy external-snapshotter external-snapshotter-crds \
-external-dns"
+external-dns barman-cloud-plugin"
 FORBIDDEN_APPLICATIONS_CIVO="aws-load-balancer-controller ebs-csi-driver karpenter \
 kube-prometheus-stack loki metrics-server alloy external-snapshotter external-snapshotter-crds"
 FORBIDDEN_OBJECTS="BackendTrafficPolicy__observability__grafana-traffic-policy \
@@ -120,7 +125,17 @@ verify_object_set() {
 
 CIVO_LOCAL_OK=true
 for t in civo local; do
-  render_and_normalize "$REPO_ROOT/gitops" "$STRUCT_DIR/$t" "$t"
+  # The backup objects render only when the operator-supplied values are
+  # present, so civo is rendered as a real bring-up would set them.
+  extra_sets=()
+  if [ "$t" = civo ]; then
+    extra_sets=(
+      --set postgres.backup.enabled=true
+      --set postgres.backup.bucket=render-check-bucket
+      --set postgres.backup.serverName=render-check-server
+    )
+  fi
+  render_and_normalize "$REPO_ROOT/gitops" "$STRUCT_DIR/$t" "$t" "${extra_sets[@]+"${extra_sets[@]}"}"
   verify_object_set "$STRUCT_DIR/$t" "$t" || CIVO_LOCAL_OK=false
 done
 if [ "$CIVO_LOCAL_OK" != true ]; then
