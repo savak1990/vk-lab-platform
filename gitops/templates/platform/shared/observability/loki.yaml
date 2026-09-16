@@ -1,7 +1,7 @@
 {{- if ne .Values.target "local" }}
 # SingleBinary + filesystem storage - not S3-backed "simple scalable" mode,
 # so this needs zero new Terraform/IAM. Data is lost on `make down`
-# (ebs-delete); acceptable since this stack's own data is disposable.
+# (Delete reclaim); acceptable since this stack's own data is disposable.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -54,9 +54,9 @@ spec:
               memory: 96Mi
             limits:
               memory: 256Mi
+          {{- if eq (include "platform.spotAvoidance" .) "true" }}
           # Avoids spot only (AZ-pinned PVC + spot interruption risk) - not
           # hard-pinned to the system node.
-          {{- if eq (include "platform.spotAvoidance" .) "true" }}
           affinity:
             nodeAffinity:
               requiredDuringSchedulingIgnoredDuringExecution:
@@ -72,7 +72,8 @@ spec:
             size: 10Gi
             # Chart default already deletes the PVC with the StatefulSet -
             # pinned explicitly so an upstream default change can't silently
-            # orphan the EBS volume on `make down`.
+            # orphan the volume on `make down`.
+            enableStatefulSetAutoDeletePVC: true
             whenDeleted: Delete
             whenScaled: Delete
         # Distributed-mode-only components - unused in SingleBinary mode.

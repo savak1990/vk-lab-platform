@@ -33,10 +33,9 @@ spec:
             ruleSelectorNilUsesHelmValues: false
             retention: 7d
             retentionSize: "8GB"
-            # Chart default is {} (Kubernetes' own StatefulSet default,
-            # Retain) - without this, `make down` orphans the bound EBS
-            # volume every cycle, since the PVC survives the StatefulSet's
-            # deletion and never triggers ebs-delete's reclaim.
+            # Chart default is {} (Retain); without this, `make down` orphans
+            # the bound volume every cycle, since the PVC survives the
+            # StatefulSet's deletion and never triggers the Delete reclaim.
             persistentVolumeClaimRetentionPolicy:
               whenDeleted: Delete
               whenScaled: Delete
@@ -49,10 +48,10 @@ spec:
                 memory: 768Mi
               limits:
                 memory: 1536Mi
+            {{- if eq (include "platform.spotAvoidance" .) "true" }}
             # Avoids spot only (AZ-pinned PVC + spot interruption risk) -
             # not hard-pinned to the system node, so it can also land on
             # the on-demand pool if the system node has no room.
-            {{- if eq (include "platform.spotAvoidance" .) "true" }}
             affinity:
               nodeAffinity:
                 requiredDuringSchedulingIgnoredDuringExecution:
@@ -82,8 +81,8 @@ spec:
                 memory: 32Mi
               limits:
                 memory: 64Mi
-            # Same spot-avoidance as Prometheus above.
             {{- if eq (include "platform.spotAvoidance" .) "true" }}
+            # Same spot-avoidance as Prometheus above.
             affinity:
               nodeAffinity:
                 requiredDuringSchedulingIgnoredDuringExecution:
@@ -121,8 +120,8 @@ spec:
                 memory: 96Mi
               limits:
                 memory: 160Mi
-          # Same spot-avoidance as Prometheus/Alertmanager above.
           {{- if eq (include "platform.spotAvoidance" .) "true" }}
+          # Same spot-avoidance as Prometheus/Alertmanager above.
           affinity:
             nodeAffinity:
               requiredDuringSchedulingIgnoredDuringExecution:

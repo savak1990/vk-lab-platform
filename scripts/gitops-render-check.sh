@@ -53,9 +53,6 @@ render_and_normalize "$REPO_ROOT/gitops/bootstrap" "$WORK_DIR/bootstrap" aws
 # civo/local have no golden baseline to diff against, so they're checked
 # structurally instead: the M1 baseline must appear, and nothing aws-only
 # may leak through by accident.
-# BackendTrafficPolicy and the grafana HTTPRoute/RoleBinding stay aws-only
-# (not required, not forbidden here) - they target/live in the observability
-# namespace, which only kube-prometheus-stack's Application creates.
 REQUIRED_OBJECTS="Application__argocd__envoy-gateway Application__argocd__cnpg-operator \
 Application__argocd__external-secrets PriorityClass__cluster__postgres-critical \
 ClusterRole__cluster__e2e-test-readonly HTTPRoute__argocd__argocd \
@@ -127,7 +124,7 @@ verify_object_set() {
   done
   for obj in $forbidden_objects; do
     if [ -e "$dir/$obj.yaml" ]; then
-      echo "GITOPS-RENDER-CHECK: target=$target unexpectedly renders $obj (depends on the aws-only observability namespace)" >&2
+      echo "GITOPS-RENDER-CHECK: target=$target unexpectedly renders $obj (is not part of this target's baseline)" >&2
       return 1
     fi
   done

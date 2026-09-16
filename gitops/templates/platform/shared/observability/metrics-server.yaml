@@ -1,7 +1,7 @@
 {{- if and (ne .Values.target "local") (eq (include "platform.metricsServerEnabled" .) "true") }}
 # Serves metrics.k8s.io (kubectl top / HPA) - not bundled in kube-prometheus-
 # stack, which only brings kube-state-metrics + node-exporter. Argo-managed
-# rather than a Terraform EKS addon, matching the ebs-csi-driver precedent.
+# like the rest of the platform's controllers, not a Terraform-provisioned addon.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -19,10 +19,10 @@ spec:
     targetRevision: 3.14.0
     helm:
       values: |
+        {{- if eq (include "platform.spotAvoidance" .) "true" }}
         # Avoids spot for consistency with the rest of the observability
         # stack's placement policy, though metrics-server itself holds no
         # state and wouldn't be harmed by a spot interruption.
-        {{- if eq (include "platform.spotAvoidance" .) "true" }}
         affinity:
           nodeAffinity:
             requiredDuringSchedulingIgnoredDuringExecution:
@@ -33,9 +33,9 @@ spec:
                       values: ["spot"]
         {{- end }}
         {{- if eq (include "platform.kubeletInsecureTls" .) "true" }}
-        # Neither target's kubelet serving certs are verifiable by default -
-        # without this, `kubectl top` fails with an x509 error. Accepted
-        # lab-scale trade-off, not a security regression worth blocking on.
+        # EKS's kubelet serving certs are self-signed per node rather than
+        # signed by the cluster CA - without this, `kubectl top` fails with
+        # an x509 error. Accepted lab-scale trade-off, not a security issue.
         args:
           - --kubelet-insecure-tls
         {{- end }}

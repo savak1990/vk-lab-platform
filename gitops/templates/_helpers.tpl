@@ -23,24 +23,24 @@ civo-volume
 {{- end -}}
 
 {{/*
-spotAvoidance gates the observability/Postgres anti-affinity blocks -
-meaningful only where Karpenter's spot/on-demand distinction exists (aws).
+spotAvoidance gates the observability anti-affinity blocks - meaningful
+only where Karpenter's spot/on-demand distinction exists (aws).
 */}}
 {{- define "platform.spotAvoidance" -}}
 {{- and (eq .Values.target "aws") .Values.capacity.spotAvoidance -}}
 {{- end -}}
 
 {{/*
-Whether metrics-server needs --kubelet-insecure-tls. civo is a literal to
-test first, per the observability rollout plan.
+Whether metrics-server needs --kubelet-insecure-tls. The civo value is
+unverified until measured on a live cluster.
 */}}
 {{- define "platform.kubeletInsecureTls" -}}
 {{- if eq .Values.target "civo" -}}false{{- else -}}{{ .Values.observability.kubeletInsecureTls }}{{- end -}}
 {{- end -}}
 
 {{/*
-Whether metrics-server is deployed. civo is a literal to test first,
-per the observability rollout plan.
+Whether metrics-server is deployed. The civo value is unverified until
+measured on a live cluster.
 */}}
 {{- define "platform.metricsServerEnabled" -}}
 {{- if eq .Values.target "civo" -}}true{{- else -}}{{ .Values.observability.metricsServer.enabled }}{{- end -}}
