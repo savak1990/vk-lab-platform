@@ -23,6 +23,30 @@ civo-volume
 {{- end -}}
 
 {{/*
+spotAvoidance gates the observability/Postgres anti-affinity blocks -
+meaningful only where Karpenter's spot/on-demand distinction exists (aws).
+*/}}
+{{- define "platform.spotAvoidance" -}}
+{{- and (eq .Values.target "aws") .Values.capacity.spotAvoidance -}}
+{{- end -}}
+
+{{/*
+Whether metrics-server needs --kubelet-insecure-tls. civo is a literal to
+test first, per the observability rollout plan.
+*/}}
+{{- define "platform.kubeletInsecureTls" -}}
+{{- if eq .Values.target "civo" -}}false{{- else -}}{{ .Values.observability.kubeletInsecureTls }}{{- end -}}
+{{- end -}}
+
+{{/*
+Whether metrics-server is deployed. civo is a literal to test first,
+per the observability rollout plan.
+*/}}
+{{- define "platform.metricsServerEnabled" -}}
+{{- if eq .Values.target "civo" -}}true{{- else -}}{{ .Values.observability.metricsServer.enabled }}{{- end -}}
+{{- end -}}
+
+{{/*
 Renders the Roles Anywhere credential-helper sidecar container only - the
 caller owns the ra-cert volume and the main container's env vars, since a
 named template can't reach a sibling container in the same Pod spec.

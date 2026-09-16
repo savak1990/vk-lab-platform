@@ -1,4 +1,4 @@
-{{- if eq .Values.target "aws" }}
+{{- if ne .Values.target "local" }}
 # Metrics backbone. Tracing (Tempo/OTel Collector) is deliberately not
 # deployed - no trace producer exists in this platform-only repo yet.
 apiVersion: argoproj.io/v1alpha1
@@ -52,7 +52,7 @@ spec:
             # Avoids spot only (AZ-pinned PVC + spot interruption risk) -
             # not hard-pinned to the system node, so it can also land on
             # the on-demand pool if the system node has no room.
-            {{- if .Values.capacity.spotAvoidance }}
+            {{- if eq (include "platform.spotAvoidance" .) "true" }}
             affinity:
               nodeAffinity:
                 requiredDuringSchedulingIgnoredDuringExecution:
@@ -65,7 +65,7 @@ spec:
             storageSpec:
               volumeClaimTemplate:
                 spec:
-                  storageClassName: {{ .Values.storage.className }}
+                  storageClassName: {{ include "platform.storageClassName" . }}
                   accessModes: ["ReadWriteOnce"]
                   resources:
                     requests:
@@ -83,7 +83,7 @@ spec:
               limits:
                 memory: 64Mi
             # Same spot-avoidance as Prometheus above.
-            {{- if .Values.capacity.spotAvoidance }}
+            {{- if eq (include "platform.spotAvoidance" .) "true" }}
             affinity:
               nodeAffinity:
                 requiredDuringSchedulingIgnoredDuringExecution:
@@ -96,7 +96,7 @@ spec:
             storage:
               volumeClaimTemplate:
                 spec:
-                  storageClassName: {{ .Values.storage.className }}
+                  storageClassName: {{ include "platform.storageClassName" . }}
                   accessModes: ["ReadWriteOnce"]
                   resources:
                     requests:
@@ -104,7 +104,7 @@ spec:
         grafana:
           persistence:
             enabled: true
-            storageClassName: {{ .Values.storage.className }}
+            storageClassName: {{ include "platform.storageClassName" . }}
             size: 1Gi
           resources:
             requests:
@@ -122,7 +122,7 @@ spec:
               limits:
                 memory: 160Mi
           # Same spot-avoidance as Prometheus/Alertmanager above.
-          {{- if .Values.capacity.spotAvoidance }}
+          {{- if eq (include "platform.spotAvoidance" .) "true" }}
           affinity:
             nodeAffinity:
               requiredDuringSchedulingIgnoredDuringExecution:
@@ -147,7 +147,8 @@ spec:
               type: loki
               access: proxy
               url: http://loki.observability.svc.cluster.local:3100
-        # EKS is a managed control plane - these endpoints aren't reachable.
+        # Neither managed control plane exposes these: EKS hides them, k3s
+        # binds them to localhost off-pool.
         kubeControllerManager:
           enabled: false
         kubeScheduler:

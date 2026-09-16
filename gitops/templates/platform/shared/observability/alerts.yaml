@@ -1,4 +1,4 @@
-{{- if eq .Values.target "aws" }}
+{{- if ne .Values.target "local" }}
 # `observability` namespace is guaranteed to exist by this wave (created by
 # kube-prometheus-stack.yaml's Application at wave 1).
 apiVersion: monitoring.coreos.com/v1
@@ -41,6 +41,7 @@ spec:
           annotations:
             summary: "Pod {{`{{ $labels.pod }}`}} in {{`{{ $labels.namespace }}`}} is crash-looping"
 
+        {{- if eq .Values.target "aws" }}
         # Cost/capacity guard for the constitution's "~2 medium nodes max"
         # Karpenter rule. Both NodePools (spot, on-demand) set spec.limits.cpu
         # - metric name/labels confirmed against Karpenter's own source
@@ -56,4 +57,5 @@ spec:
             severity: warning
           annotations:
             summary: "NodePool {{`{{ $labels.nodepool }}`}} is above 80% of its CPU limit"
+        {{- end }}
 {{- end }}

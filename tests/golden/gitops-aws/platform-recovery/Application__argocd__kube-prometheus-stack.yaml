@@ -141,7 +141,8 @@ spec:
               type: loki
               access: proxy
               url: http://loki.observability.svc.cluster.local:3100
-        # EKS is a managed control plane - these endpoints aren't reachable.
+        # Neither managed control plane exposes these: EKS hides them, k3s
+        # binds them to localhost off-pool.
         kubeControllerManager:
           enabled: false
         kubeScheduler:

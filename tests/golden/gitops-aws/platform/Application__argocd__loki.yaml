@@ -68,6 +68,11 @@ spec:
             enabled: true
             storageClass: ebs-delete
             size: 10Gi
+            # Chart default already deletes the PVC with the StatefulSet -
+            # pinned explicitly so an upstream default change can't silently
+            # orphan the EBS volume on `make down`.
+            whenDeleted: Delete
+            whenScaled: Delete
         # Distributed-mode-only components - unused in SingleBinary mode.
         read:
           replicas: 0

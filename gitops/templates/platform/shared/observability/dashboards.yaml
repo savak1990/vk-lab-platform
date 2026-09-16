@@ -1,9 +1,10 @@
-{{- if eq .Values.target "aws" }}
+{{- if ne .Values.target "local" }}
 # Vendored dashboards, picked up by the Grafana sidecar via the
 # grafana_dashboard label (chart default: enabled, searchNamespace: ALL) -
 # not manually imported through the UI, so they survive `make down`/`make up`
 # recreating Grafana's PVC from scratch (a UI import lives only in Grafana's
 # own SQLite DB).
+{{- if eq .Values.target "aws" }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -47,6 +48,7 @@ data:
       ]
     }
 ---
+{{- end }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
