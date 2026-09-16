@@ -110,6 +110,7 @@ jobs:
             account/lab-role \
             account/root-domain \
             bootstrap/route53 \
+            persistent-civo/backups \
             persistent-civo/network \
             persistent-civo/reserved-ip \
             persistent/secrets \

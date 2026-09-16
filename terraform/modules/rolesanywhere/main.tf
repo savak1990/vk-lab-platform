@@ -13,10 +13,15 @@ locals {
   postgres_password_arn = "arn:aws:ssm:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:parameter/${var.project}/persistent/postgres/app_password"
   grafana_password_arn  = "arn:aws:ssm:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:parameter/${var.project}/persistent/grafana/admin_password"
 
+  # Built as a literal rather than read from the bucket's own state: the
+  # bucket lives in the persistent stack, which is applied after this one.
+  backups_bucket_arn = "arn:aws:s3:::${var.project}-postgres-backups"
+
   consumers = local.create ? {
     eso            = data.aws_iam_policy_document.eso.json
     "external-dns" = data.aws_iam_policy_document.external_dns.json
     "cert-manager" = data.aws_iam_policy_document.cert_manager.json
+    pgbackup       = data.aws_iam_policy_document.pgbackup.json
   } : {}
 }
 
@@ -136,6 +141,29 @@ data "aws_iam_policy_document" "eso" {
       variable = "kms:EncryptionContext:PARAMETER_ARN"
       values   = [local.postgres_password_arn, local.grafana_password_arn]
     }
+  }
+}
+
+# Scoped to this project's backup bucket only. DeleteObject is what lets the
+# backup operator enforce its own retention window; the multipart actions are
+# what a base backup larger than a single PutObject needs to complete.
+data "aws_iam_policy_document" "pgbackup" {
+  statement {
+    sid       = "AllowBackupBucketDiscovery"
+    actions   = ["s3:ListBucket", "s3:ListBucketMultipartUploads", "s3:GetBucketLocation"]
+    resources = [local.backups_bucket_arn]
+  }
+
+  statement {
+    sid = "AllowBackupObjectAccess"
+    actions = [
+      "s3:PutObject",
+      "s3:GetObject",
+      "s3:DeleteObject",
+      "s3:AbortMultipartUpload",
+      "s3:ListMultipartUploadParts",
+    ]
+    resources = ["${local.backups_bucket_arn}/*"]
   }
 }
 

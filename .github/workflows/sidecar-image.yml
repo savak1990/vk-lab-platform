@@ -1,0 +1,57 @@
+# Kept out of the lifecycle workflows deliberately: those hold AWS
+# credentials, and the image is a dependency pinned by digest in
+# gitops/values.yaml rather than an artifact of each lifecycle run.
+name: sidecar-image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "images/cnpg-barman-sidecar/**"
+      - ".github/workflows/sidecar-image.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sidecar-image
+  cancel-in-progress: false
+
+jobs:
+  build:
+    permissions:
+      contents: read
+      packages: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # linux/amd64 only: the Civo node pool is x86_64, and the upstream
+      # credential-helper image this copies the binary from is amd64.
+      - id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: images/cnpg-barman-sidecar
+          platforms: linux/amd64
+          provenance: false
+          push: true
+          tags: ghcr.io/${{ github.repository }}/cnpg-barman-sidecar:${{ github.sha }}
+
+      - name: Report the digest to pin
+        env:
+          IMAGE_REF: ghcr.io/${{ github.repository }}/cnpg-barman-sidecar@${{ steps.build.outputs.digest }}
+        run: |
+          {
+            echo "### Pin this in gitops/values.yaml"
+            echo '```'
+            echo "$IMAGE_REF"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
