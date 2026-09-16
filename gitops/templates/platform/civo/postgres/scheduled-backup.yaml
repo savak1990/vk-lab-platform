@@ -1,0 +1,21 @@
+{{- if and (eq .Values.target "civo") .Values.postgres.backup.enabled }}
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: lab-postgres
+  namespace: cnpg-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  # Six fields, seconds first - not a Kubernetes CronJob schedule. immediate
+  # matters because a lab cluster may not live long enough to reach 03:00.
+  schedule: {{ .Values.postgres.backup.schedule | quote }}
+  immediate: true
+  backupOwnerReference: self
+  cluster:
+    name: lab-postgres
+  method: plugin
+  pluginConfiguration:
+    name: barman-cloud.cloudnative-pg.io
+{{- end }}

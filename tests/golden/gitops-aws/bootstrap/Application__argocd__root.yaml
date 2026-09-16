@@ -69,6 +69,16 @@ spec:
           value: ""
         - name: awsIdentity.rolesAnywhere.roleArns.cert-manager
           value: ""
+        - name: awsIdentity.rolesAnywhere.roleArns.pgbackup
+          value: ""
+        - name: postgres.backup.enabled
+          value: "false"
+        - name: postgres.backup.bucket
+          value: ""
+        - name: postgres.backup.serverName
+          value: ""
+        - name: postgres.backup.recoverServerName
+          value: ""
       # karpenter.{spot,onDemand}.instanceTypes are lists - `parameters`
       # only carries scalar string overrides (Argo CD's own documented
       # limitation), so these go through valuesObject instead, which Argo

@@ -14,6 +14,11 @@ targetRevision: main
 postgres:
   recoverySnapshotHandle: ""
   storageSize: 10Gi
+  backup:
+    enabled: false
+    bucket: ""
+    serverName: ""
+    recoverServerName: ""
 
 karpenter:
   spot:
@@ -49,3 +54,4 @@ awsIdentity:
       eso: ""
       external-dns: ""
       cert-manager: ""
+      pgbackup: ""
