@@ -104,4 +104,4 @@ with `inheritFromIAMRole: true` and none of the signing-helper machinery.
   hand. Carried into the least-privilege review, CIVO-205.
 - CIVO-186, which rests entirely on `pg_dump --no-owner --no-privileges`
   portability, no longer has a mechanism. Physical base backups plus WAL
-  are not portable that way.
+  are not portable that way. CIVO-186 was later removed.
