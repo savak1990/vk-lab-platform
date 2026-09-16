@@ -14,7 +14,7 @@ depends_on: ["CIVO-050", "CIVO-100", "CIVO-115", "CIVO-180"]
 blocked_by: []
 supersedes: []
 created: "2026-09-06"
-updated: "2026-09-11"
+updated: "2026-09-16"
 completed: null
 ---
 
@@ -48,6 +48,12 @@ Not in scope:
 - The `Cluster` template now lives at `gitops/templates/platform/shared/postgres/cluster.yaml` and renders on civo, delivered by CIVO-115.
 
 ## 4. Design and contracts
+
+> **Superseded in part on 2026-09-16.** The mechanism is now CNPG's
+> barman-cloud plugin, not logical dumps. The bullets below about `initdb`-only
+> bootstrap, the restore Job, and the fail-closed teardown gate no longer hold.
+> §14's 2026-09-16 entries are the current contract until this section is
+> rewritten.
 
 - Storage: `storageClass: civo-volume`, 20 Gi, reclaim `Delete`. The volume dies with the cluster by design.
 - No `nodeSelector` on Civo. It keeps `priorityClassName: postgres-critical`, requests 250m and 256Mi, and `wal_level` logical for future change data capture.
@@ -117,3 +123,19 @@ Data risk: yes. Test with disposable data only. Rollback: revert the change. The
 
 - 2026-09-11 — CNPG Cluster delivery split out to CIVO-115 (runs on civo with disposable data); this spec keeps the persistence proof.
 
+
+- 2026-09-16 — mechanism reopened and changed. ADR 0031 rejected the CNPG barman-cloud plugin on the premise that "CNPG has no supported way to add a container of one's own to its managed instance pods". That premise is false: the plugin injects its own sidecar, `SIDECAR_IMAGE` selects that sidecar's image, and `internal/cnpgi/operator/lifecycle.go` copies the `postgres` container's volume mounts onto it (`sidecar.VolumeMounts = ensureVolumeMount(sidecar.VolumeMounts, spec.Containers[i].VolumeMounts...)`). Physical backups with point-in-time recovery are therefore available on Civo, and the logical-dump design is withdrawn. Credentials reach the sidecar through `credential_process`, not a Secret and not a background listener.
+
+- 2026-09-16 — **spike executed against a live Civo cluster; all four gates passed.** Bucket `vk-civo-lab-postgres-backups`, role `vk-civo-lab-ra-pgbackup`, CloudNativePG 1.30.0, plugin chart 0.8.0 (app v0.15.0), sidecar image `ghcr.io/savak1990/vk-lab-platform/cnpg-barman-sidecar@sha256:25332843178ff9560b176f7c6c22006c1b361cb249bae7f52728d733f7d98cda`.
+
+  **(a) The projected mount is inherited by the sidecar.** `Cluster.spec.projectedVolumeTemplate` mounts at `/projected` on the `postgres` container, and the same mount appears on the `plugin-barman-cloud` container. That container is an initContainer with `restartPolicy: Always` — a native sidecar — and `instanceSidecarConfiguration` exposes no `volumeMounts` field, so inheritance is the only route a file has into it.
+
+  **(b) S3 works with no AWS key anywhere.** The sidecar carried exactly three AWS variables, all supplied by `Cluster.spec.env`: `AWS_CONFIG_FILE=/projected/aws/config`, `AWS_REGION`, `AWS_DEFAULT_REGION`. `s3Credentials.inheritFromIAMRole: true` kept barman from appending its own. `ContinuousArchiving=True`; a `Backup` with `method: plugin` reached `completed`; 65 objects landed, including `base/20260916T093447/{data.tar.gz,backup.info}`.
+
+  **(c) Certificate rotation is survived.** Tested with a deliberately short certificate — `duration: 1h, renewBefore: 55m`, rotating about every five minutes. Over 58 checks across 59 minutes: **12 rotations, 0 archiving failures.** The discriminating evidence is not elapsed time but the `notAfter` of the certificate present at pod start (serial `39098BF5…`, expiring `10:31:22Z`): five WAL segments were written after it, the last at `10:35:32Z`. A cached certificate would have failed `CreateSession` at `10:31:22Z`. It does not cache, because `credential_process` spawns a fresh process per credential fetch and botocore refetches only when under 15 minutes of session life remain.
+
+  **(d) RBAC — finding, not a blocker.** The plugin generates `Role/lab-postgres-barman-cloud` whose secrets rule carries an **empty** `resourceNames`: `[""] ["secrets"] ["get","watch","list"]`. That is read access to every Secret in `cnpg-system`, including `lab-postgres-app` and `pgbackup-ra-cert`. It applied cleanly because this repo runs no restrictive operator RBAC (upstream issue #892 reports it failing where such RBAC exists). Carry it into the least-privilege review, CIVO-205.
+
+  **Also settled.** The chart composes `registry/repository:tag` and cannot take a bare digest, but `tag@digest` renders a valid reference that resolves by digest — so digest pinning needs no `SIDECAR_IMAGE` override. Argo CD v3.5.1 accepts an `oci://` chart source. The shared Roles Anywhere profile's 3600s duration needs no change: it clears botocore's 15-minute refresh threshold four times over, and raising it would also raise it for eso, external-dns and cert-manager.
+
+  The spike ran on a hand-patched Cluster with Argo `selfHeal` disarmed. Nothing here is committed; the manifests land in this spec's implementation.
