@@ -436,14 +436,15 @@ civo_publish_server_name() {
 # it. This is what actually bounds the stored backup count.
 civo_prune_backup_generations() {
   local keep="$POSTGRES_BACKUP_KEEP_GENERATIONS"
-  if [ -z "$BACKUP_BUCKET" ]; then
+  local bucket="${BACKUP_BUCKET:-}" recovered_from="${RECOVER_SERVER_NAME:-}"
+  if [ -z "$bucket" ]; then
     return 0
   fi
 
   # Only generations this script minted are candidates. Anything else in the
   # bucket was put there by hand and is not this function's to delete.
   local generations
-  if ! generations="$(aws s3 ls "s3://$BACKUP_BUCKET/" --region "$LAB_REGION" 2>/dev/null \
+  if ! generations="$(aws s3 ls "s3://$bucket/" --region "$LAB_REGION" 2>/dev/null \
     | awk '{print $2}' | tr -d '/' \
     | grep -E '^lab-postgres-[0-9]{8}T[0-9]{6}Z$' | sort)"; then
     echo "ARGO-UP: WARNING - could not list backup generations; skipping the prune." >&2
@@ -466,11 +467,11 @@ civo_prune_backup_generations() {
     # recovered-from generations are named explicitly rather than trusted to
     # fall outside the window - deleting either loses the running database's
     # own archive.
-    if [ "$generation" = "$BACKUP_SERVER_NAME" ] || [ "$generation" = "$RECOVER_SERVER_NAME" ]; then
+    if [ "$generation" = "$BACKUP_SERVER_NAME" ] || [ "$generation" = "$recovered_from" ]; then
       continue
     fi
     echo "ARGO-UP: pruning old backup generation $generation..."
-    if ! aws s3 rm "s3://$BACKUP_BUCKET/$generation/" --recursive --region "$LAB_REGION" >/dev/null; then
+    if ! aws s3 rm "s3://$bucket/$generation/" --recursive --region "$LAB_REGION" >/dev/null; then
       echo "ARGO-UP: WARNING - failed to prune $generation; it will expire with the bucket lifecycle rule." >&2
     fi
   done

@@ -110,6 +110,20 @@ civo_backup() {
     return 0
   fi
 
+  # Read before anything is attempted, not after a failure: this is what
+  # decides whether a best-effort backup is a safe choice or a loud warning
+  # that writes are about to be destroyed.
+  local archiving
+  archiving="$(civo_archiving_status "$ns")"
+  if [ "$archiving" != "True" ]; then
+    {
+      echo "ARGO-DOWN: WARNING - WAL archiving is not healthy (ContinuousArchiving=${archiving:-unknown})."
+      echo "ARGO-DOWN: WARNING - writes made since it stopped have NOT reached S3 and are destroyed by this teardown."
+      echo "ARGO-DOWN: WARNING - $(civo_archiving_since "$ns")"
+      echo "ARGO-DOWN: WARNING - the pre-teardown backup is attempted anyway, but do not rely on it."
+    } >&2
+  fi
+
   local poll="${ARGO_DOWN_POLL_INTERVAL:-5}"
   local timeout="${ARGO_DOWN_BACKUP_TIMEOUT:-600s}"
   timeout="${timeout%s}"
@@ -171,17 +185,31 @@ EOF
   done
 }
 
-# Names the archiving condition rather than a WAL file: CNPG's Cluster status
-# carries no last-archived segment name, and this condition is what actually
-# says whether the committed rows reached S3.
-civo_backup_warn() {
-  local ns="$1" reason="$2" cond
-  cond="$(kubectl get cluster lab-postgres -n "$ns" \
-    -o jsonpath='{range .status.conditions[?(@.type=="ContinuousArchiving")]}{.status}{" since "}{.lastTransitionTime}{end}' \
+# CNPG's Cluster status carries no last-archived segment name, so this
+# condition is the only thing that says whether committed rows reached S3.
+civo_archiving_status() {
+  kubectl get cluster lab-postgres -n "$1" \
+    -o jsonpath='{range .status.conditions[?(@.type=="ContinuousArchiving")]}{.status}{end}' \
+    2>/dev/null || true
+}
+
+civo_archiving_since() {
+  local since
+  since="$(kubectl get cluster lab-postgres -n "$1" \
+    -o jsonpath='{range .status.conditions[?(@.type=="ContinuousArchiving")]}{.lastTransitionTime}{end}' \
     2>/dev/null || true)"
+  if [ -n "$since" ]; then
+    echo "The unarchived window starts at $since."
+  else
+    echo "The start of the unarchived window is unknown."
+  fi
+}
+
+civo_backup_warn() {
+  local ns="$1" reason="$2"
   {
     echo "ARGO-DOWN: WARNING - the pre-teardown Postgres backup did not complete: $reason."
-    echo "ARGO-DOWN: WARNING - ContinuousArchiving=${cond:-unknown}."
+    echo "ARGO-DOWN: WARNING - ContinuousArchiving=$(civo_archiving_status "$ns"). $(civo_archiving_since "$ns")"
     echo "ARGO-DOWN: WARNING - teardown continues. Rows committed while archiving was True are already in S3;"
     echo "ARGO-DOWN: WARNING - recovery will replay from the last base backup and cost extra time, not data."
     echo "ARGO-DOWN: WARNING - inspect with 'kubectl describe cluster lab-postgres -n $ns' before the next bring-up."
