@@ -18,7 +18,12 @@
 - **The image is built and anonymously pullable.** Pin this digest in task 6:
   `ghcr.io/savak1990/vk-lab-platform/cnpg-barman-sidecar@sha256:25332843178ff9560b176f7c6c22006c1b361cb249bae7f52728d733f7d98cda`
 - **Checkpoint A step 5 turned out unnecessary** — a GHCR package pushed from a public repository inherits that visibility, so no manual step is needed. An anonymous manifest fetch returns HTTP 200.
-- **Remaining before the spike:** `PROVIDER=civo make bootstrap-up`, then `PROVIDER=civo make persistent-up`, in that order.
+- **Task 4 (spike): all four gates passed** on a live Civo cluster. Evidence in `specs/civo/120-cnpg-on-civo-persistence/spec.md` §14.
+- **Tasks 6–9: merged** in PR #7 (`330fd65`). The plugin Application, the `ObjectStore`, the AWS config ConfigMap, the `ScheduledBackup`, the Cluster wiring, the values in all three places, `argo-up.sh` and the render check are on `main`. Verified live: 7 Applications `Synced/Healthy`, `ContinuousArchiving=True`, a `method: plugin` Backup `completed`, objects under the new generation prefix. The cluster's root Application was repointed at `main` after the merge.
+- **Tasks 5, 10 and 12: this branch.** ADR 0032 plus the pointer notes; the constitution §4 relaxation and the architecture prose; `civo_backup()` rewritten as best-effort with a forced WAL switch; `CI_TEARDOWN_ALLOW_DATA_LOSS` removed from every live contract.
+- **`CI_TEARDOWN_ALLOW_DATA_LOSS` deliberately survives in one place:** the body of CIVO-115, which is `DONE`. Deleting it there would falsify the record of what that spec delivered. A superseded blockquote at the top of §1 directs readers not to re-implement the gate.
+- **Remaining:** tasks 11 (`persistent-down` empties the bucket), 13 (e2e), 14 (the multi-cycle proof) and 15 (spec bookkeeping).
+- **Two checks the advisor added to task 14:** confirm `ContinuousArchiving` on a *fresh* bring-up, where the certificate may not exist when the Cluster first syncs (`optional: true` should let the pod start and self-heal, but that has never been watched); and confirm the base-backup count under one generation is bounded rather than monotonic, because no retention pruning cycle has ever run.
 
 ---
 

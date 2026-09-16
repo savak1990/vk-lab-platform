@@ -22,6 +22,14 @@ completed: "2026-09-11"
 
 ## 1. Outcome and rationale
 
+> **Superseded in part on 2026-09-16 by CIVO-120.** The fail-closed
+> teardown gate this spec delivered is gone, and so is
+> `CI_TEARDOWN_ALLOW_DATA_LOSS`. Civo now backs Postgres up continuously
+> through the CNPG barman-cloud plugin (ADR 0032), so teardown makes a
+> best-effort final backup, warns loudly on failure, and always proceeds.
+> The text below is kept unchanged as the record of what this spec
+> delivered; do not re-implement the gate from it.
+
 A single-instance CNPG cluster runs on `civo-volume` storage with the app
 password supplied through External Secrets. Data is destroyed by every
 `make down` until CIVO-180 and CIVO-120 land: there is no backup or restore

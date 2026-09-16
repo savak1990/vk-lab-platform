@@ -82,32 +82,35 @@ flowchart LR
 ```
 
 cert-manager itself needs no AWS credentials: Let's Encrypt HTTP-01 solves
-through the Gateway. CNPG backups to object storage are a later spec
-because CNPG pods cannot host the sidecar.
+through the Gateway. CNPG backups to object storage use the same signing helper: the
+barman-cloud plugin's sidecar inherits the Postgres container's volume
+mounts, so the certificate reaches it as a mounted file (ADR 0032).
 
 ### 4.3 Persistence flow
 
 ```mermaid
 flowchart LR
-  PG[CNPG cluster<br/>civo-volume, 1 instance, disposable] -->|daily CronJob: pg_dump| S3[S3 bucket<br/>AWS persistent stack, 14d lifecycle]
-  AD[argo-down] -->|one-off Job from the CronJob<br/>wait, fail closed| S3
-  AU[argo-up] -->|PostSync restore Job<br/>only when the schema is empty| PG
+  PG[CNPG cluster<br/>civo-volume, 1 instance, disposable] -->|continuous WAL + scheduled base backup<br/>barman-cloud sidecar| S3[S3 bucket<br/>persistent-civo stack, 30d lifecycle backstop]
+  AD[argo-down] -->|forced WAL switch + final Backup<br/>wait, best effort| S3
+  AU[argo-up] -->|bootstrap.recovery from the previous serverName| PG
   S3 --> AU
 ```
 
-Decided 2026-09-06: persistence is a logical dump to S3, shared by both
-providers. The Civo CSI driver `csi.civo.com` advertises no snapshot or
-clone capability, so the AWS snapshot flow (ADR 0013) cannot be
-mirrored, and CNPG's PVC-datasource recovery clones a volume, which Civo
-also cannot do. The Civo Object Store bills a 500 GB minimum, about
+Decided 2026-09-16 (ADR 0032, superseding ADR 0031): persistence on Civo
+is continuous physical backup to a per-project S3 bucket through the CNPG
+barman-cloud plugin. The Civo CSI driver `csi.civo.com` advertises no
+snapshot or clone capability, so the AWS snapshot flow (ADR 0013) cannot
+be mirrored, and CNPG's PVC-datasource recovery clones a volume, which
+Civo also cannot do. The Civo Object Store bills a 500 GB minimum, about
 5.43 USD per month, while S3 bills bytes stored, about 0.25 USD.
 
-The backup job runs from an image this repository builds, so it needs no
-sidecar: on Civo the AWS CLI reads `credential_process` and calls the
-signing helper directly, and on AWS it uses Pod Identity. No permanent
-AWS key exists anywhere. The trade is point-in-time recovery, which
-logical dumps do not provide. CIVO-185 moves the AWS target onto the
-same mechanism after Civo proves it.
+The plugin's sidecar runs from an image this repository builds: upstream's
+plus `aws_signing_helper`, which the AWS CLI reaches through
+`credential_process`. The certificate arrives as a projected file the
+sidecar inherits from the Postgres container. No permanent AWS key exists
+anywhere, and point-in-time recovery is preserved. CIVO-185 may move the
+AWS target onto the same plugin, which there needs Pod Identity and none
+of the signing-helper machinery.
 
 ### 4.4 State layout
 
@@ -146,7 +149,7 @@ What the shared GitOps tree needs from any provider, and where it comes from.
 | Secrets | yes | ESO → SSM | same, via sidecar | unchanged manifests |
 | Schedulable capacity | yes | Karpenter NodePools | fixed pool + autoscaler | `capacity.spotAvoidance`, `postgres.nodeSelector` |
 | GitOps | yes | Argo CD by script | same | `target` |
-| PostgreSQL | yes | CNPG + EBS snapshots today, logical dumps after CIVO-185 | CNPG + logical dumps to S3 | `postgres.*` |
+| PostgreSQL | yes | CNPG + EBS snapshots today, barman-cloud plugin after CIVO-185 | CNPG + barman-cloud plugin to S3 | `postgres.*` |
 | Observability | optional | full stack | full stack, k3s scrape targets | `observability.*` |
 | Policies | optional | none | none | — |
 

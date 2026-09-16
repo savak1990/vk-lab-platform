@@ -94,29 +94,98 @@ configure_kubeconfig() {
   kubectl ${kcfg[@]:+"${kcfg[@]}"} config set-context --current --namespace=default >/dev/null
 }
 
-# No restore mechanism exists on civo yet, so every argo-up bootstraps fresh.
-# Returning empty keeps the call site identical once a real handle lands.
+# Recovery on civo runs through the barman plugin's serverName pointer, which
+# argo-up reads from SSM directly - there is no volume-snapshot handle here.
 civo_recovery_handle() {
-  echo "ARGO-UP: no recovery configured for civo yet (CIVO-120) - bootstrapping fresh." >&2
   printf ''
 }
 
-# Fail closed: no backup path exists on civo yet, so tearing down destroys
-# the database. The override makes that an explicit operator choice. A
-# missing CNPG CRD means "no cluster", not a failed check - hence two probes.
+# Best effort by design: continuous WAL archiving already made every committed
+# row durable before teardown started, so a failed final base backup costs
+# replay time, not data. Aborting here would leave a paid cluster running.
 civo_backup() {
-  if kubectl get clusters.postgresql.cnpg.io -A >/dev/null 2>&1; then
-    if [ -n "$(kubectl get clusters.postgresql.cnpg.io -A -o name 2>/dev/null)" ]; then
-      if [ "${CI_TEARDOWN_ALLOW_DATA_LOSS:-}" = "1" ]; then
-        echo "ARGO-DOWN: CI_TEARDOWN_ALLOW_DATA_LOSS=1 - tearing down and discarding all Postgres data on civo."
-        return 0
-      fi
-      echo "ARGO-DOWN: a CNPG Cluster exists on civo and no backup path is implemented yet - refusing to tear down and silently lose Postgres data." >&2
-      echo "ARGO-DOWN: re-run with CI_TEARDOWN_ALLOW_DATA_LOSS=1 to discard the database deliberately." >&2
-      exit 1
-    fi
+  local ns=cnpg-system
+  if ! kubectl get cluster lab-postgres -n "$ns" >/dev/null 2>&1; then
+    echo "ARGO-DOWN: no lab-postgres Cluster found on civo - nothing to back up."
+    return 0
   fi
-  echo "ARGO-DOWN: no CNPG Cluster found on civo - nothing to back up."
+
+  local poll="${ARGO_DOWN_POLL_INTERVAL:-5}"
+  local timeout="${ARGO_DOWN_BACKUP_TIMEOUT:-600s}"
+  timeout="${timeout%s}"
+
+  # Closes the window between the last row written and the last segment
+  # archived: without this the tail of WAL sits in an unarchived partial
+  # segment that dies with the volume.
+  local primary
+  primary="$(kubectl get pod -n "$ns" -l cnpg.io/cluster=lab-postgres,cnpg.io/instanceRole=primary \
+    -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
+  if [ -n "$primary" ]; then
+    echo "ARGO-DOWN: forcing a WAL switch on $primary so the final segment is archived..."
+    kubectl exec "$primary" -n "$ns" -c postgres -- \
+      psql -U postgres -tAc 'select pg_switch_wal()' >/dev/null 2>&1 \
+      || echo "ARGO-DOWN: WARNING - could not force a WAL switch; continuing." >&2
+  else
+    echo "ARGO-DOWN: WARNING - no primary pod found for lab-postgres; skipping the WAL switch." >&2
+  fi
+
+  local backup_name
+  backup_name="lab-postgres-teardown-$(date +%s 2>/dev/null || echo manual)"
+  echo "ARGO-DOWN: creating a pre-teardown plugin backup ($backup_name)..."
+  if ! kubectl apply -f - <<EOF >/dev/null
+apiVersion: postgresql.cnpg.io/v1
+kind: Backup
+metadata:
+  name: $backup_name
+  namespace: $ns
+spec:
+  cluster:
+    name: lab-postgres
+  method: plugin
+  pluginConfiguration:
+    name: barman-cloud.cloudnative-pg.io
+EOF
+  then
+    civo_backup_warn "$ns" "the Backup object could not be created"
+    return 0
+  fi
+
+  local elapsed=0 phase
+  while true; do
+    phase="$(kubectl get backup "$backup_name" -n "$ns" -o jsonpath='{.status.phase}' 2>/dev/null || true)"
+    echo "ARGO-DOWN: backup phase: ${phase:-pending} (${elapsed}s/${timeout}s)"
+    if [ "$phase" = "completed" ]; then
+      echo "ARGO-DOWN: pre-teardown backup completed."
+      return 0
+    fi
+    if [ "$phase" = "failed" ]; then
+      civo_backup_warn "$ns" "Backup/$backup_name reported phase 'failed'"
+      return 0
+    fi
+    if [ "$elapsed" -ge "$timeout" ]; then
+      civo_backup_warn "$ns" "Backup/$backup_name did not complete within ${timeout}s"
+      return 0
+    fi
+    sleep "$poll"
+    elapsed=$((elapsed + poll))
+  done
+}
+
+# Names the archiving condition rather than a WAL file: CNPG's Cluster status
+# carries no last-archived segment name, and this condition is what actually
+# says whether the committed rows reached S3.
+civo_backup_warn() {
+  local ns="$1" reason="$2" cond
+  cond="$(kubectl get cluster lab-postgres -n "$ns" \
+    -o jsonpath='{range .status.conditions[?(@.type=="ContinuousArchiving")]}{.status}{" since "}{.lastTransitionTime}{end}' \
+    2>/dev/null || true)"
+  {
+    echo "ARGO-DOWN: WARNING - the pre-teardown Postgres backup did not complete: $reason."
+    echo "ARGO-DOWN: WARNING - ContinuousArchiving=${cond:-unknown}."
+    echo "ARGO-DOWN: WARNING - teardown continues. Rows committed while archiving was True are already in S3;"
+    echo "ARGO-DOWN: WARNING - recovery will replay from the last base backup and cost extra time, not data."
+    echo "ARGO-DOWN: WARNING - inspect with 'kubectl describe cluster lab-postgres -n $ns' before the next bring-up."
+  } >&2
 }
 
 # Exports the whole Secret, not just cert/key fields, to preserve its

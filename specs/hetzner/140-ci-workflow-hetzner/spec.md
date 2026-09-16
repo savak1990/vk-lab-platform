@@ -75,8 +75,8 @@ Not in scope: PR validation (spec 019), Kind CI (spec 024),
   customer and a paid invoice), CI runs use the same Hetzner project as
   the lab and must not run while the lab is up. Document this in the
   workflow header comment and in `README.md`.
-- Cleanup on failure of `up`, `platform-up`, `full-up`: run `make down`
-  with `CI_TEARDOWN_ALLOW_DATA_LOSS=1`. If that fails, run
+- Cleanup on failure of `up`, `platform-up`, `full-up`: run `make down`.
+  If that fails, run
   `make cluster-down`. In every case, then run the label sweep from
   HETZ-040 directly (`scripts/cluster-down.sh --sweep-only` or the
   equivalent entry point), because on Hetzner a dead server does not reap

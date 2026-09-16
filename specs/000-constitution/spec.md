@@ -85,6 +85,12 @@ For stateful Kubernetes workloads:
 - persistent-volume lifecycle MUST be explicitly tested;
 - recreation and reattachment/restoration MUST be documented;
 - shutdown MUST fail safely if persistence invariants are not satisfied.
+  Where a workload archives continuously, so that every committed write is
+  already durable off-cluster before shutdown starts, a final pre-shutdown
+  backup is best-effort instead: it MUST run, it MUST be waited for, and a
+  failure MUST warn loudly without blocking the shutdown (ADR 0032). This
+  relaxation applies only where continuous archiving is verified healthy;
+  it does not apply to discrete-snapshot mechanisms.
 
 Persistence assumptions MUST be verified against actual AWS resources, not only Kubernetes objects.
 

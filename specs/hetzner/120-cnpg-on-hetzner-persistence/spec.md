@@ -67,10 +67,10 @@ Not in scope:
   `retentionDays: 14`, `awsIdentity.mode: rolesAnywhere`. The
   `aws-config` ConfigMap renders with the Hetzner project's trust anchor,
   profile and `pgbackup` role ARNs from SSM through `argo-up`.
-- Teardown: the dump gate in `scripts/argo-down.sh` runs on hetzner through
-  the non-AWS branch (HETZ-016). It creates a one-off Job from the
-  CronJob, waits 600 s, and fails closed unless
-  `CI_TEARDOWN_ALLOW_DATA_LOSS=1`.
+- Teardown: the best-effort backup in `scripts/argo-down.sh` runs on
+  hetzner through the non-AWS branch (HETZ-016). It forces a final WAL
+  switch, creates a `Backup`, waits 600 s, and warns loudly rather than
+  failing if that does not complete.
 - Bring-up: no backup logic in `argo-up`. The restore Job runs `PostSync`
   on the Postgres Application and loads the newest dump when the schema
   is empty.
