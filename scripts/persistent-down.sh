@@ -115,12 +115,42 @@ if [ "$postgres_snapshot_count" -gt 0 ]; then
   echo "It will also permanently delete $postgres_snapshot_count Postgres EBS snapshot(s):"
   echo "$postgres_snapshots" | jq -r '.[] | "  \(.Id)  \(.StartTime)"'
 fi
+
+# Named as a literal rather than read from SSM: the parameter lives in the
+# same unit this run destroys, and a missing parameter must never be read
+# as "no bucket to empty".
+BACKUP_BUCKET="${PROJECT_NAME}-postgres-backups"
+if backup_objects=$(aws s3api list-objects-v2 --bucket "$BACKUP_BUCKET" --region "$LAB_REGION" \
+  --query 'length(Contents)' --output text 2>/dev/null); then
+  [ "$backup_objects" = "None" ] && backup_objects=0
+  if [ "$backup_objects" -gt 0 ]; then
+    echo "It will also permanently delete $backup_objects Postgres backup object(s) from s3://$BACKUP_BUCKET."
+  fi
+fi
 echo "This is expected to run essentially never."
 
 # The extra civo stack is destroyed first: it is the layer the disposable
 # cluster attaches to, so teardown runs the reverse of persistent-up's order.
 if [ -n "$PERSISTENT_EXTRA_DIR" ]; then
   civo_token
+
+  # force_destroy is false on the backup bucket, so terraform fails on a
+  # non-empty one. A missing bucket is not an error here - it means an
+  # earlier run already removed it.
+  if aws s3api head-bucket --bucket "$BACKUP_BUCKET" --region "$LAB_REGION" >/dev/null 2>&1; then
+    echo "Emptying s3://$BACKUP_BUCKET before destroying it..."
+    if ! aws s3 rm "s3://$BACKUP_BUCKET" --recursive --region "$LAB_REGION" >/dev/null; then
+      echo "Failed to empty s3://$BACKUP_BUCKET - aborting rather than letting terraform fail mid-destroy." >&2
+      exit 1
+    fi
+  fi
+
+  # A pointer that outlives its bucket makes the next bring-up try to
+  # recover from a generation whose objects are gone, and that path has no
+  # initdb fallback by design.
+  aws ssm delete-parameter --region "$LAB_REGION" \
+    --name "/$PROJECT_NAME/persistent-civo/postgres-backup/server_name" >/dev/null 2>&1 || true
+
   cd "$REPO_ROOT/terraform/live/$PERSISTENT_EXTRA_DIR"
   terragrunt run --all --non-interactive -- destroy -auto-approve
 fi
@@ -140,7 +170,7 @@ else
   terragrunt run --all --non-interactive -- destroy -auto-approve
 fi
 
-for unit_prefix in persistent/vpc persistent/secrets persistent-civo/network persistent-civo/reserved-ip; do
+for unit_prefix in persistent/vpc persistent/secrets persistent-civo/network persistent-civo/reserved-ip persistent-civo/backups; do
   if ! remaining=$(count_resources "$unit_prefix"); then
     exit 1
   fi

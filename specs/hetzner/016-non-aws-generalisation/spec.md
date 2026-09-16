@@ -52,7 +52,7 @@ Script sites (from the review of CIVO-010 to 060):
 | `argo-up.sh` TLS Secret import, `argo-down.sh` export (`provider.sh` `civo_import/export_tls_secret`, SSM `/…/persistent/civo/tls/platform-public`) | Envoy-terminated TLS persistence | non-AWS |
 | `argo-up.sh` no EBS snapshot discovery; `argo-down.sh` no snapshot | EBS is AWS-only | non-AWS |
 | `argo-down.sh` `TERMINATING_KINDS` filter, PVC wait | already generic, gated on civo | non-AWS |
-| `provider.sh` `civo_backup` teardown dump gate, `CI_TEARDOWN_ALLOW_DATA_LOSS` | logical dumps until CIVO-185 | non-AWS |
+| `provider.sh` `civo_backup` best-effort teardown backup | barman-cloud plugin, ADR 0032 | non-AWS |
 | `argo-up.sh` `civo_resolve_inputs`, `civo_install_root_application`, `civo_wait_for_lb_ip`, `civo_wait_for_dns` | reserved IP, firewall id, `--set` list | civo |
 | `provider.sh` `cluster_exists`, `configure_kubeconfig`, `civo_cli` | Civo API | civo |
 | `generate-secrets.sh:77` throwaway CA | any non-EKS project | non-AWS |

@@ -2,7 +2,13 @@
 
 ## Status
 
-Accepted
+**Superseded by ADR 0032.** Its central premise — that CNPG has no
+supported way to add a container of one's own to its managed instance
+pods — is false. The barman-cloud plugin injects its own sidecar, this
+repository controls that sidecar's image, and the sidecar inherits the
+`postgres` container's volume mounts. Civo therefore uses continuous
+physical backups with point-in-time recovery, not logical dumps. The text
+below is kept unchanged as the record of the decision it replaced.
 
 ## Context
 

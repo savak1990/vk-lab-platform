@@ -1,11 +1,12 @@
 # ADR 0013: Postgres recovery moves to CNPG VolumeSnapshot; volume moves off Terraform
 
-> **Note (2026-09-07):** This `VolumeSnapshot` mechanism remains the
+> **Note (2026-09-16):** This `VolumeSnapshot` mechanism remains the
 > active AWS backup mechanism today. Civo never used it — Civo's CSI
 > driver has no snapshot capability — and uses
-> [ADR 0031](0031-logical-backups-to-s3.md)'s logical-dump mechanism from
-> M1. CIVO-185 (M2, not yet committed) proposes migrating AWS onto ADR
-> 0031's mechanism too; if and when that lands, this ADR's mechanism
+> [ADR 0032](0032-barman-cloud-plugin-backups-on-civo.md)'s barman-cloud
+> plugin from M1, which supersedes the logical-dump mechanism ADR 0031
+> had chosen. CIVO-185 (M2, not yet committed) proposes migrating AWS
+> onto the plugin too; if and when that lands, this ADR's mechanism
 > retires for AWS as well.
 
 ## Status

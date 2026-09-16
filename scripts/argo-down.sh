@@ -20,6 +20,8 @@ POLL_INTERVAL="${ARGO_DOWN_POLL_INTERVAL:-5}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$REPO_ROOT/scripts/lib/region.sh"
 source "$REPO_ROOT/scripts/lib/provider.sh"
+# aws path only; the civo path uploads a whole base backup to S3 and reads
+# ARGO_DOWN_BACKUP_TIMEOUT itself with a much longer default.
 BACKUP_TIMEOUT="${ARGO_DOWN_BACKUP_TIMEOUT:-120s}"
 PVC_WAIT_TIMEOUT="${ARGO_DOWN_PVC_WAIT_TIMEOUT:-180s}"
 SNAPSHOT_TAG_FILTERS=("Name=tag:Project,Values=$PROJECT_NAME" "Name=tag:Component,Values=postgres")
@@ -43,7 +45,6 @@ if ! kubectl cluster-info --request-timeout=5s >/dev/null 2>&1; then
 fi
 
 if [ "$PROVIDER" = civo ]; then
-  civo_backup
   civo_export_tls_secret
 fi
 
@@ -146,7 +147,9 @@ else
 fi
 }
 
-if [ "$PROVIDER" != civo ]; then
+if [ "$PROVIDER" = civo ]; then
+  civo_backup
+else
   aws_cnpg_backup_and_prune
 fi
 

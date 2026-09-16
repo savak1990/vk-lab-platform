@@ -52,7 +52,7 @@ values/gating change; **provider** = provider-specific implementation;
 | DNS | `external-dns/application.yaml` (`provider aws`, Pod Identity, `txtOwnerId={{project}}`) | Pod Identity | shared/refactor | same chart; sidecar auth; `txtOwnerId=vk-civo-lab`; zone `civo.<root-domain>` | civo `application.yaml` branch | 110 |
 | Secrets (ESO) | `external-secrets/application.yaml`, `secretstore.yaml` (no `auth`) | controller Pod Identity | shared/refactor | store/ExternalSecrets hoist verbatim; chart gets `extraContainers` sidecar on civo | civo `application.yaml` branch | 050, 100 |
 | Workload identity | 5 Pod Identity modules | EKS Pod Identity | provider | Roles Anywhere: CA, trust anchor, roles, cert-manager CA issuer, helper sidecar | new chain | 080, 082, 085, 090 |
-| PostgreSQL | `postgres/application.yaml`, `cluster.yaml`, `recovered-snapshot.yaml`, `priorityclass.yaml` | `ebs-delete`, nodeSelector, EBS snapshot handle | shared/refactor | operator hoisted; Cluster values-driven; always `initdb`; data restored by the shared logical-dump job | values + backup CronJob + restore Job | 050, 120, 180, 185 |
+| PostgreSQL | `postgres/application.yaml`, `cluster.yaml`, `recovered-snapshot.yaml`, `priorityclass.yaml` | `ebs-delete`, nodeSelector, EBS snapshot handle | shared/refactor | operator hoisted; Cluster values-driven; `initdb` or `bootstrap.recovery` from the previous `serverName`; data restored by the barman-cloud plugin | values + ObjectStore + ScheduledBackup | 050, 120, 180, 185 |
 | Observability | `observability/*` | `ebs-delete`, spot affinity, EKS scrape workarounds, Karpenter dashboards | shared/refactor | same charts on civo storage; k3s scrape targets; Karpenter assets gated | values + gating | 160 |
 | Argo CD install | `scripts/argo-up.sh:201-223` | spot anti-affinity `:221-222` | shared/refactor | drop affinity on civo | branch | 045 |
 | Argo inputs | `argo-up.sh:34-78` (Terragrunt output, SSM batch, kubeconfig) | EKS | shared/refactor | Civo: `civo kubernetes config`, same SSM read minus ACM/VPC/subnet | branch | 045 |
@@ -112,7 +112,7 @@ annotations) never leaves the `aws/` or `civo/` subtree.
 | A repository boundary/state/contract | separate project + stack dirs; contract table above | 010, 025, 030, 050 |
 | B lifecycle and Argo | same stage model; script branches; ordering identical; explicit LB/DNS gates | 040, 045, 050 |
 | C cluster/networking/ingress | firewall 6443 + LB ports; Civo LB TCP; Envoy TLS; HTTP-01 | 030, 060, 065, 070 |
-| D storage/CNPG | civo-volume (disposable); logical dumps to S3 shared with AWS; 1 instance, 20 Gi | 120, 180, 185 |
+| D storage/CNPG | civo-volume (disposable); barman-cloud plugin, continuous physical backups to a per-project S3 bucket; 1 instance, 20 Gi | 120, 180, 185 |
 | E capacity | Large pool; autoscaler 1:3; right-sizing later | 030, 170, 175 |
 | F identity/secrets | Roles Anywhere chain; ESO + ExternalDNS consumers; token in KMS | 080, 082, 085, 090, 100, 110 |
 | G destruction/recovery | classification table in each spec; full-cycle validation | 040, 045, 150 |

@@ -24,8 +24,8 @@ completed: ""
 
 A single-instance CNPG cluster runs on `hcloud-volumes` storage with the
 app password from External Secrets. Data dies with every `make down` until
-HETZ-120 lands. `CI_TEARDOWN_ALLOW_DATA_LOSS=1` is required for every
-Hetzner teardown in the interim, exactly as on Civo.
+HETZ-120 lands. Teardown does not block on that: it warns that no backup
+mechanism exists yet and proceeds, exactly as on Civo.
 
 Read `specs/civo/115-cnpg-cluster-on-civo/spec.md` first. This spec
 records only the Hetzner differences.
@@ -92,16 +92,15 @@ Not in scope:
 2. Add `Cluster/lab-postgres` to the hetzner required set in
    `scripts/gitops-render-check.sh`. Run `make gitops-check`. The aws and
    civo golden diffs must be empty.
-3. Run `PROVIDER=hetzner make up` with `CI_TEARDOWN_ALLOW_DATA_LOSS` unset.
-   Confirm the Postgres Application reaches `Healthy` and the PVC is
-   `Bound` with `csi.hetzner.cloud` as provisioner.
+3. Run `PROVIDER=hetzner make up`. Confirm the Postgres Application
+   reaches `Healthy` and the PVC is `Bound` with `csi.hetzner.cloud` as
+   provisioner.
 4. Run `hcloud volume list -o json` and confirm one volume of 20 GB in
    `nbg1` attached to the node that runs the instance.
-5. Run `PROVIDER=hetzner make down` without the flag. Confirm the gate
-   refuses and exits non-zero. Re-run with `CI_TEARDOWN_ALLOW_DATA_LOSS=1`.
-   Confirm the PVC wait observes deletion inside
-   `ARGO_DOWN_PVC_WAIT_TIMEOUT` and `hcloud volume list` is empty before
-   `cluster-down` starts.
+5. Run `PROVIDER=hetzner make down`. Confirm it warns that no backup
+   mechanism exists and proceeds. Confirm the PVC wait observes deletion
+   inside `ARGO_DOWN_PVC_WAIT_TIMEOUT` and `hcloud volume list` is empty
+   before `cluster-down` starts.
 
 ## 7. Dependencies and blockers
 
@@ -116,9 +115,9 @@ template and the gate.
   `hcloud-volumes`, 20 Gi.
 - `hcloud volume list` shows exactly one volume while the cluster runs and
   none after `argo-down` completes.
-- A teardown with a live `Cluster` and no `CI_TEARDOWN_ALLOW_DATA_LOSS`
-  exits non-zero and leaves the cluster running. A teardown with the flag
-  destroys the database; that is the documented interim behaviour.
+- A teardown with a live `Cluster` warns that no backup mechanism exists
+  and proceeds. It destroys the database; that is the documented interim
+  behaviour until HETZ-120 lands.
 - The aws and civo golden diffs are byte-identical to their baselines.
 - `make gitops-check` passes.
 

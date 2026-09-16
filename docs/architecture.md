@@ -543,11 +543,14 @@ The three targets diverge in kind, not just in values, on several points:
   `make local-up` wrapper.
 - **Persistence.** `aws`: Postgres data is Persistent-lifecycle,
   surviving `make down` (§6, spec 005), currently via CNPG
-  `VolumeSnapshot` (ADR 0013). `civo`: Postgres persists via logical
-  dumps to a shared S3 bucket instead (ADR 0031, Civo's CSI driver has
-  no snapshot capability); until CIVO-180 and CIVO-120 land, this is the
-  target state only — today, `civo`'s Postgres data is disposable and every
-  teardown requires `CI_TEARDOWN_ALLOW_DATA_LOSS=1` (CIVO-115). The Civo
+  `VolumeSnapshot` (ADR 0013). `civo`: Postgres persists through
+  continuous physical backups to a per-project S3 bucket, written by the
+  CloudNativePG barman-cloud plugin (ADR 0032, which supersedes ADR 0031;
+  Civo's CSI driver has no snapshot capability). Point-in-time recovery is
+  available on both targets. Teardown never blocks on a backup result and
+  never asks for a confirmation: WAL archiving has already made every
+  committed row durable, so the pre-teardown base backup is best-effort —
+  it warns loudly on failure and the teardown proceeds. The Civo
   network and reserved IP are Persistent-lifecycle (ADR 0027). `local`: fully throwaway — no
   persistent-lifecycle class, default local StorageClass with `Delete`
   reclaim semantics, no destroy/recreate persistence proof.
