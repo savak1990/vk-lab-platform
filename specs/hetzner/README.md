@@ -49,8 +49,9 @@ depends on them and adds no spec of its own.
 ## Format note
 
 Specs in this folder use the same YAML front matter and 14-section body as
-`specs/civo/`. The folder name (`NNN-title`) and the `id` field are the
-stable identifiers. Never renumber them. Numbers step by ten and mirror the
+`specs/civo/`. The folder name is `NNN-X-title`, where `X` is the status
+letter (see `../README.md`). The number and the `id` field are the stable
+identifiers. Never renumber them. Numbers step by ten and mirror the
 Civo numbers where a mirror exists. Insert later work into the gaps without
 renumbering.
 

@@ -211,9 +211,12 @@ vk-lab-platform/
 │   └── <project>/                      # project-scoped secrets, e.g. vk-lab-platform/postgres-app-password.enc
 │
 ├── specs/
-│   ├── 000-constitution/
+│   ├── README.md                       # layout and NNN-X-name status letters
+│   ├── aws/                            # AWS/EKS target specs, one directory per spec
 │   ├── civo/                           # Civo second-target planning package (ADR 0027)
-│   └── ...                             # numbered specs, one directory per spec
+│   ├── hetzner/                        # Hetzner target planning package
+│   ├── local/                          # local (minikube/kind) target specs
+│   └── shared/                         # cross-target specs, incl. 000-D-constitution/
 │
 ├── docs/
 │   ├── architecture.md

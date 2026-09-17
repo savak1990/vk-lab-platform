@@ -370,7 +370,9 @@ CI-specific infrastructure.
 Argo-managed Kubernetes desired state.
 
 `specs/`
-Spec-driven-development requirements.
+Spec-driven-development requirements, one folder per target (`aws/`, `civo/`,
+`hetzner/`, `local/`, `shared/`). Folder names carry a status letter; see
+`specs/README.md`.
 
 `docs/architecture.md`
 Target architecture.

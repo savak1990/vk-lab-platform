@@ -20,10 +20,12 @@ Baseline inspected: branch `main`, commit `cfbb59bd340b6356bad3fb2493b41fa3a337e
 ## Format note
 
 Specs in this folder use YAML front matter and a fixed 14-section body. The
-planning brief requires this format. Other specs in `specs/` use Markdown
-bold-label headers. The folder name (`NNN-title`) and the `id` field are the
-stable identifiers. Never renumber them. Numbers step by ten. Insert later
-work into the gaps (`085-...`) without renumbering.
+planning brief requires this format. Specs in `aws/`, `local/` and `shared/`
+use short front matter (`id`, `status`, `updated`) and Markdown bold-label
+headers. The folder name is `NNN-X-title`, where `X` is the status letter (see
+`../README.md`). The number and the `id` field are the stable identifiers.
+Never renumber them. Numbers step by ten. Insert later work into the gaps
+(`085-...`) without renumbering.
 
 ## Status protocol
 
@@ -35,7 +37,11 @@ work into the gaps (`085-...`) without renumbering.
 | `BLOCKED` | Needs a named decision, capability, prerequisite, or unfinished hard dependency; `blocked_by` names it |
 | `IN_REVIEW` | Implementation and checks complete, awaiting review. **Used only when the operator asks for a pull request.** A change that goes straight to `main` skips this status |
 | `DONE` | Acceptance criteria and gates passed, evidence recorded, reviewed and integrated |
-| `CANCELLED` | Abandoned or superseded; rationale and replacement kept |
+| `DEFERRED` | Postponed by a recorded decision; may return to `READY` |
+| `SUPERSEDED` | Replaced by another spec or ADR; the replacement is named |
+| `CANCELLED` | Abandoned; rationale kept |
+
+Each status maps to a folder letter; see `../README.md`.
 
 Flow: `DRAFT → READY → IN_PROGRESS → DONE`, or
 `DRAFT → READY → IN_PROGRESS → IN_REVIEW → DONE` when a pull request exists.
