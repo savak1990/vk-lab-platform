@@ -82,7 +82,7 @@ Steps:
 - [ ] In every moved file, change line 1 `{{- if eq .Values.target "aws" }}` to `{{- if ne .Values.target "local" }}`.
 - [ ] Change `{{ .Values.storage.className }}` → `{{ include "platform.storageClassName" . }}` (kube-prometheus-stack L68/L99/L107, loki L71).
 - [ ] Change `{{- if .Values.capacity.spotAvoidance }}` → `{{- if eq (include "platform.spotAvoidance" .) "true" }}` (6 blocks).
-- [ ] `metrics-server.yaml`: gate the file with `platform.metricsServerEnabled`, and render `--kubelet-insecure-tls` only when `platform.kubeletInsecureTls` is `"true"`. The comment says both providers' kubelet certs are not verifiable by default.
+- [ ] `metrics-server.yaml`: gate the file with `platform.metricsServerEnabled`, and render `--kubelet-insecure-tls` only when `platform.kubeletInsecureTls` is `"true"`. The comment says EKS's kubelet serving certs are self-signed per node; Civo's verify cleanly without the flag.
 - [ ] Rewrite the control-plane comment (kube-prometheus-stack L150) to cover both targets. Example: "Neither managed control plane exposes these: EKS hides them, k3s binds them to localhost off-pool."
 - [ ] Wrap the Karpenter entries in `{{- if eq .Values.target "aws" }}`: `monitors.yaml` L8-22, `alerts.yaml` L44-58, `dashboards.yaml` L7-48.
 - [ ] Loki PVC delete policy (both targets): run `helm show values grafana/loki --version 7.3.0 | grep -n -i "autodeletepvc\|persistentVolumeClaimRetentionPolicy"`, then set the chart's own key so the StatefulSet has `whenDeleted: Delete`. Do not guess the key name.
