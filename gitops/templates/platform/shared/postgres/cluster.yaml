@@ -28,20 +28,10 @@ spec:
       cpu: 250m
       memory: 256Mi
   bootstrap:
-    {{- if and (eq .Values.target "aws") .Values.postgres.recoverySnapshotHandle }}
+    {{- if and .Values.postgres.backup.enabled .Values.postgres.backup.recoverServerName }}
     # No initdb fallback: a loud failure beats silently wiping a recoverable
     # database. database/owner enable CNPG's app-user password reconciler on
     # this path - without them the pinned password is never re-applied.
-    recovery:
-      database: vkdb
-      owner: vkdb
-      volumeSnapshots:
-        storage:
-          apiGroup: snapshot.storage.k8s.io
-          kind: VolumeSnapshot
-          name: lab-postgres-recovered
-    {{- else if and .Values.postgres.backup.enabled .Values.postgres.backup.recoverServerName }}
-    # Same rule as the snapshot branch above: no initdb fallback on a recovery path.
     recovery:
       database: vkdb
       owner: vkdb
@@ -51,7 +41,7 @@ spec:
       database: vkdb
       owner: vkdb
     {{- end }}
-  {{- if and .Values.postgres.backup.enabled .Values.postgres.backup.recoverServerName (not (and (eq .Values.target "aws") .Values.postgres.recoverySnapshotHandle)) }}
+  {{- if and .Values.postgres.backup.enabled .Values.postgres.backup.recoverServerName }}
   externalClusters:
     - name: lab-postgres-previous
       plugin:
@@ -61,22 +51,9 @@ spec:
           serverName: {{ .Values.postgres.backup.recoverServerName | quote }}
   {{- end }}
   storage:
-    # Increase-only: shrinking a PVC is rejected by Kubernetes, and on the
-    # snapshot-recovery path (above) the new PVC must be >= the snapshot's
-    # restore size or it never binds.
+    # Increase-only: shrinking a PVC is rejected by Kubernetes.
     size: {{ .Values.postgres.storageSize | quote }}
     storageClass: {{ include "platform.storageClassName" . }}
-  {{- if eq .Values.target "aws" }}
-  # Cold (online: false) volume-snapshot backup - confirmed via CNPG docs
-  # to need neither an object store nor WAL archiving, just a CSI driver
-  # that supports snapshots. instances: 1 means this briefly fences the
-  # primary; acceptable since argo-down.sh triggers it immediately before
-  # tearing the cluster down anyway. See ADR 0013.
-  backup:
-    volumeSnapshot:
-      className: ebs-postgres-snapshot
-      online: false
-  {{- end }}
   {{- if and (eq .Values.target "civo") .Values.postgres.backup.enabled }}
   # The backup sidecar has no volumeMounts field of its own; it inherits this
   # container's, which is the only way the certificate reaches it. optional

@@ -1,6 +1,6 @@
 # Syncs the Postgres app-user password from AWS Secrets Manager into a
 # Kubernetes Secret (spec 007-2), so CNPG's recovery bootstrap always finds
-# the same password the snapshot's PGDATA already has - CNPG never resets
+# the same password the recovered PGDATA already has - CNPG never resets
 # a role's password on recovery, only at initdb. See ADR 0014.
 apiVersion: argoproj.io/v1alpha1
 kind: Application

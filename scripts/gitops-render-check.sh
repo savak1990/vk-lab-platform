@@ -53,9 +53,6 @@ BACKUP_SETS=(
   --set postgres.backup.serverName=render-check-server
 )
 render_and_normalize "$REPO_ROOT/gitops" "$WORK_DIR/platform" aws
-render_and_normalize "$REPO_ROOT/gitops" "$WORK_DIR/platform-recovery" aws \
-  --set postgres.recoverySnapshotHandle=snap-x "${BACKUP_SETS[@]}" \
-  --set postgres.backup.recoverServerName=render-check-previous
 render_and_normalize "$REPO_ROOT/gitops" "$WORK_DIR/platform-backup" aws "${BACKUP_SETS[@]}"
 render_and_normalize "$REPO_ROOT/gitops" "$WORK_DIR/platform-backup-recovery" aws \
   "${BACKUP_SETS[@]}" --set postgres.backup.recoverServerName=render-check-previous
@@ -90,6 +87,30 @@ verify_backup_render() {
 }
 
 verify_backup_render "$WORK_DIR/platform-backup" aws cloudnative-pg/plugin-barman-cloud-sidecar
+
+# PostgreSQL persistence on aws is the backup plugin alone; a leftover
+# snapshot object or snapshot-controller Application means it regressed.
+verify_no_snapshot_path() {
+  local dir kind
+  for dir in "$WORK_DIR"/platform*; do
+    for kind in VolumeSnapshotClass VolumeSnapshotContent VolumeSnapshot; do
+      if compgen -G "$dir/${kind}__*.yaml" >/dev/null; then
+        echo "GITOPS-RENDER-CHECK: aws render $(basename "$dir") still renders a $kind" >&2
+        return 1
+      fi
+    done
+    if compgen -G "$dir/Application__argocd__external-snapshotter*.yaml" >/dev/null; then
+      echo "GITOPS-RENDER-CHECK: aws render $(basename "$dir") still renders an external-snapshotter Application" >&2
+      return 1
+    fi
+  done
+  if grep -qE 'VolumeSnapshotContent|recoverySnapshotHandle' "$WORK_DIR/bootstrap/Application__argocd__root.yaml"; then
+    echo "GITOPS-RENDER-CHECK: the root Application still carries snapshot recovery settings" >&2
+    return 1
+  fi
+}
+
+verify_no_snapshot_path
 
 # civo/local have no golden baseline to diff against, so they're checked
 # structurally instead: the M1 baseline must appear, and nothing aws-only

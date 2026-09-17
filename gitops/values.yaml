@@ -9,11 +9,10 @@ region: eu-west-1
 # lets aws-load-balancer-controller skip IMDS-based VPC discovery.
 vpcId: ""
 
-# className/snapshotClassName name the CSI StorageClass/VolumeSnapshotClass
-# a target provides; each target supplies its own.
+# className names the CSI StorageClass a target provides; each target
+# supplies its own.
 storage:
   className: ebs-delete
-  snapshotClassName: ebs-postgres-snapshot
 
 # spotAvoidance gates the observability/Postgres anti-affinity blocks below —
 # only meaningful where Karpenter's spot/on-demand distinction exists (aws).
@@ -43,14 +42,10 @@ awsIdentity:
       cert-manager: ""
       pgbackup: ""
 
-# recoverySnapshotHandle is set automatically by scripts/argo-up.sh, which
-# discovers the latest retained EBS snapshot (if any) via the AWS API — no
-# manual edit required. Empty means "no snapshot found, bootstrap fresh".
-# See ADR 0013. storageSize is operator-configurable (KARPENTER_INSTANCE_TYPES
-# sibling: POSTGRES_STORAGE_SIZE env var on argo-up.sh) — increase-only, see
+# storageSize is operator-configurable (KARPENTER_INSTANCE_TYPES sibling:
+# POSTGRES_STORAGE_SIZE env var on argo-up.sh) — increase-only, see
 # scripts/argo-up.sh usage comment for why.
 postgres:
-  recoverySnapshotHandle: ""
   storageSize: 20Gi
   # Pinned so an operator chart upgrade never changes the major version under
   # existing data. Multi-arch: arm64 on aws, amd64 on civo.
