@@ -36,7 +36,7 @@
 **Interfaces:**
 - Produces: `./scripts/specs-check.sh` — exit 0 when the layout is valid; otherwise prints `SPECS-CHECK: <problem>` lines to stderr and exits 1.
 
-- [ ] **Step 1: Write the script**
+- [x] **Step 1: Write the script**
 
 ```bash
 #!/usr/bin/env bash
@@ -108,7 +108,7 @@ exit $fail
 
 The `evidence/` folder holds captured command output and is excluded.
 
-- [ ] **Step 2: Make it executable and add the Make target**
+- [x] **Step 2: Make it executable and add the Make target**
 
 ```bash
 chmod +x scripts/specs-check.sh
@@ -121,12 +121,12 @@ specs-check:
 	@./scripts/specs-check.sh
 ```
 
-- [ ] **Step 3: Run it, expect FAIL**
+- [x] **Step 3: Run it, expect FAIL**
 
 Run: `./scripts/specs-check.sh; echo EXIT=$?`
 Expected: `unexpected folder specs/000-constitution` (and similar), `no front matter`, stale path lines, `EXIT=1`.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add scripts/specs-check.sh Makefile
@@ -146,7 +146,7 @@ git commit -m "feat(specs-reorg): add specs layout check"
 - Consumes: nothing.
 - Produces: `$SP/rename-map.json` — object `{ "specs/<old>": "specs/<pkg>/<new>" }` for every moved folder, used by Task 3.
 
-- [ ] **Step 1: Write `$SP/reorg.py`**
+- [x] **Step 1: Write `$SP/reorg.py`**
 
 ```python
 #!/usr/bin/env python3
@@ -258,7 +258,7 @@ main()
 
 `os.rename` is a plain move, equal to `mv`.
 
-- [ ] **Step 2: Move one folder, confirm git sees a rename**
+- [x] **Step 2: Move one folder, confirm git sees a rename**
 
 Run: `chmod +x $SP/reorg.py && $SP/reorg.py one`
 Expected: `moved 1; map has 1` (`specs/000-constitution` → `specs/shared/000-D-constitution`).
@@ -266,7 +266,7 @@ Expected: `moved 1; map has 1` (`specs/000-constitution` → `specs/shared/000-D
 Run: `git add -A specs && git status --short specs`
 Expected: one `R` line for `spec.md`. If git shows `D` + `A`, stop: the front-matter edit dropped similarity below 50%. (The constitution file is large; the edit adds 5 lines.)
 
-- [ ] **Step 3: Move the rest**
+- [x] **Step 3: Move the rest**
 
 Run: `$SP/reorg.py`
 Expected: `moved 93; map has 94`.
@@ -274,17 +274,17 @@ Expected: `moved 93; map has 94`.
 Run: `ls specs specs/aws specs/shared specs/local | head -60`
 Expected: only `aws civo hetzner local shared` at the top level; lettered names below.
 
-- [ ] **Step 4: Spot-check headers**
+- [x] **Step 4: Spot-check headers**
 
 Run: `head -8 specs/aws/025-Z-kafka/spec.md specs/aws/032-D-argo-bootstrap-resilience/spec.md specs/shared/000-D-constitution/spec.md`
 Expected: front matter with `AWS-025`/`DEFERRED`, `AWS-032`/`DONE`, `SHARED-000`/`DONE`; `> **Status note: Deferred ...` and `**Status note:** Proposed` lines.
 
-- [ ] **Step 5: Run the check, expect only link and stale-path failures**
+- [x] **Step 5: Run the check, expect only link and stale-path failures**
 
 Run: `./scripts/specs-check.sh 2>&1 | grep 'SPECS-CHECK'`
 Expected: only `broken link` and `pre-reorg spec paths remain` lines; no `unexpected folder`, `name is not`, `no front matter`, or `does not match` lines.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add -A specs
@@ -305,7 +305,7 @@ Expected before commit: only `M`/`R` lines for `spec.md` files in specs.
 **Interfaces:**
 - Consumes: `$SP/rename-map.json` from Task 2.
 
-- [ ] **Step 1: Write `$SP/refs.py`**
+- [x] **Step 1: Write `$SP/refs.py`**
 
 ```python
 #!/usr/bin/env python3
@@ -353,26 +353,26 @@ print("\n".join(sorted(changed)))
 print(f"changed {len(changed)} files")
 ```
 
-- [ ] **Step 2: Run it**
+- [x] **Step 2: Run it**
 
 Run: `chmod +x $SP/refs.py && $SP/refs.py`
 Expected: a list including `CLAUDE.md`, `README.md`, ADR files, `specs/civo/README.md`, `specs/hetzner/README.md`; no path under `docs/superpowers/`.
 
-- [ ] **Step 3: Fix the moved relative link in 027**
+- [x] **Step 3: Fix the moved relative link in 027**
 
 In `specs/shared/027-Z-alt-cloud-targets/spec.md`, change `](../civo/README.md)` to `](../../civo/README.md)`.
 
-- [ ] **Step 4: Run the check**
+- [x] **Step 4: Run the check**
 
 Run: `./scripts/specs-check.sh; echo EXIT=$?`
 Expected: `SPECS-CHECK: specs/ layout is valid.` and `EXIT=0`. Fix any remaining hit by hand (for example a path the map does not cover), then run again.
 
-- [ ] **Step 5: Review the diff for wrong replacements**
+- [x] **Step 5: Review the diff for wrong replacements**
 
 Run: `git diff --stat` and `git diff -- CLAUDE.md docs/adr README.md`
 Expected: only `specs/...` path substrings changed.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add -A
@@ -387,7 +387,7 @@ git commit -m "docs(specs): point references at the reorganized spec paths"
 - Create: `specs/README.md`
 - Modify: `specs/civo/README.md` (Format note, Status protocol table), `specs/hetzner/README.md` (Format note), `CLAUDE.md` (repository layout `specs/` entry), `docs/architecture.md` (layout tree near the `specs/` entry)
 
-- [ ] **Step 1: Write `specs/README.md`**
+- [x] **Step 1: Write `specs/README.md`**
 
 ```markdown
 # Specs
@@ -426,7 +426,7 @@ of it. Status meanings are in `civo/README.md` (Status protocol).
 Run `make specs-check` after any spec move or status change.
 ```
 
-- [ ] **Step 2: Edit `specs/civo/README.md`**
+- [x] **Step 2: Edit `specs/civo/README.md`**
 
 Replace the Format note sentences
 
@@ -457,7 +457,7 @@ In the Status protocol table, change the `CANCELLED` row and add two rows after 
 
 Add below the table: "Each status maps to a folder letter; see `../README.md`."
 
-- [ ] **Step 3: Edit `specs/hetzner/README.md` Format note**
+- [x] **Step 3: Edit `specs/hetzner/README.md` Format note**
 
 Replace
 
@@ -474,7 +474,7 @@ letter (see `../README.md`). The number and the `id` field are the stable
 identifiers. Never renumber them.
 ```
 
-- [ ] **Step 4: Edit `CLAUDE.md` and `docs/architecture.md` layout entries**
+- [x] **Step 4: Edit `CLAUDE.md` and `docs/architecture.md` layout entries**
 
 Find with `grep -n '^`specs/`' CLAUDE.md` and `grep -n 'specs/' docs/architecture.md | head`. In CLAUDE.md, change the `specs/` entry's description to:
 
@@ -487,7 +487,7 @@ Spec-driven-development requirements, one folder per target (`aws/`, `civo/`,
 
 In the `docs/architecture.md` layout tree, replace the `specs/` subtree lines with `aws/`, `civo/`, `hetzner/`, `local/`, `shared/` entries in the same tree style.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run: `./scripts/specs-check.sh; echo EXIT=$?`
 Expected: valid, `EXIT=0`.
@@ -495,7 +495,7 @@ Expected: valid, `EXIT=0`.
 Run: `./scripts/gitops-render-check.sh check`
 Expected: both GITOPS-RENDER-CHECK pass lines (no gitops file changed; confirms no collateral).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add specs/README.md specs/civo/README.md specs/hetzner/README.md CLAUDE.md docs/architecture.md
@@ -506,7 +506,7 @@ git commit -m "docs(specs): document per-target layout and status letters"
 
 ### Task 5: Final verification
 
-- [ ] **Step 1:** `./scripts/specs-check.sh` → valid.
-- [ ] **Step 2:** `git log --stat -4 --oneline | head -40` → 4 commits; the move commit shows renames.
-- [ ] **Step 3:** Break a letter on purpose to prove check 3 works: `mv specs/aws/025-Z-kafka specs/aws/025-D-kafka && ./scripts/specs-check.sh; mv specs/aws/025-D-kafka specs/aws/025-Z-kafka` → the first run reports `letter D does not match status 'DEFERRED'`.
-- [ ] **Step 4:** Mark this plan's checkboxes done and commit.
+- [x] **Step 1:** `./scripts/specs-check.sh` → valid.
+- [x] **Step 2:** `git log --stat -4 --oneline | head -40` → 4 commits; the move commit shows renames.
+- [x] **Step 3:** Break a letter on purpose to prove check 3 works: `mv specs/aws/025-Z-kafka specs/aws/025-D-kafka && ./scripts/specs-check.sh; mv specs/aws/025-D-kafka specs/aws/025-Z-kafka` → the first run reports `letter D does not match status 'DEFERRED'`.
+- [x] **Step 4:** Mark this plan's checkboxes done and commit.
