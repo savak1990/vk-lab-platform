@@ -285,3 +285,8 @@ civo-ca-init:
 ## Usage: make gitops-check
 gitops-check:
 	@./scripts/gitops-render-check.sh check
+
+## Checks specs/ layout: status letters match front matter, links resolve,
+## no old spec paths remain. Usage: make specs-check
+specs-check:
+	@./scripts/specs-check.sh
