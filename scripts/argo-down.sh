@@ -20,11 +20,7 @@ POLL_INTERVAL="${ARGO_DOWN_POLL_INTERVAL:-5}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$REPO_ROOT/scripts/lib/region.sh"
 source "$REPO_ROOT/scripts/lib/provider.sh"
-# Snapshot path only; the plugin backup uploads a whole base backup to S3 and reads
-# ARGO_DOWN_BACKUP_TIMEOUT itself with a much longer default.
-BACKUP_TIMEOUT="${ARGO_DOWN_BACKUP_TIMEOUT:-120s}"
 PVC_WAIT_TIMEOUT="${ARGO_DOWN_PVC_WAIT_TIMEOUT:-180s}"
-SNAPSHOT_TAG_FILTERS=("Name=tag:Project,Values=$PROJECT_NAME" "Name=tag:Component,Values=postgres")
 
 # Absence is checked against the provider's own API, not kubectl - a 404
 # there proves the cluster is gone, whereas a kubectl failure only proves
@@ -67,7 +63,7 @@ for app in $(kubectl get applications -n argocd -o jsonpath='{.items[*].metadata
 done
 
 # Every exit path below this point leaves GitOps disarmed, so say so - an
-# operator who stops here on a backup failure would otherwise have no way
+# operator who stops here on a cascade or DNS failure would otherwise have no way
 # to know the cluster's reconciliation is off.
 if [ "$DISARMED" -gt 0 ]; then
   if [ "$PROVIDER" = civo ]; then
@@ -77,82 +73,9 @@ if [ "$DISARMED" -gt 0 ]; then
   fi
 fi
 
-# Forces a cold VolumeSnapshot backup of Postgres before the cluster (and
-# with it, the live EBS volume) gets torn down below - this is the only
-# thing that survives a cluster-down/cluster-up cycle now that the
-# volume itself is Delete-reclaim (ADR 0013). Must run and complete before
-# the cascade delete starts: the Cluster/pod need to still be alive.
-# Aborts loudly on failure rather than proceeding - proceeding would
-# destroy the only copy.
-aws_cnpg_backup_and_prune() {
-if kubectl get cluster lab-postgres -n cnpg-system >/dev/null 2>&1; then
-  BACKUP_NAME="lab-postgres-teardown-$(date +%s 2>/dev/null || echo manual)"
-  echo "ARGO-DOWN: forcing a pre-teardown Postgres volume-snapshot backup ($BACKUP_NAME)..."
-  cat <<EOF | kubectl apply -f -
-apiVersion: postgresql.cnpg.io/v1
-kind: Backup
-metadata:
-  name: $BACKUP_NAME
-  namespace: cnpg-system
-spec:
-  cluster:
-    name: lab-postgres
-  method: volumeSnapshot
-EOF
-
-  # No streamed byte-progress exists for a cold volumeSnapshot backup, but
-  # CNPG does report discrete phases - poll and print those every
-  # POLL_INTERVAL rather than blocking silently for the full timeout.
-  backup_elapsed=0
-  backup_timeout_secs="${BACKUP_TIMEOUT%s}"
-  while true; do
-    phase="$(kubectl get backup "$BACKUP_NAME" -n cnpg-system -o jsonpath='{.status.phase}' 2>/dev/null || true)"
-    echo "ARGO-DOWN: backup phase: ${phase:-pending} (${backup_elapsed}s/${BACKUP_TIMEOUT})"
-    if [ "$phase" = "completed" ]; then
-      echo "ARGO-DOWN: pre-teardown backup completed."
-      break
-    elif [ "$phase" = "failed" ]; then
-      echo "ARGO-DOWN: pre-teardown backup reported phase 'failed' - refusing to proceed." >&2
-      echo "ARGO-DOWN: check 'kubectl describe backup $BACKUP_NAME -n cnpg-system'." >&2
-      exit 1
-    elif [ "$backup_elapsed" -ge "$backup_timeout_secs" ]; then
-      echo "ARGO-DOWN: pre-teardown backup did not complete within $BACKUP_TIMEOUT - refusing to proceed." >&2
-      echo "ARGO-DOWN: check 'kubectl describe backup $BACKUP_NAME -n cnpg-system' before retrying." >&2
-      exit 1
-    fi
-    sleep "$POLL_INTERVAL"
-    backup_elapsed=$((backup_elapsed + POLL_INTERVAL))
-  done
-
-  # No status=completed filter here (unlike argo-up.sh's discovery query):
-  # the AWS-side snapshot is still asynchronously "pending" for a while
-  # after CNPG reports the Backup done, so filtering to completed-only at
-  # prune time would miscount "newest 2" and delete the wrong one. Count
-  # everything tagged, regardless of state.
-  echo "ARGO-DOWN: pruning old Postgres EBS snapshots (keeping newest 2)..."
-  if ! OLD_SNAPSHOTS="$(aws ec2 describe-snapshots --region "$LAB_REGION" --owner-ids self \
-    --filters "${SNAPSHOT_TAG_FILTERS[@]}" \
-    --query 'sort_by(Snapshots,&StartTime)[:-2].SnapshotId' --output text)"; then
-    echo "ARGO-DOWN: failed to list Postgres EBS snapshots for pruning - aborting." >&2
-    exit 1
-  fi
-  if [ -n "$OLD_SNAPSHOTS" ] && [ "$OLD_SNAPSHOTS" != "None" ]; then
-    for snapshot_id in $OLD_SNAPSHOTS; do
-      aws ec2 delete-snapshot --region "$LAB_REGION" --snapshot-id "$snapshot_id"
-      echo "ARGO-DOWN: pruned old snapshot $snapshot_id"
-    done
-  fi
-else
-  echo "ARGO-DOWN: no lab-postgres Cluster found - skipping pre-teardown backup."
-fi
-}
-
-# The plugin backup runs first: the cold volume-snapshot backup fences the
-# primary, and archiving must still be healthy when the plugin reads it.
+# Best effort: WAL archiving already made every committed row durable, so a
+# failed final base backup never blocks the teardown.
 backup_teardown
-if [ "$PROVIDER" = aws ]; then
-  aws_cnpg_backup_and_prune
-fi
 
 # Argo deletes one sync wave at a time and refuses to start the next while
 # any object it manages still has a deletionTimestamp - so a single object
@@ -163,8 +86,7 @@ fi
 # desired-state view and keeps listing resources already deleted.
 TERMINATING_KINDS="application.argoproj.io cluster.postgresql.cnpg.io \
 nodepool.karpenter.sh ec2nodeclass.karpenter.k8s.aws nodeclaim.karpenter.sh \
-volumesnapshot.snapshot.storage.k8s.io volumesnapshotcontent.snapshot.storage.k8s.io \
-volumesnapshotclass.snapshot.storage.k8s.io storageclass.storage.k8s.io \
+storageclass.storage.k8s.io \
 clustersecretstore.external-secrets.io externalsecret.external-secrets.io \
 volumeattachment.storage.k8s.io persistentvolume"
 
