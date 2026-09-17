@@ -1,7 +1,7 @@
 ---
 id: "CIVO-185"
 title: "Move the AWS target to the CNPG barman-cloud plugin"
-status: "READY"
+status: "DONE"
 priority: "P2"
 milestone: "M2"
 type: "implementation"
@@ -15,7 +15,7 @@ blocked_by: []
 supersedes: []
 created: "2026-09-06"
 updated: "2026-09-17"
-completed: null
+completed: "2026-09-17"
 ---
 
 # CIVO-185 — Move the AWS target to the CNPG barman-cloud plugin
@@ -199,7 +199,7 @@ state this before reverting. The AWS bucket is additive and can stay.
 - [x] Removal half: snapshot surface removed, goldens regenerated and reviewed
 - [x] ADR 0033, ADR 0013 status, constitution §4 reference, architecture and AWS design updated
 - [x] Two AWS cycles and one Civo cycle with data evidence
-- [ ] Index updated; status `DONE`
+- [x] Index updated; status `DONE`
 
 ## 14. Execution evidence and status history
 

@@ -112,7 +112,7 @@ verified in this environment.
 | CIVO-170 | [170-P-civo-cluster-autoscaler](170-P-civo-cluster-autoscaler/spec.md) | Cluster autoscaler 1–3 on the Large pool | READY | P3 | S | standard | 030 | M2 |
 | CIVO-175 | [175-P-right-size-requests-and-sku](175-P-right-size-requests-and-sku/spec.md) | Right-size requests/limits, re-evaluate SKU | READY | P2 | M | standard | 160, 170 | M2 |
 | CIVO-180 | [180-D-cnpg-backups-object-store](180-D-cnpg-backups-object-store/spec.md) | CNPG barman-cloud plugin backups to a per-project S3 bucket | DONE | P1 | L | strongest | 082, 085, 100 | M1 |
-| CIVO-185 | [185-P-aws-logical-backup-migration](185-P-aws-logical-backup-migration/spec.md) | Move the AWS target to the CNPG barman-cloud plugin | READY | P2 | L | strongest | 120, 180 | M2 |
+| CIVO-185 | [185-D-aws-logical-backup-migration](185-D-aws-logical-backup-migration/spec.md) | Move the AWS target to the CNPG barman-cloud plugin | DONE | P2 | L | strongest | 120, 180 | M2 |
 | CIVO-190 | [190-P-proxy-protocol-client-ip](190-P-proxy-protocol-client-ip/spec.md) | Proxy protocol and client IP | READY | P3 | S | fast | 060 | M2 |
 | CIVO-200 | [200-P-identity-hardening](200-P-identity-hardening/spec.md) | Intermediate CA and Certificate approval policy | READY | P2 | M | strongest | 085 | M2 |
 | CIVO-205 | [205-P-lab-role-least-privilege-review](205-P-lab-role-least-privilege-review/spec.md) | `lab-role` review + ESO ClusterRole scoping (CA-Secret read) | DRAFT | P2 | M | strongest | 082, 085, 200 | M2 |
