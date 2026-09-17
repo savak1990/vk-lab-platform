@@ -9,7 +9,7 @@
 
 **Tech Stack:** Terraform 1.15.9 / Terragrunt 1.1.x, Helm + Argo CD, CNPG chart 0.29.0 (operator 1.30.0), plugin chart 0.8.0 (v0.15.0), Bash.
 
-**Spec:** `specs/civo/185-P-aws-logical-backup-migration/spec.md`
+**Spec:** `specs/civo/185-D-aws-logical-backup-migration/spec.md`
 
 ## Context
 

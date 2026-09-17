@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Destroys Persistent-lifecycle resources: the VPC, everything in Secrets
-# Manager, every retained EBS volume the ebs-retain StorageClass created
-# (spec 005), and every retained Postgres EBS snapshot (ADR 0013). The lab
+# Manager, the Postgres backup bucket, every retained EBS volume the
+# ebs-retain StorageClass created (spec 005), and any Postgres EBS snapshot
+# left from the retired volume-snapshot recovery mechanism. The lab
 # DNS zone/delegation and ACM cert are Bootstrap-lifecycle now (see
 # bootstrap-down.sh) - not this script's job. The volumes/snapshots are
 # Persistent-lifecycle data but live outside any Terraform state (no stack

@@ -25,8 +25,6 @@ spec:
           value: {{ .Values.project | quote }}
         - name: vpcId
           value: {{ .Values.vpcId | quote }}
-        - name: postgres.recoverySnapshotHandle
-          value: {{ .Values.postgres.recoverySnapshotHandle | quote }}
         - name: postgres.storageSize
           value: {{ .Values.postgres.storageSize | quote }}
         - name: karpenter.spot.cpuLimit
@@ -84,14 +82,6 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd
-  ignoreDifferences:
-    # snapshot-controller patches the bound snapshot's uid in here, but the
-    # field is atomic - any re-apply replaces the whole object and drops it,
-    # leaving the CSI provisioner stuck on "snapshot not bound" forever.
-    - group: snapshot.storage.k8s.io
-      kind: VolumeSnapshotContent
-      jsonPointers:
-        - /spec/volumeSnapshotRef
   syncPolicy:
     automated:
       prune: true

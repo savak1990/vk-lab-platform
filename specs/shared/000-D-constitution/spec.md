@@ -93,7 +93,7 @@ For stateful Kubernetes workloads:
   Where a workload archives continuously, so that every committed write is
   already durable off-cluster before shutdown starts, a final pre-shutdown
   backup is best-effort instead: it MUST run, it MUST be waited for, and a
-  failure MUST warn loudly without blocking the shutdown (ADR 0032). The
+  failure MUST warn loudly without blocking the shutdown (ADR 0032, ADR 0033). The
   archiving state MUST be read before the shutdown proceeds, and a
   shutdown that starts while archiving is unhealthy MUST state plainly
   which writes it destroys. This relaxation does not apply to

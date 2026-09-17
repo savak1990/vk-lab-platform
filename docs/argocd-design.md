@@ -8,13 +8,12 @@ state as of commit `cfbb59bd340b6356bad3fb2493b41fa3a337efe5` (2026-09-06).
 
 Argo CD is installed by a script, not Terraform (ADR 0012):
 
-1. `scripts/argo-up.sh` reads five SSM parameters in one call and the EKS cluster name from Terragrunt output.
+1. `scripts/argo-up.sh` reads six SSM parameters in one call (including the Postgres backup bucket) and the EKS cluster name from Terragrunt output, reads the previous backup generation from SSM and mints a new one.
 2. Configures kubeconfig with `eks-access-identity`.
 3. Fast path: if the root Application is already `Synced/Healthy`, verify DNS and exit 0.
-4. Discovers the newest Postgres EBS snapshot (ADR 0013) and prunes older ones.
-5. `helm upgrade --install argocd argo-cd --version 10.4.0` with the admin bcrypt from SSM, resource requests, and a hard anti-affinity against spot nodes.
-6. `helm upgrade --install root-application gitops/bootstrap --server-side --force-conflicts` with `--set target=aws`, project, VPC id, snapshot handle, storage size, Karpenter limits, ACM ARN, NLB subnets, FQDN.
-7. Watches the root Application until `Synced/Healthy` (default 30 min), then waits for DNS.
+4. `helm upgrade --install argocd argo-cd --version 10.4.0` with the admin bcrypt from SSM, resource requests, and a hard anti-affinity against spot nodes.
+5. `helm upgrade --install root-application gitops/bootstrap --server-side --force-conflicts` with `--set target=aws`, project, VPC id, storage size, Karpenter limits, ACM ARN, NLB subnets, FQDN, and the backup bucket, `serverName` and `recoverServerName`.
+6. Watches the root Application until `Synced/Healthy`, waits for DNS, then records the new backup generation in SSM and prunes old generations.
 
 Server-side apply on the root Application is required because the Argo
 controller takes field ownership after first reconcile.

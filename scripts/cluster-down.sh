@@ -205,10 +205,9 @@ else
   fi
 fi
 
-# Deliberately not swept here: EBS snapshots (Project + Component=postgres
-# tags only, no Lifecycle tag - the persistent recovery artifact ADR 0013
-# depends on, cleaned up by persistent-down.sh at its own point in the
-# lifecycle, never by cluster-down).
+# Deliberately not swept here: Postgres EBS snapshots left from the retired
+# volume-snapshot recovery mechanism are Persistent-lifecycle data that only
+# persistent-down.sh deletes.
 if [ "$LEAK_COUNT" -eq 0 ]; then
   echo "CLUSTER-DOWN: no leaked disposable-lifecycle resources found."
 else

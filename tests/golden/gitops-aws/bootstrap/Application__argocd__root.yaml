@@ -15,14 +15,6 @@ spec:
   destination:
     namespace: argocd
     server: https://kubernetes.default.svc
-  ignoreDifferences:
-    # snapshot-controller patches the bound snapshot's uid in here, but the
-    # field is atomic - any re-apply replaces the whole object and drops it,
-    # leaving the CSI provisioner stuck on "snapshot not bound" forever.
-    - group: snapshot.storage.k8s.io
-      jsonPointers:
-        - /spec/volumeSnapshotRef
-      kind: VolumeSnapshotContent
   project: default
   source:
     helm:
@@ -32,8 +24,6 @@ spec:
         - name: project
           value: vk-lab-platform
         - name: vpcId
-          value: ""
-        - name: postgres.recoverySnapshotHandle
           value: ""
         - name: postgres.storageSize
           value: 10Gi

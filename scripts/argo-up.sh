@@ -22,17 +22,13 @@ SPOT_KARPENTER_INSTANCE_TYPES="${SPOT_KARPENTER_INSTANCE_TYPES:-t4g.medium,t4g.l
 SPOT_KARPENTER_CPU_LIMIT="${SPOT_KARPENTER_CPU_LIMIT:-4}"
 ON_DEMAND_KARPENTER_INSTANCE_TYPES="${ON_DEMAND_KARPENTER_INSTANCE_TYPES:-t4g.medium,t4g.large,m6g.medium,m6g.large,m7g.medium,m7g.large}"
 ON_DEMAND_KARPENTER_CPU_LIMIT="${ON_DEMAND_KARPENTER_CPU_LIMIT:-4}"
-# Increase-only: Kubernetes rejects a PVC shrink, and shrinking below a
-# retained snapshot's restore size leaves the recovered PVC unable to bind.
+# Increase-only: Kubernetes rejects a PVC shrink.
 POSTGRES_STORAGE_SIZE="${POSTGRES_STORAGE_SIZE:-20Gi}"
 # Never set below 2: recovery reads the previous generation while
 # the current one is still building its own first base backup.
 POSTGRES_BACKUP_KEEP_GENERATIONS="${POSTGRES_BACKUP_KEEP_GENERATIONS:-2}"
 SPOT_KARPENTER_INSTANCE_TYPES_JSON="$(jq -Rc 'split(",")' <<< "$SPOT_KARPENTER_INSTANCE_TYPES")"
 ON_DEMAND_KARPENTER_INSTANCE_TYPES_JSON="$(jq -Rc 'split(",")' <<< "$ON_DEMAND_KARPENTER_INSTANCE_TYPES")"
-# Project-scoped so two environments with different PROJECT_NAME values in
-# the same region/account never collide on each other's snapshots.
-SNAPSHOT_TAG_FILTERS=("Name=tag:Project,Values=$PROJECT_NAME" "Name=tag:Component,Values=postgres")
 
 eks_output() {
   terragrunt --working-dir "$REPO_ROOT/terraform/live/cluster/eks" output -raw "$1"
@@ -316,53 +312,6 @@ if [ "$EXISTING_STATUS" = "Synced/Healthy" ]; then
   exit 0
 fi
 
-# Discovers the latest Postgres EBS snapshot (if any) before pruning -
-# deletion below is async, so discovering after pruning would open a race
-# window against a snapshot mid-delete. Terraform has no role here: the
-# snapshot is created by the running cluster at teardown time, not at
-# apply time, so there's nothing for Terraform state to track (ADR 0013).
-# A probe error (creds/network) aborts loudly rather than silently
-# falling through to a fresh initdb over a good snapshot.
-aws_resolve_snapshot() {
-  if ! SNAPSHOTS_JSON="$(aws ec2 describe-snapshots --region "$LAB_REGION" --owner-ids self \
-    --filters "${SNAPSHOT_TAG_FILTERS[@]}" "Name=status,Values=completed" \
-    --query 'sort_by(Snapshots,&StartTime)' --output json)"; then
-    echo "ARGO-UP: failed to query AWS for existing Postgres snapshots - aborting rather than risking a false 'fresh start'." >&2
-    exit 1
-  fi
-  RECOVERY_SNAPSHOT_HANDLE="$(echo "$SNAPSHOTS_JSON" | jq -r '.[-1].SnapshotId // ""')"
-  if [ -n "$RECOVERY_SNAPSHOT_HANDLE" ]; then
-    echo "ARGO-UP: found latest Postgres snapshot $RECOVERY_SNAPSHOT_HANDLE - will recover from it."
-  else
-    echo "ARGO-UP: no existing Postgres snapshot found - will bootstrap fresh (initdb)."
-  fi
-
-  # Safety net for an interrupted prior argo-down (the primary enforcement
-  # point for "keep newest 2" is argo-down.sh itself, right after it creates
-  # a new snapshot). Re-queried without the status=completed filter, unlike
-  # the discovery query above - a still-pending snapshot must still count
-  # toward "newest 2" or this miscounts and prunes the wrong one.
-  if ! ALL_SNAPSHOTS_JSON="$(aws ec2 describe-snapshots --region "$LAB_REGION" --owner-ids self \
-    --filters "${SNAPSHOT_TAG_FILTERS[@]}" \
-    --query 'sort_by(Snapshots,&StartTime)' --output json)"; then
-    echo "ARGO-UP: failed to query AWS for Postgres snapshots to prune - aborting." >&2
-    exit 1
-  fi
-  OLD_SNAPSHOTS="$(echo "$ALL_SNAPSHOTS_JSON" | jq -r '.[:-2][].SnapshotId')"
-  if [ -n "$OLD_SNAPSHOTS" ]; then
-    for snapshot_id in $OLD_SNAPSHOTS; do
-      aws ec2 delete-snapshot --region "$LAB_REGION" --snapshot-id "$snapshot_id"
-      echo "ARGO-UP: pruned old snapshot $snapshot_id"
-    done
-  fi
-}
-
-if [ "$PROVIDER" = civo ]; then
-  RECOVERY_SNAPSHOT_HANDLE=""
-else
-  aws_resolve_snapshot
-fi
-
 install_argocd() {
   local antiaffinity_args=()
   if [ "$PROVIDER" != civo ]; then
@@ -419,7 +368,6 @@ aws_install_root_application() {
     --set vpcId="$VPC_ID" \
     --set repoURL="$REPO_URL" \
     --set targetRevision="$TARGET_REVISION" \
-    --set postgres.recoverySnapshotHandle="$RECOVERY_SNAPSHOT_HANDLE" \
     --set postgres.storageSize="$POSTGRES_STORAGE_SIZE" \
     --set karpenter.spot.cpuLimit="$SPOT_KARPENTER_CPU_LIMIT" \
     --set karpenter.onDemand.cpuLimit="$ON_DEMAND_KARPENTER_CPU_LIMIT" \
@@ -499,7 +447,6 @@ civo_install_root_application() {
     --set project="$PROJECT_NAME" \
     --set repoURL="$REPO_URL" \
     --set targetRevision="$TARGET_REVISION" \
-    --set postgres.recoverySnapshotHandle="$RECOVERY_SNAPSHOT_HANDLE" \
     --set postgres.storageSize="$POSTGRES_STORAGE_SIZE" \
     --set envoyGateway.fqdn="$LAB_FQDN" \
     --set envoyGateway.reservedIp="$RESERVED_IP" \
@@ -561,7 +508,7 @@ operation_state() {
 
 # Blocks until root is Synced/Healthy, so a 0 exit means the whole platform
 # (including Postgres) is really ready. Only prints when something changes,
-# to stay readable over a long recovery-from-snapshot bootstrap.
+# to stay readable over a long recovery-from-backup bootstrap.
 # Same ceiling on both targets: root's retry budget alone is ~16 min worst
 # case (ADR 0025), so a shorter civo watch only reports false failures.
 WATCH_SECONDS="${ARGO_UP_WATCH_SECONDS:-2700}"

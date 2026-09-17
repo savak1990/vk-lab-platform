@@ -1,7 +1,7 @@
 ---
 id: "CIVO-185"
 title: "Move the AWS target to the CNPG barman-cloud plugin"
-status: "READY"
+status: "DONE"
 priority: "P2"
 milestone: "M2"
 type: "implementation"
@@ -15,7 +15,7 @@ blocked_by: []
 supersedes: []
 created: "2026-09-06"
 updated: "2026-09-17"
-completed: null
+completed: "2026-09-17"
 ---
 
 # CIVO-185 — Move the AWS target to the CNPG barman-cloud plugin
@@ -196,10 +196,10 @@ state this before reverting. The AWS bucket is additive and can stay.
 - [x] Gates A and B recorded
 - [x] Additive half: exclude list, AWS bucket unit, pod identity unit, shared templates, image pin, neutral helpers
 - [x] Dual cycle on AWS with both mechanisms live
-- [ ] Removal half: snapshot surface removed, goldens regenerated and reviewed
-- [ ] ADR 0033, ADR 0013 status, constitution §4 reference, architecture and AWS design updated
-- [ ] Two AWS cycles and one Civo cycle with data evidence
-- [ ] Index updated; status `DONE`
+- [x] Removal half: snapshot surface removed, goldens regenerated and reviewed
+- [x] ADR 0033, ADR 0013 status, constitution §4 reference, architecture and AWS design updated
+- [x] Two AWS cycles and one Civo cycle with data evidence
+- [x] Index updated; status `DONE`
 
 ## 14. Execution evidence and status history
 
@@ -219,3 +219,14 @@ state this before reverting. The AWS bucket is additive and can stay.
   - First bring-up (`make full-up`, no snapshot, no pointer): `initdb`; the plugin Application synced from the repo templates; `ContinuousArchiving=True`; the `immediate` ScheduledBackup completed; `lab-postgres-20260917T150154Z/base/…/backup.info` `status=DONE`, `version=180004`; pointer published. Rows `dual-1`, `dual-2`, then `FINAL-DUAL` at 15:13:36 UTC.
   - `make down`: WAL switch, plugin Backup `completed` (~20 s, no warning), then the cold volume-snapshot Backup `completed`; no leaked resources. Generation 1 holds a second `status=DONE` base backup ending 15:14:38 UTC.
   - `make up`: recovered from `snap-0209f45a508d7427e` (`bootstrap.recovery.volumeSnapshots`) with the generation-1 pointer set; the Cluster was admitted with `externalClusters: null`. All three rows present. Archiving into generation 2 `lab-postgres-20260917T155045Z`, whose immediate base backup is `status=DONE`; pointer updated; `2 backup generation(s) stored, keeping 2 - nothing to prune`.
+- 2026-09-17 — **Phase C (removal half) built; two AWS cycles on the plugin alone passed** on branch `civo-185-removal` (`TARGET_REVISION=civo-185-removal`).
+  - Code: snapshot manifests, CRDs and class, the Cluster snapshot branch and cold backup block, `postgres.recoverySnapshotHandle`, `storage.snapshotClassName`, the root parameter and `ignoreDifferences` entry, `aws_resolve_snapshot`, `aws_cnpg_backup_and_prune` and their tag filters removed. The `ebs-csi` `csi-snapshotter` sidecar was forced on and would crash-loop without the CRDs, so it was removed too. The render check asserts no aws render carries a snapshot object, an external-snapshotter Application or root snapshot settings; goldens: 2443 lines deleted, 15 added (reworded comments). ADR 0033 written; ADR 0013 superseded.
+  - Before the cycles, PR #15's code ran `make down` on the dual-cycle cluster: plugin backup and snapshot backup both completed.
+  - Cycle 1 `make up`: no snapshot lookup in `argo-up`; `bootstrap.recovery.source: lab-postgres-previous` from generation 2 `lab-postgres-20260917T155045Z`; `dual-1`, `dual-2`, `FINAL-DUAL` present; timeline 2; archiving into generation 3 `lab-postgres-20260917T164746Z` with a `status=DONE` base backup; generation 1 pruned. Rows `row c1` and `FINAL-C1` written at 16:59:15 UTC. `make down`: WAL switch and plugin backup completed, no volume-snapshot step, no leaks; tagged EBS snapshots stayed at 2.
+  - Cycle 2 `make up`: recovered from generation 3 (itself a recovered cluster); all five rows including `FINAL-C1`; timeline 3 with `00000003.history.gz` in generation 4 `lab-postgres-20260917T173429Z`; base backup `status=DONE`, `timeline=3`; generation 2 pruned, two generations kept; EBS snapshots still 2; zero snapshot lines in the `argo-up` log.
+- 2026-09-17 — **Civo regression cycle passed** (`TARGET_REVISION=civo-185-removal`). The Civo project had been fully torn down by a parallel session at 14:01, so this was a fresh start, not a data-continuity test; the Task 6 image guard had no backup to read.
+  - `make state-up` + `make full-up`: `initdb`; Cluster on the pinned `18.4-system-trixie@sha256:42708a75…` (`show server_version_num` = `180004`); the plugin Application used the **civo** sidecar `savak1990/vk-lab-platform/cnpg-barman-sidecar@sha256:25332843…`, proving the per-target image map; `AWS_CONFIG_FILE`/`AWS_REGION`/`AWS_DEFAULT_REGION` still render civo-only; `ContinuousArchiving=True`; immediate plugin Backup `completed`; pointer at `/vk-civo-lab/persistent-civo/postgres-backup/server_name` = `lab-postgres-20260917T193043Z`; no `persistent/backups` state under `vk-civo-lab` (the `PERSISTENT_EXCLUDE` list works).
+  - Rows `row 1`, `row 2`, `FINAL-CIVO` written at 19:40:03 UTC. `make down`: WAL switch and plugin Backup `completed`, no leaks.
+  - The first `make up` wedged on the **Civo control plane**, not on this change: the Gateway API CRDs never reached `Established` (`gateways` had no `NamesAccepted` at all, `gatewayclasses` `Established=False`), so `kubectl get gateways` failed, envoy-gateway crash-looped on `no matches for kind "Gateway"`, cert-manager then crash-looped, and external-secrets/external-dns stayed `ContainerCreating` waiting for certificates. `readyz`/`livez` passed and CNPG's own CRDs established, so the apiextensions controllers were wedged rather than the API server. Deleting the CRDs left them `Terminating` on the `customresourcecleanup.apiextensions.k8s.io` finalizer — the same wedged controller — so an in-place repair was impossible. Recorded for the record; no repository change follows from it.
+  - `make down` + `make up` on a fresh Civo cluster: `bootstrap.recovery` from `lab-postgres-20260917T193043Z`, all three rows present including `FINAL-CIVO`, timeline 2, archiving into `lab-postgres-20260917T202855Z`, pointer updated, two generations in the bucket.
+  - Operational note: `configure_kubeconfig` switches the kubeconfig's `current-context`, and the civo CLI path ignores `KUBECONFIG`, so per-session kubeconfig isolation works on aws only. 78 `kubectl` calls in `scripts/` rely on the current context. A follow-up should make the provider scripts context-explicit.

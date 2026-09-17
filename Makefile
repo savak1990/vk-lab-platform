@@ -137,10 +137,10 @@ endif
 
 ## Destroys Persistent-lifecycle resources. Guarded (CONFIRM_DESTROY must
 ## match PROJECT_NAME), rarely-used - see constitution §17. Also
-## permanently deletes every retained EBS volume the ebs-retain
-## StorageClass created (spec 005) and every retained Postgres EBS
-## snapshot (ADR 0013) - both listed before terragrunt's destroy prompt,
-## since they're Persistent-lifecycle data outside any Terraform state.
+## empties the Postgres backup bucket and permanently deletes every
+## retained EBS volume the ebs-retain StorageClass created (spec 005) and
+## any Postgres EBS snapshot left from before ADR 0033 - listed before the
+## destroy, since they're Persistent-lifecycle data.
 ## Usage: CONFIRM_DESTROY=vk-lab-platform make persistent-down
 persistent-down:
 	./scripts/persistent-down.sh

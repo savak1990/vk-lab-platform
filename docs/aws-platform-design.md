@@ -53,12 +53,14 @@ wildcard, DNS validated, SSM `certificate_arn`).
 
 ### Persistent (`terraform/live/persistent/`)
 
-`vpc` (two public subnets, no NAT, ADR 0020) and `secrets` (decrypts
+`vpc` (two public subnets, no NAT, ADR 0020), `secrets` (decrypts
 `secrets/<project>/*.enc`, writes SSM `SecureString` parameters for the
 Postgres app password and Grafana admin password, plain `String` for the
-Argo admin bcrypt). `scripts/persistent-down.sh` refuses while `cluster/`
-state is non-empty, then also deletes retained EBS volumes and Postgres
-snapshots by tag.
+Argo admin bcrypt) and `backups` (the Postgres backup bucket and its SSM
+bucket name, ADR 0033). `scripts/persistent-down.sh` refuses while
+`cluster/` state is non-empty, empties the backup bucket, then also deletes
+retained EBS volumes and any Postgres EBS snapshots left from before ADR
+0033 by tag.
 
 ### Cluster (`terraform/live/cluster/`)
 
@@ -76,8 +78,9 @@ by tag.
 ### Argo (`scripts/argo-up.sh`, `scripts/argo-down.sh`)
 
 See `docs/argocd-design.md`. Inputs come from one batched SSM read
-(certificate ARN, VPC id, node subnet id, FQDN, Argo admin bcrypt) and a
-Terragrunt output (`cluster_name`).
+(certificate ARN, VPC id, node subnet id, FQDN, Argo admin bcrypt, Postgres
+backup bucket), the previous backup generation from SSM, and a Terragrunt
+output (`cluster_name`).
 
 ## 3. Runtime architecture
 
@@ -94,9 +97,12 @@ avoid spot via anti-affinity (ADR 0019); Postgres pins to
 `workload-type: on-demand`.
 
 Storage: EBS CSI via Argo (ADR 0008), StorageClasses `ebs-delete` (used) and
-`ebs-retain` (reserved), `VolumeSnapshotClass ebs-postgres-snapshot` with
-`Retain`. Postgres persistence is a snapshot taken at `argo-down` and
-restored at `argo-up` (ADR 0013).
+`ebs-retain` (reserved). Postgres persistence is the CNPG barman-cloud
+plugin (ADR 0033): WAL archiving and scheduled base backups to
+`<project>-postgres-backups`, credentials from the
+`postgres-backup-pod-identity` association on `cnpg-system/lab-postgres`.
+Each `argo-up` mints a new `serverName` and recovers from the previous one
+recorded at `/<project>/persistent/postgres-backup/server_name`.
 
 Secrets: ESO `ClusterSecretStore aws-parameter-store` with no `auth` block
 (controller Pod Identity), two `ExternalSecret`s (Postgres app password,
@@ -121,9 +127,9 @@ account-global; SSM paths `/<project>/<layer>/<unit>/<key>`.
 ## 5. Teardown ordering
 
 `make down` = `argo-down` then `cluster-down`. `argo-down`: prove the
-cluster exists via the EKS API → CNPG `Backup` (volumeSnapshot) and wait →
-prune old snapshots → disable auto-sync on all Applications → delete
-HTTPRoutes → poll Route 53 until ExternalDNS records are gone → delete the
+cluster exists via the EKS API → disable auto-sync on all Applications →
+best-effort CNPG `Backup` (plugin) after a WAL switch, waited for but never
+blocking → delete HTTPRoutes → poll Route 53 until ExternalDNS records are gone → delete the
 Gateway → poll until the LoadBalancer Service is gone → foreground-cascade
 delete the root Application (reverse waves) → `helm uninstall` root and
 Argo CD. Then `cluster-down` destroys Terraform and sweeps leaks.

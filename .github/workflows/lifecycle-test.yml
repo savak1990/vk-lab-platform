@@ -39,7 +39,7 @@ env:
   # as test/test rather than digging a generated password out of a torn-down
   # cluster), and a prerequisite if this workflow later grows a mode=resilience
   # recreate cycle (spec 020) - a fresh runner regenerating a random
-  # postgres-app-password would desync from a snapshot-recovered database
+  # postgres-app-password would desync from a backup-recovered database
   # (generate-secrets.sh's own warning, ADR 0014). Accepted exposure: ArgoCD/
   # Grafana admin password is the literal string "test", reachable over public
   # HTTPS at argo.<subdomain>.<root-domain> for this run's ~1.5h - see ADR 0026.
@@ -185,7 +185,7 @@ jobs:
 
       # Default schema set doesn't recognize this platform's CRDs
       # (Karpenter, Envoy Gateway, Gateway API, cert-manager,
-      # external-secrets, Prometheus Operator, VolumeSnapshotClass) -
+      # external-secrets, Prometheus Operator, CloudNativePG, barman-cloud) -
       # CRDs-catalog covers those; -ignore-missing-schemas is a last-resort
       # net for anything still unrecognized, not a substitute for it.
       - name: kubeconform
