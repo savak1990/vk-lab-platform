@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted. Supersedes ADR 0031.
+Accepted. Supersedes ADR 0031. Extended to the AWS target by ADR 0033.
 
 ## Context
 

@@ -544,13 +544,14 @@ The three targets diverge in kind, not just in values, on several points:
   ADR 0027). `local` entry points are `make minikube-up` and
   `make kind-up` (spec 022, not yet implemented); there is no unified
   `make local-up` wrapper.
-- **Persistence.** `aws`: Postgres data is Persistent-lifecycle,
-  surviving `make down` (§6, spec 005), currently via CNPG
-  `VolumeSnapshot` (ADR 0013). `civo`: Postgres persists through
-  continuous physical backups to a per-project S3 bucket, written by the
-  CloudNativePG barman-cloud plugin (ADR 0032, which supersedes ADR 0031;
-  Civo's CSI driver has no snapshot capability). Point-in-time recovery is
-  available on both targets. Teardown never blocks on a backup result and
+- **Persistence.** `aws` and `civo`: Postgres data is
+  Persistent-lifecycle, surviving `make down` (§6, spec 005), through
+  continuous physical backups to a per-project S3 bucket written by the
+  CloudNativePG barman-cloud plugin (ADR 0032 for Civo, ADR 0033 for AWS,
+  which supersedes ADR 0013's `VolumeSnapshot` mechanism). Only the
+  identity differs: EKS Pod Identity on `aws`, IAM Roles Anywhere on
+  `civo`. Each bring-up recovers from the previous generation named in
+  SSM. Point-in-time recovery is available on both targets. Teardown never blocks on a backup result and
   never asks for a confirmation: WAL archiving has already made every
   committed row durable, so the pre-teardown base backup is best-effort —
   it warns loudly on failure and the teardown proceeds. The Civo
