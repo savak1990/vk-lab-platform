@@ -54,7 +54,8 @@ BACKUP_SETS=(
 )
 render_and_normalize "$REPO_ROOT/gitops" "$WORK_DIR/platform" aws
 render_and_normalize "$REPO_ROOT/gitops" "$WORK_DIR/platform-recovery" aws \
-  --set postgres.recoverySnapshotHandle=snap-x "${BACKUP_SETS[@]}"
+  --set postgres.recoverySnapshotHandle=snap-x "${BACKUP_SETS[@]}" \
+  --set postgres.backup.recoverServerName=render-check-previous
 render_and_normalize "$REPO_ROOT/gitops" "$WORK_DIR/platform-backup" aws "${BACKUP_SETS[@]}"
 render_and_normalize "$REPO_ROOT/gitops" "$WORK_DIR/platform-backup-recovery" aws \
   "${BACKUP_SETS[@]}" --set postgres.backup.recoverServerName=render-check-previous

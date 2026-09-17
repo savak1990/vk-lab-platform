@@ -51,7 +51,7 @@ spec:
       database: vkdb
       owner: vkdb
     {{- end }}
-  {{- if and .Values.postgres.backup.enabled .Values.postgres.backup.recoverServerName }}
+  {{- if and .Values.postgres.backup.enabled .Values.postgres.backup.recoverServerName (not (and (eq .Values.target "aws") .Values.postgres.recoverySnapshotHandle)) }}
   externalClusters:
     - name: lab-postgres-previous
       plugin:
