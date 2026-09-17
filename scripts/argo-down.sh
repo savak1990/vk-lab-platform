@@ -291,6 +291,15 @@ kubectl get jobs -A -o json 2>/dev/null \
         -p '{"metadata":{"finalizers":[]}}' >/dev/null 2>&1 || true
     done
 
+# Recorded before the cascade starts: once the PVC is gone the CSI driver
+# still needs time to delete the backing Civo volume, and the PV itself is
+# the only object left to poll for that during the wait below.
+PRE_CASCADE_PVS=""
+if [ "$PROVIDER" = civo ]; then
+  PRE_CASCADE_PVS="$(kubectl get pv -o json 2>/dev/null \
+    | jq -r '.items[]? | select((.spec.claimRef // {}).namespace == "cnpg-system" or (.spec.claimRef // {}).namespace == "observability") | .metadata.name' 2>/dev/null || true)"
+fi
+
 if kubectl get application root -n argocd >/dev/null 2>&1; then
   echo "ARGO-DOWN: deleting root Application (cascade=foreground, waits for Karpenter/CNPG/etc. to fully drain)..."
   kubectl delete application root -n argocd --cascade=foreground --wait --timeout="$TIMEOUT" &
@@ -311,16 +320,32 @@ fi
 # and a Civo volume that outlives the cluster keeps billing - cluster-down
 # treats one as a cascade bug and fails, so confirm it here instead.
 if [ "$PROVIDER" = civo ]; then
-  if [ -n "$(kubectl get pvc -n cnpg-system -o name 2>/dev/null)" ]; then
-    echo "ARGO-DOWN: waiting for cnpg-system PVCs to finish deleting..."
-    if ! kubectl wait --for=delete pvc -n cnpg-system --all --timeout="$PVC_WAIT_TIMEOUT"; then
-      echo "ARGO-DOWN: WARNING - cnpg-system PVCs still present after ${PVC_WAIT_TIMEOUT}; the Civo volume may" >&2
-      echo "ARGO-DOWN: outlive the cluster. cluster-down's dangling-volume sweep will catch and delete it, and" >&2
-      echo "ARGO-DOWN: will fail the run so this surfaces rather than being absorbed." >&2
+  for pvc_ns in cnpg-system observability; do
+    if [ -n "$(kubectl get pvc -n "$pvc_ns" -o name 2>/dev/null)" ]; then
+      echo "ARGO-DOWN: waiting for $pvc_ns PVCs to finish deleting..."
+      if ! kubectl wait --for=delete pvc -n "$pvc_ns" --all --timeout="$PVC_WAIT_TIMEOUT"; then
+        echo "ARGO-DOWN: WARNING - $pvc_ns PVCs still present after ${PVC_WAIT_TIMEOUT}; the Civo volume may" >&2
+        echo "ARGO-DOWN: outlive the cluster. cluster-down's dangling-volume sweep will catch and delete it, and" >&2
+        echo "ARGO-DOWN: will fail the run so this surfaces rather than being absorbed." >&2
+      fi
+    else
+      echo "ARGO-DOWN: no $pvc_ns PVCs present - nothing to wait on."
     fi
-  else
-    echo "ARGO-DOWN: no cnpg-system PVCs present - nothing to wait on."
-  fi
+  done
+
+  # The PVC is only the Kubernetes-side handle; the CSI driver deletes the
+  # backing Civo volume afterward. Wait on each recorded PV directly so a
+  # slow delete surfaces here instead of as a false leak in cluster-down.
+  for pv in $PRE_CASCADE_PVS; do
+    if kubectl get pv "$pv" >/dev/null 2>&1; then
+      echo "ARGO-DOWN: waiting for PV $pv (civo volume) to finish deleting..."
+      if ! kubectl wait --for=delete "pv/$pv" --timeout="$PVC_WAIT_TIMEOUT"; then
+        echo "ARGO-DOWN: WARNING - PV $pv still present after ${PVC_WAIT_TIMEOUT}; the Civo volume may" >&2
+        echo "ARGO-DOWN: outlive the cluster. cluster-down's dangling-volume sweep will catch and delete it, and" >&2
+        echo "ARGO-DOWN: will fail the run so this surfaces rather than being absorbed." >&2
+      fi
+    fi
+  done
 fi
 
 # Final step: remove Argo CD itself. By now everything it managed is

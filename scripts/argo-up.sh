@@ -215,21 +215,25 @@ civo_wait_for_lb_ip() {
 civo_wait_for_dns() {
   local watch_seconds="${CIVO_ARGO_UP_DNS_WATCH_SECONDS:-60}"
   local poll_interval="${ARGO_UP_POLL_INTERVAL:-5}"
-  local elapsed=0 svc_ip="" dig_ip=""
+  local elapsed=0 svc_ip="" dig_ip="" all_resolved="" i
   while [ "$elapsed" -lt "$watch_seconds" ]; do
     svc_ip="$(kubectl get svc -n envoy -l gateway.envoyproxy.io/owning-gateway-name=platform-gateway \
       -o jsonpath='{.items[0].status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)"
     [ -z "$svc_ip" ] && svc_ip="$RESERVED_IP"
-    dig_ip="$(dig +short "argo.$LAB_FQDN" 2>/dev/null | tail -n1 || true)"
-    if [ -n "$dig_ip" ] && [ -n "$svc_ip" ] && [ "$dig_ip" = "$svc_ip" ]; then
-      echo "ARGO-UP: DNS resolved (argo.<fqdn> -> matches Envoy Service/reserved IP)."
+    all_resolved=true
+    for i in "${!DNS_HOST_FQDNS[@]}"; do
+      dig_ip="$(dig +short "${DNS_HOST_FQDNS[$i]}" 2>/dev/null | tail -n1 || true)"
+      { [ -n "$dig_ip" ] && [ -n "$svc_ip" ] && [ "$dig_ip" = "$svc_ip" ]; } || all_resolved=false
+    done
+    if [ "$all_resolved" = true ]; then
+      echo "ARGO-UP: DNS resolved (${DNS_HOST_LABELS[*]} -> match Envoy Service/reserved IP)."
       echo "ARGO-UP: root Synced/Healthy and DNS resolved - platform ready."
       return 0
     fi
     sleep "$poll_interval"
     elapsed=$((elapsed + poll_interval))
   done
-  echo "ARGO-UP: DNS not resolved for argo.<fqdn> after ${watch_seconds}s - non-fatal, but check ExternalDNS's Application health and Route 53 directly before assuming the platform is reachable." >&2
+  echo "ARGO-UP: DNS not resolved for ${DNS_HOST_LABELS[*]} after ${watch_seconds}s - non-fatal, but check ExternalDNS's Application health and Route 53 directly before assuming the platform is reachable." >&2
   echo "ARGO-UP: root Synced/Healthy - platform ready (DNS not yet resolved within the watch window)."
   return 0
 }

@@ -23,6 +23,47 @@ civo-volume
 {{- end -}}
 
 {{/*
+spotAvoidance gates the observability anti-affinity blocks - meaningful
+only where Karpenter's spot/on-demand distinction exists (aws).
+*/}}
+{{- define "platform.spotAvoidance" -}}
+{{- and (eq .Values.target "aws") .Values.capacity.spotAvoidance -}}
+{{- end -}}
+
+{{/*
+Whether metrics-server needs --kubelet-insecure-tls. The civo value is
+unverified until measured on a live cluster.
+*/}}
+{{- define "platform.kubeletInsecureTls" -}}
+{{- if eq .Values.target "civo" -}}false{{- else -}}{{ .Values.observability.kubeletInsecureTls }}{{- end -}}
+{{- end -}}
+
+{{/*
+Whether metrics-server is deployed. The civo value is unverified until
+measured on a live cluster.
+*/}}
+{{- define "platform.metricsServerEnabled" -}}
+{{- if eq .Values.target "civo" -}}true{{- else -}}{{ .Values.observability.metricsServer.enabled }}{{- end -}}
+{{- end -}}
+
+{{/*
+The E2E suite's RBAC subject. aws maps eks-test-identity to a Group via its
+EKS access entry; civo has no IAM, so the suite uses a ServiceAccount token.
+A ServiceAccount subject is in the core group and must not set apiGroup.
+*/}}
+{{- define "platform.e2eTestSubject" -}}
+{{- if eq .Values.target "civo" -}}
+- kind: ServiceAccount
+  name: e2e-test
+  namespace: e2e
+{{- else -}}
+- kind: Group
+  name: e2e-test-readonly
+  apiGroup: rbac.authorization.k8s.io
+{{- end -}}
+{{- end -}}
+
+{{/*
 Renders the Roles Anywhere credential-helper sidecar container only - the
 caller owns the ra-cert volume and the main container's env vars, since a
 named template can't reach a sibling container in the same Pod spec.

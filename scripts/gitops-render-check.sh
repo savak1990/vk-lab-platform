@@ -53,9 +53,6 @@ render_and_normalize "$REPO_ROOT/gitops/bootstrap" "$WORK_DIR/bootstrap" aws
 # civo/local have no golden baseline to diff against, so they're checked
 # structurally instead: the M1 baseline must appear, and nothing aws-only
 # may leak through by accident.
-# BackendTrafficPolicy and the grafana HTTPRoute/RoleBinding stay aws-only
-# (not required, not forbidden here) - they target/live in the observability
-# namespace, which only kube-prometheus-stack's Application creates.
 REQUIRED_OBJECTS="Application__argocd__envoy-gateway Application__argocd__cnpg-operator \
 Application__argocd__external-secrets PriorityClass__cluster__postgres-critical \
 ClusterRole__cluster__e2e-test-readonly HTTPRoute__argocd__argocd \
@@ -72,7 +69,14 @@ Cluster__cnpg-system__lab-postgres Certificate__cnpg-system__pgbackup \
 ConfigMap__cnpg-system__pgbackup-aws-config \
 ObjectStore__cnpg-system__lab-postgres-backups \
 ScheduledBackup__cnpg-system__lab-postgres \
-Application__argocd__barman-cloud-plugin"
+Application__argocd__barman-cloud-plugin \
+Application__argocd__kube-prometheus-stack Application__argocd__loki \
+Application__argocd__alloy HTTPRoute__observability__grafana \
+ExternalSecret__observability__grafana-admin-credentials \
+BackendTrafficPolicy__observability__grafana-traffic-policy \
+RoleBinding__observability__e2e-test-readonly \
+PodMonitor__cnpg-system__cnpg-postgres ServiceMonitor__argocd__argocd \
+Namespace__cluster__e2e ServiceAccount__e2e__e2e-test"
 FORBIDDEN_KINDS_LOCAL="StorageClass VolumeSnapshotClass VolumeSnapshotContent VolumeSnapshot \
 ClusterSecretStore ExternalSecret Cluster NodePool EC2NodeClass EnvoyProxy Gateway GatewayClass \
 ObjectStore ScheduledBackup"
@@ -82,19 +86,24 @@ FORBIDDEN_APPLICATIONS_LOCAL="aws-load-balancer-controller cert-manager ebs-csi-
 kube-prometheus-stack loki metrics-server alloy external-snapshotter external-snapshotter-crds \
 external-dns barman-cloud-plugin"
 FORBIDDEN_APPLICATIONS_CIVO="aws-load-balancer-controller ebs-csi-driver karpenter \
-kube-prometheus-stack loki metrics-server alloy external-snapshotter external-snapshotter-crds"
-FORBIDDEN_OBJECTS="BackendTrafficPolicy__observability__grafana-traffic-policy \
+external-snapshotter external-snapshotter-crds"
+FORBIDDEN_OBJECTS_LOCAL="BackendTrafficPolicy__observability__grafana-traffic-policy \
 HTTPRoute__observability__grafana RoleBinding__observability__e2e-test-readonly \
-ExternalSecret__observability__grafana-admin-credentials"
+ExternalSecret__observability__grafana-admin-credentials \
+Namespace__cluster__e2e ServiceAccount__e2e__e2e-test"
+FORBIDDEN_OBJECTS_CIVO="ServiceMonitor__kube-system__karpenter \
+ConfigMap__observability__dashboard-karpenter-capacity"
 
 verify_object_set() {
   local dir="$1" target="$2" obj name kind
   local required="$REQUIRED_OBJECTS" forbidden_kinds="$FORBIDDEN_KINDS_LOCAL" forbidden_apps="$FORBIDDEN_APPLICATIONS_LOCAL"
+  local forbidden_objects="$FORBIDDEN_OBJECTS_LOCAL"
   case "$target" in
     civo)
       required="$REQUIRED_OBJECTS $REQUIRED_OBJECTS_CIVO"
       forbidden_kinds="$FORBIDDEN_KINDS_CIVO"
       forbidden_apps="$FORBIDDEN_APPLICATIONS_CIVO"
+      forbidden_objects="$FORBIDDEN_OBJECTS_CIVO"
       ;;
   esac
   for obj in $required; do
@@ -115,12 +124,31 @@ verify_object_set() {
       return 1
     fi
   done
-  for obj in $FORBIDDEN_OBJECTS; do
+  for obj in $forbidden_objects; do
     if [ -e "$dir/$obj.yaml" ]; then
-      echo "GITOPS-RENDER-CHECK: target=$target unexpectedly renders $obj (depends on the aws-only observability namespace)" >&2
+      echo "GITOPS-RENDER-CHECK: target=$target unexpectedly renders $obj (is not part of this target's baseline)" >&2
       return 1
     fi
   done
+  if [ "$target" = civo ]; then
+    local hits
+    # grep -q exits as soon as it finds a match, killing the upstream grep with
+    # SIGPIPE; under pipefail that turns a real match into a false "no match".
+    # Capture matched lines instead so the upstream always runs to completion.
+    hits="$(grep -rhEv '^[[:space:]]*#' "$dir" | grep -e 'ebs-delete' -e 'karpenter.sh/capacity-type' || true)"
+    if [ -n "$hits" ]; then
+      echo "GITOPS-RENDER-CHECK: target=$target renders an aws-only storage class or spot affinity" >&2
+      return 1
+    fi
+    local karpenter_rule="$dir/PrometheusRule__observability__observability-alerts.yaml"
+    if [ -e "$karpenter_rule" ]; then
+      hits="$(grep -Ev '^[[:space:]]*#' "$karpenter_rule" | grep 'Karpenter' || true)"
+      if [ -n "$hits" ]; then
+        echo "GITOPS-RENDER-CHECK: target=$target renders an aws-only Karpenter alert" >&2
+        return 1
+      fi
+    fi
+  fi
 }
 
 CIVO_LOCAL_OK=true

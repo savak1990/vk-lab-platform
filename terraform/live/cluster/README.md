@@ -10,11 +10,11 @@ Units:
   (single `t3.medium`), EKS-managed add-ons (`vpc-cni`, `kube-proxy`,
   `coredns`, `eks-pod-identity-agent`), and the IAM roles the cluster/node
   group need. Runs in the platform-owned VPC (`terraform/live/persistent/vpc`,
-  spec 020), using its public subnets. See `specs/003-network-and-eks/spec.md`.
+  spec 020), using its public subnets. See `specs/aws/003-D-network-and-eks/spec.md`.
 - `karpenter/` — the Karpenter controller's Pod Identity role, the node
   IAM role/EKS access entry Karpenter-provisioned instances need to join,
   and discovery tags on the system node group's subnet/security group. See
-  `specs/006-karpenter/spec.md`.
+  `specs/aws/006-D-karpenter/spec.md`.
 - `*-pod-identity/` — one IAM role plus EKS Pod Identity association per
   in-cluster AWS consumer: `aws-lb-controller`, `ebs-csi`, `external-dns`,
   `external-secrets`, and `postgres-backup` (the CNPG instance pods'

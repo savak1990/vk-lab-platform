@@ -1,0 +1,57 @@
+{{- if and (ne .Values.target "local") (eq (include "platform.metricsServerEnabled" .) "true") }}
+# Serves metrics.k8s.io (kubectl top / HPA) - not bundled in kube-prometheus-
+# stack, which only brings kube-state-metrics + node-exporter. Argo-managed
+# like the rest of the platform's controllers, not a Terraform-provisioned addon.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: metrics-server
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://kubernetes-sigs.github.io/metrics-server
+    chart: metrics-server
+    targetRevision: 3.14.0
+    helm:
+      values: |
+        {{- if eq (include "platform.spotAvoidance" .) "true" }}
+        # Avoids spot for consistency with the rest of the observability
+        # stack's placement policy, though metrics-server itself holds no
+        # state and wouldn't be harmed by a spot interruption.
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+                - matchExpressions:
+                    - key: karpenter.sh/capacity-type
+                      operator: NotIn
+                      values: ["spot"]
+        {{- end }}
+        {{- if eq (include "platform.kubeletInsecureTls" .) "true" }}
+        # EKS's kubelet serving certs are self-signed per node rather than
+        # signed by the cluster CA - without this, `kubectl top` fails with
+        # an x509 error. Accepted lab-scale trade-off, not a security issue.
+        args:
+          - --kubelet-insecure-tls
+        {{- end }}
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+          limits:
+            memory: 64Mi
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+{{- end }}

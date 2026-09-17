@@ -1,10 +1,23 @@
-# Backs eks-test-identity's EKS access entry (terraform/modules/eks/main.tf) -
-# the E2E suite (tests/e2e) authenticates as this group, never as
-# eks-access-identity's cluster-admin. One shared ClusterRole bound via a
-# RoleBinding per namespace, rather than a hand-tuned role per namespace -
-# a namespace grants nothing for a resource kind it has none of, so the
-# minor over-grant (e.g. "pods" rules bound in the argocd namespace, which
-# has no pods this suite reads) costs nothing real.
+# Read-only access for the E2E suite (tests/e2e), never cluster-admin. One
+# ClusterRole bound per namespace: a namespace grants nothing for a kind it
+# has none of, so the minor over-grant costs nothing real.
+{{- if eq .Values.target "civo" }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: e2e
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: e2e-test
+  namespace: e2e
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+---
+{{- end }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -41,17 +54,15 @@ metadata:
     argocd.argoproj.io/sync-wave: "2"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 subjects:
-  - kind: Group
-    name: e2e-test-readonly
-    apiGroup: rbac.authorization.k8s.io
+  {{- include "platform.e2eTestSubject" . | nindent 2 }}
 roleRef:
   kind: ClusterRole
   name: e2e-test-readonly
   apiGroup: rbac.authorization.k8s.io
 ---
-{{- if eq .Values.target "aws" }}
+{{- if ne .Values.target "local" }}
 # Stays gated: the observability namespace only exists once
-# kube-prometheus-stack's Application creates it (aws-only until CIVO-160).
+# kube-prometheus-stack's Application creates it.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
@@ -61,9 +72,7 @@ metadata:
     argocd.argoproj.io/sync-wave: "2"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 subjects:
-  - kind: Group
-    name: e2e-test-readonly
-    apiGroup: rbac.authorization.k8s.io
+  {{- include "platform.e2eTestSubject" . | nindent 2 }}
 roleRef:
   kind: ClusterRole
   name: e2e-test-readonly
@@ -79,9 +88,7 @@ metadata:
     argocd.argoproj.io/sync-wave: "2"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 subjects:
-  - kind: Group
-    name: e2e-test-readonly
-    apiGroup: rbac.authorization.k8s.io
+  {{- include "platform.e2eTestSubject" . | nindent 2 }}
 roleRef:
   kind: ClusterRole
   name: e2e-test-readonly

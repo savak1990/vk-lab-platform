@@ -3,7 +3,7 @@
 Baseline: branch `main`, commit `cfbb59bd340b6356bad3fb2493b41fa3a337efe5`.
 Scope: factual drift between the architecture document (and adjacent
 `README.md`/`CLAUDE.md` lines) and what exists on disk. Fixes are collected
-as a documentation pass inside `specs/civo/015-governance-adrs-constitution`
+as a documentation pass inside `specs/civo/015-D-governance-adrs-constitution`
 so that the Civo amendments land on an accurate base.
 
 ## Stale or inaccurate statements

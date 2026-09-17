@@ -1,0 +1,190 @@
+{{- if ne .Values.target "local" }}
+# Metrics backbone. Tracing (Tempo/OTel Collector) is deliberately not
+# deployed - no trace producer exists in this platform-only repo yet.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kube-prometheus-stack
+  namespace: argocd
+  annotations:
+    # Installs the monitoring.coreos.com CRDs (ServiceMonitor/PodMonitor/
+    # PrometheusRule) that monitors.yaml/alerts.yaml depend on - those sync
+    # later (wave 2/3) specifically so the CRDs already exist by then.
+    argocd.argoproj.io/sync-wave: "1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://prometheus-community.github.io/helm-charts
+    chart: kube-prometheus-stack
+    targetRevision: 88.5.4
+    helm:
+      values: |
+        prometheus:
+          prometheusSpec:
+            # Nil-uses-Helm-values would otherwise require every ServiceMonitor/
+            # PodMonitor/PrometheusRule in the cluster to carry this chart's
+            # own release label - false makes Prometheus select cluster-wide
+            # instead, since monitors.yaml's objects live in other components'
+            # namespaces (kube-system, cnpg-system, argocd), not this one.
+            serviceMonitorSelectorNilUsesHelmValues: false
+            podMonitorSelectorNilUsesHelmValues: false
+            ruleSelectorNilUsesHelmValues: false
+            retention: 7d
+            retentionSize: "8GB"
+            # Chart default is {} (Retain); without this, `make down` orphans
+            # the bound volume every cycle, since the PVC survives the
+            # StatefulSet's deletion and never triggers the Delete reclaim.
+            persistentVolumeClaimRetentionPolicy:
+              whenDeleted: Delete
+              whenScaled: Delete
+            # Request sized from measured usage (~665Mi over 45m); no CPU
+            # limit since compaction bursts shouldn't be throttled. Memory
+            # limit leaves headroom for TSDB growth toward the 7d retention.
+            resources:
+              requests:
+                cpu: 100m
+                memory: 768Mi
+              limits:
+                memory: 1536Mi
+            {{- if eq (include "platform.spotAvoidance" .) "true" }}
+            # Avoids spot only (AZ-pinned PVC + spot interruption risk) -
+            # not hard-pinned to the system node, so it can also land on
+            # the on-demand pool if the system node has no room.
+            affinity:
+              nodeAffinity:
+                requiredDuringSchedulingIgnoredDuringExecution:
+                  nodeSelectorTerms:
+                    - matchExpressions:
+                        - key: karpenter.sh/capacity-type
+                          operator: NotIn
+                          values: ["spot"]
+            {{- end }}
+            storageSpec:
+              volumeClaimTemplate:
+                spec:
+                  storageClassName: {{ include "platform.storageClassName" . }}
+                  accessModes: ["ReadWriteOnce"]
+                  resources:
+                    requests:
+                      storage: 10Gi
+        alertmanager:
+          alertmanagerSpec:
+            # Same orphaned-volume reasoning as prometheusSpec above.
+            persistentVolumeClaimRetentionPolicy:
+              whenDeleted: Delete
+              whenScaled: Delete
+            resources:
+              requests:
+                cpu: 10m
+                memory: 32Mi
+              limits:
+                memory: 64Mi
+            {{- if eq (include "platform.spotAvoidance" .) "true" }}
+            # Same spot-avoidance as Prometheus above.
+            affinity:
+              nodeAffinity:
+                requiredDuringSchedulingIgnoredDuringExecution:
+                  nodeSelectorTerms:
+                    - matchExpressions:
+                        - key: karpenter.sh/capacity-type
+                          operator: NotIn
+                          values: ["spot"]
+            {{- end }}
+            storage:
+              volumeClaimTemplate:
+                spec:
+                  storageClassName: {{ include "platform.storageClassName" . }}
+                  accessModes: ["ReadWriteOnce"]
+                  resources:
+                    requests:
+                      storage: 1Gi
+        grafana:
+          persistence:
+            enabled: true
+            storageClassName: {{ include "platform.storageClassName" . }}
+            size: 1Gi
+          resources:
+            requests:
+              cpu: 50m
+              memory: 400Mi
+            limits:
+              memory: 512Mi
+          # Covers both dashboard/datasource sidecar containers (shared key) -
+          # sized for the ConfigMap sync, not the one-time startup burst.
+          sidecar:
+            resources:
+              requests:
+                cpu: 20m
+                memory: 96Mi
+              limits:
+                memory: 160Mi
+          {{- if eq (include "platform.spotAvoidance" .) "true" }}
+          # Same spot-avoidance as Prometheus/Alertmanager above.
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - key: karpenter.sh/capacity-type
+                        operator: NotIn
+                        values: ["spot"]
+          {{- end }}
+          # Fixed admin credentials from grafana-admin-secret.yaml's ExternalSecret,
+          # instead of the chart's per-install random password - otherwise a
+          # fresh password is generated on every disposable-lifecycle recreate.
+          admin:
+            existingSecret: grafana-admin-credentials
+            userKey: admin-user
+            passwordKey: admin-password
+          # sidecar.dashboards/datasources are already enabled by chart default
+          # (searchNamespace: ALL), so dashboards.yaml's ConfigMaps need no
+          # extra wiring here.
+          additionalDataSources:
+            - name: Loki
+              type: loki
+              access: proxy
+              url: http://loki.observability.svc.cluster.local:3100
+        # Neither managed control plane exposes these: EKS hides them, k3s
+        # binds them to localhost off-pool.
+        kubeControllerManager:
+          enabled: false
+        kubeScheduler:
+          enabled: false
+        kubeEtcd:
+          enabled: false
+        kubeProxy:
+          enabled: false
+        prometheusOperator:
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              memory: 64Mi
+        kube-state-metrics:
+          resources:
+            requests:
+              cpu: 5m
+              memory: 32Mi
+            limits:
+              memory: 64Mi
+        prometheus-node-exporter:
+          resources:
+            requests:
+              cpu: 5m
+              memory: 16Mi
+            limits:
+              memory: 32Mi
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: observability
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+{{- end }}

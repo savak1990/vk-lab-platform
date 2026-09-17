@@ -102,4 +102,4 @@ The intended shape, used by the Civo target:
 4. Give `argo-up.sh`/`argo-down.sh` a provider branch for kubeconfig, input discovery, persistence, and the LB/DNS teardown gates.
 5. Keep the root Application, finalizers, waves, and SSA conventions identical.
 
-Details: `docs/civo-high-level-design.md` and `specs/civo/050-gitops-civo-target-baseline`.
+Details: `docs/civo-high-level-design.md` and `specs/civo/050-D-gitops-civo-target-baseline`.

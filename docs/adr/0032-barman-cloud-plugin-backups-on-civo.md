@@ -32,7 +32,7 @@ rotates it. The sidecar image is upstream's plus one binary,
 inherited unchanged.
 
 This was verified on a live Civo cluster before this ADR was written. The
-evidence is recorded in `specs/civo/120-cnpg-on-civo-persistence/spec.md`
+evidence is recorded in `specs/civo/120-D-cnpg-on-civo-persistence/spec.md`
 §14, including a deliberately short certificate rotating every five
 minutes: 12 rotations, 0 archiving failures, with WAL segments written
 after the `notAfter` of the certificate present at pod start.

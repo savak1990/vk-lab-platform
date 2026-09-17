@@ -20,6 +20,13 @@ storage:
 capacity:
   spotAvoidance: true
 
+# aws's current defaults; civo overrides both through the
+# platform.kubeletInsecureTls/platform.metricsServerEnabled helpers instead.
+observability:
+  kubeletInsecureTls: true
+  metricsServer:
+    enabled: true
+
 # podIdentity (EKS Pod Identity) is aws-only; other targets substitute
 # their own workload-identity mechanism.
 awsIdentity:

@@ -147,6 +147,6 @@ shutdown sequence.
 
 ## Next step
 
-Read `docs/architecture.md` and `specs/000-constitution/spec.md` before
+Read `docs/architecture.md` and `specs/shared/000-D-constitution/spec.md` before
 writing a new spec under `specs/`. See [`specs/`](specs/) for what's
 already implemented (001–016, 024) and what's next.

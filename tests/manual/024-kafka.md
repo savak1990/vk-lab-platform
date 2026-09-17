@@ -2,13 +2,13 @@
 
 > **Status: Deferred (2026-08-24).** Kafka/Strimzi was removed from the
 > running platform — see ADR 0017. This walkthrough applies again once
-> `specs/024-kafka` is re-implemented.
+> `specs/aws/025-Z-kafka` is re-implemented.
 
 CLI walkthrough proving the destroy/recreate persistence guarantee (spec
 024, Requirement 1) and the deletion-ordering guarantee (Requirement 2).
 ~45–60 min, needs `aws`/`kubectl`/`terragrunt` CLIs. **Run Task B0 (a
 throwaway-volume verification, see `docs/adr/0016-kafka-terraform-owned-volumes.md`
-and `specs/024-kafka/spec.md`) before trusting this against real data** —
+and `specs/aws/025-Z-kafka/spec.md`) before trusting this against real data** —
 the PVC naming pattern (`data-lab-kafka-broker-<i>`) baked into
 `gitops/templates/platform/aws/kafka/volumes.yaml` is Strimzi's documented
 convention, not yet confirmed against a live cluster in this repo.

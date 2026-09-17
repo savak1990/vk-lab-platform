@@ -23,7 +23,7 @@ pre-existing-app-secret wiring exists only for `bootstrap.initdb`, not
 Disposable-lifecycle and gets wiped every cycle, this mismatch recurs on
 every recovery, not just the first one.
 
-This falsifies `specs/007-postgres/spec.md` line 65's claim that CNPG
+This falsifies `specs/aws/007-D-postgres/spec.md` line 65's claim that CNPG
 "reconciles the `lab-postgres-app` Secret's password into the live role on
 every secret-version change... so [it] already holds without pinning" — that
 claim predates the recovery path this repo now has.
@@ -97,7 +97,7 @@ them by extending the `ExternalSecret`'s template.
 
 ## Consequences
 
-- `specs/007-postgres/spec.md` line 65 needed a correction — its "no pinning
+- `specs/aws/007-D-postgres/spec.md` line 65 needed a correction — its "no pinning
   needed" claim didn't survive contact with the recovery path.
 - Full spec 013 (Kafka credential migration, broader rotation story) remains
   future work — this ADR only implements the Postgres slice.

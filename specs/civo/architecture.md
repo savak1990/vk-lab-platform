@@ -74,7 +74,7 @@ provider contract. Summary of what changes per layer:
 
 - **Make/scripts**: `PROVIDER` dispatch; `scripts/lib/provider.sh` *(proposed)* exporting `PROVIDER`, project/subdomain defaults, stack dir names, and `civo_token()`; branches in `argo-up.sh`, `argo-down.sh`, `cluster-down.sh`, `status.sh`, guards.
 - **Terraform**: three new stack directories (`bootstrap/rolesanywhere` unit, `persistent-civo/`, `cluster-civo/`), three new modules, `root.hcl` provider generation and lifecycle lookup, `lab-role` additions. No moved resources.
-- **GitOps**: `gitops/templates/platform/shared/` *(proposed)* for hoisted components; `gitops/templates/platform/civo/` *(proposed)* for provider files; new values keys (`storage.className`, `capacity.spotAvoidance`, `postgres.nodeSelector`, `envoyGateway.reservedIp`, `envoyGateway.firewallId`, `awsIdentity.mode`, `externalDns.txtOwnerId`, `observability.k3s`).
+- **GitOps**: `gitops/templates/platform/shared/` *(proposed)* for hoisted components; `gitops/templates/platform/civo/` *(proposed)* for provider files; new values keys (`storage.className`, `capacity.spotAvoidance`, `postgres.nodeSelector`, `envoyGateway.reservedIp`, `envoyGateway.firewallId`, `awsIdentity.mode`, `externalDns.txtOwnerId`, `observability.kubeletInsecureTls`, `observability.metricsServer.enabled`).
 - **Identity**: CA ceremony script, `secrets/<project>/civo-ca-cert.pem` + `civo-ca-key.enc`, Roles Anywhere unit, cert-manager CA ClusterIssuer Secret at `argo-up`, per-consumer Certificates, helper sidecar image workflow.
 - **Tests/CI**: `CivoEnvironment` shim (reuse), SA-token context, `lab.yml` provider input.
 
