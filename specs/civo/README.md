@@ -99,7 +99,7 @@ verified in this environment.
 | CIVO-110 | [110-external-dns-on-civo](110-external-dns-on-civo/spec.md) | ExternalDNS on Civo via sidecar | DONE | P1 | S | standard | 090, 060 | M1 |
 | CIVO-115 | [115-cnpg-cluster-on-civo](115-cnpg-cluster-on-civo/spec.md) | CNPG Cluster on Civo, data disposable | DONE | P1 | M | standard | 050, 100 | M1 |
 | CIVO-120 | [120-cnpg-on-civo-persistence](120-cnpg-on-civo-persistence/spec.md) | CNPG on Civo with persistence through object-store backups | DONE | P1 | L | strongest | 050, 100, 115, 180 | M1 |
-| CIVO-130 | [130-e2e-tests-civo](130-e2e-tests-civo/spec.md) | E2E suite on Civo | IN_PROGRESS | P1 | M | standard | 045, 060 | M1 |
+| CIVO-130 | [130-e2e-tests-civo](130-e2e-tests-civo/spec.md) | E2E suite on Civo | DONE | P1 | M | standard | 045, 060 | M1 |
 | CIVO-140 | [140-ci-workflow-civo](140-ci-workflow-civo/spec.md) | `lab.yml` provider input, token decrypt, concurrency, cleanup | READY | P1 | M | standard | 045, 015 | M1 |
 | CIVO-150 | [150-teardown-recreate-validation](150-teardown-recreate-validation/spec.md) | Full lifecycle validation on Civo | READY | P1 | M | strongest | 120, 110, 070, 130 | M1 |
 | CIVO-160 | [160-observability-on-civo](160-observability-on-civo/spec.md) | Observability stack on Civo | DONE | P1 | M | standard | 050, 100 | M1 |

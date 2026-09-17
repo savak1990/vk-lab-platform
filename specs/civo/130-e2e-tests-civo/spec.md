@@ -1,7 +1,7 @@
 ---
 id: "CIVO-130"
 title: "E2E test suite on Civo with a ServiceAccount-based read-only identity"
-status: "IN_PROGRESS"
+status: "DONE"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -15,7 +15,7 @@ blocked_by: []
 supersedes: []
 created: "2026-09-06"
 updated: "2026-09-17"
-completed: null
+completed: "2026-09-17"
 ---
 
 # CIVO-130 — E2E tests on Civo
@@ -88,7 +88,7 @@ Revert the change. There is no data risk.
 
 ## 13. Definition of done
 
-- [ ] Evidence; index updated; status `DONE`
+- [x] Evidence; index updated; status `DONE`
 
 ## 14. Execution evidence and status history
 
@@ -102,7 +102,8 @@ Revert the change. There is no data risk.
   - Token scope, structural proof: `e2e-test-readonly` is reached only through namespace-scoped RoleBindings (`cnpg-system`, `observability`, `argocd`), never a ClusterRoleBinding, so a cluster-wide Secret list is impossible by construction. The live `auth can-i` check is still pending.
   - Real-cloud run (§6 steps 2–3) not done yet: no civo cluster was up.
 - 2026-09-17 — **live civo run.** Branch pushed; `PROVIDER=civo TARGET_REVISION=civo-130-e2e-tests make full-up` exited 0 (root Synced/Healthy, DNS resolved).
-  - `PROVIDER=civo make test` exited 0 with the context `vk-civo-lab-civo-test`: `Ran 4 of 4 Specs in 4.311 seconds`, 4 passed, 0 failed (argocd, grafana, postgres ×2). `E2E_INSECURE_TLS` was not needed on the prod issuer.
+  - `PROVIDER=civo make test` exited 0 with the context `vk-civo-lab-civo-test`: `Ran 4 of 4 Specs in 4.311 seconds`, 4 passed, 0 failed (argocd, grafana, postgres ×2). `E2E_INSECURE_TLS` was not needed on the prod issuer; it stays for CI on the staging issuer (CIVO-140).
   - `kubectl auth whoami` on the test context: `system:serviceaccount:e2e:e2e-test`.
   - Negative checks, all `no`: `list secrets -A`, `get secrets -n kube-system`, `create pods -n cnpg-system`, `delete clusters.postgresql.cnpg.io -n cnpg-system`. Positive control: `get secrets -n cnpg-system` is `yes`.
   - All §8 acceptance criteria met. AWS was not run live; its render and `make test` command line are unchanged.
+- 2026-09-17 — **DONE.** `PROVIDER=civo make full-down` run afterward: `argo-down` and `cluster-down` completed ("no leaked disposable-lifecycle resources found"); `persistent-down` stopped at its `CONFIRM_DESTROY` gate, so the persistent and bootstrap layers remain. Merged directly to `main` without a PR (protocol default).
