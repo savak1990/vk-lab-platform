@@ -75,7 +75,8 @@ Application__argocd__alloy HTTPRoute__observability__grafana \
 ExternalSecret__observability__grafana-admin-credentials \
 BackendTrafficPolicy__observability__grafana-traffic-policy \
 RoleBinding__observability__e2e-test-readonly \
-PodMonitor__cnpg-system__cnpg-postgres ServiceMonitor__argocd__argocd"
+PodMonitor__cnpg-system__cnpg-postgres ServiceMonitor__argocd__argocd \
+Namespace__cluster__e2e ServiceAccount__e2e__e2e-test"
 FORBIDDEN_KINDS_LOCAL="StorageClass VolumeSnapshotClass VolumeSnapshotContent VolumeSnapshot \
 ClusterSecretStore ExternalSecret Cluster NodePool EC2NodeClass EnvoyProxy Gateway GatewayClass \
 ObjectStore ScheduledBackup"
@@ -88,7 +89,8 @@ FORBIDDEN_APPLICATIONS_CIVO="aws-load-balancer-controller ebs-csi-driver karpent
 external-snapshotter external-snapshotter-crds"
 FORBIDDEN_OBJECTS_LOCAL="BackendTrafficPolicy__observability__grafana-traffic-policy \
 HTTPRoute__observability__grafana RoleBinding__observability__e2e-test-readonly \
-ExternalSecret__observability__grafana-admin-credentials"
+ExternalSecret__observability__grafana-admin-credentials \
+Namespace__cluster__e2e ServiceAccount__e2e__e2e-test"
 FORBIDDEN_OBJECTS_CIVO="ServiceMonitor__kube-system__karpenter \
 ConfigMap__observability__dashboard-karpenter-capacity"
 

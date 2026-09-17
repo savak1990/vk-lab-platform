@@ -193,18 +193,20 @@ endif
 argo-up:
 	./scripts/argo-up.sh
 
-## Points local kubectl context at the disposable EKS cluster via
-## eks-test-identity's read-only access (terraform/modules/eks/main.tf +
-## gitops rbac/e2e-test-readonly.yaml), NOT eks-access-identity's
-## cluster-admin. A distinct alias from kubeconfig's, so the
-## cluster-admin kubeconfig entry itself is never overwritten - but running
-## `make test` still switches your shell's *current* context to this
-## read-only one; run `make kubeconfig` afterward to switch back.
+## Points local kubectl context at the disposable cluster as the E2E suite's
+## read-only identity (rbac/e2e-test-readonly.yaml), never cluster-admin.
+## On aws, eks-test-identity maps to that role via its EKS access entry
+## (terraform/modules/eks/main.tf). On civo, which has no IAM, it mints a 1h
+## token for the e2e/e2e-test ServiceAccount as cluster-admin.
+## A distinct context name ($(E2E_CONTEXT)), so the cluster-admin entry is
+## never overwritten - but running `make test` still switches your shell's
+## *current* context to this read-only one; run `make kubeconfig` afterward
+## to switch back.
 ## Usage: make test-kubeconfig
+E2E_CONTEXT := $(if $(filter civo,$(PROVIDER)),$(PROJECT_NAME)-civo-test,$(PROJECT_NAME)-eks-test)
 ifeq ($(PROVIDER),civo)
 test-kubeconfig:
-	@echo "test-kubeconfig for PROVIDER=civo: implemented in a later Civo spec" >&2
-	@exit 1
+	@bash -c 'source scripts/lib/region.sh; source scripts/lib/provider.sh; configure_test_kubeconfig'
 else
 test-kubeconfig:
 	aws eks update-kubeconfig --name $(PROJECT_NAME)-eks --region $(REGION) --alias $(PROJECT_NAME)-eks-test \
@@ -220,10 +222,10 @@ endif
 ## Usage: make test | make test-postgres | make test-grafana | make test-argocd
 E2E_TLS_FLAG := $(if $(filter 1 true,$(E2E_INSECURE_TLS)),--insecure-skip-tls-verify,)
 test: test-kubeconfig
-	go test ./tests/e2e/... -v -args --context=$(PROJECT_NAME)-eks-test $(E2E_TLS_FLAG) --ginkgo.v
+	go test ./tests/e2e/... -v -args --context=$(E2E_CONTEXT) $(E2E_TLS_FLAG) --ginkgo.v
 
 test-%: test-kubeconfig
-	go test ./tests/e2e/... -v -args --context=$(PROJECT_NAME)-eks-test $(E2E_TLS_FLAG) --ginkgo.label-filter=$* --ginkgo.v
+	go test ./tests/e2e/... -v -args --context=$(E2E_CONTEXT) $(E2E_TLS_FLAG) --ginkgo.label-filter=$* --ginkgo.v
 
 ## Cascades away everything Argo CD manages (Karpenter, CNPG, EBS CSI,
 ## Postgres CRs, ...), then removes Argo CD itself - before
