@@ -99,4 +99,5 @@ Revert the change. There is no data risk.
   - `make gitops-check` passes. The aws golden diff is the file header comment only (2 ClusterRole files); no rendered field changed.
   - `configure_test_kubeconfig` in `scripts/lib/provider.sh`; `E2E_CONTEXT` in `Makefile`. `make -n test-argocd`: aws `--context=vk-lab-platform-eks-test` (unchanged), civo `--context=vk-civo-lab-civo-test`.
   - Go rename without alias; `go vet ./tests/...` and `go build ./tests/...` pass. No test assertion changed (only the constructor call in `suite_test.go`).
+  - Token scope, structural proof: `e2e-test-readonly` is reached only through namespace-scoped RoleBindings (`cnpg-system`, `observability`, `argocd`), never a ClusterRoleBinding, so a cluster-wide Secret list is impossible by construction. The live `auth can-i` check is still pending.
   - Real-cloud run (§6 steps 2–3) not done yet: no civo cluster was up.

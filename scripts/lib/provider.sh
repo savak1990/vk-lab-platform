@@ -101,6 +101,10 @@ configure_test_kubeconfig() {
   local cluster token
   configure_kubeconfig
   cluster="$(kubectl config view -o jsonpath="{.contexts[?(@.name==\"$admin_context\")].context.cluster}")"
+  if [ -z "$cluster" ]; then
+    echo "configure_test_kubeconfig: kubeconfig has no context $admin_context" >&2
+    return 1
+  fi
   if ! token="$(kubectl --context "$admin_context" create token e2e-test -n e2e --duration=1h)"; then
     echo "configure_test_kubeconfig: cannot create a token for ServiceAccount e2e/e2e-test - has 'make argo-up' synced the platform?" >&2
     return 1
