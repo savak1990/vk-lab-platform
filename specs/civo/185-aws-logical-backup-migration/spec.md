@@ -14,7 +14,7 @@ depends_on: ["CIVO-120", "CIVO-180"]
 blocked_by: []
 supersedes: []
 created: "2026-09-06"
-updated: "2026-09-16"
+updated: "2026-09-17"
 completed: null
 ---
 
@@ -193,7 +193,7 @@ state this before reverting. The AWS bucket is additive and can stay.
 
 ## 13. Definition of done
 
-- [ ] Gates A and B recorded
+- [x] Gates A and B recorded
 - [ ] Additive half: exclude list, AWS bucket unit, pod identity unit, shared templates, image pin, neutral helpers
 - [ ] Dual cycle on AWS with both mechanisms live
 - [ ] Removal half: snapshot surface removed, goldens regenerated and reviewed
@@ -206,3 +206,10 @@ state this before reverting. The AWS bucket is additive and can stay.
 - 2026-09-06 — created as READY after the user chose one shared backup mechanism for both providers.
 - 2026-09-16 — returned to DRAFT: the body assumed CIVO-180's withdrawn logical-dump design.
 - 2026-09-16 — rewritten for the barman-cloud plugin with EKS Pod Identity and promoted to READY. The operator chose to build it before the remaining M1 specs. CIVO-186 (cross-provider promotion) was removed in the same change: separate per-project buckets, the rejected shared bucket, and the arm64/x86_64 split make it a poor fit, and the operator does not expect to use it.
+- 2026-09-17 — **Phase A (foundations, PR #14) and spike gates A and B passed** on a live `vk-lab-platform` EKS cluster built from scratch (`make state-up`, `make full-up`; the AWS project had been fully torn down, so no pre-existing lab data existed).
+  - Foundations: `PERSISTENT_EXCLUDE` list (Civo `vpc backups`), `persistent/backups` unit (module gains `ssm_layer`, default `persistent-civo`; the live Civo unit plans `No changes.`), `postgres-backup-pod-identity` unit. `make full-up` created bucket `vk-lab-platform-postgres-backups`, SSM `/vk-lab-platform/persistent/backups/bucket_name`, and the `cnpg-system/lab-postgres` association.
+  - Snapshot-path baseline before the spike, at the operator's request: table `civo185_proof` with 6 `cycle0` rows; `make down`/`make up` recovered from `snap-088e8c9c9f5528875` with all 6 rows. Then 5 `cycle1` rows, an `UPDATE` of id 3 and a new table `civo185_cycle1_ddl`; `make down`/`make up` recovered from `snap-0ecba2750d5e2440a` with all 11 rows, the update and the table. PostgreSQL is `180004` (18.4), matching the planned `imageName` pin.
+  - Gate A: plugin chart 0.8.0 installed by hand with the upstream sidecar `v0.15.0@sha256:06c78dec…`, root auto-sync off, `ObjectStore` applied, Cluster patched with `plugins` only (no `env`). The native sidecar `plugin-barman-cloud` (`restartPolicy: Always`) carried `AWS_STS_REGIONAL_ENDPOINTS`, `AWS_DEFAULT_REGION`, `AWS_REGION`, `AWS_CONTAINER_CREDENTIALS_FULL_URI=http://169.254.170.23/v1/credentials`, `AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE` and the `/var/run/secrets/pods.eks.amazonaws.com/serviceaccount` mount, injected by the EKS webhook — identical to external-dns. `ContinuousArchiving=True`; WAL under `lab-postgres-spike-20260917T131309Z/wals/`. `pg_stat_archiver.failed_count=6`, all at 13:13:14 UTC during the roll before the sidecar existed; segment 05 archived at 13:13:33. No fallback needed. **Plan deviation D3 (region env on AWS) is unnecessary**: Pod Identity injects both region variables.
+  - Coexistence: a `method: plugin` Backup completed in 14 s, then a `method: volumeSnapshot` Backup on the same Cluster completed in 94 s; afterwards the Cluster was healthy and `ContinuousArchiving=True`. Base backup `20260917T131415`. Sidecar peak observed 15Mi on this small database.
+  - Gate B: a `gate-b` row written after the base backup, `pg_switch_wal()`, segment `0A` archived. Cluster `spike-restore` (pinned image, on-demand pool, temporary Pod Identity association for its own service account) recovered from the spike `serverName` on `t4g.medium`, `kubernetes.io/arch=arm64`, healthy in 67 s. Row counts matched the source exactly (`cycle0:6 cycle1:5 gate-b:1`, updated id 3, `civo185_cycle1_ddl`), so WAL replay past the base backup works on arm64; the restore promoted to timeline 2. `spike-restore` and the temporary association were deleted.
+  - Operational findings, not defects in this spec: (1) parallel sessions share `~/.kube/config`, and a Civo `make kubeconfig` switched `current-context` mid-`argo-down`, which then failed closed on a completed backup; runs now export a per-session `KUBECONFIG`. (2) An IPv6 provider download from the HashiCorp CDN hung `cluster-down` for 30 min; a retry succeeded. (3) A host memory kill stopped `make up` during `terraform init`, before any resource was created; `TG_PARALLELISM=2` was used afterwards. (4) `argocd-repo-server` was OOMKilled once at its 320Mi limit on the first bring-up; root's retry covered it.
