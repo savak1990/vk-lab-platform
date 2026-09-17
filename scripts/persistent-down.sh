@@ -164,11 +164,10 @@ cd "$REPO_ROOT/terraform/live/persistent"
 # interactive "yes" prompt would be redundant - skipped the same way
 # bootstrap-down.sh skips it. -auto-approve is what actually skips it -
 # --non-interactive alone doesn't (confirmed empirically).
-if [ -n "$PERSISTENT_EXCLUDE" ]; then
-  terragrunt run --all --filter "!./$PERSISTENT_EXCLUDE" --non-interactive -- destroy -auto-approve
-else
-  terragrunt run --all --non-interactive -- destroy -auto-approve
-fi
+exclude_args=()
+while IFS= read -r arg; do exclude_args+=("$arg"); done < <(persistent_exclude_filters)
+# The empty-array form keeps bash 3.2 from failing on an unset expansion under set -u.
+terragrunt run --all ${exclude_args[@]+"${exclude_args[@]}"} --non-interactive -- destroy -auto-approve
 
 for unit_prefix in persistent/vpc persistent/secrets persistent-civo/network persistent-civo/reserved-ip persistent-civo/backups; do
   if ! remaining=$(count_resources "$unit_prefix"); then

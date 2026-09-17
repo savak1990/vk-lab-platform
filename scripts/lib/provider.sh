@@ -14,7 +14,7 @@ if [ "$PROVIDER" = "civo" ]; then
   export CLUSTER_NAME="${CLUSTER_NAME:-$PROJECT_NAME}"
   export PERSISTENT_EXTRA_DIR="${PERSISTENT_EXTRA_DIR:-persistent-civo}"
   export BOOTSTRAP_EXCLUDE="${BOOTSTRAP_EXCLUDE:-acm}"
-  export PERSISTENT_EXCLUDE="${PERSISTENT_EXCLUDE:-vpc}"
+  export PERSISTENT_EXCLUDE="${PERSISTENT_EXCLUDE:-vpc backups}"
 else
   export PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
   export SUBDOMAIN="${SUBDOMAIN:-lab}"
@@ -24,6 +24,14 @@ else
   export BOOTSTRAP_EXCLUDE="${BOOTSTRAP_EXCLUDE:-}"
   export PERSISTENT_EXCLUDE="${PERSISTENT_EXCLUDE:-}"
 fi
+
+# One negated --filter per unit named in PERSISTENT_EXCLUDE, one argument per line.
+persistent_exclude_filters() {
+  local unit
+  for unit in $PERSISTENT_EXCLUDE; do
+    printf -- '--filter\n!./%s\n' "$unit"
+  done
+}
 
 # Decrypts the Civo API token and exports it as CIVO_TOKEN. Masks it in
 # GitHub Actions logs; never echoes it anywhere else.
