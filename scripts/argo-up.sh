@@ -25,7 +25,7 @@ ON_DEMAND_KARPENTER_CPU_LIMIT="${ON_DEMAND_KARPENTER_CPU_LIMIT:-4}"
 # Increase-only: Kubernetes rejects a PVC shrink, and shrinking below a
 # retained snapshot's restore size leaves the recovered PVC unable to bind.
 POSTGRES_STORAGE_SIZE="${POSTGRES_STORAGE_SIZE:-20Gi}"
-# civo-only. Never set below 2: recovery reads the previous generation while
+# Never set below 2: recovery reads the previous generation while
 # the current one is still building its own first base backup.
 POSTGRES_BACKUP_KEEP_GENERATIONS="${POSTGRES_BACKUP_KEEP_GENERATIONS:-2}"
 SPOT_KARPENTER_INSTANCE_TYPES_JSON="$(jq -Rc 'split(",")' <<< "$SPOT_KARPENTER_INSTANCE_TYPES")"
@@ -50,9 +50,9 @@ ssm_output() {
   exit 1
 }
 
-# One batched get-parameters call, not five round trips. --with-decryption
+# One batched get-parameters call, not six round trips. --with-decryption
 # is a no-op on the plain String ones, so this serves both types uniformly.
-# Bash 3.2 compatible (no associative arrays) - linear scan over 5 items.
+# Bash 3.2 compatible (no associative arrays) - linear scan over 6 items.
 aws_resolve_inputs() {
   local ssm_names=(
     "/$PROJECT_NAME/bootstrap/acm/certificate_arn"
@@ -60,6 +60,7 @@ aws_resolve_inputs() {
     "/$PROJECT_NAME/cluster/eks/node_subnet_id"
     "/$PROJECT_NAME/bootstrap/route53/fqdn"
     "/$PROJECT_NAME/persistent/argocd/admin_password_bcrypt"
+    "/$PROJECT_NAME/persistent/backups/bucket_name"
   )
   SSM_BATCH_NAMES=()
   SSM_BATCH_VALUES=()
@@ -77,7 +78,16 @@ aws_resolve_inputs() {
   # full hostname built from it (label DNS output by short name instead).
   LAB_FQDN="$(ssm_output "/$PROJECT_NAME/bootstrap/route53/fqdn")"
   ADMIN_PASSWORD_BCRYPT_HASH="$(ssm_output "/$PROJECT_NAME/persistent/argocd/admin_password_bcrypt")"
+  BACKUP_BUCKET="$(ssm_output "/$PROJECT_NAME/persistent/backups/bucket_name")"
+  backup_resolve_generation
   configure_kubeconfig
+}
+
+# serverName is minted per bring-up, so a recovered cluster never archives
+# into the generation it recovered from.
+backup_resolve_generation() {
+  RECOVER_SERVER_NAME="$(backup_recovery_handle "$BACKUP_SSM_LAYER")"
+  BACKUP_SERVER_NAME="lab-postgres-$(date -u +%Y%m%dT%H%M%SZ)"
 }
 
 civo_resolve_inputs() {
@@ -137,13 +147,9 @@ civo_resolve_inputs() {
     esac
   done
 
-  # Absent on the first bring-up, so it cannot go through the fail-hard loop
-  # above. Empty means "nothing to recover from - bootstrap fresh".
-  RECOVER_SERVER_NAME="$(aws ssm get-parameter --region "$LAB_REGION" \
-    --name "/$PROJECT_NAME/persistent-civo/postgres-backup/server_name" \
-    --query 'Parameter.Value' --output text 2>/dev/null || true)"
-  [ "$RECOVER_SERVER_NAME" = "None" ] && RECOVER_SERVER_NAME=""
-  BACKUP_SERVER_NAME="lab-postgres-$(date -u +%Y%m%dT%H%M%SZ)"
+  # The pointer is absent on the first bring-up, so it cannot go through the
+  # fail-hard loop above.
+  backup_resolve_generation
 
   configure_kubeconfig
 }
@@ -352,7 +358,7 @@ aws_resolve_snapshot() {
 }
 
 if [ "$PROVIDER" = civo ]; then
-  RECOVERY_SNAPSHOT_HANDLE="$(civo_recovery_handle)"
+  RECOVERY_SNAPSHOT_HANDLE=""
 else
   aws_resolve_snapshot
 fi
@@ -421,24 +427,28 @@ aws_install_root_application() {
     --set-json karpenter.onDemand.instanceTypes="$ON_DEMAND_KARPENTER_INSTANCE_TYPES_JSON" \
     --set envoyGateway.acmCertificateArn="$ACM_CERTIFICATE_ARN" \
     --set envoyGateway.nlbSubnetIds="$NODE_SUBNET_ID" \
-    --set envoyGateway.fqdn="$LAB_FQDN"
+    --set envoyGateway.fqdn="$LAB_FQDN" \
+    --set postgres.backup.enabled=true \
+    --set postgres.backup.bucket="$BACKUP_BUCKET" \
+    --set postgres.backup.serverName="$BACKUP_SERVER_NAME" \
+    --set postgres.backup.recoverServerName="$RECOVER_SERVER_NAME"
 }
 
 # Written only after the platform is healthy: a failed bring-up must leave the
 # previous generation as the one the next run recovers from.
-civo_publish_server_name() {
+backup_publish_server_name() {
   aws ssm put-parameter --region "$LAB_REGION" \
-    --name "/$PROJECT_NAME/persistent-civo/postgres-backup/server_name" \
+    --name "/$PROJECT_NAME/$BACKUP_SSM_LAYER/postgres-backup/server_name" \
     --type String --overwrite --value "$BACKUP_SERVER_NAME" >/dev/null
   echo "ARGO-UP: recorded backup server name $BACKUP_SERVER_NAME."
-  civo_prune_backup_generations
+  backup_prune_generations
 }
 
 # The plugin's own retentionPolicy prunes only inside a live cluster and only
 # within that cluster's serverName, so a generation nothing is running against
 # is never pruned by it and would sit until the bucket's 30-day rule expires
 # it. This is what actually bounds the stored backup count.
-civo_prune_backup_generations() {
+backup_prune_generations() {
   local keep="$POSTGRES_BACKUP_KEEP_GENERATIONS"
   local bucket="${BACKUP_BUCKET:-}" recovered_from="${RECOVER_SERVER_NAME:-}"
   if [ -z "$bucket" ]; then
@@ -597,8 +607,9 @@ echo "ARGO-UP: root Synced/Healthy - waiting for external-dns to publish records
 if [ "$PROVIDER" = civo ]; then
   civo_wait_for_lb_ip || exit 1
   civo_wait_for_dns
-  civo_publish_server_name
+  backup_publish_server_name
 else
   aws_wait_for_dns
   echo "ARGO-UP: root Synced/Healthy and DNS resolved - platform ready."
+  backup_publish_server_name
 fi
