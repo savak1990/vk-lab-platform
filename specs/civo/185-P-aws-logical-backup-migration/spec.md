@@ -196,8 +196,8 @@ state this before reverting. The AWS bucket is additive and can stay.
 - [x] Gates A and B recorded
 - [x] Additive half: exclude list, AWS bucket unit, pod identity unit, shared templates, image pin, neutral helpers
 - [x] Dual cycle on AWS with both mechanisms live
-- [ ] Removal half: snapshot surface removed, goldens regenerated and reviewed
-- [ ] ADR 0033, ADR 0013 status, constitution §4 reference, architecture and AWS design updated
+- [x] Removal half: snapshot surface removed, goldens regenerated and reviewed
+- [x] ADR 0033, ADR 0013 status, constitution §4 reference, architecture and AWS design updated
 - [ ] Two AWS cycles and one Civo cycle with data evidence
 - [ ] Index updated; status `DONE`
 
@@ -219,3 +219,8 @@ state this before reverting. The AWS bucket is additive and can stay.
   - First bring-up (`make full-up`, no snapshot, no pointer): `initdb`; the plugin Application synced from the repo templates; `ContinuousArchiving=True`; the `immediate` ScheduledBackup completed; `lab-postgres-20260917T150154Z/base/…/backup.info` `status=DONE`, `version=180004`; pointer published. Rows `dual-1`, `dual-2`, then `FINAL-DUAL` at 15:13:36 UTC.
   - `make down`: WAL switch, plugin Backup `completed` (~20 s, no warning), then the cold volume-snapshot Backup `completed`; no leaked resources. Generation 1 holds a second `status=DONE` base backup ending 15:14:38 UTC.
   - `make up`: recovered from `snap-0209f45a508d7427e` (`bootstrap.recovery.volumeSnapshots`) with the generation-1 pointer set; the Cluster was admitted with `externalClusters: null`. All three rows present. Archiving into generation 2 `lab-postgres-20260917T155045Z`, whose immediate base backup is `status=DONE`; pointer updated; `2 backup generation(s) stored, keeping 2 - nothing to prune`.
+- 2026-09-17 — **Phase C (removal half) built; two AWS cycles on the plugin alone passed** on branch `civo-185-removal` (`TARGET_REVISION=civo-185-removal`).
+  - Code: snapshot manifests, CRDs and class, the Cluster snapshot branch and cold backup block, `postgres.recoverySnapshotHandle`, `storage.snapshotClassName`, the root parameter and `ignoreDifferences` entry, `aws_resolve_snapshot`, `aws_cnpg_backup_and_prune` and their tag filters removed. The `ebs-csi` `csi-snapshotter` sidecar was forced on and would crash-loop without the CRDs, so it was removed too. The render check asserts no aws render carries a snapshot object, an external-snapshotter Application or root snapshot settings; goldens: 2443 lines deleted, 15 added (reworded comments). ADR 0033 written; ADR 0013 superseded.
+  - Before the cycles, PR #15's code ran `make down` on the dual-cycle cluster: plugin backup and snapshot backup both completed.
+  - Cycle 1 `make up`: no snapshot lookup in `argo-up`; `bootstrap.recovery.source: lab-postgres-previous` from generation 2 `lab-postgres-20260917T155045Z`; `dual-1`, `dual-2`, `FINAL-DUAL` present; timeline 2; archiving into generation 3 `lab-postgres-20260917T164746Z` with a `status=DONE` base backup; generation 1 pruned. Rows `row c1` and `FINAL-C1` written at 16:59:15 UTC. `make down`: WAL switch and plugin backup completed, no volume-snapshot step, no leaks; tagged EBS snapshots stayed at 2.
+  - Cycle 2 `make up`: recovered from generation 3 (itself a recovered cluster); all five rows including `FINAL-C1`; timeline 3 with `00000003.history.gz` in generation 4 `lab-postgres-20260917T173429Z`; base backup `status=DONE`, `timeline=3`; generation 2 pruned, two generations kept; EBS snapshots still 2; zero snapshot lines in the `argo-up` log.
