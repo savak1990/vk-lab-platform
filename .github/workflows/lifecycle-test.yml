@@ -94,7 +94,7 @@ jobs:
       # mock_outputs (reproduced locally against this repo's units, not a
       # config mistake) - giving this job real AWS/S3 reachability just to
       # validate HCL would defeat the point. Their module code is still
-      # covered by the loop above; cluster/eks, the four
+      # covered by the loop above; cluster/eks, the five
       # cluster/*-pod-identity units, cluster-civo/{k8s,network},
       # bootstrap/{acm,rolesanywhere} are the ones skipped here.
       - name: terragrunt validate (non-dependency live units)

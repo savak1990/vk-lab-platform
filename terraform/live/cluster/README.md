@@ -4,21 +4,25 @@ Creates Disposable-lifecycle resources: destroyed by `make cluster-down`,
 recreated by `make cluster-up`, with zero effect on the Persistent stack
 (Route 53 zone/ACM cert/Secrets Manager/VPC).
 
-Three units:
+Units:
 
 - `eks/` — EKS control plane, one fixed-size system managed node group
   (single `t3.medium`), EKS-managed add-ons (`vpc-cni`, `kube-proxy`,
   `coredns`, `eks-pod-identity-agent`), and the IAM roles the cluster/node
   group need. Runs in the platform-owned VPC (`terraform/live/persistent/vpc`,
   spec 020), using its public subnets. See `specs/003-network-and-eks/spec.md`.
-- `argocd-bootstrap/` — installs Argo CD and the single root ("app-of-apps")
-  Application via Helm, pointed at `gitops/` (the aws target's install path).
-  Terraform touches nothing else Kubernetes-native from here on — see
-  `specs/004-argocd-bootstrap/spec.md`.
 - `karpenter/` — the Karpenter controller's Pod Identity role, the node
   IAM role/EKS access entry Karpenter-provisioned instances need to join,
   and discovery tags on the system node group's subnet/security group. See
   `specs/006-karpenter/spec.md`.
+- `*-pod-identity/` — one IAM role plus EKS Pod Identity association per
+  in-cluster AWS consumer: `aws-lb-controller`, `ebs-csi`, `external-dns`,
+  `external-secrets`, and `postgres-backup` (the CNPG instance pods'
+  service account `cnpg-system/lab-postgres`, scoped to this project's
+  backup bucket).
+
+Argo CD itself is installed by `scripts/argo-up.sh`, not by this stack
+(ADR 0012).
 
 **Deviation from `docs/architecture.md` §5's illustrative target tree:**
 that diagram shows three separate units (`eks/`, `eks-addons/`,
