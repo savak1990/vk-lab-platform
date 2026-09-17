@@ -1,4 +1,4 @@
-{{- if and (eq .Values.target "civo") .Values.postgres.backup.enabled }}
+{{- if and (ne .Values.target "local") .Values.postgres.backup.enabled }}
 apiVersion: postgresql.cnpg.io/v1
 kind: ScheduledBackup
 metadata:

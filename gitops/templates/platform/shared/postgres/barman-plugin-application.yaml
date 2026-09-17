@@ -1,12 +1,13 @@
-{{- if and (eq .Values.target "civo") .Values.postgres.backup.enabled }}
+{{- if and (ne .Values.target "local") .Values.postgres.backup.enabled }}
+{{- $sidecar := index .Values.postgres.backup.sidecarImages .Values.target }}
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: barman-cloud-plugin
   namespace: argocd
   annotations:
-    # After cert-manager (wave 0), whose issuer the plugin needs for its own
-    # serving certificate, and before the Cluster that references it.
+    # After cert-manager, whose issuer the plugin needs for its own serving
+    # certificate, and before the Cluster that references it.
     argocd.argoproj.io/sync-wave: "1"
   finalizers:
     - resources-finalizer.argocd.argoproj.io
@@ -19,13 +20,13 @@ spec:
     helm:
       parameters:
         - name: sidecarImage.registry
-          value: {{ .Values.postgres.backup.sidecarImage.registry | quote }}
+          value: {{ $sidecar.registry | quote }}
         - name: sidecarImage.repository
-          value: {{ .Values.postgres.backup.sidecarImage.repository | quote }}
+          value: {{ $sidecar.repository | quote }}
         # The chart composes registry/repository:tag, so a bare digest is not
         # expressible; tag@digest is a valid reference and resolves by digest.
         - name: sidecarImage.tag
-          value: {{ printf "%s@%s" .Values.postgres.backup.sidecarImage.tag .Values.postgres.backup.sidecarImage.digest | quote }}
+          value: {{ printf "%s@%s" $sidecar.tag $sidecar.digest | quote }}
       values: |
         resources:
           requests:

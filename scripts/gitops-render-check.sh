@@ -45,10 +45,50 @@ render_and_normalize() {
   done
 }
 
+# Backup objects render only when argo-up supplies these, so the backup
+# renders set them the way a real bring-up does.
+BACKUP_SETS=(
+  --set postgres.backup.enabled=true
+  --set postgres.backup.bucket=render-check-bucket
+  --set postgres.backup.serverName=render-check-server
+)
 render_and_normalize "$REPO_ROOT/gitops" "$WORK_DIR/platform" aws
 render_and_normalize "$REPO_ROOT/gitops" "$WORK_DIR/platform-recovery" aws \
-  --set postgres.recoverySnapshotHandle=snap-x
+  --set postgres.recoverySnapshotHandle=snap-x "${BACKUP_SETS[@]}"
+render_and_normalize "$REPO_ROOT/gitops" "$WORK_DIR/platform-backup" aws "${BACKUP_SETS[@]}"
+render_and_normalize "$REPO_ROOT/gitops" "$WORK_DIR/platform-backup-recovery" aws \
+  "${BACKUP_SETS[@]}" --set postgres.backup.recoverServerName=render-check-previous
 render_and_normalize "$REPO_ROOT/gitops/bootstrap" "$WORK_DIR/bootstrap" aws
+
+POSTGRES_IMAGE="$(yq '.postgres.imageName' "$REPO_ROOT/gitops/values.yaml")"
+
+verify_backup_render() {
+  local dir="$1" target="$2" sidecar_repo="$3" obj got
+  for obj in ObjectStore__cnpg-system__lab-postgres-backups ScheduledBackup__cnpg-system__lab-postgres \
+    Application__argocd__barman-cloud-plugin; do
+    if [ ! -e "$dir/$obj.yaml" ]; then
+      echo "GITOPS-RENDER-CHECK: target=$target backup render is missing $obj" >&2
+      return 1
+    fi
+  done
+  got="$(yq '.spec.source.helm.parameters[] | select(.name == "sidecarImage.repository") | .value' \
+    "$dir/Application__argocd__barman-cloud-plugin.yaml")"
+  if [ "$got" != "$sidecar_repo" ]; then
+    echo "GITOPS-RENDER-CHECK: target=$target backup sidecar repository is '$got', expected '$sidecar_repo'" >&2
+    return 1
+  fi
+  got="$(yq '.spec.imageName' "$dir/Cluster__cnpg-system__lab-postgres.yaml")"
+  case "$POSTGRES_IMAGE" in
+    *@sha256:*) ;;
+    *) echo "GITOPS-RENDER-CHECK: postgres.imageName '$POSTGRES_IMAGE' is not pinned by digest" >&2; return 1 ;;
+  esac
+  if [ "$got" != "$POSTGRES_IMAGE" ]; then
+    echo "GITOPS-RENDER-CHECK: target=$target Cluster imageName is '$got', expected '$POSTGRES_IMAGE'" >&2
+    return 1
+  fi
+}
+
+verify_backup_render "$WORK_DIR/platform-backup" aws cloudnative-pg/plugin-barman-cloud-sidecar
 
 # civo/local have no golden baseline to diff against, so they're checked
 # structurally instead: the M1 baseline must appear, and nothing aws-only
@@ -165,6 +205,9 @@ for t in civo local; do
   fi
   render_and_normalize "$REPO_ROOT/gitops" "$STRUCT_DIR/$t" "$t" "${extra_sets[@]+"${extra_sets[@]}"}"
   verify_object_set "$STRUCT_DIR/$t" "$t" || CIVO_LOCAL_OK=false
+  if [ "$t" = civo ]; then
+    verify_backup_render "$STRUCT_DIR/$t" civo savak1990/vk-lab-platform/cnpg-barman-sidecar || CIVO_LOCAL_OK=false
+  fi
 done
 if [ "$CIVO_LOCAL_OK" != true ]; then
   exit 1
