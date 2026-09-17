@@ -37,7 +37,7 @@ var _ = BeforeSuite(func() {
 	dynamicClient, err := dynamic.NewForConfig(restConfig)
 	Expect(err).NotTo(HaveOccurred(), "building dynamic client for context %q", cfg.Context)
 
-	env = framework.NewAWSEnvironment(clientset, dynamicClient, restConfig)
+	env = framework.NewClusterEnvironment(clientset, dynamicClient, restConfig)
 })
 
 var _ = AfterSuite(func() {

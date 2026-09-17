@@ -94,6 +94,26 @@ configure_kubeconfig() {
   kubectl ${kcfg[@]:+"${kcfg[@]}"} config set-context --current --namespace=default >/dev/null
 }
 
+# Civo has no IAM to map a read-only identity, so the E2E suite gets a
+# short-lived token for the e2e-test ServiceAccount, minted as cluster-admin.
+configure_test_kubeconfig() {
+  local admin_context="${PROJECT_NAME}-civo" test_context="${PROJECT_NAME}-civo-test"
+  local cluster token
+  configure_kubeconfig
+  cluster="$(kubectl config view -o jsonpath="{.contexts[?(@.name==\"$admin_context\")].context.cluster}")"
+  if [ -z "$cluster" ]; then
+    echo "configure_test_kubeconfig: kubeconfig has no context $admin_context" >&2
+    return 1
+  fi
+  if ! token="$(kubectl --context "$admin_context" create token e2e-test -n e2e --duration=1h)"; then
+    echo "configure_test_kubeconfig: cannot create a token for ServiceAccount e2e/e2e-test - has 'make argo-up' synced the platform?" >&2
+    return 1
+  fi
+  kubectl config set-credentials "$test_context" --token="$token" >/dev/null
+  kubectl config set-context "$test_context" --cluster="$cluster" --user="$test_context" --namespace=default >/dev/null
+  kubectl config use-context "$test_context" >/dev/null
+}
+
 # Recovery on civo runs through the barman plugin's serverName pointer, which
 # argo-up reads from SSM directly - there is no volume-snapshot handle here.
 civo_recovery_handle() {

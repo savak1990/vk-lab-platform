@@ -61,5 +61,12 @@ if [[ -n "$stale" ]]; then
   printf '%s\n' "$stale" >&2
 fi
 
+# A status change renames the folder, so every lettered path must still exist.
+while IFS= read -r p; do
+  [[ -e "$p" ]] || err "path to a missing spec folder: $p"
+done < <(grep -rIohE 'specs/[a-z]+/[0-9]{3}(-[0-9]+)?-[DAPZ]-[a-z0-9-]+' . \
+  --exclude-dir=.git --exclude-dir=superpowers --exclude-dir=.terraform \
+  --exclude-dir=.terragrunt-cache --exclude-dir=node_modules --exclude-dir=evidence | sort -u)
+
 if [[ $fail -eq 0 ]]; then echo "SPECS-CHECK: specs/ layout is valid."; fi
 exit $fail
