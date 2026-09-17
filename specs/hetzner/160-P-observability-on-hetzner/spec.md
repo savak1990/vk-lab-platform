@@ -29,7 +29,7 @@ Unlike managed k3s on Civo, the control plane is a node in this cluster,
 so its scheduler and controller-manager are scrapeable. Three CAX21 nodes
 give about 21 GiB, so no trimming is needed.
 
-Read `specs/civo/160-observability-on-civo/spec.md` first.
+Read `specs/civo/160-D-observability-on-civo/spec.md` first.
 
 ## 2. Scope and non-goals
 

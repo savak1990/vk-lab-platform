@@ -168,7 +168,7 @@ supersedes the input half of ADR 0023, and supersedes ADR 0030's
 KMS-ciphertext discipline for `CIVO_TOKEN`. It must state the trade accepted in
 section 3 and must not edit those ADRs in place beyond a superseded-by note.
 
-**Constitution** — `specs/000-constitution/spec.md`:
+**Constitution** — `specs/shared/000-D-constitution/spec.md`:
 
 | Line | Currently states | Change |
 |---|---|---|
@@ -198,9 +198,9 @@ secrets.
 `terraform/live/state/README.md` each reference `make secret-encrypt` or a
 `.enc` file.
 
-**Specs that describe the old flow** — `specs/013-secrets/spec.md` (its
+**Specs that describe the old flow** — `specs/aws/013-D-secrets/spec.md` (its
 "deterministic KMS-encrypted bootstrap ciphertext flow" bullet),
-`specs/022-local-dev-mode` (requirements 11–13), and
+`specs/local/022-P-local-dev-mode` (requirements 11–13), and
 `specs/civo/README.md` if its protocol text names the ciphertext path.
 
 ## 7. Acceptance criteria

@@ -27,7 +27,7 @@ two CAX21 workers when pods stay pending and removes them after sustained
 underutilisation. The fixed three-node pool from HETZ-030 stays; the
 autoscaler only adds. Idle cost is unchanged.
 
-Read `specs/civo/170-civo-cluster-autoscaler/spec.md` first. The Civo
+Read `specs/civo/170-P-civo-cluster-autoscaler/spec.md` first. The Civo
 blocker (one account-wide key) does not exist here: Hetzner tokens are
 per project and the token is already in-cluster for CCM and CSI.
 

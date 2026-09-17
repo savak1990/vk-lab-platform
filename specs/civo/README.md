@@ -78,38 +78,38 @@ verified in this environment.
 
 | ID | Folder | Title | Status | Pri | Diff | Tier | Depends on | Milestone |
 |---|---|---|---|---|---|---|---|---|
-| CIVO-010 | [010-provider-command-surface](010-provider-command-surface/spec.md) | `PROVIDER` operator input and Make dispatch | DONE | P1 | S | standard | — | M0 |
-| CIVO-015 | [015-governance-adrs-constitution](015-governance-adrs-constitution/spec.md) | ADRs 0027–0031, constitution §20, architecture §10a | DONE | P0 | M | strongest | — | M0 |
-| CIVO-020 | [020-civo-feasibility-spike](020-civo-feasibility-spike/spec.md) | Throwaway-cluster feasibility spike and report | DONE | P0 | M | standard | — | M0 |
-| CIVO-025 | [025-civo-persistent-stack](025-civo-persistent-stack/spec.md) | `persistent-civo` network and reserved IP | DONE | P1 | S | standard | 010, 015 | M1 |
-| CIVO-030 | [030-civo-terraform-cluster](030-civo-terraform-cluster/spec.md) | `cluster-civo` firewall and k3s cluster | DONE | P1 | M | standard | 010, 015, 020, 025 | M1 |
-| CIVO-040 | [040-civo-cluster-scripts](040-civo-cluster-scripts/spec.md) | Cluster scripts, kubeconfig, guards, leak sweep | DONE | P1 | M | standard | 030 | M1 |
-| CIVO-045 | [045-argo-scripts-civo-branches](045-argo-scripts-civo-branches/spec.md) | `argo-up`/`argo-down` Civo branches | DONE | P1 | M | standard | 040, 050 | M1 |
-| CIVO-050 | [050-gitops-civo-target-baseline](050-gitops-civo-target-baseline/spec.md) | Hoist portable components; `target: civo` tree; golden AWS render | DONE | P1 | M | standard | 010 | M1 |
-| CIVO-055 | [055-argo-bringup-resilience](055-argo-bringup-resilience/spec.md) | Fail fast on CRDs that never establish; reliable bring-up | READY | P1 | M | standard | 045 | M1 |
-| CIVO-060 | [060-civo-ingress-envoy-lb](060-civo-ingress-envoy-lb/spec.md) | Civo LB via Envoy Service, Gateway 80/443 | DONE | P1 | M | standard | 045 | M1 |
-| CIVO-065 | [065-cert-manager-install](065-cert-manager-install/spec.md) | cert-manager installed on civo, target-gated | DONE | P1 | S | standard | 050 | M1 |
-| CIVO-070 | [070-letsencrypt-http01-tls](070-letsencrypt-http01-tls/spec.md) | Let's Encrypt HTTP-01 TLS at Envoy, Secret persistence | DONE | P1 | M | standard | 060, 065, 110 | M1 |
-| CIVO-075 | [075-wildcard-tls-dns01](075-wildcard-tls-dns01/spec.md) | Wildcard TLS through DNS-01; cert-manager Roles Anywhere consumer | DONE | P2 | M | standard | 070, 082, 090 | M2 |
-| CIVO-080 | [080-rolesanywhere-ca-ceremony](080-rolesanywhere-ca-ceremony/spec.md) | Offline CA ceremony and committed material | DONE | P0 | M | strongest | 015 | M1 |
-| CIVO-082 | [082-rolesanywhere-terraform](082-rolesanywhere-terraform/spec.md) | Trust anchor, profile, roles, lab-role additions | DONE | P0 | M | strongest | 080 | M1 |
-| CIVO-085 | [085-workload-certificate-issuance](085-workload-certificate-issuance/spec.md) | CA issuer Secret at argo-up, per-consumer Certificates | DONE | P0 | M | strongest | 045, 050, 065, 080 | M1 |
-| CIVO-090 | [090-credential-helper-sidecar](090-credential-helper-sidecar/spec.md) | Credential helper image and sidecar pattern | DONE | P0 | M | standard | 082, 085 | M1 |
-| CIVO-100 | [100-eso-on-civo](100-eso-on-civo/spec.md) | External Secrets on Civo via sidecar | DONE | P1 | S | standard | 090 | M1 |
-| CIVO-110 | [110-external-dns-on-civo](110-external-dns-on-civo/spec.md) | ExternalDNS on Civo via sidecar | DONE | P1 | S | standard | 090, 060 | M1 |
-| CIVO-115 | [115-cnpg-cluster-on-civo](115-cnpg-cluster-on-civo/spec.md) | CNPG Cluster on Civo, data disposable | DONE | P1 | M | standard | 050, 100 | M1 |
-| CIVO-120 | [120-cnpg-on-civo-persistence](120-cnpg-on-civo-persistence/spec.md) | CNPG on Civo with persistence through object-store backups | DONE | P1 | L | strongest | 050, 100, 115, 180 | M1 |
-| CIVO-130 | [130-e2e-tests-civo](130-e2e-tests-civo/spec.md) | E2E suite on Civo | READY | P1 | M | standard | 045, 060 | M1 |
-| CIVO-140 | [140-ci-workflow-civo](140-ci-workflow-civo/spec.md) | `lab.yml` provider input, token decrypt, concurrency, cleanup | READY | P1 | M | standard | 045, 015 | M1 |
-| CIVO-150 | [150-teardown-recreate-validation](150-teardown-recreate-validation/spec.md) | Full lifecycle validation on Civo | READY | P1 | M | strongest | 120, 110, 070, 130 | M1 |
-| CIVO-160 | [160-observability-on-civo](160-observability-on-civo/spec.md) | Observability stack on Civo | DONE | P1 | M | standard | 050, 100 | M1 |
-| CIVO-170 | [170-civo-cluster-autoscaler](170-civo-cluster-autoscaler/spec.md) | Cluster autoscaler 1–3 on the Large pool | READY | P3 | S | standard | 030 | M2 |
-| CIVO-175 | [175-right-size-requests-and-sku](175-right-size-requests-and-sku/spec.md) | Right-size requests/limits, re-evaluate SKU | READY | P2 | M | standard | 160, 170 | M2 |
-| CIVO-180 | [180-cnpg-backups-object-store](180-cnpg-backups-object-store/spec.md) | CNPG barman-cloud plugin backups to a per-project S3 bucket | DONE | P1 | L | strongest | 082, 085, 100 | M1 |
-| CIVO-185 | [185-aws-logical-backup-migration](185-aws-logical-backup-migration/spec.md) | Move the AWS target to the CNPG barman-cloud plugin | READY | P2 | L | strongest | 120, 180 | M2 |
-| CIVO-190 | [190-proxy-protocol-client-ip](190-proxy-protocol-client-ip/spec.md) | Proxy protocol and client IP | READY | P3 | S | fast | 060 | M2 |
-| CIVO-200 | [200-identity-hardening](200-identity-hardening/spec.md) | Intermediate CA and Certificate approval policy | READY | P2 | M | strongest | 085 | M2 |
-| CIVO-205 | [205-lab-role-least-privilege-review](205-lab-role-least-privilege-review/spec.md) | `lab-role` review + ESO ClusterRole scoping (CA-Secret read) | DRAFT | P2 | M | strongest | 082, 085, 200 | M2 |
-| CIVO-210 | [210-argocd-grafana-login](210-argocd-grafana-login/spec.md) | Real login for Argo CD and Grafana (beyond shared local admin) | DRAFT | P3 | M | standard | — | M2 |
+| CIVO-010 | [010-D-provider-command-surface](010-D-provider-command-surface/spec.md) | `PROVIDER` operator input and Make dispatch | DONE | P1 | S | standard | — | M0 |
+| CIVO-015 | [015-D-governance-adrs-constitution](015-D-governance-adrs-constitution/spec.md) | ADRs 0027–0031, constitution §20, architecture §10a | DONE | P0 | M | strongest | — | M0 |
+| CIVO-020 | [020-D-civo-feasibility-spike](020-D-civo-feasibility-spike/spec.md) | Throwaway-cluster feasibility spike and report | DONE | P0 | M | standard | — | M0 |
+| CIVO-025 | [025-D-civo-persistent-stack](025-D-civo-persistent-stack/spec.md) | `persistent-civo` network and reserved IP | DONE | P1 | S | standard | 010, 015 | M1 |
+| CIVO-030 | [030-D-civo-terraform-cluster](030-D-civo-terraform-cluster/spec.md) | `cluster-civo` firewall and k3s cluster | DONE | P1 | M | standard | 010, 015, 020, 025 | M1 |
+| CIVO-040 | [040-D-civo-cluster-scripts](040-D-civo-cluster-scripts/spec.md) | Cluster scripts, kubeconfig, guards, leak sweep | DONE | P1 | M | standard | 030 | M1 |
+| CIVO-045 | [045-D-argo-scripts-civo-branches](045-D-argo-scripts-civo-branches/spec.md) | `argo-up`/`argo-down` Civo branches | DONE | P1 | M | standard | 040, 050 | M1 |
+| CIVO-050 | [050-D-gitops-civo-target-baseline](050-D-gitops-civo-target-baseline/spec.md) | Hoist portable components; `target: civo` tree; golden AWS render | DONE | P1 | M | standard | 010 | M1 |
+| CIVO-055 | [055-P-argo-bringup-resilience](055-P-argo-bringup-resilience/spec.md) | Fail fast on CRDs that never establish; reliable bring-up | READY | P1 | M | standard | 045 | M1 |
+| CIVO-060 | [060-D-civo-ingress-envoy-lb](060-D-civo-ingress-envoy-lb/spec.md) | Civo LB via Envoy Service, Gateway 80/443 | DONE | P1 | M | standard | 045 | M1 |
+| CIVO-065 | [065-D-cert-manager-install](065-D-cert-manager-install/spec.md) | cert-manager installed on civo, target-gated | DONE | P1 | S | standard | 050 | M1 |
+| CIVO-070 | [070-D-letsencrypt-http01-tls](070-D-letsencrypt-http01-tls/spec.md) | Let's Encrypt HTTP-01 TLS at Envoy, Secret persistence | DONE | P1 | M | standard | 060, 065, 110 | M1 |
+| CIVO-075 | [075-D-wildcard-tls-dns01](075-D-wildcard-tls-dns01/spec.md) | Wildcard TLS through DNS-01; cert-manager Roles Anywhere consumer | DONE | P2 | M | standard | 070, 082, 090 | M2 |
+| CIVO-080 | [080-D-rolesanywhere-ca-ceremony](080-D-rolesanywhere-ca-ceremony/spec.md) | Offline CA ceremony and committed material | DONE | P0 | M | strongest | 015 | M1 |
+| CIVO-082 | [082-D-rolesanywhere-terraform](082-D-rolesanywhere-terraform/spec.md) | Trust anchor, profile, roles, lab-role additions | DONE | P0 | M | strongest | 080 | M1 |
+| CIVO-085 | [085-D-workload-certificate-issuance](085-D-workload-certificate-issuance/spec.md) | CA issuer Secret at argo-up, per-consumer Certificates | DONE | P0 | M | strongest | 045, 050, 065, 080 | M1 |
+| CIVO-090 | [090-D-credential-helper-sidecar](090-D-credential-helper-sidecar/spec.md) | Credential helper image and sidecar pattern | DONE | P0 | M | standard | 082, 085 | M1 |
+| CIVO-100 | [100-D-eso-on-civo](100-D-eso-on-civo/spec.md) | External Secrets on Civo via sidecar | DONE | P1 | S | standard | 090 | M1 |
+| CIVO-110 | [110-D-external-dns-on-civo](110-D-external-dns-on-civo/spec.md) | ExternalDNS on Civo via sidecar | DONE | P1 | S | standard | 090, 060 | M1 |
+| CIVO-115 | [115-D-cnpg-cluster-on-civo](115-D-cnpg-cluster-on-civo/spec.md) | CNPG Cluster on Civo, data disposable | DONE | P1 | M | standard | 050, 100 | M1 |
+| CIVO-120 | [120-D-cnpg-on-civo-persistence](120-D-cnpg-on-civo-persistence/spec.md) | CNPG on Civo with persistence through object-store backups | DONE | P1 | L | strongest | 050, 100, 115, 180 | M1 |
+| CIVO-130 | [130-P-e2e-tests-civo](130-P-e2e-tests-civo/spec.md) | E2E suite on Civo | READY | P1 | M | standard | 045, 060 | M1 |
+| CIVO-140 | [140-P-ci-workflow-civo](140-P-ci-workflow-civo/spec.md) | `lab.yml` provider input, token decrypt, concurrency, cleanup | READY | P1 | M | standard | 045, 015 | M1 |
+| CIVO-150 | [150-P-teardown-recreate-validation](150-P-teardown-recreate-validation/spec.md) | Full lifecycle validation on Civo | READY | P1 | M | strongest | 120, 110, 070, 130 | M1 |
+| CIVO-160 | [160-D-observability-on-civo](160-D-observability-on-civo/spec.md) | Observability stack on Civo | DONE | P1 | M | standard | 050, 100 | M1 |
+| CIVO-170 | [170-P-civo-cluster-autoscaler](170-P-civo-cluster-autoscaler/spec.md) | Cluster autoscaler 1–3 on the Large pool | READY | P3 | S | standard | 030 | M2 |
+| CIVO-175 | [175-P-right-size-requests-and-sku](175-P-right-size-requests-and-sku/spec.md) | Right-size requests/limits, re-evaluate SKU | READY | P2 | M | standard | 160, 170 | M2 |
+| CIVO-180 | [180-D-cnpg-backups-object-store](180-D-cnpg-backups-object-store/spec.md) | CNPG barman-cloud plugin backups to a per-project S3 bucket | DONE | P1 | L | strongest | 082, 085, 100 | M1 |
+| CIVO-185 | [185-P-aws-logical-backup-migration](185-P-aws-logical-backup-migration/spec.md) | Move the AWS target to the CNPG barman-cloud plugin | READY | P2 | L | strongest | 120, 180 | M2 |
+| CIVO-190 | [190-P-proxy-protocol-client-ip](190-P-proxy-protocol-client-ip/spec.md) | Proxy protocol and client IP | READY | P3 | S | fast | 060 | M2 |
+| CIVO-200 | [200-P-identity-hardening](200-P-identity-hardening/spec.md) | Intermediate CA and Certificate approval policy | READY | P2 | M | strongest | 085 | M2 |
+| CIVO-205 | [205-P-lab-role-least-privilege-review](205-P-lab-role-least-privilege-review/spec.md) | `lab-role` review + ESO ClusterRole scoping (CA-Secret read) | DRAFT | P2 | M | strongest | 082, 085, 200 | M2 |
+| CIVO-210 | [210-P-argocd-grafana-login](210-P-argocd-grafana-login/spec.md) | Real login for Argo CD and Grafana (beyond shared local admin) | DRAFT | P3 | M | standard | — | M2 |
 
 The headers in each `spec.md` are the source of truth. Keep this table in sync.

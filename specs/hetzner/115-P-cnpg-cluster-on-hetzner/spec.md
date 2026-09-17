@@ -27,7 +27,7 @@ app password from External Secrets. Data dies with every `make down` until
 HETZ-120 lands. Teardown does not block on that: it warns that no backup
 mechanism exists yet and proceeds, exactly as on Civo.
 
-Read `specs/civo/115-cnpg-cluster-on-civo/spec.md` first. This spec
+Read `specs/civo/115-D-cnpg-cluster-on-civo/spec.md` first. This spec
 records only the Hetzner differences.
 
 ## 2. Scope and non-goals

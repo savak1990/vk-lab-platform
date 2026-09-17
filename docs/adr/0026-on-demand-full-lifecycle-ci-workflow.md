@@ -111,7 +111,7 @@ reconsidering it.
   `PROJECT_NAME`/`SUBDOMAIN` pair until cleaned up by hand. The `down` job's
   `if: always()` and each job's 120-minute timeout narrow this to the
   hard-cancellation case, not eliminate it.
-- Any new ADR must be numbered 0027 or later - `specs/civo/015-governance-adrs-constitution/spec.md`
+- Any new ADR must be numbered 0027 or later - `specs/civo/015-D-governance-adrs-constitution/spec.md`
   still plans to claim 0025-0029, which this ADR (0026) and ADR 0025 (already
   Accepted) have both preempted; that spec's ADR numbers need renumbering
   before those Civo ADRs are written.
@@ -122,7 +122,7 @@ reconsidering it.
 - ADR 0013 (why EBS snapshots are excluded from the sweep)
 - ADR 0014 (why fixed passwords matter for password-sensitive recovery paths)
 - ADR 0022 (naming-convention IAM scoping this ADR's isolation choice relies on)
-- `specs/020-ci-full-lifecycle-validation/spec.md` (the design this ADR
+- `specs/aws/020-A-ci-full-lifecycle-validation/spec.md` (the design this ADR
   deviates from, per constitution §13)
-- `specs/014-lifecycle/spec.md` Requirement 5 (pre-authorizes exactly this
+- `specs/aws/014-D-lifecycle/spec.md` Requirement 5 (pre-authorizes exactly this
   class of postcondition-verification script)

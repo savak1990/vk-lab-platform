@@ -48,7 +48,7 @@ Rows written before `PROVIDER=hetzner make down` are present after
 (`vk-hetzner-lab-backups`), written by the shared backup job from
 CIVO-180 and loaded by its restore Job. The hcloud volume is disposable.
 
-Read `specs/civo/120-cnpg-on-civo-persistence/spec.md` first. The
+Read `specs/civo/120-D-cnpg-on-civo-persistence/spec.md` first. The
 mechanism is identical; this spec adds the ARM image, the Hetzner bucket
 and the Hetzner evidence.
 

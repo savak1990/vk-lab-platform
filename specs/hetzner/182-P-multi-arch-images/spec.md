@@ -67,7 +67,7 @@ change to what the images do.
 
 ## 5. Files/components affected
 
-- `specs/civo/180-cnpg-backups-object-store/spec.md` §4 and §8 (amendment, with a status-history line).
+- `specs/civo/180-D-cnpg-backups-object-store/spec.md` §4 and §8 (amendment, with a status-history line).
 - `.github/workflows/<pg-backup build>.yml` (as CIVO-180 names it).
 - `images/pg-backup/Dockerfile` — `ARG TARGETARCH` where a binary download depends on it.
 - `gitops/values.yaml` — digest pin.

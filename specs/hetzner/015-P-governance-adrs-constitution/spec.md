@@ -102,7 +102,7 @@ sentence.
 
 - `docs/adr/0032-hetzner-self-bootstrapped-k3s-target.md` (new).
 - `docs/adr/0029-…`, `0030-…`, `0024-…`, `0002-…`, `0022-…` (edit, dated notes).
-- `specs/000-constitution/spec.md` §20 (rewrite as a table).
+- `specs/shared/000-D-constitution/spec.md` §20 (rewrite as a table).
 - `docs/architecture.md` §10a (edit).
 - `docs/civo-high-level-design.md` §1, §3, §5, §6 (edit).
 - `CLAUDE.md`, `terraform/live/persistent/README.md` (edit).

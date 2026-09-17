@@ -29,7 +29,7 @@ The distinguishing risk on Hetzner: nothing is "the cluster". Servers,
 load balancers, volumes and primary IPs are independent billable objects,
 and only servers and the firewall are in Terraform state.
 
-Read `specs/civo/150-teardown-recreate-validation/spec.md` first.
+Read `specs/civo/150-P-teardown-recreate-validation/spec.md` first.
 
 ## 2. Scope and non-goals
 

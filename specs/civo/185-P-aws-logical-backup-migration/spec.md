@@ -123,7 +123,7 @@ Not in scope:
 - GitOps: `gitops/templates/platform/shared/postgres/{cluster,barman-plugin-application,objectstore,scheduled-backup}.yaml`, `gitops/templates/platform/civo/postgres/` (only `aws-config.yaml` left), `gitops/templates/platform/aws/postgres/` and `aws/ebs-csi/{snapshot-controller,volumesnapshotclass}.yaml` (removed), `gitops/values.yaml`, `gitops/bootstrap/{values.yaml,templates/root-application.yaml}`.
 - Scripts: `scripts/persistent-up-civo.sh`, `scripts/argo-up.sh`, `scripts/argo-down.sh`, `scripts/lib/provider.sh`, `scripts/persistent-down.sh`, `scripts/gitops-render-check.sh`.
 - Tests: `tests/golden/gitops-{aws,civo}/**` regenerated deliberately; `tests/manual/007-postgres.md`.
-- Docs: `docs/adr/0033-*.md` (new), `docs/adr/0013-*.md` (status line), `specs/000-constitution/spec.md` §4, `docs/architecture.md`, `docs/aws-platform-design.md`, `specs/civo/decisions.md`.
+- Docs: `docs/adr/0033-*.md` (new), `docs/adr/0013-*.md` (status line), `specs/shared/000-D-constitution/spec.md` §4, `docs/architecture.md`, `docs/aws-platform-design.md`, `specs/civo/decisions.md`.
 
 ## 6. Implementation steps
 

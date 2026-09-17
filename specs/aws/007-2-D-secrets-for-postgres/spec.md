@@ -24,7 +24,7 @@ shows pre-existing-secret wiring exists only for `initdb`, not `recovery`).
 Since the whole `cnpg-system` namespace is Disposable-lifecycle, every
 recovery cycle regenerates a random password that doesn't match what's
 already baked into the recovered PGDATA — this falsified
-`specs/007-postgres/spec.md` line 65's claim that CNPG's own reconciliation
+`specs/aws/007-D-postgres/spec.md` line 65's claim that CNPG's own reconciliation
 made pinning unnecessary; that claim predates the recovery path.
 
 Rather than a minimal script-based fix, this spec pulls forward exactly the

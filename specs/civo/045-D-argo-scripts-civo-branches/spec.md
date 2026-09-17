@@ -113,7 +113,7 @@ As a temporary consequence, `scripts/argo-up.sh`'s `WATCH_SECONDS` default is sh
 
 Offline: `shellcheck` and `bash -n`. Real cloud: one civo up/down (~0.15 USD). AWS: a fast-path run only.
 
-**Correction (2026-09-08):** neither `shellcheck` nor `bash -n` existed as a repo-wide validation gate before this change — no CI workflow or Makefile target ran them previously. A baseline was captured at `specs/civo/045-argo-scripts-civo-branches/evidence/shellcheck-baseline.txt` before implementation began, and the gate used throughout implementation was "no new warnings vs. that baseline," not zero warnings — the AWS-only code paths carry pre-existing warnings that are out of scope to fix here.
+**Correction (2026-09-08):** neither `shellcheck` nor `bash -n` existed as a repo-wide validation gate before this change — no CI workflow or Makefile target ran them previously. A baseline was captured at `specs/civo/045-D-argo-scripts-civo-branches/evidence/shellcheck-baseline.txt` before implementation began, and the gate used throughout implementation was "no new warnings vs. that baseline," not zero warnings — the AWS-only code paths carry pre-existing warnings that are out of scope to fix here.
 
 ## 10. AWS regression protection
 
@@ -137,6 +137,6 @@ Revert the scripts. The fail-closed rule on the civo CNPG teardown prevents sile
 
 - 2026-09-06 — created as DRAFT.
 - 2026-09-06 — approved for development by the user; promoted to READY (dependencies still gate the start).
-- 2026-09-08 — implemented via 10 tasks (function extraction in both scripts, `provider.sh` civo stubs, civo branches in both scripts, bootstrap chart plumbing, spec corrections, the §8 acceptance-criterion amendment below), each reviewed and merged on branch `civo-045-argo-scripts-civo-branches`. Evidence: `specs/civo/045-argo-scripts-civo-branches/evidence/` (shellcheck baseline, redacted AWS fast-path and full down/up command traces).
+- 2026-09-08 — implemented via 10 tasks (function extraction in both scripts, `provider.sh` civo stubs, civo branches in both scripts, bootstrap chart plumbing, spec corrections, the §8 acceptance-criterion amendment below), each reviewed and merged on branch `civo-045-argo-scripts-civo-branches`. Evidence: `specs/civo/045-D-argo-scripts-civo-branches/evidence/` (shellcheck baseline, redacted AWS fast-path and full down/up command traces).
 - 2026-09-08 — live-verified both providers. AWS: full `argo-down`/`argo-up` cycle succeeded (cascade clean, all 15 Applications `Synced/Healthy`, DNS resolved) — zero behavior change confirmed against the pre-refactor script. Civo: ran a full first-time bootstrap (state, bootstrap, persistent, cluster, argo-up) end to end; found and documented the §8 acceptance-criterion gap (root's health cannot converge on the current baseline — see the correction there), added and live-tested a temporary `WATCH_SECONDS` workaround (`TODO(civo)` in `scripts/argo-up.sh`), then fully tore the civo test infrastructure back down (`make full-down`, verified clean via `civo` CLI in the correct region).
 - 2026-09-08 — closed as DONE.

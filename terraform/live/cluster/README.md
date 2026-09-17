@@ -10,15 +10,15 @@ Three units:
   (single `t3.medium`), EKS-managed add-ons (`vpc-cni`, `kube-proxy`,
   `coredns`, `eks-pod-identity-agent`), and the IAM roles the cluster/node
   group need. Runs in the platform-owned VPC (`terraform/live/persistent/vpc`,
-  spec 020), using its public subnets. See `specs/003-network-and-eks/spec.md`.
+  spec 020), using its public subnets. See `specs/aws/003-D-network-and-eks/spec.md`.
 - `argocd-bootstrap/` — installs Argo CD and the single root ("app-of-apps")
   Application via Helm, pointed at `gitops/` (the aws target's install path).
   Terraform touches nothing else Kubernetes-native from here on — see
-  `specs/004-argocd-bootstrap/spec.md`.
+  `specs/aws/004-D-argocd-bootstrap/spec.md`.
 - `karpenter/` — the Karpenter controller's Pod Identity role, the node
   IAM role/EKS access entry Karpenter-provisioned instances need to join,
   and discovery tags on the system node group's subnet/security group. See
-  `specs/006-karpenter/spec.md`.
+  `specs/aws/006-D-karpenter/spec.md`.
 
 **Deviation from `docs/architecture.md` §5's illustrative target tree:**
 that diagram shows three separate units (`eks/`, `eks-addons/`,

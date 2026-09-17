@@ -71,7 +71,7 @@ Checklist (for each item, record the command, the result, and the date):
 
 - `specs/civo/research.md` (new "Spike results" section; five stale rows corrected).
 - `specs/civo/decisions.md` (default-app-names row decided; ADR 0013 note and reserved-IP row corrected).
-- `specs/civo/030-civo-terraform-cluster/spec.md` (app string, k3s version, memory figure, two acceptance criteria).
+- `specs/civo/030-D-civo-terraform-cluster/spec.md` (app string, k3s version, memory figure, two acceptance criteria).
 - `specs/civo/README.md` (index).
 - No repository code.
 

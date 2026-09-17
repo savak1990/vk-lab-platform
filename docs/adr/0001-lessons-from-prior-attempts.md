@@ -40,15 +40,15 @@ mechanism this platform intentionally prefers going forward.
 ## Decision
 
 Carry these lessons into this platform as binding rules, already reflected
-in `docs/architecture.md` and `specs/000-constitution/spec.md`:
+in `docs/architecture.md` and `specs/shared/000-D-constitution/spec.md`:
 
 | Prior gap | Fix in this platform |
 |---|---|
-| Terraform/Argo boundary overlap | Terraform bootstraps Argo CD only; Argo CD owns every other Kubernetes resource ([constitution §2](../../specs/000-constitution/spec.md)) |
+| Terraform/Argo boundary overlap | Terraform bootstraps Argo CD only; Argo CD owns every other Kubernetes resource ([constitution §2](../../specs/shared/000-D-constitution/spec.md)) |
 | No lifecycle separation | Explicit bootstrap / persistent / disposable classes ([architecture §6](../architecture.md)) |
-| No destroy/recreate test | Full lifecycle CI test is mandatory for infrastructure-critical changes ([constitution §11](../../specs/000-constitution/spec.md)) |
+| No destroy/recreate test | Full lifecycle CI test is mandatory for infrastructure-critical changes ([constitution §11](../../specs/shared/000-D-constitution/spec.md)) |
 | Three repos, no atomic review | One platform-only repository; application code stays external |
-| IRSA used, Pod Identity not evaluated | Prefer EKS Pod Identity going forward; IRSA remains a permitted mechanism per [constitution §5](../../specs/000-constitution/spec.md) |
+| IRSA used, Pod Identity not evaluated | Prefer EKS Pod Identity going forward; IRSA remains a permitted mechanism per [constitution §5](../../specs/shared/000-D-constitution/spec.md) |
 
 Kafka, PostgreSQL, CDC, Envoy Gateway, and the wider observability stack are
 new scope, not a fix — they extend what the platform teaches beyond the

@@ -198,5 +198,5 @@ subtrees; shared components read only the contract values.
 - Evidence and pricing: `specs/civo/research.md`
 - Decisions and proposed ADR amendments: `specs/civo/decisions.md`
 - Milestones and first PRs: `specs/civo/roadmap.md`
-- Earlier research: `specs/027-alt-cloud-targets/spec.md` (superseded by this package)
+- Earlier research: `specs/shared/027-Z-alt-cloud-targets/spec.md` (superseded by this package)
 - Proposed ADRs: 0025 (second target), 0026 (Envoy TLS on Civo), 0027 (Roles Anywhere), 0028 (Civo token)

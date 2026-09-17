@@ -45,7 +45,7 @@ The scope does not include code, the CA design details (CIVO-080), or tests.
 ## 3. Current state / evidence
 
 - ADR 0011 `docs/adr/0011-nlb-acm-public-edge.md` says "no cert-manager, no Let's Encrypt". It gives the LE duplicate-certificate rate limit as a reason.
-- Constitution `specs/000-constitution/spec.md` §18 is the `local` carve-out. The text of §3, §16, and invariant 4 applies to AWS only.
+- Constitution `specs/shared/000-D-constitution/spec.md` §18 is the `local` carve-out. The text of §3, §16, and invariant 4 applies to AWS only.
 - `docs/architecture.md` §10a describes two targets. It also describes a `values-<target>.yaml` layout that does not exist. The review document lists the other stale items.
 - Spec 027 is research-only. It has four Open Questions.
 
@@ -78,11 +78,11 @@ For `architecture.md`, do these three changes:
 ## 5. Files/components affected
 
 - `docs/adr/0027-…md`, `0028-…md`, `0029-…md`, `0030-…md`, `0031-…md` (new).
-- `specs/000-constitution/spec.md` (add §20; do not change §18).
+- `specs/shared/000-D-constitution/spec.md` (add §20; do not change §18).
 - `docs/architecture.md` (§10a, the §5 tree, and the Kafka/Tempo/Secrets Manager/argocd-bootstrap fixes).
 - `CLAUDE.md` (the project purpose line, the VPC line in the lifecycle list, the repository layout, and the workload identity line).
 - `README.md` (the implemented-stack sentence), `terraform/live/persistent/README.md`.
-- `specs/027-alt-cloud-targets/spec.md` (add `**Status:** Superseded by specs/civo/`).
+- `specs/shared/027-Z-alt-cloud-targets/spec.md` (add `**Status:** Superseded by specs/civo/`).
 
 ## 6. Implementation steps
 

@@ -56,7 +56,7 @@ bypassing the per-consumer CN scoping CIVO-082/085 otherwise establish.
 CIVO-200's Certificate-approval policy does not close this path (it
 gates who may get a `Certificate` approved, not who may read the Secret
 holding the CA key). This is now documented as a known, accepted M1 risk
-in `specs/civo/085-workload-certificate-issuance/spec.md` §4 and
+in `specs/civo/085-D-workload-certificate-issuance/spec.md` §4 and
 `docs/adr/0029-rolesanywhere-offline-ca.md`; this spec is where the
 actual fix — scoping ESO's RBAC — should land.
 
@@ -216,6 +216,6 @@ Unresolved — depends on the direction chosen in §4.
   (`kubectl auth can-i get secrets -n cert-manager
   --as=system:serviceaccount:external-secrets:external-secrets` → `yes`)
   against `vk-civo-lab`. Documented as a known, accepted M1 risk in
-  `specs/civo/085-workload-certificate-issuance/spec.md` §4 and
+  `specs/civo/085-D-workload-certificate-issuance/spec.md` §4 and
   `docs/adr/0029-rolesanywhere-offline-ca.md`; this spec now also owns
   the actual fix (ESO RBAC scoping), still DRAFT pending user review.

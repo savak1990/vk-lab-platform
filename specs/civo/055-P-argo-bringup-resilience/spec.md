@@ -53,7 +53,7 @@ Not in scope:
   a plausible mitigation (§12) but unproven, and it changes the GitOps tree
   rather than the failure reporting. Reassess once this spec's evidence says
   whether the fault recurs.
-- The AWS target's equivalent work, which `specs/032-argo-bootstrap-resilience`
+- The AWS target's equivalent work, which `specs/aws/032-D-argo-bootstrap-resilience`
   already proposes. The guard added here is target-agnostic and runs on both,
   but only civo is verified in this spec.
 - Any change to `ARGO_UP_WATCH_SECONDS`, Argo's retry budget, or ADR 0025's

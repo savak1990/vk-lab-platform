@@ -27,7 +27,7 @@ Hetzner cluster with a read-only ServiceAccount token. A self-managed k3s
 has no cloud IAM mapping, so the SA-token path from CIVO-130 is the only
 option. No Go changes.
 
-Read `specs/civo/130-e2e-tests-civo/spec.md` first.
+Read `specs/civo/130-P-e2e-tests-civo/spec.md` first.
 
 ## 2. Scope and non-goals
 

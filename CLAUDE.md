@@ -19,7 +19,7 @@ Business application source code MUST NOT be added to this repository.
 Read these documents before making architectural changes:
 
 1. `docs/architecture.md` — target architecture and lifecycle.
-2. `specs/000-constitution/` — mandatory engineering constraints.
+2. `specs/shared/000-D-constitution/` — mandatory engineering constraints.
 3. The relevant numbered spec under `specs/`.
 4. Relevant ADRs under `docs/adr/`.
 
@@ -133,15 +133,15 @@ The persistent stack's `route53` unit manages the single NS record delegating `l
 
 Records inside the lab zone (e.g., the NLB's record) are disposable; the zone and certificate are not.
 
-Never use a real root domain in code, tfvars, Helm values, or docs — use placeholders like `<root-domain>` or `lab.<root-domain>`. Keeping it out of the public repo is for hygiene, not a security control — it's also derivable from public DNS once a project's zone is delegated (the `lab.<root-domain>` zone's NS records name the parent). `root_domain` and `fqdn` (which embeds it) are stored as plain `String` in SSM Parameter Store, not `SecureString` — private/hygiene data, not credentials, consistent with that same public-DNS exposure; this also removes a KMS-key-must-exist-first ordering dependency. See `docs/adr/0002-delegated-lab-subdomain.md`, `docs/adr/0023-ssm-parameter-store-for-terraform-derived-config-and-secrets.md`, and `specs/000-constitution/spec.md` §14.
+Never use a real root domain in code, tfvars, Helm values, or docs — use placeholders like `<root-domain>` or `lab.<root-domain>`. Keeping it out of the public repo is for hygiene, not a security control — it's also derivable from public DNS once a project's zone is delegated (the `lab.<root-domain>` zone's NS records name the parent). `root_domain` and `fqdn` (which embeds it) are stored as plain `String` in SSM Parameter Store, not `SecureString` — private/hygiene data, not credentials, consistent with that same public-DNS exposure; this also removes a KMS-key-must-exist-first ordering dependency. See `docs/adr/0002-delegated-lab-subdomain.md`, `docs/adr/0023-ssm-parameter-store-for-terraform-derived-config-and-secrets.md`, and `specs/shared/000-D-constitution/spec.md` §14.
 
-The platform targets exactly one AWS region, `eu-west-1`, declared once per layer and never derived from an environment variable or workflow input. See `docs/adr/0024-single-fixed-aws-region.md`; `specs/031-non-home-region-cluster/` records the deferred non-home-region work.
+The platform targets exactly one AWS region, `eu-west-1`, declared once per layer and never derived from an environment variable or workflow input. See `docs/adr/0024-single-fixed-aws-region.md`; `specs/aws/031-Z-non-home-region-cluster/` records the deferred non-home-region work.
 
 ---
 
 ## Resource tagging
 
-Every Terraform-managed AWS resource MUST carry: `Project=vk-lab-platform`, `Scope=platform` (marks it as platform infra, not a business/service resource), `Lifecycle=bootstrap|persistent|disposable`, `ManagedBy=terraform`. Set these once via a provider-level `default_tags` block (bootstrap stack) rather than per-resource. See `specs/000-constitution/spec.md` §16.
+Every Terraform-managed AWS resource MUST carry: `Project=vk-lab-platform`, `Scope=platform` (marks it as platform infra, not a business/service resource), `Lifecycle=bootstrap|persistent|disposable`, `ManagedBy=terraform`. Set these once via a provider-level `default_tags` block (bootstrap stack) rather than per-resource. See `specs/shared/000-D-constitution/spec.md` §16.
 
 ---
 
@@ -390,7 +390,7 @@ Do not add business service implementation directories.
 For non-trivial work:
 
 1. Read `docs/architecture.md`.
-2. Read `specs/000-constitution/`.
+2. Read `specs/shared/000-D-constitution/`.
 3. Read the relevant numbered spec.
 4. Inspect existing implementation.
 5. Produce an implementation plan.
