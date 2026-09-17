@@ -37,7 +37,7 @@ lands in HETZ-040 and prints a message on the other providers.
 
 In scope: `Makefile`, `scripts/lib/provider.sh`, the `hcloud_token` and
 `hcloud_cli` helpers, the secret path rule for `hcloud-token`, the
-`test-kubeconfig` stub arm, the CIVO-186 `FROM`/`TO` enum, and a `make -n`
+`test-kubeconfig` stub arm, and a `make -n`
 golden proof for `aws` and `civo`.
 Not in scope: any Hetzner Terraform (HETZ-025/030), script branches that need
 a Hetzner cluster (HETZ-040/045), CI (HETZ-140), and the generalisation
@@ -61,7 +61,6 @@ refactor (HETZ-016).
 - `hcloud_list_names()`: `hcloud <resource> list -o json -l project=<project>` piped through `jq -r '.[].name'`. Unlike the civo CLI, an empty result is `[]`, so no shape check is needed. HETZ-040 uses it.
 - Secret path rule: `secret-decrypt.sh` and `secret-encrypt.sh` add `hcloud-token` to the repo-root list. `secrets/hcloud-token.enc` is committed KMS ciphertext under `alias/lab-secrets`; `.gitignore` gets `!secrets/hcloud-token.enc`.
 - `test-kubeconfig` (`Makefile:204-207`): the hetzner arm prints "implemented in HETZ-130" and exits 1, as the civo stub does. `kubeconfig` (`:182`) prints "implemented in HETZ-040".
-- CIVO-186 `make backup-promote FROM= TO=`: the enum gains `hetzner`. If CIVO-186 has not landed when this spec runs, add the line to CIVO-186 §4 instead and record that here.
 - State: `PROVIDER=hetzner make state-up` creates `vk-hetzner-lab-tf-state` through the unchanged `state-up`. Nothing else in this spec touches state.
 - Manual prerequisite, documented in `secrets/README.md`: create a Hetzner Cloud project named `vk-hetzner-lab` in the Console, create one Read&Write API token in that project, encrypt it with `SECRET_NAME=hcloud-token make secret-encrypt`, commit the `.enc` file. Never create the token in a project that holds anything else: every reader of the token owns the whole project (ADR 0030 amendment, HETZ-015).
 
@@ -73,7 +72,6 @@ refactor (HETZ-016).
 - `secrets/README.md` (edit): `hcloud-token.enc`, the project and token prerequisite.
 - `.gitignore` (edit): `!secrets/hcloud-token.enc`.
 - `secrets/hcloud-token.enc` (new, ciphertext).
-- CIVO-186 enum, one line, when present.
 - No Terraform, GitOps, or CI changes.
 
 ## 6. Implementation steps

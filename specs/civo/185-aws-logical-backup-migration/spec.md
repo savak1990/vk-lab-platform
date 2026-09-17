@@ -1,14 +1,14 @@
 ---
 id: "CIVO-185"
-title: "Migrate the AWS target from EBS snapshots to the shared logical backups"
-status: "DRAFT"
+title: "Move the AWS target to the CNPG barman-cloud plugin"
+status: "READY"
 priority: "P2"
 milestone: "M2"
 type: "implementation"
-difficulty: "M"
+difficulty: "L"
 recommended_model_tier: "strongest"
-model_rationale: "It changes the data-recovery path of the working AWS platform; the retirement order and the proof of recovery need care"
-effort_estimate: "One session (4–6 h) plus one full AWS down/up cycle"
+model_rationale: "It replaces the data-recovery path of the working AWS platform, must cut over without a bring-up that wipes the lab database, and depends on two unproven identity and architecture behaviours"
+effort_estimate: "Two sessions (8–12 h) plus three AWS down/up cycles and one Civo down/up cycle"
 estimate_confidence: "medium"
 depends_on: ["CIVO-120", "CIVO-180"]
 blocked_by: []
@@ -18,133 +18,191 @@ updated: "2026-09-16"
 completed: null
 ---
 
-# CIVO-185 — Move the AWS target to the shared backup mechanism
-
-> **Returned to DRAFT on 2026-09-16. Needs a redesign before it is READY.**
->
-> This spec is written against CIVO-180's logical-dump design, which was
-> withdrawn. It expects a `pg_dump` CronJob, a `PostSync` restore Job and an
-> AWS Pod Identity role that were never built.
->
-> The goal still holds and is now **more** attractive, not less: one mechanism
-> for both providers, with point-in-time recovery on AWS too, which the
-> logical-dump design would have cost. The redesign target is the barman-cloud
-> plugin (ADR 0032) on AWS, which is simpler there than on Civo — EKS Pod
-> Identity plus `s3Credentials.inheritFromIAMRole: true`, and **none** of the
-> `aws_signing_helper`, `credential_process`, `projectedVolumeTemplate` or
-> custom-image machinery. The upstream sidecar image would be used unmodified.
->
-> Retirement scope is unchanged: the snapshot classes, the
-> `recovered-snapshot` template, the root Application's `ignoreDifferences`
-> entry, the external-snapshotter Application, and the snapshot code paths in
-> `argo-up.sh` and `argo-down.sh`. ADR 0013 would be superseded rather than
-> amended.
->
-> Read §§2 onward as intent, not as a contract. Every mention below of a dump,
-> a CronJob or a restore Job is stale.
+# CIVO-185 — Move the AWS target to the CNPG barman-cloud plugin
 
 ## 1. Outcome and rationale
 
-The AWS target backs up PostgreSQL with the same logical dump job that
-Civo uses, and the EBS snapshot machinery retires. One mechanism serves
-both providers, so there is one restore drill, one set of scripts and one
-document to keep true.
+The AWS target backs up PostgreSQL through the same barman-cloud CNPG-I
+plugin that Civo uses (ADR 0032): continuous WAL archiving and scheduled
+base backups to a per-project S3 bucket, and recovery through CNPG's
+`bootstrap.recovery` from the previous generation. The EBS
+`VolumeSnapshot` mechanism (ADR 0013) retires.
 
-This is deliberately separate from CIVO-180. Milestone M1 must not change
-the working AWS data path. This spec makes that change on its own, with
-its own proof.
+Three things are gained:
+
+- **Point-in-time recovery on AWS.** A cold `VolumeSnapshot` taken at
+  teardown gives none, and it fences the primary while it runs.
+- **One mechanism.** One set of templates, one recovery branch, one
+  generation pointer, one set of e2e assertions (CIVO-150) for both
+  providers.
+- **Less surface.** The snapshot controller, the snapshot class, the
+  client-side-applied `VolumeSnapshotContent`, the root Application's
+  `ignoreDifferences` entry and the snapshot discovery and prune code
+  all go.
+
+AWS is the simpler half. EKS Pod Identity supplies credentials, so none of
+the Civo identity machinery — `aws_signing_helper`, `credential_process`,
+`projectedVolumeTemplate`, the custom sidecar image — is used on AWS. The
+upstream sidecar image is multi-arch and is used unmodified.
 
 ## 2. Scope and non-goals
 
 In scope:
-- Enable the backup CronJob and the restore Job on the AWS target.
-- Remove the snapshot code paths from `argo-up.sh` and `argo-down.sh`.
-- Remove the snapshot classes, the recovered-snapshot template, the `ignoreDifferences` entry and the external-snapshotter Application.
-- Amend ADR 0013 and the architecture document.
-- Prove recovery on AWS with a full destroy and recreate cycle carrying real rows.
+
+- A `persistent/backups` Terraform unit for AWS, using the existing `postgres-backups` module. The Civo unit stays where it is.
+- A Pod Identity role and association for the Postgres instance pods on AWS.
+- Moving the plugin Application, `ObjectStore` and `ScheduledBackup` templates from Civo-only to shared.
+- Provider-neutral generation-pointer, prune, teardown-backup and recovery-handle helpers in the scripts.
+- Pinning one PostgreSQL image on both targets.
+- A cutover order in which both mechanisms are live for one cycle, so no bring-up falls through to `initdb` over real data.
+- Retiring the AWS snapshot create, discover and prune paths, and the snapshot manifests.
+- ADR 0033 superseding ADR 0013; architecture and AWS design documents.
+- Three AWS cycles (one with both mechanisms live) and one Civo regression cycle, with data evidence.
 
 Not in scope:
-- Deleting existing EBS snapshots. They stay until an operator removes them, so a rollback remains possible.
-- Point-in-time recovery. The trade is stated in the ADR amendment.
+
+- **Cross-provider restore.** CIVO-186 was removed on 2026-09-16. Buckets and pointers are per project, a shared bucket would let a leaked `CIVO_TOKEN` read AWS data through the ADR 0030 CA-key path, and AWS runs arm64 while Civo runs x86_64: PostgreSQL does not support physical restore across architectures, and `char` signedness differs, so some index keys (for example `pg_trgm` GIN) would need a rebuild.
+- Deleting existing EBS snapshots by hand. They remain the rollback path. `persistent-down` still deletes them, as it does today.
+- An arm64 build of `images/cnpg-barman-sidecar`. AWS does not use it; HETZ-182 owns that.
 
 ## 3. Current state / evidence
 
-- `scripts/argo-down.sh:54-113` creates a CNPG `Backup` with `method: volumeSnapshot`, waits for it, then prunes older EBS snapshots.
-- `scripts/argo-up.sh:167-197` discovers the newest snapshot and passes its handle to the root Application.
-- `gitops/templates/platform/aws/postgres/recovered-snapshot.yaml` builds a `VolumeSnapshotContent` with a client-side apply exception.
-- `gitops/templates/platform/aws/ebs-csi/snapshot-controller.yaml` installs the CRDs and controller at waves -6 and -1.
-- `gitops/bootstrap/templates/root-application.yaml:55-62` ignores differences on `VolumeSnapshotContent`.
-- `scripts/lib/persistent-ebs-artifacts.sh` lists snapshots for the teardown scripts.
+- `scripts/argo-down.sh:87-150` `aws_cnpg_backup_and_prune` creates a `Backup` with `method: volumeSnapshot`, fails closed on failure or timeout, then prunes EBS snapshots to the newest 2.
+- `scripts/argo-up.sh:309-353` `aws_resolve_snapshot` discovers the newest completed snapshot, prunes, and sets `RECOVERY_SNAPSHOT_HANDLE`; `aws_install_root_application` passes it as `postgres.recoverySnapshotHandle`.
+- `gitops/templates/platform/aws/postgres/recovered-snapshot.yaml` builds a `VolumeSnapshotContent` and `VolumeSnapshot`; `gitops/templates/platform/aws/ebs-csi/{snapshot-controller,volumesnapshotclass}.yaml` install the controller, its CRDs and the class.
+- `gitops/bootstrap/templates/root-application.yaml:28-29` passes `postgres.recoverySnapshotHandle`; `:88-92` ignores differences on `VolumeSnapshotContent`.
+- `gitops/templates/platform/shared/postgres/cluster.yaml` renders a `volumeSnapshot` backup block and a snapshot recovery branch on aws, and the plugin blocks on civo only. It sets no `imageName`, so both targets take the operator chart 0.29.0 default image.
+- `gitops/templates/platform/civo/postgres/{barman-plugin-application,objectstore,scheduled-backup,aws-config}.yaml` are gated on `target == civo`.
+- `terraform/live/persistent-civo/backups` uses `terraform/modules/postgres-backups` and holds the live Civo bucket `vk-civo-lab-postgres-backups`. SSM: `/<project>/persistent-civo/backups/bucket_name` and the pointer `/<project>/persistent-civo/postgres-backup/server_name`.
+- `terraform/modules/rolesanywhere/main.tf` grants `pgbackup` `s3:ListBucket`, `s3:ListBucketMultipartUploads`, `s3:GetBucketLocation` on the bucket, and `s3:PutObject`, `s3:GetObject`, `s3:DeleteObject`, `s3:AbortMultipartUpload`, `s3:ListMultipartUploadParts` on its objects.
+- `terraform/modules/pod-identity` plus four `terraform/live/cluster/*-pod-identity` units are the Pod Identity pattern. `eks-pod-identity-agent` is an EKS add-on in `terraform/modules/eks/main.tf`.
+- AWS Karpenter pools are Graviton only (`gitops/values.yaml:83-91`). Postgres runs on the on-demand pool.
+- `ghcr.io/cloudnative-pg/plugin-barman-cloud-sidecar:v0.15.0` publishes amd64 and arm64 manifests.
+- Constitution §4 already makes the pre-teardown backup best-effort for continuously archiving workloads and excludes discrete-snapshot mechanisms. AWS falls under the relaxation once it archives continuously.
+- `PERSISTENT_EXCLUDE` is a single unit name passed as one `--filter "!./$PERSISTENT_EXCLUDE"` (`scripts/persistent-up-civo.sh:18`, `scripts/persistent-down.sh:167`). It is `vpc` on Civo.
+- AWS storage is `ebs-delete`: after `make down` the only copy of the AWS lab database is the newest EBS snapshot.
+- `scripts/lib/persistent-ebs-artifacts.sh` provides `list_retained_volumes` and `list_postgres_snapshots`, both used by `scripts/persistent-down.sh`.
 
 ## 4. Design and contracts
 
-- Set `postgres.backup.enabled: true` on the AWS target and point it at the same `${project}-backups` bucket that the persistent stack already creates.
-- The AWS pod obtains credentials through the Pod Identity association from CIVO-180. No configuration file and no certificate are involved.
-- Replace the snapshot block in `argo-down.sh` with the shared teardown gate: create a Job from the CronJob, wait, fail closed.
-- Replace the snapshot discovery in `argo-up.sh` with nothing. The restore Job decides for itself whether the database is empty.
-- Remove `recoverySnapshotHandle` from the root Application parameters and from `gitops/values.yaml`.
-- Keep the `ebs-retain` StorageClass. It is unrelated to this change.
-- Amend ADR 0013 to record that logical dumps replace VolumeSnapshot recovery on both targets, and why: the second provider has no snapshot-capable driver, and one mechanism is cheaper to keep correct than two.
+**Bucket — one unit per lifecycle directory, one module.**
+- Create `terraform/live/persistent/backups` for AWS from `persistent-civo/backups`, same module. Bucket `vk-lab-platform-postgres-backups`, SSM `/<project>/persistent/backups/bucket_name`.
+- Leave `persistent-civo/backups` and its SSM paths unchanged. No live Civo bucket is imported, moved or re-planned.
+- `PERSISTENT_EXCLUDE` becomes a space-separated list, expanded into one `--filter` per entry in `persistent-up-civo.sh` and `persistent-down.sh`. Civo sets it to `vpc backups`, so it gets no second bucket.
+- `scripts/persistent-down.sh`: add `persistent/backups` to the emptiness list and empty the bucket on both providers.
+
+**Identity on AWS.**
+- New module `terraform/modules/postgres-backup-pod-identity` and unit `terraform/live/cluster/postgres-backup-pod-identity`, the same shape as `external-dns-pod-identity`. Service account `cnpg-system/lab-postgres`, the one CNPG creates for the Cluster. Policy: the same S3 actions as the Civo `pgbackup` role, on the literal bucket ARN — no dependency on the persistent layer.
+- The association is created by `make up` before `argo-up`, so it exists before the instance pod is admitted.
+- `ObjectStore` keeps `s3Credentials.inheritFromIAMRole: true` on both providers.
+
+**GitOps.**
+- Move `barman-plugin-application.yaml`, `objectstore.yaml` and `scheduled-backup.yaml` to `gitops/templates/platform/shared/postgres/`, gated on `postgres.backup.enabled` and `target != local`. `aws-config.yaml` and the Cluster's `projectedVolumeTemplate` and `env` stay Civo-only.
+- Sidecar image per target: `postgres.backup.sidecarImage` in `gitops/values.yaml` becomes the upstream multi-arch index digest; the Civo custom image moves to a civo-only override passed by `civo_install_root_application`.
+- `cluster.yaml`: the `plugins` block and the `externalClusters` recovery branch render for both targets when `postgres.backup.enabled`. The `volumeSnapshot` backup block and the snapshot recovery branch are deleted. The recovery branch keeps no `initdb` fallback.
+- Pin `imageName` to one PostgreSQL image by digest in `gitops/values.yaml`, used by both targets, so the operator chart version no longer decides the major.
+- `postgres.backup.enabled` becomes `true` for aws in `gitops/values.yaml` and the bootstrap parameters.
+- Delete `aws/postgres/recovered-snapshot.yaml`, `aws/ebs-csi/{snapshot-controller,volumesnapshotclass}.yaml`, the `VolumeSnapshotContent` `ignoreDifferences` entry, and `postgres.recoverySnapshotHandle` everywhere.
+- Update comments that point at `external-snapshotter-crds` for wave ordering (for example the cert-manager Application).
+
+**Scripts.**
+- Rename the `civo_*` backup helpers to provider-neutral names: `backup_publish_server_name`, `backup_prune_generations`, `backup_recovery_handle`, `backup_teardown`, `backup_archiving_status`. Both providers call them.
+- Paths stay per provider layer: AWS uses `/<project>/persistent/{backups/bucket_name,postgres-backup/server_name}`, Civo keeps `/<project>/persistent-civo/...`. The helpers take the layer name; there is no pointer migration.
+- `argo-up.sh`: delete `aws_resolve_snapshot` and `SNAPSHOT_TAG_FILTERS`. `aws_install_root_application` gains the bucket, `serverName` and `recoverServerName` parameters.
+- `argo-down.sh`: delete `aws_cnpg_backup_and_prune`; both providers call `backup_teardown`, which is best-effort under constitution §4.
+- `persistent-down.sh`: keep `list_postgres_snapshots` and snapshot deletion, so snapshots left from before this change are still cleaned up; delete the pointer on both providers.
+
+**Documents.**
+- ADR 0033 supersedes ADR 0013: one mechanism, PITR on AWS, why Pod Identity is enough, why cross-provider restore is out.
+- Constitution §4: replace the ADR 0032 reference with "ADR 0032, ADR 0033"; no rule change.
+- `docs/architecture.md`, `docs/aws-platform-design.md`, `tests/manual/007-postgres.md`, `.github/workflows/lifecycle-test.yml` comments: remove snapshot recovery wording.
 
 ## 5. Files/components affected
 
-- `scripts/argo-up.sh`, `scripts/argo-down.sh`, `scripts/lib/persistent-ebs-artifacts.sh`, `scripts/persistent-down.sh`.
-- `gitops/templates/platform/aws/postgres/recovered-snapshot.yaml` (removed), `.../ebs-csi/{volumesnapshotclass,snapshot-controller}.yaml` (removed), `gitops/bootstrap/templates/root-application.yaml` (parameters and `ignoreDifferences`).
-- `gitops/values.yaml`, `docs/adr/0013-*.md`, `docs/architecture.md`, `docs/aws-platform-design.md`.
-- `tests/golden/gitops-aws` is regenerated deliberately in this spec.
+- Terraform: `terraform/live/persistent/backups/` (new), `terraform/modules/postgres-backup-pod-identity/` (new), `terraform/live/cluster/postgres-backup-pod-identity/` (new).
+- GitOps: `gitops/templates/platform/shared/postgres/{cluster,barman-plugin-application,objectstore,scheduled-backup}.yaml`, `gitops/templates/platform/civo/postgres/` (only `aws-config.yaml` left), `gitops/templates/platform/aws/postgres/` and `aws/ebs-csi/{snapshot-controller,volumesnapshotclass}.yaml` (removed), `gitops/values.yaml`, `gitops/bootstrap/{values.yaml,templates/root-application.yaml}`.
+- Scripts: `scripts/persistent-up-civo.sh`, `scripts/argo-up.sh`, `scripts/argo-down.sh`, `scripts/lib/provider.sh`, `scripts/persistent-down.sh`, `scripts/gitops-render-check.sh`.
+- Tests: `tests/golden/gitops-{aws,civo}/**` regenerated deliberately; `tests/manual/007-postgres.md`.
+- Docs: `docs/adr/0033-*.md` (new), `docs/adr/0013-*.md` (status line), `specs/000-constitution/spec.md` §4, `docs/architecture.md`, `docs/aws-platform-design.md`, `specs/civo/decisions.md`.
 
 ## 6. Implementation steps
 
-1. Enable the backup job on AWS. Confirm a dump lands in S3 through Pod Identity.
-2. Write rows, run `make down`, then `make up`. Confirm the restore Job loads the dump and the rows return.
-3. Remove the snapshot code from both scripts and the snapshot manifests from the tree.
-4. Regenerate the golden baseline in a separate commit, so the review sees exactly what left the render.
-5. Repeat the destroy and recreate cycle with the snapshot path gone.
-6. Amend ADR 0013, the architecture document and the AWS design document.
+1. **Spike gate A — Pod Identity reaches the sidecar.** On a live EKS cluster, hand-apply the pod identity unit, the plugin, the `ObjectStore` and the Cluster `plugins` block. Pass: the `plugin-barman-cloud` init container spec carries `AWS_CONTAINER_CREDENTIALS_FULL_URI` and the token mount, and `ContinuousArchiving=True`. Fallback if the webhook skips the native sidecar: set the two Pod Identity variables and the projected token volume on `Cluster.spec.env` and `projectedVolumeTemplate`, which the sidecar inherits, and record the deviation.
+2. **Spike gate B — arm64.** Same cluster: a completed `Backup`, WAL in S3, then a second Cluster recovered from it on an on-demand Graviton node with matching row counts. Record sidecar memory during the base backup.
+3. Do not continue unless both gates pass. Record the evidence in §14.
+
+The next steps are ordered so that no AWS bring-up takes the `initdb` branch over real data. Snapshot recovery stays in place until an S3 generation exists.
+
+4. **Additive half.** `PERSISTENT_EXCLUDE` list support, the AWS `persistent/backups` unit, the pod identity unit, the template move, the `imageName` pin, the per-target sidecar image, and provider-neutral script helpers. On AWS the Cluster keeps the snapshot recovery branch, and gains the `plugins` block. `aws_resolve_snapshot` stays. Regenerate goldens and review.
+5. **Dual cycle on AWS.** `make up` on the additive code: data comes back from the newest EBS snapshot. Confirm `ContinuousArchiving=True`, a completed `Backup` and the pointer written. Write rows, then one final row, then `make down`: both the teardown snapshot and the S3 archive are taken.
+6. **Removal half.** Delete `aws_resolve_snapshot`, `aws_cnpg_backup_and_prune`, `recovered-snapshot.yaml`, the snapshot controller and class, the `ignoreDifferences` entry and `postgres.recoverySnapshotHandle`. The AWS recovery branch is now the plugin branch. Regenerate goldens in a separate commit.
+7. Documents: ADR 0033, ADR 0013 status, constitution §4 reference, architecture and AWS design, `specs/civo/decisions.md`.
+8. **AWS cycle 1 (plugin only).** `make up` recovers from the step-5 generation. Every row is present, including the final one; archiving goes to a new prefix. Write a new final row, `make down`.
+9. **AWS cycle 2.** `make up` recovers from the cycle-1 generation, which was itself a recovered cluster. Confirm the `.history` file and a third prefix.
+10. **Civo cycle.** `PROVIDER=civo make down` and `make up` on the final code. Rows match; the Civo bucket and pointer paths are unchanged.
 
 ## 7. Dependencies and blockers
 
-CIVO-180 supplies the bucket, image and jobs. CIVO-120 proves the flow on Civo first, so AWS is not the first user of a new mechanism.
+CIVO-120 and CIVO-180 proved the plugin, the generation pointer and the
+best-effort teardown on Civo. No blocker. Gates A and B in §6 are the
+decision points.
 
 ## 8. Acceptance criteria
 
-- Two full AWS destroy and recreate cycles restore the rows from S3.
-- No reference to `VolumeSnapshot`, `recoverySnapshotHandle` or `snapshot-controller` remains in the scripts, the GitOps tree or the root Application.
-- The existing EBS snapshots still exist and are untouched, so a rollback is possible.
-- The regenerated golden baseline contains exactly the intended removals and nothing else.
-- Documentation states one backup mechanism for both providers.
+- No bring-up during this spec takes the `initdb` branch, except a deliberate one on an empty database.
+- Two AWS down/up cycles on the plugin alone restore every row, including one written seconds before teardown, and each bring-up archives into a new generation prefix.
+- One Civo down/up cycle after the change restores every row; `persistent-civo` shows no Terraform change.
+- No reference to `VolumeSnapshot`, `recoverySnapshotHandle`, `snapshot-controller` or `external-snapshotter` remains in `gitops/`, `scripts/argo-up.sh`, `scripts/argo-down.sh` or the goldens.
+- `persistent-down` still deletes any Postgres EBS snapshot left from before the change.
+- Both targets render the same pinned PostgreSQL image.
+- No AWS access key exists in the cluster, in SSM or in Git: `grep -rniE 'AKIA[0-9A-Z]{16}'` finds nothing.
+- The golden diff contains only the intended additions and removals, reviewed line by line.
 
 ## 9. Validation
 
-Real cloud on AWS: two full lifecycle cycles at the normal cost of the
-AWS lab. Offline: the golden diff and its deliberate regeneration.
+Offline: `make gitops-check`, `terraform fmt -recursive -check`,
+`terragrunt validate`, `bash -n` and `shellcheck` on changed scripts. The
+repository has no PR-triggered CI; run these locally.
+
+Real cloud: the spike cluster, three AWS cycles and one Civo cycle, with
+`AWS_PROFILE=viacheslav-dev`.
 
 ## 10. AWS regression protection
 
-This spec is the AWS change, so protection means proof rather than
-absence of change: two recorded destroy and recreate cycles with real
-rows, taken before and after the snapshot code is removed. The retained
-snapshots are the rollback path if a cycle fails.
+This spec is the AWS change, so protection is proof, not absence of
+change: the dual cycle and the two plugin-only AWS cycles in §6. The EBS snapshots that exist before the
+change remain until `persistent-down`, so reverting the commit restores
+the snapshot path with a snapshot to recover from.
 
 ## 11. Rollout and rollback/recovery
 
-Roll back by reverting the commit. The EBS snapshots that existed before
-the migration remain, so the old recovery path still works. This is an
-irreversible step only once an operator deletes those snapshots, which
-this spec does not do.
+Rollback before step 6: revert; snapshot recovery was never removed, and
+step 5's teardown snapshot holds the latest rows. Rollback after step 6:
+revert, and the restored `aws_resolve_snapshot` finds the step-5 snapshot.
+Rows written only after step 5 exist only in S3 and are lost on that path;
+state this before reverting. The AWS bucket is additive and can stay.
 
 ## 12. Risks and unresolved questions
 
-- Point-in-time recovery is lost on AWS. Anything written between the last dump and a failure is unrecoverable. Record the accepted window in the ADR amendment.
-- A large database makes the teardown dump slower than a snapshot. Measure and adjust the timeout.
+- **Pod Identity in a native sidecar** is unproven. Gate A decides it, and names the fallback.
+- **arm64 physical backup** is unproven in this repository. Gate B decides it.
+- **Cutover data loss.** Removing snapshot discovery before an S3 generation exists would make the next bring-up run `initdb` over the lab database. The step 4–6 order is the guard.
+- **Recovery time** grows with database size and WAL volume, unlike a snapshot restore. Measure on cycle 1 and adjust `ARGO_UP_WATCH_SECONDS` if needed.
+- **Memory on on-demand nodes.** The sidecar adds up to its limit on the Postgres pod. Size from gate B.
+- **Wildcard secrets Role** from the plugin (CIVO-180 §12) now exists on AWS too; CIVO-205 covers both.
 
 ## 13. Definition of done
 
-- [ ] Two AWS cycles with data evidence
-- [ ] Snapshot code and manifests removed; golden baseline regenerated
-- [ ] ADR 0013 amended; architecture and AWS design documents updated
+- [ ] Gates A and B recorded
+- [ ] Additive half: exclude list, AWS bucket unit, pod identity unit, shared templates, image pin, neutral helpers
+- [ ] Dual cycle on AWS with both mechanisms live
+- [ ] Removal half: snapshot surface removed, goldens regenerated and reviewed
+- [ ] ADR 0033, ADR 0013 status, constitution §4 reference, architecture and AWS design updated
+- [ ] Two AWS cycles and one Civo cycle with data evidence
 - [ ] Index updated; status `DONE`
 
 ## 14. Execution evidence and status history
 
 - 2026-09-06 — created as READY after the user chose one shared backup mechanism for both providers.
+- 2026-09-16 — returned to DRAFT: the body assumed CIVO-180's withdrawn logical-dump design.
+- 2026-09-16 — rewritten for the barman-cloud plugin with EKS Pod Identity and promoted to READY. The operator chose to build it before the remaining M1 specs. CIVO-186 (cross-provider promotion) was removed in the same change: separate per-project buckets, the rejected shared bucket, and the arm64/x86_64 split make it a poor fit, and the operator does not expect to use it.
