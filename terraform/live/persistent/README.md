@@ -4,9 +4,9 @@ Creates Persistent-lifecycle resources that must survive `make down`: the
 platform-owned VPC and SSM Parameter Store secrets (ADR 0023).
 
 On the Civo target (`PROVIDER=civo`), this stack applies only its
-`secrets` unit — the `vpc` unit is AWS-only and is excluded. Civo's own
-network and reserved IP are managed by the sibling `persistent-civo/`
-stack (ADR 0027).
+`secrets` unit — the `vpc` and `backups` units are AWS-only and are
+excluded (`PERSISTENT_EXCLUDE`). Civo's own network, reserved IP and backup
+bucket are managed by the sibling `persistent-civo/` stack (ADR 0027).
 
 The delegated `${SUBDOMAIN}.<root-domain>` Route 53 hosted zone (plus its NS
 delegation record in the parent zone) and its ACM certificate moved to
@@ -15,11 +15,16 @@ per-project and still survive `make down` in practice (nothing in the normal
 flow calls `bootstrap-down`), just tagged Bootstrap-lifecycle now rather than
 Persistent.
 
-Two units, applied/destroyed together via `make persistent-up`/
+Three units, applied/destroyed together via `make persistent-up`/
 `make persistent-down`:
 
 - `vpc/` — the platform-owned VPC: public subnets across two AZs, no NAT
   Gateway (spec 020, ADR 0020).
+- `backups/` — the per-project PostgreSQL backup bucket
+  (`${PROJECT_NAME}-postgres-backups`) that the CNPG barman-cloud plugin
+  writes base backups and WAL to, and its SSM parameter
+  `/${PROJECT_NAME}/persistent/backups/bucket_name`. `persistent-down`
+  empties the bucket before destroying it.
 - `secrets/` — one SSM parameter per value under `/${PROJECT_NAME}/persistent/...` (`postgres/app_password` and `grafana/admin_password` as `SecureString`, `argocd/admin_password_bcrypt` as a plain `String` since a bcrypt hash isn't a reversible credential) — SSM has no per-parameter charge at standard tier, so this uses one parameter per value rather than Secrets Manager's per-secret billing (ADR 0023).
 
 ## Configuration
@@ -44,7 +49,7 @@ see `secrets/README.md`. Never use it for the personal lab's own
 ## Usage
 
 ```
-make persistent-up      # applies vpc, secrets
+make persistent-up      # applies vpc, secrets, backups
 make persistent-down    # guarded, rarely-used - see constitution §17
 ```
 

@@ -32,7 +32,7 @@ ifeq ($(PROVIDER),civo)
 export CLUSTER_DIR := cluster-civo
 export PERSISTENT_EXTRA_DIR := persistent-civo
 export BOOTSTRAP_EXCLUDE := acm
-export PERSISTENT_EXCLUDE := vpc
+export PERSISTENT_EXCLUDE := vpc backups
 else
 export CLUSTER_DIR := cluster
 export PERSISTENT_EXTRA_DIR :=

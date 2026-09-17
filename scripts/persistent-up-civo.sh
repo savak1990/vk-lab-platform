@@ -15,7 +15,9 @@ source "$REPO_ROOT/scripts/lib/provider.sh"
 civo_token
 
 cd "$REPO_ROOT/terraform/live/persistent"
-terragrunt run --all --filter "!./$PERSISTENT_EXCLUDE" --non-interactive -- apply -auto-approve
+exclude_args=()
+while IFS= read -r arg; do exclude_args+=("$arg"); done < <(persistent_exclude_filters)
+terragrunt run --all ${exclude_args[@]+"${exclude_args[@]}"} --non-interactive -- apply -auto-approve
 
 cd "$REPO_ROOT/terraform/live/$PERSISTENT_EXTRA_DIR"
 terragrunt run --all --non-interactive -- apply -auto-approve

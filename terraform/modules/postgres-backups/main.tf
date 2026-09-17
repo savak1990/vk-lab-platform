@@ -82,7 +82,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "this" {
 }
 
 resource "aws_ssm_parameter" "bucket_name" {
-  name        = "/${var.project}/persistent-civo/backups/bucket_name"
+  name        = "/${var.project}/${var.ssm_layer}/backups/bucket_name"
   type        = "String"
   value       = aws_s3_bucket.this.id
   description = "This project's PostgreSQL backup bucket."
