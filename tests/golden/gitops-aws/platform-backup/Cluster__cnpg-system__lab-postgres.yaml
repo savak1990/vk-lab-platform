@@ -22,17 +22,9 @@ spec:
       className: ebs-postgres-snapshot
       online: false
   bootstrap:
-    # No initdb fallback: a loud failure beats silently wiping a recoverable
-    # database. database/owner enable CNPG's app-user password reconciler on
-    # this path - without them the pinned password is never re-applied.
-    recovery:
+    initdb:
       database: vkdb
       owner: vkdb
-      volumeSnapshots:
-        storage:
-          apiGroup: snapshot.storage.k8s.io
-          kind: VolumeSnapshot
-          name: lab-postgres-recovered
   imageName: ghcr.io/cloudnative-pg/postgresql:18.4-system-trixie@sha256:42708a75345b7a48fdd9257b071830783a97fd228529196b6313187a7198e185
   instances: 1
   plugins:

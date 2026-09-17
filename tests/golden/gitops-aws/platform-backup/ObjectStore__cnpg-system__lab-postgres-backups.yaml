@@ -1,0 +1,30 @@
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  annotations:
+    # Its CRD arrives with the wave-1 Application, and Argo can report that
+    # Application healthy before the CRD is registered.
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-wave: "2"
+  name: lab-postgres-backups
+  namespace: cnpg-system
+spec:
+  configuration:
+    data:
+      compression: gzip
+    destinationPath: s3://render-check-bucket/
+    s3Credentials:
+      # Mandatory. Any other setting makes barman append its own AWS_* to the
+      # child process, which wins over the config file through exec's last-wins.
+      inheritFromIAMRole: true
+    wal:
+      compression: gzip
+  instanceSidecarConfiguration:
+    resources:
+      limits:
+        memory: 256Mi
+      requests:
+        cpu: 10m
+        memory: 64Mi
+  # A recovery window, not a backup count - the field accepts no other form.
+  retentionPolicy: 2d

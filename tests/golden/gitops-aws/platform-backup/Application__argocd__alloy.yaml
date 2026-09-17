@@ -1,0 +1,90 @@
+# Log-collection DaemonSet -> Loki. Wave 2, after loki.yaml (wave 1) so the
+# Service it writes to already exists.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  name: alloy
+  namespace: argocd
+spec:
+  destination:
+    namespace: observability
+    server: https://kubernetes.default.svc
+  project: default
+  source:
+    chart: alloy
+    helm:
+      values: |
+        controller:
+          type: daemonset
+          # No taint currently keeps anything off the on-demand pool, but a
+          # cluster-wide log collector should tolerate everything on
+          # principle - if a taint is ever added to any pool, this DaemonSet
+          # must still reach every node or logs go silently missing.
+          tolerations:
+            - operator: Exists
+        alloy:
+          # Requests sized from measured usage (~61Mi over 45m) - DaemonSet,
+          # so every Mi here is multiplied by node count.
+          resources:
+            requests:
+              cpu: 15m
+              memory: 80Mi
+            limits:
+              memory: 128Mi
+          configMap:
+            content: |
+              discovery.kubernetes "pods" {
+                role = "pod"
+                selectors {
+                  role  = "pod"
+                  field = "spec.nodeName=" + coalesce(sys.env("HOSTNAME"), constants.hostname)
+                }
+              }
+
+              discovery.relabel "pods" {
+                targets = discovery.kubernetes.pods.targets
+
+                rule {
+                  source_labels = ["__meta_kubernetes_namespace"]
+                  target_label  = "namespace"
+                }
+                rule {
+                  source_labels = ["__meta_kubernetes_pod_name"]
+                  target_label  = "pod"
+                }
+                rule {
+                  source_labels = ["__meta_kubernetes_pod_container_name"]
+                  target_label  = "container"
+                }
+              }
+
+              loki.source.kubernetes "pods" {
+                targets    = discovery.relabel.pods.output
+                forward_to = [loki.write.default.receiver]
+              }
+
+              loki.write "default" {
+                endpoint {
+                  url = "http://loki.observability.svc.cluster.local:3100/loki/api/v1/push"
+                }
+              }
+        configReloader:
+          resources:
+            requests:
+              cpu: 5m
+              memory: 16Mi
+            limits:
+              memory: 32Mi
+    repoURL: https://grafana.github.io/helm-charts
+    targetRevision: 1.12.0
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

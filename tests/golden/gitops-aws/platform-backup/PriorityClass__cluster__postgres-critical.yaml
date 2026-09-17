@@ -1,0 +1,9 @@
+apiVersion: scheduling.k8s.io/v1
+description: Lets Postgres preempt default-priority burst workloads on the shared on-demand pool.
+globalDefault: false
+kind: PriorityClass
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  name: postgres-critical
+value: 10000

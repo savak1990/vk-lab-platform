@@ -1,0 +1,84 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  annotations:
+    # Same "must outlive everything above it" bucket as ebs-csi-driver: this
+    # controller must still be running to delete the NLB behind Envoy's
+    # Service. No drain dependency between the two, so sharing a wave is fine.
+    argocd.argoproj.io/sync-wave: "-5"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  name: aws-load-balancer-controller
+  namespace: argocd
+spec:
+  destination:
+    # kube-system, matching karpenter/ebs-csi-driver - not `envoy`, which
+    # envoy-gateway's own Application already claims via CreateNamespace=true.
+    namespace: kube-system
+    server: https://kubernetes.default.svc
+  # cainjector patches caBundle out-of-band from the cert-manager Certificate
+  # named "aws-load-balancer-controller-serving-cert" - Argo's own rendered
+  # manifest never sets this field when enableCertManager is true, so without
+  # ignoring it, selfHeal would revert every injection back to empty.
+  ignoreDifferences:
+    - group: admissionregistration.k8s.io
+      jqPathExpressions:
+        - .webhooks[].clientConfig.caBundle
+      kind: MutatingWebhookConfiguration
+      name: aws-load-balancer-webhook
+    - group: admissionregistration.k8s.io
+      jqPathExpressions:
+        - .webhooks[].clientConfig.caBundle
+      kind: ValidatingWebhookConfiguration
+      name: aws-load-balancer-webhook
+  project: default
+  source:
+    chart: aws-load-balancer-controller
+    helm:
+      values: |
+        clusterName: vk-lab-platform-eks
+        region: eu-west-1
+        # Explicit, not IMDS-discovered - the default hop limit (1) on this
+        # cluster's nodes leaves pod-network IMDS calls unreachable.
+        vpcId: ""
+        serviceAccount:
+          create: true
+          name: aws-load-balancer-controller
+        # Pod Identity, not IRSA (terraform/modules/aws-lb-controller-pod-identity) -
+        # no OIDC annotation needed on the ServiceAccount.
+        replicaCount: 1
+        # Applies to every AWS resource this controller creates (NLB, target
+        # groups, security groups) - not Terraform-managed, so ManagedBy names
+        # the controller instead of claiming constitution §16's terraform value.
+        defaultTags:
+          Project: vk-lab-platform
+          Scope: platform
+          Lifecycle: disposable
+          ManagedBy: aws-load-balancer-controller
+        resources:
+          requests:
+            cpu: 20m
+            memory: 128Mi
+          limits:
+            memory: 256Mi
+        # The chart's own self-signed path (enableCertManager: false) mints a
+        # fresh CA on every client-side render via `genCA` - keepTLSSecret's
+        # reuse branch calls `lookup`, which is always nil under Argo's
+        # client-side rendering. If the Secret and the webhook patch happen
+        # to land in different sync attempts (e.g. a retry after a partial
+        # failure elsewhere in the same Application), each comes from a
+        # different render and the two permanently disagree - no amount of
+        # ignoreDifferences fixes that, since it only stops later overwrites,
+        # not a mismatch baked in at creation. cert-manager's cainjector
+        # reconciles caBundle continuously against the actual serving cert
+        # instead of a one-shot template value, so it can't drift this way.
+        enableCertManager: true
+    repoURL: https://aws.github.io/eks-charts
+    targetRevision: 1.13.0
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+      - SkipDryRunOnMissingResource=true

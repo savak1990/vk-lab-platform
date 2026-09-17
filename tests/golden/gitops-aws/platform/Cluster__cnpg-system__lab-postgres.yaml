@@ -25,6 +25,7 @@ spec:
     initdb:
       database: vkdb
       owner: vkdb
+  imageName: ghcr.io/cloudnative-pg/postgresql:18.4-system-trixie@sha256:42708a75345b7a48fdd9257b071830783a97fd228529196b6313187a7198e185
   instances: 1
   postgresql:
     parameters:
