@@ -14,3 +14,9 @@ variable "backstop_expiration_days" {
   type        = number
   default     = 30
 }
+
+variable "ssm_layer" {
+  description = "Lifecycle directory whose SSM path records the bucket name: persistent (aws) or persistent-civo (civo)."
+  type        = string
+  default     = "persistent-civo"
+}

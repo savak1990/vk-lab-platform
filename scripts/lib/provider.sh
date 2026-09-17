@@ -15,6 +15,7 @@ if [ "$PROVIDER" = "civo" ]; then
   export PERSISTENT_EXTRA_DIR="${PERSISTENT_EXTRA_DIR:-persistent-civo}"
   export BOOTSTRAP_EXCLUDE="${BOOTSTRAP_EXCLUDE:-acm}"
   export PERSISTENT_EXCLUDE="${PERSISTENT_EXCLUDE:-vpc backups}"
+  export BACKUP_SSM_LAYER="${BACKUP_SSM_LAYER:-persistent-civo}"
 else
   export PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
   export SUBDOMAIN="${SUBDOMAIN:-lab}"
@@ -23,6 +24,7 @@ else
   export PERSISTENT_EXTRA_DIR="${PERSISTENT_EXTRA_DIR:-}"
   export BOOTSTRAP_EXCLUDE="${BOOTSTRAP_EXCLUDE:-}"
   export PERSISTENT_EXCLUDE="${PERSISTENT_EXCLUDE:-}"
+  export BACKUP_SSM_LAYER="${BACKUP_SSM_LAYER:-persistent}"
 fi
 
 # One negated --filter per unit named in PERSISTENT_EXCLUDE, one argument per line.

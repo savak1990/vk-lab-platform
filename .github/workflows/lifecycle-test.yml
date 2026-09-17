@@ -113,6 +113,7 @@ jobs:
             persistent-civo/backups \
             persistent-civo/network \
             persistent-civo/reserved-ip \
+            persistent/backups \
             persistent/secrets \
             persistent/vpc \
             state; do
