@@ -1,0 +1,20 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-wave: "0"
+  name: platform-gateway
+  namespace: envoy
+spec:
+  gatewayClassName: envoy-gateway
+  listeners:
+    # port 443, protocol HTTP: NLB terminates TLS and forwards plaintext
+    # here - Envoy never holds a cert. Must match ssl-ports=443 above, since
+    # the Service's ports mirror this list 1:1. No port 80, by design.
+    - allowedRoutes:
+        namespaces:
+          from: All
+      name: https
+      port: 443
+      protocol: HTTP

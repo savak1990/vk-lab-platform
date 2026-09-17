@@ -33,7 +33,16 @@ spec:
           apiGroup: snapshot.storage.k8s.io
           kind: VolumeSnapshot
           name: lab-postgres-recovered
+  imageName: ghcr.io/cloudnative-pg/postgresql:18.4-system-trixie@sha256:42708a75345b7a48fdd9257b071830783a97fd228529196b6313187a7198e185
   instances: 1
+  plugins:
+    - isWALArchiver: true
+      name: barman-cloud.cloudnative-pg.io
+      parameters:
+        barmanObjectName: lab-postgres-backups
+        # Per bring-up, so a recovered cluster never archives into the prefix
+        # it just recovered from and collides with that timeline history.
+        serverName: render-check-server
   postgresql:
     parameters:
       max_replication_slots: "10"

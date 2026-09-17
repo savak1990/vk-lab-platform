@@ -1,0 +1,17 @@
+# CNPG exposes its Postgres exporter directly on the pod (port 9187, named
+# "metrics") - no Service needed, a PodMonitor selects the pod directly.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-wave: "2"
+  name: cnpg-postgres
+  namespace: cnpg-system
+spec:
+  podMetricsEndpoints:
+    - interval: 30s
+      port: metrics
+  selector:
+    matchLabels:
+      cnpg.io/cluster: lab-postgres

@@ -124,19 +124,24 @@ configure_test_kubeconfig() {
   kubectl config use-context "$test_context" >/dev/null
 }
 
-# Recovery on civo runs through the barman plugin's serverName pointer, which
-# argo-up reads from SSM directly - there is no volume-snapshot handle here.
-civo_recovery_handle() {
-  printf ''
+# The previous bring-up's serverName, read from the given SSM layer. Absent on
+# the first bring-up; empty means there is nothing to recover from.
+backup_recovery_handle() {
+  local value
+  value="$(aws ssm get-parameter --region "$LAB_REGION" \
+    --name "/$PROJECT_NAME/$1/postgres-backup/server_name" \
+    --query 'Parameter.Value' --output text 2>/dev/null || true)"
+  [ "$value" = "None" ] && value=""
+  printf '%s' "$value"
 }
 
 # Best effort by design: continuous WAL archiving already made every committed
 # row durable before teardown started, so a failed final base backup costs
 # replay time, not data. Aborting here would leave a paid cluster running.
-civo_backup() {
+backup_teardown() {
   local ns=cnpg-system
   if ! kubectl get cluster lab-postgres -n "$ns" >/dev/null 2>&1; then
-    echo "ARGO-DOWN: no lab-postgres Cluster found on civo - nothing to back up."
+    echo "ARGO-DOWN: no lab-postgres Cluster found - nothing to back up."
     return 0
   fi
 
@@ -144,12 +149,12 @@ civo_backup() {
   # decides whether a best-effort backup is a safe choice or a loud warning
   # that writes are about to be destroyed.
   local archiving
-  archiving="$(civo_archiving_status "$ns")"
+  archiving="$(backup_archiving_status "$ns")"
   if [ "$archiving" != "True" ]; then
     {
       echo "ARGO-DOWN: WARNING - WAL archiving is not healthy (ContinuousArchiving=${archiving:-unknown})."
       echo "ARGO-DOWN: WARNING - writes made since it stopped have NOT reached S3 and are destroyed by this teardown."
-      echo "ARGO-DOWN: WARNING - $(civo_archiving_since "$ns")"
+      echo "ARGO-DOWN: WARNING - $(backup_archiving_since "$ns")"
       echo "ARGO-DOWN: WARNING - the pre-teardown backup is attempted anyway, but do not rely on it."
     } >&2
   fi
@@ -190,7 +195,7 @@ spec:
     name: barman-cloud.cloudnative-pg.io
 EOF
   then
-    civo_backup_warn "$ns" "the Backup object could not be created"
+    backup_teardown_warn "$ns" "the Backup object could not be created"
     return 0
   fi
 
@@ -203,11 +208,11 @@ EOF
       return 0
     fi
     if [ "$phase" = "failed" ]; then
-      civo_backup_warn "$ns" "Backup/$backup_name reported phase 'failed'"
+      backup_teardown_warn "$ns" "Backup/$backup_name reported phase 'failed'"
       return 0
     fi
     if [ "$elapsed" -ge "$timeout" ]; then
-      civo_backup_warn "$ns" "Backup/$backup_name did not complete within ${timeout}s"
+      backup_teardown_warn "$ns" "Backup/$backup_name did not complete within ${timeout}s"
       return 0
     fi
     sleep "$poll"
@@ -217,13 +222,13 @@ EOF
 
 # CNPG's Cluster status carries no last-archived segment name, so this
 # condition is the only thing that says whether committed rows reached S3.
-civo_archiving_status() {
+backup_archiving_status() {
   kubectl get cluster lab-postgres -n "$1" \
     -o jsonpath='{range .status.conditions[?(@.type=="ContinuousArchiving")]}{.status}{end}' \
     2>/dev/null || true
 }
 
-civo_archiving_since() {
+backup_archiving_since() {
   local since
   since="$(kubectl get cluster lab-postgres -n "$1" \
     -o jsonpath='{range .status.conditions[?(@.type=="ContinuousArchiving")]}{.lastTransitionTime}{end}' \
@@ -235,11 +240,11 @@ civo_archiving_since() {
   fi
 }
 
-civo_backup_warn() {
+backup_teardown_warn() {
   local ns="$1" reason="$2"
   {
     echo "ARGO-DOWN: WARNING - the pre-teardown Postgres backup did not complete: $reason."
-    echo "ARGO-DOWN: WARNING - ContinuousArchiving=$(civo_archiving_status "$ns"). $(civo_archiving_since "$ns")"
+    echo "ARGO-DOWN: WARNING - ContinuousArchiving=$(backup_archiving_status "$ns"). $(backup_archiving_since "$ns")"
     echo "ARGO-DOWN: WARNING - teardown continues. Rows committed while archiving was True are already in S3;"
     echo "ARGO-DOWN: WARNING - recovery will replay from the last base backup and cost extra time, not data."
     echo "ARGO-DOWN: WARNING - inspect with 'kubectl describe cluster lab-postgres -n $ns' before the next bring-up."

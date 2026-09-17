@@ -20,7 +20,7 @@ POLL_INTERVAL="${ARGO_DOWN_POLL_INTERVAL:-5}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$REPO_ROOT/scripts/lib/region.sh"
 source "$REPO_ROOT/scripts/lib/provider.sh"
-# aws path only; the civo path uploads a whole base backup to S3 and reads
+# Snapshot path only; the plugin backup uploads a whole base backup to S3 and reads
 # ARGO_DOWN_BACKUP_TIMEOUT itself with a much longer default.
 BACKUP_TIMEOUT="${ARGO_DOWN_BACKUP_TIMEOUT:-120s}"
 PVC_WAIT_TIMEOUT="${ARGO_DOWN_PVC_WAIT_TIMEOUT:-180s}"
@@ -147,9 +147,10 @@ else
 fi
 }
 
-if [ "$PROVIDER" = civo ]; then
-  civo_backup
-else
+# The plugin backup runs first: the cold volume-snapshot backup fences the
+# primary, and archiving must still be healthy when the plugin reads it.
+backup_teardown
+if [ "$PROVIDER" = aws ]; then
   aws_cnpg_backup_and_prune
 fi
 

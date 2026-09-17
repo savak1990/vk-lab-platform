@@ -1,0 +1,56 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    # After the wave-2 ExternalSecret: CNPG generates its own lab-postgres-app
+    # password Secret if none exists yet, and ESO then collides with it.
+    argocd.argoproj.io/sync-wave: "3"
+  name: lab-postgres
+  namespace: cnpg-system
+spec:
+  affinity:
+    nodeSelector:
+      workload-type: on-demand
+  # Cold (online: false) volume-snapshot backup - confirmed via CNPG docs
+  # to need neither an object store nor WAL archiving, just a CSI driver
+  # that supports snapshots. instances: 1 means this briefly fences the
+  # primary; acceptable since argo-down.sh triggers it immediately before
+  # tearing the cluster down anyway. See ADR 0013.
+  backup:
+    volumeSnapshot:
+      className: ebs-postgres-snapshot
+      online: false
+  bootstrap:
+    initdb:
+      database: vkdb
+      owner: vkdb
+  imageName: ghcr.io/cloudnative-pg/postgresql:18.4-system-trixie@sha256:42708a75345b7a48fdd9257b071830783a97fd228529196b6313187a7198e185
+  instances: 1
+  plugins:
+    - isWALArchiver: true
+      name: barman-cloud.cloudnative-pg.io
+      parameters:
+        barmanObjectName: lab-postgres-backups
+        # Per bring-up, so a recovered cluster never archives into the prefix
+        # it just recovered from and collides with that timeline history.
+        serverName: render-check-server
+  postgresql:
+    parameters:
+      max_replication_slots: "10"
+      # wal_level intentionally not set — CNPG defaults it to "logical" already
+      # shared_buffers / max_connections intentionally not set — sized only by
+      # the requests above, not by explicit limits
+
+      max_wal_senders: "10"
+  priorityClassName: postgres-critical
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+  storage:
+    # Increase-only: shrinking a PVC is rejected by Kubernetes, and on the
+    # snapshot-recovery path (above) the new PVC must be >= the snapshot's
+    # restore size or it never binds.
+    size: 20Gi
+    storageClass: ebs-delete

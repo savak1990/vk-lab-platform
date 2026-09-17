@@ -1,0 +1,43 @@
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-wave: "0"
+  name: envoy-proxy-config
+  namespace: envoy
+spec:
+  provider:
+    kubernetes:
+      envoyDeployment:
+        container:
+          resources:
+            limits:
+              memory: 128Mi
+            requests:
+              cpu: 20m
+              memory: 64Mi
+        replicas: 1
+      envoyService:
+        annotations:
+          service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: ip
+          # Without this, every request appears to come from the NLB's own
+          # IP and per-client rate limiting collapses into one global limit.
+          # Must be paired with the listener-side PROXY protocol setting below.
+          service.beta.kubernetes.io/aws-load-balancer-proxy-protocol: '*'
+          # Public internet access to argo.lab.<root-domain>/grafana.lab.<root-domain>
+          # requires this - default is "internal" (VPC-private only).
+          service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
+          service.beta.kubernetes.io/aws-load-balancer-ssl-cert: ""
+          service.beta.kubernetes.io/aws-load-balancer-ssl-ports: "443"
+          # Explicit for now, though the platform VPC's subnets already
+          # carry kubernetes.io/role/elb (spec 020) - drop this once the
+          # pinned controller's tag-based discovery is verified against a
+          # real NLB, so it doesn't also expect a cluster-scoped tag here.
+          service.beta.kubernetes.io/aws-load-balancer-subnets: ""
+          service.beta.kubernetes.io/aws-load-balancer-type: external
+        type: LoadBalancer
+    type: Kubernetes
+  telemetry:
+    metrics:
+      prometheus: {}

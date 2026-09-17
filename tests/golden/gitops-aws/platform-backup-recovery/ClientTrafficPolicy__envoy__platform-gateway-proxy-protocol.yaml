@@ -1,0 +1,16 @@
+# Listener-side half of Proxy Protocol v2 - without this Envoy doesn't
+# expect the header the NLB now prepends and fails to parse every request.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: ClientTrafficPolicy
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-wave: "0"
+  name: platform-gateway-proxy-protocol
+  namespace: envoy
+spec:
+  enableProxyProtocol: true
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: Gateway
+    name: platform-gateway

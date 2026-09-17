@@ -1,0 +1,47 @@
+# EKS ships neither the external-snapshotter CRDs nor the snapshot-controller
+# by default, and the aws-ebs-csi-driver chart only carries the per-driver
+# csi-snapshotter sidecar (sidecars.snapshotter), not this cluster-wide
+# controller - confirmed by reading that chart's values.yaml. No maintained
+# Helm chart exists for this component, so these two Applications point
+# directly at the upstream kubernetes-csi/external-snapshotter project's own
+# release manifests (its documented install method), pinned to v8.6.0 to
+# match the csi-snapshotter sidecar image tag already pinned in the
+# ebs-csi-driver chart. Two Applications, not one, matching this repo's
+# existing one-Application-per-concern convention (ebs-csi-driver,
+# cnpg-operator, ...) and because CRDs must exist before the controller can
+# start.
+#
+# No explicit source type: both paths have a kustomization.yaml, so Argo
+# auto-detects and builds Kustomize - an explicit directory.recurse forces
+# a raw apply that fails on that file; an explicit kustomize:{} gets stripped on write-back and drifts forever.
+#
+# Verify the exact subpaths below against the v8.6.0 tag before relying on
+# this in a real cluster - they have moved between major external-snapshotter
+# releases in the past.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  annotations:
+    # One wave below ebs-csi-driver, whose csi-snapshotter sidecar watches
+    # these CRDs - the driver moved late in the deletion order, and this has
+    # to stay ahead of it on the creation order.
+    argocd.argoproj.io/sync-wave: "-6"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  name: external-snapshotter-crds
+  namespace: argocd
+spec:
+  destination:
+    namespace: kube-system
+    server: https://kubernetes.default.svc
+  project: default
+  source:
+    path: client/config/crd
+    repoURL: https://github.com/kubernetes-csi/external-snapshotter
+    targetRevision: v8.6.0
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true

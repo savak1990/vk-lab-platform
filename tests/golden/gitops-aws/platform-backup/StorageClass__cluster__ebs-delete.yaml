@@ -1,0 +1,16 @@
+allowVolumeExpansion: true
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  name: ebs-delete
+parameters:
+  tagSpecification_1: Project=vk-lab-platform
+  tagSpecification_2: Scope=platform
+  tagSpecification_3: Lifecycle=disposable
+  tagSpecification_4: ManagedBy=ebs-csi-driver
+  type: gp3
+provisioner: ebs.csi.aws.com
+reclaimPolicy: Delete
+volumeBindingMode: WaitForFirstConsumer

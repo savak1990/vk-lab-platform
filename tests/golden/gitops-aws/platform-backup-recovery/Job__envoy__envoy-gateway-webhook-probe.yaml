@@ -1,0 +1,60 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  annotations:
+    # The LBC Deployment reporting Available doesn't mean its mutating webhook
+    # serves a cert matching its own caBundle yet - only an admission call
+    # proves that, and envoy-gateway wedges permanently if it calls too early.
+    argocd.argoproj.io/hook: Sync
+    # A failed Job persists and Job specs are immutable, so without
+    # BeforeHookCreation a retried sync recreates it into AlreadyExists.
+    # No HookSucceeded: it deletes on sync completion, deadlocking teardown.
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "-2"
+  name: envoy-gateway-webhook-probe
+  namespace: envoy
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      containers:
+        - args:
+            - |
+              set -euo pipefail
+
+              attempts=96
+              sleep_seconds=5
+
+              manifest=$(printf '%s\n' \
+                'apiVersion: v1' \
+                'kind: Service' \
+                'metadata:' \
+                '  name: webhook-probe' \
+                '  annotations:' \
+                '    service.beta.kubernetes.io/aws-load-balancer-type: external' \
+                'spec:' \
+                '  type: LoadBalancer' \
+                '  ports: [{port: 443, targetPort: 10443}]' \
+                '  selector: {probe: "true"}')
+
+              for i in $(seq 1 "$attempts"); do
+                if printf '%s\n' "$manifest" | kubectl create -n envoy --dry-run=server -f - >/dev/null 2>&1; then
+                  echo "webhook admitted the probe on attempt $i/$attempts"
+                  exit 0
+                fi
+                echo "webhook not ready yet (attempt $i/$attempts), retrying in ${sleep_seconds}s"
+                sleep "$sleep_seconds"
+              done
+
+              echo "webhook still not admitting requests after $((attempts * sleep_seconds))s, giving up"
+              exit 1
+          command:
+            - /bin/bash
+            - -c
+          # bitnami/kubectl dropped floating version tags. alpine/k8s bundles
+          # kubectl on a real shell (rancher/kubectl is scratch, no shell at
+          # all); version matches the EKS cluster's own server version.
+          image: alpine/k8s:1.36.4
+          name: probe
+      restartPolicy: Never
+      serviceAccountName: envoy-gateway-webhook-probe

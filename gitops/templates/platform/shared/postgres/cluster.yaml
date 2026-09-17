@@ -11,6 +11,7 @@ metadata:
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
   instances: 1
+  imageName: {{ .Values.postgres.imageName | quote }}
   priorityClassName: postgres-critical
   {{- if eq .Values.target "civo" }}
   # CNPG creates a PodDisruptionBudget even for a single instance, and that
@@ -39,8 +40,8 @@ spec:
           apiGroup: snapshot.storage.k8s.io
           kind: VolumeSnapshot
           name: lab-postgres-recovered
-    {{- else if and (eq .Values.target "civo") .Values.postgres.backup.enabled .Values.postgres.backup.recoverServerName }}
-    # Same rule as the aws branch above: no initdb fallback on a recovery path.
+    {{- else if and .Values.postgres.backup.enabled .Values.postgres.backup.recoverServerName }}
+    # Same rule as the snapshot branch above: no initdb fallback on a recovery path.
     recovery:
       database: vkdb
       owner: vkdb
@@ -50,7 +51,7 @@ spec:
       database: vkdb
       owner: vkdb
     {{- end }}
-  {{- if and (eq .Values.target "civo") .Values.postgres.backup.enabled .Values.postgres.backup.recoverServerName }}
+  {{- if and .Values.postgres.backup.enabled .Values.postgres.backup.recoverServerName (not (and (eq .Values.target "aws") .Values.postgres.recoverySnapshotHandle)) }}
   externalClusters:
     - name: lab-postgres-previous
       plugin:
@@ -106,6 +107,8 @@ spec:
       value: {{ .Values.region | quote }}
     - name: AWS_DEFAULT_REGION
       value: {{ .Values.region | quote }}
+  {{- end }}
+  {{- if .Values.postgres.backup.enabled }}
   plugins:
     - name: barman-cloud.cloudnative-pg.io
       isWALArchiver: true

@@ -1,0 +1,104 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  annotations:
+    # Deleted after Karpenter, because draining a node cannot finish until the
+    # external-attacher here clears the VolumeAttachment finalizer, and the
+    # provisioner here is what deletes the released EBS volume. Its dependents
+    # (PV/PVC/VolumeAttachment) are controller-created, so no wave orders them
+    # against it - only being last does.
+    argocd.argoproj.io/sync-wave: "-5"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  name: ebs-csi-driver
+  namespace: argocd
+spec:
+  destination:
+    namespace: kube-system
+    server: https://kubernetes.default.svc
+  project: default
+  source:
+    chart: aws-ebs-csi-driver
+    helm:
+      values: |
+        controller:
+          serviceAccount:
+            create: true
+            name: ebs-csi-controller-sa
+          # Sized from measured usage (ebs-plugin container, ~14Mi over 45m).
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 64Mi
+          enableMetrics: true
+        node:
+          # DaemonSet - sized tightly since every Mi is multiplied by node
+          # count (ebs-plugin container, ~13Mi over 45m).
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 64Mi
+          enableMetrics: true
+        # Forced on rather than left to the chart's live-CRD auto-detection
+        # (sidecars.snapshotter.forceEnable defaults to false and only
+        # activates once it sees the snapshot CRDs already present at
+        # render time) - those CRDs are installed by a separate Application
+        # in this same rollout, and relying on Argo's sync ordering to win
+        # that detection race is fragile. See ADR 0013.
+        sidecars:
+          snapshotter:
+            forceEnable: true
+            resources:
+              requests:
+                cpu: 5m
+                memory: 24Mi
+              limits:
+                memory: 48Mi
+          provisioner:
+            resources:
+              requests:
+                cpu: 5m
+                memory: 24Mi
+              limits:
+                memory: 48Mi
+          attacher:
+            resources:
+              requests:
+                cpu: 5m
+                memory: 24Mi
+              limits:
+                memory: 48Mi
+          resizer:
+            resources:
+              requests:
+                cpu: 5m
+                memory: 24Mi
+              limits:
+                memory: 48Mi
+          livenessProbe:
+            resources:
+              requests:
+                cpu: 5m
+                memory: 24Mi
+              limits:
+                memory: 48Mi
+          nodeDriverRegistrar:
+            resources:
+              requests:
+                cpu: 5m
+                memory: 16Mi
+              limits:
+                memory: 32Mi
+    repoURL: https://kubernetes-sigs.github.io/aws-ebs-csi-driver
+    targetRevision: 2.53.0
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+      - SkipDryRunOnMissingResource=true

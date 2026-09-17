@@ -1,0 +1,40 @@
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-wave: "-3"
+  name: on-demand
+spec:
+  disruption:
+    consolidateAfter: 1m
+    consolidationPolicy: WhenEmpty
+  limits:
+    cpu: "4"
+  template:
+    metadata:
+      labels:
+        workload-type: on-demand
+    spec:
+      nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
+        name: default
+      requirements:
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values:
+            - on-demand
+        - key: kubernetes.io/arch
+          operator: In
+          values:
+            - arm64
+        - key: node.kubernetes.io/instance-type
+          operator: In
+          values:
+            - t4g.medium
+            - t4g.large
+            - m6g.medium
+            - m6g.large
+            - m7g.medium
+            - m7g.large

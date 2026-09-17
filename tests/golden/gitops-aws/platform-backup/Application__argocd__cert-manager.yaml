@@ -1,0 +1,56 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  annotations:
+    # One wave below aws-load-balancer-controller (-5): that chart's own
+    # cert-manager.yaml template creates cert-manager.io/v1 Issuer/Certificate
+    # resources for its webhook cert, which need cert-manager's CRDs and
+    # cainjector already running - same controller-before-CRs split as
+    # external-snapshotter-crds. Wave ordering alone doesn't gate readiness
+    # (only Application creation order), so root's own syncPolicy.retry
+    # covers the "no matches for kind" window until cert-manager is up.
+    argocd.argoproj.io/sync-wave: "-6"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  name: cert-manager
+  namespace: argocd
+spec:
+  destination:
+    namespace: cert-manager
+    server: https://kubernetes.default.svc
+  project: default
+  source:
+    chart: cert-manager
+    helm:
+      values: |
+        crds:
+          enabled: true
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+          limits:
+            memory: 64Mi
+        webhook:
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 64Mi
+        cainjector:
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 64Mi
+    repoURL: https://charts.jetstack.io
+    targetRevision: v1.21.1
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

@@ -52,9 +52,12 @@ awsIdentity:
 postgres:
   recoverySnapshotHandle: ""
   storageSize: 20Gi
-  # civo-only. bucket/serverName/recoverServerName are set by
-  # scripts/argo-up.sh at install time; serverName is minted per bring-up and
-  # recoverServerName names the previous one, or is empty on a first run.
+  # Pinned so an operator chart upgrade never changes the major version under
+  # existing data. Multi-arch: arm64 on aws, amd64 on civo.
+  imageName: "ghcr.io/cloudnative-pg/postgresql:18.4-system-trixie@sha256:42708a75345b7a48fdd9257b071830783a97fd228529196b6313187a7198e185"
+  # enabled/bucket/serverName/recoverServerName are set by scripts/argo-up.sh
+  # at install time; serverName is minted per bring-up and recoverServerName
+  # names the previous one, or is empty on a first run.
   # retention is a recovery window, not a backup count - the field accepts no
   # other form, so a daily schedule with "2d" keeps roughly two base backups.
   backup:
@@ -64,11 +67,19 @@ postgres:
     recoverServerName: ""
     schedule: "0 0 3 * * *"
     retention: "2d"
-    sidecarImage:
-      registry: ghcr.io
-      repository: savak1990/vk-lab-platform/cnpg-barman-sidecar
-      tag: d4e116cf91f4db0e39da7785c469a295cd1798f7
-      digest: sha256:25332843178ff9560b176f7c6c22006c1b361cb249bae7f52728d733f7d98cda
+    # aws gets credentials from Pod Identity and runs the upstream multi-arch
+    # sidecar; civo needs aws_signing_helper added for Roles Anywhere.
+    sidecarImages:
+      aws:
+        registry: ghcr.io
+        repository: cloudnative-pg/plugin-barman-cloud-sidecar
+        tag: v0.15.0
+        digest: sha256:06c78deca670525daa35fb1e5323159092785d11cf87b86217bdd5c679a41a84
+      civo:
+        registry: ghcr.io
+        repository: savak1990/vk-lab-platform/cnpg-barman-sidecar
+        tag: d4e116cf91f4db0e39da7785c469a295cd1798f7
+        digest: sha256:25332843178ff9560b176f7c6c22006c1b361cb249bae7f52728d733f7d98cda
   # Pins Postgres off spot (AZ-pinned PVC + interruption risk). aws-only:
   # Helm deep-merges values, so the shared Cluster template gates this on
   # target rather than relying on a per-target override.

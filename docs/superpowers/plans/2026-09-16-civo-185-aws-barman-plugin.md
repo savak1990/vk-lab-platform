@@ -35,7 +35,9 @@ The operator chose to build CIVO-185 before the remaining M1 specs (PR #13). AWS
 
 - **D1 — `postgres.backup.enabled` stays `false` in `gitops/values.yaml`.** `aws_install_root_application` passes `enabled/bucket/serverName/recoverServerName`, like Civo. Reason: `objectstore.yaml` `fail`s on an empty bucket, which breaks the default aws render.
 - **D2 — Sidecar image per target is a values map** `postgres.backup.sidecarImages.{aws,civo}` chosen by `index … .Values.target`, not a runtime `--set` from `civo_install_root_application`. Digests are code constants and stay in Git.
-- **D3 — `AWS_REGION`/`AWS_DEFAULT_REGION` on `Cluster.spec.env` render for both targets.** `inheritFromIAMRole` returns before barman sets a region. `AWS_CONFIG_FILE` and `projectedVolumeTemplate` stay Civo-only.
+- **D3 — dropped after Gate A.** Planned: region env on AWS. Gate A showed EKS Pod Identity injects `AWS_REGION` and `AWS_DEFAULT_REGION` into the native sidecar, so `Cluster.spec.env` and `projectedVolumeTemplate` stay Civo-only.
+- **D5 — `externalClusters` does not render on the AWS snapshot-recovery path.** During the dual cycle a bring-up can have both a snapshot handle and a pointer; the snapshot branch wins and an unreferenced `externalClusters` entry would reach the CNPG webhook untested. The gate excludes that case; it disappears with the snapshot branch in Task 9.
+- **D6 — AWS `make up` now requires `persistent/backups` applied.** `aws_resolve_inputs` reads the bucket SSM parameter through the fail-hard `ssm_output`.
 - **D4 — `backup_publish_server_name`/`backup_prune_generations` stay in `argo-up.sh`** (they use its globals); `backup_teardown`, `backup_archiving_status`, `backup_recovery_handle` live in `scripts/lib/provider.sh`. `backup_recovery_handle <layer>` returns the previous `serverName` from SSM.
 
 ## File map
@@ -224,6 +226,8 @@ backup_recovery_handle() {
 
 - [ ] `TARGET_REVISION=civo-185-additive make up` (from the branch checkout). Log shows the snapshot recovery; `civo185_proof` count unchanged.
 - [ ] `ContinuousArchiving=True`; `kubectl -n cnpg-system get backup` shows the `immediate` ScheduledBackup `completed`; `aws ssm get-parameter --name /vk-lab-platform/persistent/postgres-backup/server_name` equals the new generation.
+- [ ] `aws s3 ls s3://vk-lab-platform-postgres-backups/<gen>/base/` shows a completed base backup (`backup.info` with `status=DONE`). **If it is missing, stop before Phase C**: Task 12 cycle 1 recovers from this generation and WAL alone cannot restore it.
+- [ ] On the bring-up that recovers from the snapshot, the Cluster is admitted (no webhook rejection) and renders no `externalClusters` (D5).
 - [ ] Insert rows `('dual-1')`, `('dual-2')`, then `('FINAL-DUAL')` right before teardown.
 - [ ] `TARGET_REVISION=civo-185-additive make down`: log shows WAL switch, plugin Backup `completed`, then volumeSnapshot Backup `completed`; exit 0.
 - [ ] `aws s3 ls s3://vk-lab-platform-postgres-backups/<gen>/wals/ --recursive | tail -3` and the newest EBS snapshot both exist. Record in §14. Merge PR `civo-185-additive` on approval.
@@ -261,10 +265,13 @@ backup_recovery_handle() {
 - [ ] Confirm `make down` log never waits on a snapshot; no new EBS snapshot created (`describe-snapshots` count unchanged).
 - [ ] If recovery exceeds `ARGO_UP_WATCH_SECONDS` (2700) margin, record and raise it.
 
-### Task 13: Civo regression cycle (live, ≈1.5 h)
+### Task 13: Civo regression cycle (live, ≈2 h)
 
-- [ ] `PROVIDER=civo` `cd terraform/live/persistent-civo/backups && terragrunt plan` → `No changes.`
-- [ ] `PROVIDER=civo TARGET_REVISION=civo-185-removal make up`: rows match, `imageName` is the pin, sidecar is the custom image, pointer path still `/vk-civo-lab/persistent-civo/…`. Write a final row, `make down`, `make up`, row present, `make down`.
+On 2026-09-17 a CIVO-160 session ran `PROVIDER=civo make full-down`, which destroyed `vk-civo-lab-postgres-backups` and the Civo database. The Task 6 image guard therefore had nothing to read, and this cycle is a fresh start, not a data-continuity test. It still proves the template move and the image pin did not break Civo.
+
+- [ ] Use a per-session `KUBECONFIG`. `PROVIDER=civo TARGET_REVISION=civo-185-removal make full-up`: `initdb` branch, the Cluster starts on the pinned image, the plugin Application uses the custom sidecar image, `ContinuousArchiving=True`, pointer at `/vk-civo-lab/persistent-civo/postgres-backup/server_name`.
+- [ ] `terraform/live/persistent/backups` is not applied on Civo (`PERSISTENT_EXCLUDE=vpc backups`): no `vk-civo-lab` state under `persistent/backups/`.
+- [ ] Write rows and a final row, `make down`, `make up`: plugin recovery from the first generation, every row present. `make down`.
 
 ### Task 14: Close
 
