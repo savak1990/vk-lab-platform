@@ -16,22 +16,28 @@ on:
   workflow_dispatch:
     inputs:
       provider:
-        description: "PROVIDER: aws (EKS) or civo (k3s)."
+        description: "provider"
         type: choice
         options:
           - aws
           - civo
         default: aws
+      # Blank uses the provider's default - vk-lab-platform on aws,
+      # vk-civo-lab on civo. Lowercase alphanumeric and hyphen, 23 characters
+      # at most. A new name creates a wholly separate cluster and state bucket.
       project_name:
-        description: "PROJECT_NAME: blank uses the provider's default (aws vk-lab-platform, civo vk-civo-lab). Lowercase alphanumeric/hyphen, max 23 chars. A new name creates a wholly separate cluster and state bucket."
+        description: "project_name (blank = default)"
         type: string
         default: ""
+      # Blank uses the provider's default - lab on aws, civo on civo. Give a
+      # custom project its own; require-unique-subdomain.sh refuses a zone
+      # another project already owns, before any apply.
       subdomain:
-        description: "SUBDOMAIN: blank uses the provider's default (aws lab, civo civo). Give a custom project its own - require-unique-subdomain.sh refuses a zone another project already owns, before any apply."
+        description: "subdomain (blank = default)"
         type: string
         default: ""
       target:
-        description: make target
+        description: "target"
         type: choice
         options:
           - status
@@ -45,12 +51,16 @@ on:
           - full-up
           - full-down
         default: up
+      # civo only, inert on aws. Untick for a throwaway project: staging
+      # spares the production quota shared with the personal lab.
       production_tls:
-        description: "civo only, ignored on aws: order a real Let's Encrypt certificate. Untick for a throwaway project - staging spares the production quota shared with the personal lab."
+        description: "production_tls (civo only)"
         type: boolean
         default: true
+      # platform-down/full-down only. Type the RESOLVED project name exactly:
+      # what project_name holds, or the provider default when it is blank.
       confirm_destroy:
-        description: "For platform-down/full-down: type the RESOLVED project name exactly - what project_name holds, or the provider default (vk-lab-platform / vk-civo-lab) when it is blank."
+        description: "confirm_destroy (resolved project name)"
         type: string
         default: ""
 
