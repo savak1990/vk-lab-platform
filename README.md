@@ -127,6 +127,53 @@ No repository secret is involved. The run assumes `lab-role` through OIDC, and
 the Civo API token is decrypted from `secrets/civo-token.enc` with that same
 role, then masked in the log.
 
+### The merge gate
+
+`main` is protected: every change lands through a pull request, and squash is
+the only merge method.
+
+One status check, **`pr-gate`**, decides whether a pull request can merge. It
+always reports, never sits pending, and it works out from the changed files
+whether the expensive half is needed:
+
+| Your pull request | What runs | `pr-gate` |
+|---|---|---|
+| Documentation or specs only | The static checks | green, no cloud spend |
+| Touches `terraform/`, `gitops/`, `scripts/`, `tests/`, `images/`, `Makefile`, `go.mod`, or a workflow | The static checks | red — add the label |
+| …and carries the **`ci:lifecycle`** label | One EKS cluster and one Civo cluster are created, `make test` runs against both, and both are destroyed | green if all of that passed |
+
+Adding the label starts the run immediately against the pull request's current
+commit — no empty commit, no extra push. Removing and re-adding the label is how
+you re-run it. A run takes about 55 minutes and costs a little under one US
+dollar for both clouds.
+
+Remove the label while you iterate. Pushing during a run does not cancel it:
+cancelling would kill the teardown job and leave a cluster billing, so a second
+run queues behind the first instead.
+
+The two CI projects are `vk-lab-ci`/`ci` on AWS and `vk-civo-ci`/`civoci` on
+Civo, both fixed. The Civo leg uses Let's Encrypt **staging** on purpose, so
+per-pull-request runs do not consume the production quota your personal lab
+shares.
+
+#### When a teardown fails
+
+Each provider tears itself down even when its bring-up failed, and
+`scripts/verify-no-leaks.sh` then asserts that nothing survived. If that job
+itself fails, a Route 53 zone can be left behind — and
+`require-unique-subdomain.sh` will then refuse every later run for that
+project, so the gate stays red for everyone.
+
+To clear it, dispatch **lab** by hand with `target: full-down`, the CI project
+name in `project_name`, its subdomain, and the same project name typed into
+`confirm_destroy`. Then re-add the label.
+
+One more non-obvious case: GitHub keeps at most one pending job per concurrency
+group. Labelling a third pull request while two labelled runs are already in
+flight cancels its lifecycle job rather than queueing it. Nothing has been
+created at that point so nothing leaks, but `pr-gate` goes red — re-add the
+label once a run finishes.
+
 - **Account** — the shared secrets KMS key (`alias/lab-secrets`), the
   shared `lab-role` every project's GitHub Actions run assumes (scoped by
   naming convention, not per-project), the GitHub OIDC provider, and

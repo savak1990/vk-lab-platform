@@ -363,9 +363,6 @@ Disposable personal-lab lifecycle.
 `terraform/live/cluster-civo/`
 Disposable lifecycle, Civo target only (firewall, k3s cluster). See ADR 0027.
 
-`terraform/live/ci/`
-CI-specific infrastructure.
-
 `gitops/`
 Argo-managed Kubernetes desired state.
 

@@ -1,7 +1,7 @@
 ---
 id: "AWS-020"
 status: "IN_PROGRESS"
-updated: "2026-09-17"
+updated: "2026-09-19"
 ---
 # 020 — CI Full Lifecycle Validation
 
@@ -32,11 +32,32 @@ Excludes: the fast, lint-only PR checks (018); the kind-based GitOps integration
 2. CI infrastructure MUST be isolated from the personal lab environment (constitution §11). It MUST use separate state (`terraform/live/ci/persistent/`, `terraform/live/ci/cluster/`) and its own IAM role, distinct from spec 016's personal-lab role and spec 018's Atlantis roles. All three roles trust the one OIDC provider spec 015 creates (constitution §5) — this workflow can never touch personal data or resources.
 3. Every disposable resource this workflow creates MUST carry the platform's standard tags (constitution §16) plus `Ephemeral=true`, so the scheduled cleanup job (Requirement 8) can find and remove anything left behind.
 4. CI's shared persistent layer MUST have its own delegated DNS subdomain, `ci.lab.<root-domain>`, and its own wildcard ACM certificate covering `ci.lab.<root-domain>`/`*.ci.lab.<root-domain>` (mirroring spec 002's pattern one level down) for HTTPS verification — it MUST NOT reuse or modify the personal lab's `lab.<root-domain>` zone or certificate.
-5. Untrusted/fork pull requests MUST NOT trigger this workflow or gain access to its credentials (constitution §11) — restrict triggering to `workflow_dispatch` by a maintainer, or to pushes on the main repository.
+5. Untrusted/fork pull requests MUST NOT trigger this workflow or gain access to its credentials (constitution §11) — restrict triggering to `workflow_dispatch` by a maintainer, or to pushes on the main repository. **Amended 2026-09-19 (ADR 0035):** the trigger is now a `ci:lifecycle` label applied to a pull request. Labelling requires write access, so the trust property is unchanged, and every credentialed job additionally carries an explicit same-repository test. See `specs/shared/035-A-pr-lifecycle-gate/`.
 6. A failed run MUST still attempt cleanup of its disposable CI infrastructure (constitution's platform invariants) — the cleanup step MUST run even on failure (e.g., `if: always()`).
 7. GitHub Actions concurrency controls and Terraform state locking MUST prevent two concurrent runs from mutating the same CI state (architecture.md §32) — one `concurrency:` group covers this workflow, with `cancel-in-progress: false`, so overlapping triggers queue rather than race against the same shared `ci/cluster` environment.
 8. A scheduled stale-resource cleanup job MUST exist as a safety net (architecture.md §31) — it MUST identify candidates using the standard platform tags plus `Ephemeral=true` (Requirement 3), not name patterns or manual account scanning, so it never risks touching an untagged or unrelated resource.
 9. The recreate-after-destroy resilience proof MUST run as `mode=resilience` on this same workflow (Requirement 1), not as part of a routine `mode=routine` PR-triggered run.
+
+## Status of this spec as implemented
+
+Two workflows implement parts of this spec, both deviating from it under
+constitution §13:
+
+- ADR 0026 built `lifecycle-test.yml` against `PROJECT_NAME`/`SUBDOMAIN`
+  isolation instead of Requirement 2's `terraform/live/ci/` tree.
+- ADR 0035 turned that workflow into the merge gate for `main` and extended it
+  to run both providers at once. It amends Requirement 5 as noted above, and
+  satisfies Requirements 6 and 7 for both providers.
+
+Still outstanding, which is why this spec is not DONE:
+
+- Requirement 3, the `Ephemeral=true` tag — no resource carries it.
+- Requirement 8, the scheduled stale-resource reaper — does not exist.
+  Recovery from a failed teardown is a documented `lab.yml` dispatch instead.
+- Requirement 9's `mode=resilience` recreate cycle — not implemented; CIVO-150
+  covers the equivalent for Civo as a manual runbook.
+- Requirement 4's own `ci.lab.<root-domain>` zone — each CI project gets its
+  own subdomain zone under ADR 0026's isolation model instead.
 
 ## Implementation hints
 
