@@ -100,6 +100,33 @@ Two rules the tooling enforces for you:
 Run `make clear-cache` when switching between projects in one checkout — every
 composite target already does.
 
+### Running a lifecycle target from GitHub Actions
+
+`lab.yml` is dispatched by hand (Actions → **lab** → *Run workflow*) and maps
+1:1 onto a `make` target. Four inputs shape the run:
+
+- **`provider`** — `aws` or `civo`. Selects the whole stack, exactly like
+  `PROVIDER=` locally.
+- **`project_name`** / **`subdomain`** — leave both blank for that provider's
+  own default (`vk-lab-platform`/`lab`, or `vk-civo-lab`/`civo`). A blank input
+  is omitted rather than exported empty, so the Makefile stays the single place
+  those defaults live. Give a custom project its own subdomain.
+- **`production_tls`** — Civo only, ignored on AWS. Ticked orders a real
+  Let's Encrypt certificate. Untick it for a throwaway project: the production
+  duplicate-certificate quota is shared with the personal lab, and the staging
+  issuer exercises the same code path. The `test` job then verifies endpoints
+  without checking the chain.
+
+**The branch selector works.** Whatever ref you pick in *Use workflow from* is
+checked out for Terraform and the scripts, **and** is what Argo CD reconciles
+`gitops/` from — the workflow passes it through as `TARGET_REVISION`. So a
+branch run tests GitOps changes too, not only Terraform. Push the branch first;
+Argo CD fetches it from GitHub, not from the runner.
+
+No repository secret is involved. The run assumes `lab-role` through OIDC, and
+the Civo API token is decrypted from `secrets/civo-token.enc` with that same
+role, then masked in the log.
+
 - **Account** — the shared secrets KMS key (`alias/lab-secrets`), the
   shared `lab-role` every project's GitHub Actions run assumes (scoped by
   naming convention, not per-project), the GitHub OIDC provider, and

@@ -28,7 +28,7 @@ with the OIDC-assumed role it already uses, never prints either, queues
 runs per project-provider, and cleans up on failure by sweeping every
 labelled Hetzner resource, not only by destroying servers.
 
-Read `specs/civo/140-P-ci-workflow-civo/spec.md` first.
+Read `specs/civo/140-D-ci-workflow-civo/spec.md` first.
 
 ## 2. Scope and non-goals
 

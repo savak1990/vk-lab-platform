@@ -34,6 +34,10 @@ locals {
   # the account layer's own state bucket is named distinctly (not "*-tf-state")
   # specifically so this role never matches it.
   bucket_arn = "arn:aws:s3:::*-tf-state"
+  # Every project's Postgres backup bucket, on either target - the name is
+  # "<project>-postgres-backups" and the project is a free-form operator input,
+  # so the wildcard sits in the same place as the state bucket's above.
+  backups_bucket_arn = "arn:aws:s3:::*-postgres-backups"
 }
 
 resource "aws_iam_role" "this" {
@@ -86,6 +90,16 @@ data "aws_iam_policy_document" "permissions" {
     sid       = "StateBucket"
     actions   = ["s3:*"]
     resources = [local.bucket_arn, "${local.bucket_arn}/*"]
+  }
+
+  # The continuous-archiving destination for PostgreSQL. persistent-up creates
+  # and configures it; persistent-down empties it object by object and deletes
+  # it, so object-level actions are needed as well as bucket-level ones. Same
+  # no-Deny reasoning as the state bucket above.
+  statement {
+    sid       = "PostgresBackupBucket"
+    actions   = ["s3:*"]
+    resources = [local.backups_bucket_arn, "${local.backups_bucket_arn}/*"]
   }
 
   statement {

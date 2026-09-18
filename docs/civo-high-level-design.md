@@ -86,6 +86,22 @@ through the Gateway. CNPG backups to object storage use the same signing helper:
 barman-cloud plugin's sidecar inherits the Postgres container's volume
 mounts, so the certificate reaches it as a mounted file (ADR 0032).
 
+**The CA is the root of every AWS permission the Civo cluster holds, and it
+belongs to one project.** `secrets/<project>/civo-ca-cert.pem` and
+`civo-ca-key.enc` are committed for `vk-civo-lab` only.
+`scripts/generate-secrets.sh` creates them when absent and never regenerates
+them, and both `persistent-up-civo.sh` and `persistent-down.sh` call it before
+Terraform runs — so a project without committed CA material works inside a
+single run, but the files die with the runner. Two consequences for a
+custom-named Civo project in CI:
+
+- `full-up` and `full-down` are safe. Anything between them is not: a bare
+  `up` on a fresh runner stops at `scripts/argo-up.sh`'s CA check, and a
+  repeated `full-up` mints a *different* CA, which replaces the trust anchor
+  and invalidates every certificate already issued to a running workload.
+- To make such a project repeatable, commit its CA material, exactly as
+  `vk-civo-lab` does.
+
 ### 4.3 Persistence flow
 
 ```mermaid

@@ -1,25 +1,35 @@
 name: lab
 
-# Manually triggered only - this starts/stops real, billable AWS
-# infrastructure. The assumed role (lab-role) is account-global and shared
-# by every project - its permission policy scopes by naming convention, so
-# an arbitrary project_name needs no IAM change; the Makefile validates the
-# name into the shape those wildcards already match. `target` maps 1:1 onto a `make`
-# target - no remapping, no per-target gating; whatever safety behavior a
-# given target's script already has (persistent-down/bootstrap-down/
-# account-down's CONFIRM_DESTROY check) is unaffected by this workflow,
-# just wired through from confirm_destroy below.
+# Manually triggered only - this starts/stops real, billable infrastructure.
+# `provider` selects the whole stack (project defaults, Terraform directories,
+# identity mechanism); the Makefile owns those defaults, so a blank
+# project_name/subdomain means "whatever that provider uses". The assumed role
+# (lab-role) is account-global and shared by every project and both providers -
+# its permission policy scopes by naming convention, so an arbitrary
+# project_name needs no IAM change; the Makefile validates the name into the
+# shape those wildcards already match. `target` maps 1:1 onto a `make` target -
+# no remapping, no per-target gating; whatever safety behavior a given target's
+# script already has (persistent-down/bootstrap-down/account-down's
+# CONFIRM_DESTROY check) is unaffected by this workflow, just wired through from
+# confirm_destroy below.
 on:
   workflow_dispatch:
     inputs:
+      provider:
+        description: "PROVIDER: aws (EKS) or civo (k3s)."
+        type: choice
+        options:
+          - aws
+          - civo
+        default: aws
       project_name:
-        description: "PROJECT_NAME: lowercase alphanumeric/hyphen, max 23 chars. A new name creates a wholly separate cluster and state bucket."
+        description: "PROJECT_NAME: blank uses the provider's default (aws vk-lab-platform, civo vk-civo-lab). Lowercase alphanumeric/hyphen, max 23 chars. A new name creates a wholly separate cluster and state bucket."
         type: string
-        default: vk-lab-platform
+        default: ""
       subdomain:
-        description: "SUBDOMAIN: must be unique per project - two projects sharing one subdomain collide on the same Route53 zone."
+        description: "SUBDOMAIN: blank uses the provider's default (aws lab, civo civo). Give a custom project its own - require-unique-subdomain.sh refuses a zone another project already owns, before any apply."
         type: string
-        default: lab
+        default: ""
       target:
         description: make target
         type: choice
@@ -35,26 +45,32 @@ on:
           - full-up
           - full-down
         default: up
+      production_tls:
+        description: "civo only, ignored on aws: order a real Let's Encrypt certificate. Untick for a throwaway project - staging spares the production quota shared with the personal lab."
+        type: boolean
+        default: true
       confirm_destroy:
-        description: "For platform-down/full-down (which reach persistent-down/bootstrap-down): type PROJECT_NAME exactly to confirm."
+        description: "For platform-down/full-down: type the RESOLVED project name exactly - what project_name holds, or the provider default (vk-lab-platform / vk-civo-lab) when it is blank."
         type: string
         default: ""
 
-run-name: "lab: ${{ inputs.target }} (${{ inputs.project_name }})"
+# The two literals mirror Makefile:17-23. They are display and grouping only -
+# the run itself never reads them, so a drift would mislabel a run, never
+# retarget one. Neither run-name nor concurrency can read a step output, so
+# the resolved name cannot come from the resolve step below.
+run-name: "lab: ${{ inputs.target }} (${{ inputs.provider }}/${{ inputs.project_name || (inputs.provider == 'civo' && 'vk-civo-lab' || 'vk-lab-platform') }})"
 
 # Different projects are independent stacks and may run in parallel; two runs
 # against the same project would race on its Terraform state, so they queue.
+# The group uses the resolved name, so a blank input and the default typed out
+# in full land in the same group rather than racing each other.
 concurrency:
-  group: lab-${{ inputs.project_name }}
+  group: lab-${{ inputs.provider }}-${{ inputs.project_name || (inputs.provider == 'civo' && 'vk-civo-lab' || 'vk-lab-platform') }}
   cancel-in-progress: false
 
 permissions:
   id-token: write
   contents: read
-
-env:
-  PROJECT_NAME: ${{ inputs.project_name }}
-  SUBDOMAIN: ${{ inputs.subdomain }}
 
 jobs:
   lifecycle:
@@ -62,6 +78,34 @@ jobs:
     timeout-minutes: 120 # full-up/full-down can run close to/over an hour; caps a hung step well short of the 4h role session
     steps:
       - uses: actions/checkout@v4
+
+      # An environment variable set to "" still counts as defined for make's
+      # ?=, which would defeat the Makefile's per-provider defaults - so a
+      # blank input is omitted entirely rather than exported empty.
+      - name: Resolve lifecycle inputs
+        env:
+          IN_PROVIDER: ${{ inputs.provider }}
+          IN_PROJECT_NAME: ${{ inputs.project_name }}
+          IN_SUBDOMAIN: ${{ inputs.subdomain }}
+        run: |
+          set -euo pipefail
+          case "$IN_PROVIDER:$IN_PROJECT_NAME" in
+            aws:vk-civo-lab|civo:vk-lab-platform)
+              echo "::error::project_name '$IN_PROJECT_NAME' is the other provider's default; leave it blank or pick a distinct name." >&2
+              exit 1
+              ;;
+          esac
+          echo "PROVIDER=$IN_PROVIDER" >> "$GITHUB_ENV"
+          [ -n "$IN_PROJECT_NAME" ] && echo "PROJECT_NAME=$IN_PROJECT_NAME" >> "$GITHUB_ENV"
+          [ -n "$IN_SUBDOMAIN" ] && echo "SUBDOMAIN=$IN_SUBDOMAIN" >> "$GITHUB_ENV"
+          exit 0
+
+      # The test job below does not fire for target `test` - it only follows an
+      # up-like target - so that dispatch runs make test right here.
+      - uses: actions/setup-go@v5
+        if: inputs.target == 'test'
+        with:
+          go-version-file: go.mod
 
       - uses: hashicorp/setup-terraform@v3
         with:
@@ -88,15 +132,85 @@ jobs:
         with:
           version: "v4.1.4"
 
+      # generate-secrets.sh calls htpasswd with no fallback whenever a project
+      # has no committed argocd-admin-password.bcrypt, and argo-up.sh's DNS
+      # wait can never succeed without dig. Both are reached by full-up/
+      # full-down on any project name other than the two committed ones.
+      - name: Install dig and htpasswd
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq dnsutils apache2-utils
+
+      - name: Set up the Civo CLI and yq
+        if: inputs.provider == 'civo'
+        run: |
+          CIVO_VERSION=1.5.5
+          CIVO_TAR="civo-${CIVO_VERSION}-linux-amd64.tar.gz"
+          curl -sSL -o "$CIVO_TAR" "https://github.com/civo/cli/releases/download/v${CIVO_VERSION}/${CIVO_TAR}"
+          curl -sSL -o civo-checksums.sha256 "https://github.com/civo/cli/releases/download/v${CIVO_VERSION}/civo-${CIVO_VERSION}-checksums.sha256"
+          grep " ${CIVO_TAR}$" civo-checksums.sha256 | sha256sum -c -
+          tar -xzf "$CIVO_TAR" civo
+          sudo mv civo /usr/local/bin/civo
+          # yq publishes its checksums in a multi-column format that needs a
+          # helper script to read, so the digest is pinned here directly.
+          YQ_VERSION=4.53.6
+          YQ_SHA256=c5f056448f973ae7d39b5401949648a78f2dc1947d6a8eb65be60d5c504b9385
+          curl -sSL -o yq "https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}/yq_linux_amd64"
+          echo "${YQ_SHA256}  yq" | sha256sum -c -
+          chmod +x yq
+          sudo mv yq /usr/local/bin/yq
+
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: eu-west-1
           role-duration-seconds: 14400 # full-up/full-down can run close to/over an hour; matches the role's own max_session_duration
 
+      # After the AWS credentials: the token is KMS ciphertext in the repo, so
+      # decrypting it needs the assumed role. ::add-mask:: must reach the step's
+      # own stdout, never a $(...) capture, and is per job.
+      - name: Register the Civo token mask
+        if: inputs.provider == 'civo'
+        run: bash -c 'source scripts/lib/region.sh; source scripts/lib/provider.sh; civo_token'
+
       - run: make ${{ inputs.target }}
         env:
           CONFIRM_DESTROY: ${{ inputs.confirm_destroy }}
+          # Argo CD otherwise reconciles gitops/ from main regardless of the
+          # dispatched ref, so a branch run could not test a GitOps change.
+          TARGET_REVISION: ${{ github.ref_name }}
+          # Read only by argo-up.sh's civo branch; inert on aws.
+          TLS_ISSUER: ${{ inputs.production_tls && 'letsencrypt-prod' || 'letsencrypt-staging' }}
+
+      # argo-down exports the serving certificate to an Advanced-tier
+      # SecureString that survives teardown on purpose, to spare an ACME order
+      # on the next bring-up. Advanced tier is billed per parameter per month,
+      # and a staging certificate is worth nothing to keep - so a staging one is
+      # dropped and a production one is left alone. The decision reads the
+      # stored certificate's own issuer rather than this run's production_tls
+      # input: the input is per dispatch, so a teardown that forgot to repeat it
+      # would silently leave a billed parameter behind. Anything unreadable is
+      # kept, never deleted.
+      - name: Drop a staging TLS parameter left by full-down
+        if: always() && inputs.provider == 'civo' && inputs.target == 'full-down'
+        run: |
+          set -uo pipefail
+          NAME="/${PROJECT_NAME:-vk-civo-lab}/persistent/civo/tls/platform-public"
+          VALUE="$(aws ssm get-parameter --region eu-west-1 --name "$NAME" \
+            --with-decryption --query 'Parameter.Value' --output text 2>/dev/null || true)"
+          if [ -z "$VALUE" ] || [ "$VALUE" = "None" ]; then
+            echo "no $NAME stored - nothing to do."
+            exit 0
+          fi
+          ISSUER="$(printf '%s' "$VALUE" | grep -m1 -E '^[[:space:]]+tls\.crt:' \
+            | sed 's/.*: *//' | base64 -d 2>/dev/null | openssl x509 -noout -issuer 2>/dev/null || true)"
+          case "$ISSUER" in
+            *STAGING*)
+              aws ssm delete-parameter --region eu-west-1 --name "$NAME"
+              echo "deleted $NAME - $ISSUER" ;;
+            "")
+              echo "kept $NAME - could not read its issuer." ;;
+            *)
+              echo "kept $NAME - $ISSUER" ;;
+          esac
 
   # Verifies the platform is actually usable, not just Synced/Healthy - runs
   # after any target that leaves a disposable cluster up, using the same
@@ -111,9 +225,34 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Resolve lifecycle inputs
+        env:
+          IN_PROVIDER: ${{ inputs.provider }}
+          IN_PROJECT_NAME: ${{ inputs.project_name }}
+          IN_SUBDOMAIN: ${{ inputs.subdomain }}
+        run: |
+          set -euo pipefail
+          echo "PROVIDER=$IN_PROVIDER" >> "$GITHUB_ENV"
+          [ -n "$IN_PROJECT_NAME" ] && echo "PROJECT_NAME=$IN_PROJECT_NAME" >> "$GITHUB_ENV"
+          [ -n "$IN_SUBDOMAIN" ] && echo "SUBDOMAIN=$IN_SUBDOMAIN" >> "$GITHUB_ENV"
+          exit 0
+
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+
+      # make test-kubeconfig reaches configure_test_kubeconfig, which builds the
+      # kubeconfig through the Civo CLI. yq is not on this path.
+      - name: Set up the Civo CLI
+        if: inputs.provider == 'civo'
+        run: |
+          CIVO_VERSION=1.5.5
+          CIVO_TAR="civo-${CIVO_VERSION}-linux-amd64.tar.gz"
+          curl -sSL -o "$CIVO_TAR" "https://github.com/civo/cli/releases/download/v${CIVO_VERSION}/${CIVO_TAR}"
+          curl -sSL -o civo-checksums.sha256 "https://github.com/civo/cli/releases/download/v${CIVO_VERSION}/civo-${CIVO_VERSION}-checksums.sha256"
+          grep " ${CIVO_TAR}$" civo-checksums.sha256 | sha256sum -c -
+          tar -xzf "$CIVO_TAR" civo
+          sudo mv civo /usr/local/bin/civo
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -121,4 +260,13 @@ jobs:
           aws-region: eu-west-1
           role-duration-seconds: 14400 # was previously omitted here, silently defaulting to 3600s unlike the lifecycle job
 
+      - name: Register the Civo token mask
+        if: inputs.provider == 'civo'
+        run: bash -c 'source scripts/lib/region.sh; source scripts/lib/provider.sh; civo_token'
+
       - run: make test
+        env:
+          # A staging certificate chains to a root no Go client trusts. An aws
+          # run and a production civo run leave this blank, so a real
+          # certificate regression still fails the suite.
+          E2E_INSECURE_TLS: ${{ (inputs.provider == 'civo' && !inputs.production_tls) && '1' || '' }}
