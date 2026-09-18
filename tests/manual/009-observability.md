@@ -1,5 +1,9 @@
 # Manual test plan: spec 009 observability
 
+> The unqualified `kubectl` commands below run against your current context.
+> Run `make kubeconfig` first — no lifecycle target switches it for you any
+> more (ADR 0034).
+
 Covers `gitops/templates/platform/aws/observability/{kube-prometheus-stack,loki,alloy,metrics-server,monitors,dashboards,alerts}.yaml`,
 the `scripts/argo-up.sh` Argo CD metrics edit, and `docs/adr/0018-defer-tracing-and-loki-filesystem-storage.md`.
 

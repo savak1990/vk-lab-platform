@@ -1,5 +1,9 @@
 # Manual test plan: specs 010 + 011 — Envoy Gateway + NLB edge
 
+> The unqualified `kubectl` commands below run against your current context.
+> Run `make kubeconfig` first — no lifecycle target switches it for you any
+> more (ADR 0034).
+
 Covers `gitops/templates/platform/shared/envoy-gateway/{application,gateway,httproutes}.yaml`,
 `gitops/templates/platform/aws/envoy-gateway/policies.yaml`,
 `gitops/templates/platform/aws/aws-load-balancer-controller/application.yaml`,

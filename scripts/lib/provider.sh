@@ -77,6 +77,31 @@ cluster_exists() {
   fi
 }
 
+# Points this process's kubectl and helm at a repo-local kubeconfig instead of
+# the operator's own, so a lifecycle run never changes the context they work in.
+use_isolated_kubeconfig() {
+  local path="${1:-.kube/${PROJECT_NAME}.config}"
+  case "$path" in
+    /*) ;;
+    *) path="$PROVIDER_SH_REPO_ROOT/$path" ;;
+  esac
+  mkdir -p "$(dirname "$path")"
+  # Deliberately not exported: an inherited marker would let the guard pass in a
+  # shell that never called this function. KUBECONFIG is exported, for kubectl.
+  LAB_KUBECONFIG="$path"
+  export KUBECONFIG="$path"
+}
+
+# An unqualified kubectl call outside isolation reaches whatever cluster the
+# operator selected. An empty-string check is not enough - they can export
+# KUBECONFIG for their own session.
+require_isolated_kubeconfig() {
+  if [ -z "${LAB_KUBECONFIG:-}" ] || [ "${KUBECONFIG:-}" != "$LAB_KUBECONFIG" ]; then
+    echo "${FUNCNAME[1]:-this function} runs kubectl: call use_isolated_kubeconfig first" >&2
+    return 1
+  fi
+}
+
 # On civo, renames context to ${PROJECT_NAME}-civo (no --context-name flag); deletes target context first
 # to guard against reruns. On AWS, uses update-kubeconfig with the eks-access-identity role.
 configure_kubeconfig() {
@@ -87,9 +112,9 @@ configure_kubeconfig() {
   if [ "$PROVIDER" = "civo" ]; then
     civo_token
     if [ -n "$kubeconfig" ]; then
-      civo_cli kubernetes config "$CLUSTER_NAME" --save --local-path "$kubeconfig" --region "$CIVO_REGION" >/dev/null
+      civo_cli kubernetes config "$CLUSTER_NAME" --save --local-path "$kubeconfig" --region "$CIVO_REGION" >/dev/null || return 1
     else
-      civo_cli kubernetes config "$CLUSTER_NAME" --save --region "$CIVO_REGION" >/dev/null
+      civo_cli kubernetes config "$CLUSTER_NAME" --save --region "$CIVO_REGION" >/dev/null || return 1
     fi
     local raw_context
     raw_context="$(echo "$CLUSTER_NAME" | tr '[:upper:]' '[:lower:]')"
@@ -99,29 +124,42 @@ configure_kubeconfig() {
   else
     aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$LAB_REGION" --alias "$CLUSTER_NAME" \
       --role-arn "$(aws iam get-role --role-name eks-access-identity --query Role.Arn --output text)" \
-      ${kcfg[@]:+"${kcfg[@]}"} >/dev/null
+      ${kcfg[@]:+"${kcfg[@]}"} >/dev/null || return 1
   fi
   kubectl ${kcfg[@]:+"${kcfg[@]}"} config set-context --current --namespace=default >/dev/null
 }
 
-# Civo has no IAM to map a read-only identity, so the E2E suite gets a
+# On AWS, eks-test-identity maps to the read-only role through its EKS access
+# entry. Civo has no IAM to map a read-only identity, so the E2E suite gets a
 # short-lived token for the e2e-test ServiceAccount, minted as cluster-admin.
 configure_test_kubeconfig() {
+  local kubeconfig="${1:-}"
+  local kcfg=()
+  [ -n "$kubeconfig" ] && kcfg=(--kubeconfig "$kubeconfig")
+
+  if [ "$PROVIDER" != "civo" ]; then
+    aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$LAB_REGION" --alias "${CLUSTER_NAME}-test" \
+      --role-arn "$(aws iam get-role --role-name eks-test-identity --query Role.Arn --output text)" \
+      ${kcfg[@]:+"${kcfg[@]}"} >/dev/null || return 1
+    kubectl ${kcfg[@]:+"${kcfg[@]}"} config set-context --current --namespace=default >/dev/null
+    return
+  fi
+
   local admin_context="${PROJECT_NAME}-civo" test_context="${PROJECT_NAME}-civo-test"
   local cluster token
-  configure_kubeconfig
-  cluster="$(kubectl config view -o jsonpath="{.contexts[?(@.name==\"$admin_context\")].context.cluster}")"
+  configure_kubeconfig "$kubeconfig"
+  cluster="$(kubectl ${kcfg[@]:+"${kcfg[@]}"} config view -o jsonpath="{.contexts[?(@.name==\"$admin_context\")].context.cluster}")"
   if [ -z "$cluster" ]; then
     echo "configure_test_kubeconfig: kubeconfig has no context $admin_context" >&2
     return 1
   fi
-  if ! token="$(kubectl --context "$admin_context" create token e2e-test -n e2e --duration=1h)"; then
+  if ! token="$(kubectl ${kcfg[@]:+"${kcfg[@]}"} --context "$admin_context" create token e2e-test -n e2e --duration=1h)"; then
     echo "configure_test_kubeconfig: cannot create a token for ServiceAccount e2e/e2e-test - has 'make argo-up' synced the platform?" >&2
     return 1
   fi
-  kubectl config set-credentials "$test_context" --token="$token" >/dev/null
-  kubectl config set-context "$test_context" --cluster="$cluster" --user="$test_context" --namespace=default >/dev/null
-  kubectl config use-context "$test_context" >/dev/null
+  kubectl ${kcfg[@]:+"${kcfg[@]}"} config set-credentials "$test_context" --token="$token" >/dev/null
+  kubectl ${kcfg[@]:+"${kcfg[@]}"} config set-context "$test_context" --cluster="$cluster" --user="$test_context" --namespace=default >/dev/null
+  kubectl ${kcfg[@]:+"${kcfg[@]}"} config use-context "$test_context" >/dev/null
 }
 
 # The previous bring-up's serverName, read from the given SSM layer. Absent on
@@ -139,6 +177,7 @@ backup_recovery_handle() {
 # row durable before teardown started, so a failed final base backup costs
 # replay time, not data. Aborting here would leave a paid cluster running.
 backup_teardown() {
+  require_isolated_kubeconfig || return 1
   local ns=cnpg-system
   if ! kubectl get cluster lab-postgres -n "$ns" >/dev/null 2>&1; then
     echo "ARGO-DOWN: no lab-postgres Cluster found - nothing to back up."
@@ -255,6 +294,7 @@ backup_teardown_warn() {
 # cert-manager.io/* annotations and avoid a spurious reissue on next import.
 # A missing Secret is not an error - first-ever run, argo-up bootstraps fresh.
 civo_export_tls_secret() {
+  require_isolated_kubeconfig || return 1
   if ! kubectl get secret platform-public-tls -n envoy >/dev/null 2>&1; then
     echo "ARGO-DOWN: no platform-public-tls Secret found - nothing to export."
     return 0
@@ -283,6 +323,7 @@ civo_export_tls_secret() {
 # redundant ACME order. A cert already past its renewal time is skipped -
 # importing it would just trigger an immediate reissue anyway.
 civo_import_tls_secret() {
+  require_isolated_kubeconfig || return 1
   if kubectl get secret platform-public-tls -n envoy >/dev/null 2>&1; then
     echo "ARGO-UP: platform-public-tls Secret already present - leaving the live one alone."
     return 0

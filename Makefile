@@ -1,4 +1,4 @@
-.PHONY: up down full-up full-down platform-up platform-down state-up state-down status clusters require-valid-project-name account-up account-down bootstrap-up bootstrap-down secret-encrypt secret-decrypt generate-secrets civo-ca-init persistent-up persistent-down clear-cache cluster-up cluster-down kubeconfig test-kubeconfig argo-up argo-down test
+.PHONY: up down full-up full-down platform-up platform-down state-up state-down status clusters require-valid-project-name account-up account-down bootstrap-up bootstrap-down secret-encrypt secret-decrypt generate-secrets civo-ca-init persistent-up persistent-down clear-cache cluster-up cluster-down kubeconfig test-kubeconfig test-kubeconfig-isolated argo-up argo-down test
 
 .NOTPARALLEL:
 
@@ -22,9 +22,14 @@ export PROJECT_NAME ?= vk-lab-platform
 export SUBDOMAIN ?= lab
 endif
 
-# The platform targets exactly one region. Deliberately := and unexported:
-# the scripts read it from scripts/lib/region.sh, terragrunt from root.hcl.
-REGION := eu-west-1
+# Repo-local kubeconfigs, one per identity so the read-only test context can
+# never overwrite the cluster-admin one. Every target except `kubeconfig` and
+# `test-kubeconfig` works through these, so a lifecycle run leaves the
+# operator's own current context alone (constitution §17).
+# Absolute: `go test` runs each test binary with its own package directory as
+# the working directory, so a relative path would resolve under tests/e2e/.
+LAB_KUBECONFIG := $(CURDIR)/.kube/$(PROJECT_NAME).config
+LAB_TEST_KUBECONFIG := $(CURDIR)/.kube/$(PROJECT_NAME)-test.config
 
 # The disposable-cluster stack directory; civo uses its own directory,
 # never wired into the aws path.
@@ -167,25 +172,19 @@ endif
 cluster-down:
 	./scripts/cluster-down.sh
 
-## Points local kubectl context at the disposable cluster. On aws, every
+## Switches your own kubectl context to the disposable cluster. On aws, every
 ## kubectl call re-assumes eks-access-identity via --role-arn (baked into
 ## the generated kubeconfig's exec plugin), so access never depends on
 ## whether you or GitHub Actions created the cluster. On civo, merges the
 ## cluster's kubeconfig and renames its context to $(PROJECT_NAME)-civo (the
-## civo CLI has no way to name the context directly). A manual/human
-## convenience target only - up/down/argo-up/argo-down/cluster-down/status
-## each configure their own kubeconfig internally instead of depending on
-## this, since the cluster may not exist yet (or anymore) when those run,
-## and a Make prerequisite can't be conditional.
+## civo CLI has no way to name the context directly).
+## This target and test-kubeconfig are the only two that write ~/.kube/config
+## or change your current context. up/down/argo-up/argo-down/cluster-down/
+## status/test all work through $(LAB_KUBECONFIG) instead, so a bring-up never
+## moves your kubectl off whatever cluster you are working on.
 ## Usage: make kubeconfig
 kubeconfig:
-ifeq ($(PROVIDER),civo)
 	@bash -c 'source scripts/lib/region.sh; source scripts/lib/provider.sh; configure_kubeconfig'
-else
-	aws eks update-kubeconfig --name $(PROJECT_NAME)-eks --region $(REGION) --alias $(PROJECT_NAME)-eks \
-		--role-arn "$$(aws iam get-role --role-name eks-access-identity --query Role.Arn --output text)"
-	kubectl config set-context --current --namespace=default
-endif
 
 ## Installs Argo CD and the root Application onto the disposable EKS
 ## cluster (ADR 0012 - a script, not Terraform), then blocks until the
@@ -193,39 +192,38 @@ endif
 argo-up:
 	./scripts/argo-up.sh
 
-## Points local kubectl context at the disposable cluster as the E2E suite's
-## read-only identity (rbac/e2e-test-readonly.yaml), never cluster-admin.
-## On aws, eks-test-identity maps to that role via its EKS access entry
-## (terraform/modules/eks/main.tf). On civo, which has no IAM, it mints a 1h
-## token for the e2e/e2e-test ServiceAccount as cluster-admin.
+## Switches your own kubectl context to the disposable cluster as the E2E
+## suite's read-only identity (rbac/e2e-test-readonly.yaml), never
+## cluster-admin. On aws, eks-test-identity maps to that role via its EKS
+## access entry (terraform/modules/eks/main.tf). On civo, which has no IAM, it
+## mints a 1h token for the e2e/e2e-test ServiceAccount as cluster-admin.
 ## A distinct context name ($(E2E_CONTEXT)), so the cluster-admin entry is
-## never overwritten - but running `make test` still switches your shell's
-## *current* context to this read-only one; run `make kubeconfig` afterward
-## to switch back.
+## never overwritten. `make test` does NOT use this target - it builds the same
+## read-only identity in $(LAB_TEST_KUBECONFIG) and leaves your context alone.
 ## Usage: make test-kubeconfig
 E2E_CONTEXT := $(if $(filter civo,$(PROVIDER)),$(PROJECT_NAME)-civo-test,$(PROJECT_NAME)-eks-test)
-ifeq ($(PROVIDER),civo)
 test-kubeconfig:
 	@bash -c 'source scripts/lib/region.sh; source scripts/lib/provider.sh; configure_test_kubeconfig'
-else
-test-kubeconfig:
-	aws eks update-kubeconfig --name $(PROJECT_NAME)-eks --region $(REGION) --alias $(PROJECT_NAME)-eks-test \
-		--role-arn "$$(aws iam get-role --role-name eks-test-identity --query Role.Arn --output text)"
-	kubectl config set-context --current --namespace=default
-endif
 
 ## Runs the black-box E2E suite (tests/e2e) against the disposable cluster.
-## Depends on test-kubeconfig so it works standalone, not just chained after
-## argo-up/up. Never wired into up/argo-up itself - run explicitly.
+## Builds its own read-only kubeconfig so it works standalone, not just chained
+## after argo-up/up. Never wired into up/argo-up itself - run explicitly.
+## The kubeconfig is passed by path on each recipe line rather than inherited:
+## an export made in one recipe line's shell never reaches the next one.
 ## E2E_INSECURE_TLS=1 skips TLS verification of the public endpoints - only
 ## for a civo cluster on the Let's Encrypt staging issuer (CIVO-070/140).
 ## Usage: make test | make test-postgres | make test-grafana | make test-argocd
 E2E_TLS_FLAG := $(if $(filter 1 true,$(E2E_INSECURE_TLS)),--insecure-skip-tls-verify,)
-test: test-kubeconfig
-	go test ./tests/e2e/... -v -args --context=$(E2E_CONTEXT) $(E2E_TLS_FLAG) --ginkgo.v
+test: test-kubeconfig-isolated
+	KUBECONFIG=$(LAB_TEST_KUBECONFIG) go test ./tests/e2e/... -v -args --context=$(E2E_CONTEXT) $(E2E_TLS_FLAG) --ginkgo.v
 
-test-%: test-kubeconfig
-	go test ./tests/e2e/... -v -args --context=$(E2E_CONTEXT) $(E2E_TLS_FLAG) --ginkgo.label-filter=$* --ginkgo.v
+test-%: test-kubeconfig-isolated
+	KUBECONFIG=$(LAB_TEST_KUBECONFIG) go test ./tests/e2e/... -v -args --context=$(E2E_CONTEXT) $(E2E_TLS_FLAG) --ginkgo.label-filter=$* --ginkgo.v
+
+## Internal: the same read-only identity as test-kubeconfig, written to
+## $(LAB_TEST_KUBECONFIG) instead of your own kubeconfig.
+test-kubeconfig-isolated:
+	@bash -c 'source scripts/lib/region.sh; source scripts/lib/provider.sh; use_isolated_kubeconfig $(LAB_TEST_KUBECONFIG); configure_test_kubeconfig "$$KUBECONFIG"'
 
 ## Cascades away everything Argo CD manages (Karpenter, CNPG, EBS CSI,
 ## Postgres CRs, ...), then removes Argo CD itself - before
