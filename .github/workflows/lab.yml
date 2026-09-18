@@ -54,14 +54,18 @@ on:
         type: string
         default: ""
 
-run-name: "lab: ${{ inputs.target }} (${{ inputs.provider }}/${{ inputs.project_name || 'default' }})"
+# The two literals mirror Makefile:17-23. They are display and grouping only -
+# the run itself never reads them, so a drift would mislabel a run, never
+# retarget one. Neither run-name nor concurrency can read a step output, so
+# the resolved name cannot come from the resolve step below.
+run-name: "lab: ${{ inputs.target }} (${{ inputs.provider }}/${{ inputs.project_name || (inputs.provider == 'civo' && 'vk-civo-lab' || 'vk-lab-platform') }})"
 
 # Different projects are independent stacks and may run in parallel; two runs
-# against the same project would race on its Terraform state, so they queue. A
-# blank project_name is a stable key meaning "this provider's default", so the
-# default lab still serializes against itself.
+# against the same project would race on its Terraform state, so they queue.
+# The group uses the resolved name, so a blank input and the default typed out
+# in full land in the same group rather than racing each other.
 concurrency:
-  group: lab-${{ inputs.provider }}-${{ inputs.project_name }}
+  group: lab-${{ inputs.provider }}-${{ inputs.project_name || (inputs.provider == 'civo' && 'vk-civo-lab' || 'vk-lab-platform') }}
   cancel-in-progress: false
 
 permissions:
