@@ -1,0 +1,94 @@
+name: Set up lab tooling
+description: >-
+  Installs the pinned toolchain every lifecycle job needs. Extracted so the
+  version and checksum of each binary lives in exactly one place - six jobs
+  across three workflows previously carried their own copy.
+
+inputs:
+  provider:
+    description: "aws or civo. civo additionally installs the Civo CLI and yq."
+    required: false
+    default: aws
+  yq:
+    description: >-
+      Install yq on a non-civo job. gitops-render-check.sh pipes the aws render
+      through `yq -P 'sort_keys(..)'`, so the validation job needs it without
+      being a civo job.
+    required: false
+    default: "false"
+  scope:
+    description: >-
+      full installs everything a terragrunt/argo job needs. test installs only
+      the provider CLI - `make test` builds its own kubeconfig and never shells
+      out to terraform, terragrunt or helm, so a test job that took the full
+      set would spend about 40 seconds installing tools it does not call.
+    required: false
+    default: full
+
+runs:
+  using: composite
+  steps:
+    - uses: hashicorp/setup-terraform@v3
+      if: inputs.scope == 'full'
+      with:
+        terraform_version: "1.15.9" # matches every module's required_version
+        terraform_wrapper: false # the wrapper breaks terragrunt's own stdout/stderr capture
+
+    # No official Terragrunt setup action - ubuntu-latest doesn't ship it
+    # (unlike aws-cli/kubectl/helm/jq, confirmed already present). Pinned
+    # release binary, checksum-verified before trusting it.
+    - name: Set up Terragrunt
+      if: inputs.scope == 'full'
+      shell: bash
+      run: |
+        TG_VERSION=1.1.3
+        curl -sSL -o terragrunt_linux_amd64 "https://github.com/gruntwork-io/terragrunt/releases/download/v${TG_VERSION}/terragrunt_linux_amd64"
+        curl -sSL -o SHA256SUMS "https://github.com/gruntwork-io/terragrunt/releases/download/v${TG_VERSION}/SHA256SUMS"
+        grep " terragrunt_linux_amd64$" SHA256SUMS | sha256sum -c -
+        chmod +x terragrunt_linux_amd64
+        sudo mv terragrunt_linux_amd64 /usr/local/bin/terragrunt
+
+    # ubuntu-latest's preinstalled helm predates --server-side/--force-conflicts
+    # (argo-up.sh's root-application install, also used by argo-down.sh's
+    # `helm status`/`helm uninstall`). Pinned to the same version used to
+    # develop this repo.
+    - uses: azure/setup-helm@v4
+      if: inputs.scope == 'full'
+      with:
+        version: "v4.1.4"
+
+    # generate-secrets.sh calls htpasswd with no fallback whenever a project
+    # has no committed argocd-admin-password.bcrypt, and argo-up.sh's DNS
+    # wait can never succeed without dig. Both are reached by full-up/
+    # full-down on any project name other than the two committed ones.
+    - name: Install dig and htpasswd
+      if: inputs.scope == 'full'
+      shell: bash
+      run: sudo apt-get update -qq && sudo apt-get install -y -qq dnsutils apache2-utils
+
+    - name: Set up the Civo CLI
+      if: inputs.provider == 'civo'
+      shell: bash
+      run: |
+        CIVO_VERSION=1.5.5
+        CIVO_TAR="civo-${CIVO_VERSION}-linux-amd64.tar.gz"
+        curl -sSL -o "$CIVO_TAR" "https://github.com/civo/cli/releases/download/v${CIVO_VERSION}/${CIVO_TAR}"
+        curl -sSL -o civo-checksums.sha256 "https://github.com/civo/cli/releases/download/v${CIVO_VERSION}/civo-${CIVO_VERSION}-checksums.sha256"
+        grep " ${CIVO_TAR}$" civo-checksums.sha256 | sha256sum -c -
+        tar -xzf "$CIVO_TAR" civo
+        sudo mv civo /usr/local/bin/civo
+
+    # Only the terragrunt/argo path reads it (provider.sh's TLS export and
+    # import); configure_test_kubeconfig does not.
+    - name: Set up yq
+      if: (inputs.provider == 'civo' && inputs.scope == 'full') || inputs.yq == 'true'
+      shell: bash
+      run: |
+        # yq publishes its checksums in a multi-column format that needs a
+        # helper script to read, so the digest is pinned here directly.
+        YQ_VERSION=4.53.6
+        YQ_SHA256=c5f056448f973ae7d39b5401949648a78f2dc1947d6a8eb65be60d5c504b9385
+        curl -sSL -o yq "https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}/yq_linux_amd64"
+        echo "${YQ_SHA256}  yq" | sha256sum -c -
+        chmod +x yq
+        sudo mv yq /usr/local/bin/yq
