@@ -182,18 +182,35 @@ jobs:
 
       # argo-down exports the serving certificate to an Advanced-tier
       # SecureString that survives teardown on purpose, to spare an ACME order
-      # on the next bring-up. A staging certificate is worth nothing to keep and
-      # is billed monthly, so only that case is deleted - a production one stays.
-      - name: Drop the staging TLS parameter left by full-down
-        if: always() && inputs.provider == 'civo' && inputs.target == 'full-down' && !inputs.production_tls
+      # on the next bring-up. Advanced tier is billed per parameter per month,
+      # and a staging certificate is worth nothing to keep - so a staging one is
+      # dropped and a production one is left alone. The decision reads the
+      # stored certificate's own issuer rather than this run's production_tls
+      # input: the input is per dispatch, so a teardown that forgot to repeat it
+      # would silently leave a billed parameter behind. Anything unreadable is
+      # kept, never deleted.
+      - name: Drop a staging TLS parameter left by full-down
+        if: always() && inputs.provider == 'civo' && inputs.target == 'full-down'
         run: |
-          set -euo pipefail
+          set -uo pipefail
           NAME="/${PROJECT_NAME:-vk-civo-lab}/persistent/civo/tls/platform-public"
-          if aws ssm delete-parameter --region eu-west-1 --name "$NAME" 2>/dev/null; then
-            echo "deleted $NAME"
-          else
-            echo "no $NAME to delete"
+          VALUE="$(aws ssm get-parameter --region eu-west-1 --name "$NAME" \
+            --with-decryption --query 'Parameter.Value' --output text 2>/dev/null || true)"
+          if [ -z "$VALUE" ] || [ "$VALUE" = "None" ]; then
+            echo "no $NAME stored - nothing to do."
+            exit 0
           fi
+          ISSUER="$(printf '%s' "$VALUE" | grep -m1 -E '^[[:space:]]+tls\.crt:' \
+            | sed 's/.*: *//' | base64 -d 2>/dev/null | openssl x509 -noout -issuer 2>/dev/null || true)"
+          case "$ISSUER" in
+            *STAGING*)
+              aws ssm delete-parameter --region eu-west-1 --name "$NAME"
+              echo "deleted $NAME - $ISSUER" ;;
+            "")
+              echo "kept $NAME - could not read its issuer." ;;
+            *)
+              echo "kept $NAME - $ISSUER" ;;
+          esac
 
   # Verifies the platform is actually usable, not just Synced/Healthy - runs
   # after any target that leaves a disposable cluster up, using the same

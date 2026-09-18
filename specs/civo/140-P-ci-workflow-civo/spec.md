@@ -106,12 +106,21 @@ Not in scope: PR validation workflows (spec 019), Kind CI (spec 024).
   SecureString on every `argo-down`, and CIVO-185's leak check confirmed it
   survives `full-down` by design, so a throwaway project would leave a billed
   parameter behind.
-- **D8 — that delete is gated on `production_tls`, not unconditional.** §4
-  reasoned from "CI uses a fresh project per run", which no longer holds now
-  that `lab.yml` can drive the personal lab. Deleting the parameter for
-  `vk-civo-lab` would throw away a valid production certificate and force a
-  fresh ACME order on the next bring-up — the exact cost the export exists to
-  avoid. Only a staging certificate is deleted; a production one is kept.
+- **D8 — that delete is conditional on the stored certificate's issuer, not
+  unconditional.** §4 reasoned from "CI uses a fresh project per run", which no
+  longer holds now that `lab.yml` can drive the personal lab. Deleting the
+  parameter for `vk-civo-lab` would throw away a valid production certificate
+  and force a fresh ACME order on the next bring-up — the exact cost the export
+  exists to avoid. The step therefore reads the stored Secret's `tls.crt`, takes
+  its issuer with `openssl x509 -noout -issuer`, and deletes only when that
+  issuer carries `STAGING`. Anything it cannot read is kept.
+
+  An earlier draft gated on the `production_tls` input instead. That was wrong:
+  the input is per dispatch, so a teardown dispatched without repeating it would
+  silently leave a billed parameter behind. The certificate is the fact; the
+  input is only an intent, and only at bring-up time. Measured on the live
+  parameter: 7348 bytes, which is past Standard tier's 4096-byte free limit, so
+  Advanced tier is not optional and the parameter genuinely costs money.
 - **D5 — `dig` and `htpasswd` are installed, which §5 did not name.** Found
   during implementation: `scripts/generate-secrets.sh` calls `htpasswd` with no
   fallback whenever a project has no committed `argocd-admin-password.bcrypt`,
