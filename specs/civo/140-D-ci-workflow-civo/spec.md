@@ -1,7 +1,7 @@
 ---
 id: "CIVO-140"
 title: "lab.yml provider input, Civo token decrypt with masking, concurrency, cleanup-on-failure"
-status: "READY"
+status: "DONE"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -15,7 +15,7 @@ blocked_by: []
 supersedes: []
 created: "2026-09-06"
 updated: "2026-09-18"
-completed: null
+completed: "2026-09-18"
 ---
 
 # CIVO-140 — CI workflow for Civo
@@ -220,4 +220,34 @@ Revert the workflow.
     `sha256sum -c` matches the filename recorded in the checksum line, so
     downloading the archive under a different name made the check fail open
     rather than verify. The step body now runs verbatim against both releases.
-- Live lifecycle evidence pending.
+- 2026-09-18 — nine live dispatches from the branch, all green.
+
+  | # | provider / project | target | evidence |
+  |---|---|---|---|
+  | 1 | aws / vk-lab-platform | full-up + test | 27 min; 14 Applications Synced/Healthy; `root.spec.source.targetRevision` read `civo-140-ci-provider`, proving D6 on a real bring-up |
+  | 2 | aws / vk-lab-ci-a | full-up + test | fresh project; reached `htpasswd` for real, since no bcrypt is committed for that name (D5) |
+  | 3 | aws / vk-lab-ci-a | full-down | clean |
+  | 4 | aws / vk-lab-platform | full-down | clean |
+  | 5 | civo / vk-civo-lab | full-up + test | `TLS_ISSUER=letsencrypt-prod`; `ARGO-UP: restored platform-public-tls Secret from SSM (not-after: Dec 10 12:21:25 2026 GMT)` — the stored certificate was reused, not re-ordered |
+  | 6 | civo / vk-civo-lab | test | the `test` dropdown option, which runs inside `lifecycle`; green, confirming the setup-go fix |
+  | 7 | civo / vk-civo-ci-a | full-up + test | 23 bootstrap resources including all four Roles Anywhere consumers, so the CA was generated in-run and the trust anchor registered; `TLS_ISSUER=letsencrypt-staging`, fresh order; `E2E_INSECURE_TLS=1` |
+  | 8 | civo / vk-civo-ci-a | full-down | D8 proven: dispatched with `production_tls` **ticked**, and the step still deleted the parameter — `deleted /vk-civo-ci-a/… - issuer=… CN = (STAGING) Artificial Amaranth YE1` |
+  | 9 | civo / vk-civo-lab | full-down | the keep branch: `kept /vk-civo-lab/… - issuer=C = US, O = Let's Encrypt, CN = YE1` |
+
+  Runs 8 and 9 together exercise both branches of the cleanup, and both were
+  dispatched with the input ticked — the decision came from the certificate
+  alone, which is the point of D8.
+
+  Leak check after runs 4 and 9: no project S3 buckets, no EKS clusters, no
+  project IAM roles, no Roles Anywhere trust anchors, no Civo clusters,
+  networks or reserved IPs, and no hosted zone but the external parent. ACM
+  holds only the root domain's own certificate, which the platform never owns.
+  The single surviving parameter is
+  `/vk-civo-lab/persistent/civo/tls/platform-public` — preserved by design, and
+  measured at 7348 bytes, which is why it must sit in the billed Advanced tier.
+
+- One IAM gap surfaced and was fixed outside this spec's scope: `lab-role`
+  could not create `<project>-postgres-backups`, so every `full-up` through
+  `lab.yml` had failed at `persistent-up` since CIVO-185 merged, on both
+  providers. Applied by the operator with `make account-up` (`0 added, 1
+  changed, 0 destroyed`).
