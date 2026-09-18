@@ -45,8 +45,27 @@ jobs:
       contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # This job runs terraform init once per module and once per live unit -
+    # around 40 times - and each init re-downloads the same AWS and Civo
+    # provider plugins, which dominates its runtime. One shared cache directory
+    # turns that into a single download.
+    env:
+      TF_PLUGIN_CACHE_DIR: ${{ github.workspace }}/.terraform-plugin-cache
     steps:
       - uses: actions/checkout@v4
+
+      # terraform refuses to use the cache directory if it does not already
+      # exist; it does not create it.
+      - run: mkdir -p "$TF_PLUGIN_CACHE_DIR"
+
+      # Keyed on the committed lock files, so a provider version bump misses
+      # the cache rather than reusing a stale plugin.
+      - uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.terraform-plugin-cache
+          key: tf-plugins-${{ runner.os }}-${{ hashFiles('terraform/**/.terraform.lock.hcl') }}
+          restore-keys: |
+            tf-plugins-${{ runner.os }}-
 
       - uses: hashicorp/setup-terraform@v3
         with:
