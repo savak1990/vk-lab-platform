@@ -98,8 +98,20 @@ Not in scope: PR validation workflows (spec 019), Kind CI (spec 024).
   personal lab. A boolean input, default on, keeps the default lab on
   production and lets a throwaway project opt into staging. The `test` job
   derives `E2E_INSECURE_TLS` from the same input.
-- **D4 — the cleanup-on-failure step is not in this pass.** Deferred to keep
-  the diff reviewable; tracked as a follow-up.
+- **D4 — the cleanup-on-failure step is not in this pass; the TLS-parameter
+  delete that §4 bundled with it is.** Only the `if: failure()` bring-up
+  recovery is deferred, to keep the diff reviewable. The other half of that
+  bullet is independent of it and is implemented: `civo_export_tls_secret`
+  writes `/<project>/persistent/civo/tls/platform-public` as an Advanced-tier
+  SecureString on every `argo-down`, and CIVO-185's leak check confirmed it
+  survives `full-down` by design, so a throwaway project would leave a billed
+  parameter behind.
+- **D8 — that delete is gated on `production_tls`, not unconditional.** §4
+  reasoned from "CI uses a fresh project per run", which no longer holds now
+  that `lab.yml` can drive the personal lab. Deleting the parameter for
+  `vk-civo-lab` would throw away a valid production certificate and force a
+  fresh ACME order on the next bring-up — the exact cost the export exists to
+  avoid. Only a staging certificate is deleted; a production one is kept.
 - **D5 — `dig` and `htpasswd` are installed, which §5 did not name.** Found
   during implementation: `scripts/generate-secrets.sh` calls `htpasswd` with no
   fallback whenever a project has no committed `argocd-admin-password.bcrypt`,
@@ -145,7 +157,15 @@ CA's per-project lifetime, per D5's neighbouring finding).
 
 ## 9. Validation
 
-Offline: `actionlint`. Real cloud: one civo up/down through CI (~0.3 USD), one aws `status`.
+Offline: `actionlint`, `yamllint -c .yamllint.yml`. Real cloud: one civo
+up/down through CI (~0.3 USD), one aws `status`.
+
+One runtime check has no offline equivalent: confirm on the first civo
+bring-up's log that `TLS_ISSUER` resolved to `letsencrypt-prod`. The
+`inputs.<name>` expression for a `type: boolean` input is boolean-typed, but the
+legacy `github.event.inputs.<name>` path is string-typed, where `'false'` is
+truthy — and a `status` dispatch never evaluates `TLS_ISSUER`. Read it off a
+real bring-up before trusting an unticked (staging) run.
 
 ## 10. AWS regression protection
 

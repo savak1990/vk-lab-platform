@@ -50,7 +50,7 @@ on:
         type: boolean
         default: true
       confirm_destroy:
-        description: "For platform-down/full-down (which reach persistent-down/bootstrap-down): type PROJECT_NAME exactly to confirm."
+        description: "For platform-down/full-down: type the RESOLVED project name exactly - what project_name holds, or the provider default (vk-lab-platform / vk-civo-lab) when it is blank."
         type: string
         default: ""
 
@@ -95,6 +95,13 @@ jobs:
           [ -n "$IN_PROJECT_NAME" ] && echo "PROJECT_NAME=$IN_PROJECT_NAME" >> "$GITHUB_ENV"
           [ -n "$IN_SUBDOMAIN" ] && echo "SUBDOMAIN=$IN_SUBDOMAIN" >> "$GITHUB_ENV"
           exit 0
+
+      # The test job below does not fire for target `test` - it only follows an
+      # up-like target - so that dispatch runs make test right here.
+      - uses: actions/setup-go@v5
+        if: inputs.target == 'test'
+        with:
+          go-version-file: go.mod
 
       - uses: hashicorp/setup-terraform@v3
         with:
@@ -167,6 +174,21 @@ jobs:
           TARGET_REVISION: ${{ github.ref_name }}
           # Read only by argo-up.sh's civo branch; inert on aws.
           TLS_ISSUER: ${{ inputs.production_tls && 'letsencrypt-prod' || 'letsencrypt-staging' }}
+
+      # argo-down exports the serving certificate to an Advanced-tier
+      # SecureString that survives teardown on purpose, to spare an ACME order
+      # on the next bring-up. A staging certificate is worth nothing to keep and
+      # is billed monthly, so only that case is deleted - a production one stays.
+      - name: Drop the staging TLS parameter left by full-down
+        if: always() && inputs.provider == 'civo' && inputs.target == 'full-down' && !inputs.production_tls
+        run: |
+          set -euo pipefail
+          NAME="/${PROJECT_NAME:-vk-civo-lab}/persistent/civo/tls/platform-public"
+          if aws ssm delete-parameter --region eu-west-1 --name "$NAME" 2>/dev/null; then
+            echo "deleted $NAME"
+          else
+            echo "no $NAME to delete"
+          fi
 
   # Verifies the platform is actually usable, not just Synced/Healthy - runs
   # after any target that leaves a disposable cluster up, using the same
