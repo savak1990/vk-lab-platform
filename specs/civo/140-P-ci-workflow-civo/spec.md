@@ -193,4 +193,22 @@ Revert the workflow.
   measured rather than assumed — `PROVIDER=civo` with `PROJECT_NAME` unset
   resolves to `vk-civo-lab`/`civo`/`cluster-civo`, and with `PROJECT_NAME`
   exported empty it resolves to an empty project name, which is why the resolve
-  step omits blanks. Live evidence pending.
+  step omits blanks.
+- 2026-09-18 — smoke dispatches from the branch, both green.
+  - aws `status` (run 35336573884): resolve step set `PROVIDER=aws` and left
+    `PROJECT_NAME` out of the environment, so the Makefile default applied;
+    `TARGET_REVISION=civo-140-ci-provider` confirms the branch reaches Argo's
+    root Application, and `TLS_ISSUER=letsencrypt-prod` confirms the ticked
+    default.
+  - civo `status` with `production_tls` unticked (run 35340501502): every step
+    green, `TLS_ISSUER=letsencrypt-staging`. The input is genuinely
+    boolean-typed in both directions, which the §9 runtime check asked for.
+  - Token masking verified by hashing, never by printing: the decrypted token
+    is 50 characters, and no 20-plus-character run anywhere in that run's log
+    hashes to it. The mask step itself emits no visible output, as expected -
+    GitHub consumes the directive.
+  - One bug found and fixed by the first civo dispatch (run 35337042103):
+    `sha256sum -c` matches the filename recorded in the checksum line, so
+    downloading the archive under a different name made the check fail open
+    rather than verify. The step body now runs verbatim against both releases.
+- Live lifecycle evidence pending.
