@@ -14,7 +14,7 @@ depends_on: ["CIVO-045", "CIVO-015"]
 blocked_by: []
 supersedes: []
 created: "2026-09-06"
-updated: "2026-09-06"
+updated: "2026-09-18"
 completed: null
 ---
 
@@ -49,7 +49,9 @@ Not in scope: PR validation workflows (spec 019), Kind CI (spec 024).
 
 ## 4. Design and contracts
 
-- Inputs: `provider` is a choice of `aws|civo` (default `aws`). `project_name` is a choice of `vk-lab-platform|vk-civo-lab`. `subdomain` is a choice of `lab|civo`. A validation step fails if the provider and the project/subdomain disagree.
+- Inputs: `provider` is a choice of `aws|civo` (default `aws`). `project_name`
+  and `subdomain` are free-form strings whose blank default means "this
+  provider's own default" — see deviation D1.
 - Set `env: PROVIDER: ${{ inputs.provider }}`. The `run-name` includes the provider.
 - Steps: install the `civo` CLI pinned with a checksum (like Terragrunt). The `make` step relies on scripts that call `civo_token`. No explicit token step is needed. A pre-step calls `civo_token >/dev/null` once, so the mask registers before any output.
 - Set `concurrency: group: lab-${{ inputs.project_name }}-${{ inputs.provider }}` and `cancel-in-progress: false`.
@@ -57,8 +59,9 @@ Not in scope: PR validation workflows (spec 019), Kind CI (spec 024).
 - The `test` job has `needs: lifecycle` and the same provider env. It calls `civo_token` again first, because `::add-mask::` is per job. Then it runs `make test`.
 - Emit the mask to the step's stdout directly. Never emit it inside a `$(...)` capture.
 - Secrets: none added. `permissions` is unchanged.
-- **Public TLS issuer (from CIVO-070):** every civo `up`-like step sets
-  `TLS_ISSUER=letsencrypt-staging`. CI uses a fresh project per run, so the
+- **Public TLS issuer (from CIVO-070):** a civo `up`-like step sets
+  `TLS_ISSUER` from the `production_tls` input — see deviation D3. When that
+  input is unticked the step sets `TLS_ISSUER=letsencrypt-staging`. CI uses a fresh project per run, so the
   SSM-persisted certificate Secret never carries over and each run places a
   new ACME order for the same names. Let's Encrypt production allows 5
   duplicate certificates per name set per week and 50 per registered domain
@@ -73,9 +76,53 @@ Not in scope: PR validation workflows (spec 019), Kind CI (spec 024).
   is the only way a Go client accepts the staging root. AWS runs and a
   prod-issuer civo run leave it unset so a certificate regression still fails.
 
+## 4a. Deviations from §4, decided during implementation
+
+- **D1 — `project_name` and `subdomain` are free-form, not `choice` pairs.**
+  The spec predates main's move to a free-form `project_name` on `lab.yml`, and
+  the outcome requires custom-named throwaway projects on both providers. A
+  blank input is *omitted* from `$GITHUB_ENV` rather than exported empty,
+  because an environment variable set to `""` still counts as defined for
+  make's `?=` (measured: `origin` returns `environment`), which would defeat
+  `Makefile:17-23`. The Makefile therefore stays the single source of the
+  per-provider defaults.
+- **D2 — the §4 "validation step fails if provider and project disagree" is
+  narrowed.** With free-form names there is no closed set to compare against.
+  The resolve step rejects only the realistic footgun: naming one provider's
+  default project while running the other. Subdomain uniqueness is left to
+  `scripts/require-unique-subdomain.sh`, which already decides it from live
+  Route 53 state before any apply and is more accurate than a workflow rule.
+- **D3 — `production_tls` replaces the unconditional staging rule.** §4 set
+  `TLS_ISSUER=letsencrypt-staging` for every civo CI run. That would write a
+  staging certificate into `vk-civo-lab`'s SSM-persisted Secret and degrade the
+  personal lab. A boolean input, default on, keeps the default lab on
+  production and lets a throwaway project opt into staging. The `test` job
+  derives `E2E_INSECURE_TLS` from the same input.
+- **D4 — the cleanup-on-failure step is not in this pass.** Deferred to keep
+  the diff reviewable; tracked as a follow-up.
+- **D5 — `dig` and `htpasswd` are installed, which §5 did not name.** Found
+  during implementation: `scripts/generate-secrets.sh` calls `htpasswd` with no
+  fallback whenever a project has no committed `argocd-admin-password.bcrypt`,
+  and `scripts/argo-up.sh`'s DNS wait returns non-zero without `dig`. `full-up`
+  was therefore broken for every project name except the two committed ones, on
+  **both** providers — not a Civo-only gap.
+- **D6 — `TARGET_REVISION` follows `github.ref_name`, which §2 did not scope.**
+  `scripts/argo-up.sh` defaults it to the literal `main`, so a branch dispatch
+  ran Terraform from the branch but reconciled `gitops/` from `main`. Included
+  because it makes branch dispatch meaningful, which the operator asked for.
+- **D7 — the mask step runs after `configure-aws-credentials`, and its stdout
+  is not redirected.** The token is KMS ciphertext in the repository, so
+  decrypting it needs the assumed role. §4 asks for `civo_token >/dev/null`,
+  which contradicts §4's own next line: `civo_token` writes nothing but the
+  `::add-mask::` directive, so redirecting stdout would discard the mask and
+  leave the token unmasked. The step runs it unredirected; GitHub consumes the
+  directive and prints nothing.
+
 ## 5. Files/components affected
 
-`.github/workflows/lab.yml`; docs `README.md` CI section.
+`.github/workflows/lab.yml`; `.github/workflows/lifecycle-test.yml` (one stale
+comment); `README.md` CI section; `docs/civo-high-level-design.md` §4.2 (the
+CA's per-project lifetime, per D5's neighbouring finding).
 
 ## 6. Implementation steps
 
@@ -120,3 +167,10 @@ Revert the workflow.
 
 - 2026-09-06 — created as DRAFT.
 - 2026-09-06 — approved for development by the user; promoted to READY (dependencies still gate the start).
+- 2026-09-18 — implemented on branch `civo-140-ci-provider`. Deviations D1–D7
+  recorded in §4a. Offline validation: `actionlint` clean on all three
+  workflows; `yamllint -c .yamllint.yml` clean. The blank-input contract was
+  measured rather than assumed — `PROVIDER=civo` with `PROJECT_NAME` unset
+  resolves to `vk-civo-lab`/`civo`/`cluster-civo`, and with `PROJECT_NAME`
+  exported empty it resolves to an empty project name, which is why the resolve
+  step omits blanks. Live evidence pending.

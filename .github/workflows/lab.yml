@@ -27,7 +27,7 @@ on:
         type: string
         default: ""
       subdomain:
-        description: "SUBDOMAIN: blank uses the provider's default (aws lab, civo civo). Must be unique per project - two projects sharing one subdomain collide on the same Route53 zone."
+        description: "SUBDOMAIN: blank uses the provider's default (aws lab, civo civo). Give a custom project its own - require-unique-subdomain.sh refuses a zone another project already owns, before any apply."
         type: string
         default: ""
       target:
@@ -91,13 +91,6 @@ jobs:
               exit 1
               ;;
           esac
-          # A custom project with the provider's default subdomain would build a
-          # second hosted zone for the same name as the default lab's, and
-          # tearing either one down takes the shared delegation record with it.
-          if [ -n "$IN_PROJECT_NAME" ] && [ -z "$IN_SUBDOMAIN" ]; then
-            echo "::error::project_name '$IN_PROJECT_NAME' needs its own subdomain; blank would reuse the default lab's Route53 zone." >&2
-            exit 1
-          fi
           echo "PROVIDER=$IN_PROVIDER" >> "$GITHUB_ENV"
           [ -n "$IN_PROJECT_NAME" ] && echo "PROJECT_NAME=$IN_PROJECT_NAME" >> "$GITHUB_ENV"
           [ -n "$IN_SUBDOMAIN" ] && echo "SUBDOMAIN=$IN_SUBDOMAIN" >> "$GITHUB_ENV"
