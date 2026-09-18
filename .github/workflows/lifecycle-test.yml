@@ -259,10 +259,12 @@ jobs:
       - uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  # Both providers at once, each an independent up -> test -> down chain.
+
   # Two checks the Makefile already owns and no workflow ran until now:
   # gitops-check diffs the rendered aws manifests against the committed golden
-  # baseline, and specs-check verifies the specs/ layout and its links.
+  # baseline, and specs-check verifies the specs/ layout and its links. Both
+  # were confirmed to run with no AWS credentials at all, which is what lets
+  # them sit in fast validation.
   validate-repo:
     permissions:
       contents: read
@@ -287,14 +289,20 @@ jobs:
 
       - run: make specs-check
 
-  lifecycle:
-    needs:
-      - validate-terraform
-      - validate-gitops
-      - validate-yaml
-      - validate-actions
-      - validate-secrets
-      - validate-repo
+  # Both providers at once, each an independent up -> test -> down chain.
+  #
+  # Two explicit jobs rather than one matrix job. A matrix would name its legs
+  # after the whole row - "lifecycle (aws, vk-lab-ci, ci, true)" - which reads
+  # badly in the run graph, collapses both providers into one box, and changes
+  # whenever a matrix field is added. Two jobs cost ten duplicated lines and
+  # give two stable names and two readable tracks.
+  #
+  # Neither job needs the other, so they run at the same time, and a failure in
+  # one can never stop the other reaching its own teardown. That independence
+  # is the whole point; it is not an optimization.
+  lifecycle-aws:
+    needs: [validate-terraform, validate-gitops, validate-yaml,
+            validate-actions, validate-secrets, validate-repo]
     # A called workflow can never hold more permissions than its caller grants,
     # so id-token: write has to be restated here or OIDC fails inside it.
     permissions:
@@ -307,36 +315,43 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       (contains(github.event.pull_request.labels.*.name, 'ci:lifecycle') &&
        github.event.pull_request.head.repo.full_name == github.repository)
-    strategy:
-      # Without this, a failing AWS leg cancels the Civo leg mid-flight and
-      # leaks a Civo cluster. Each provider must always reach its own teardown.
-      fail-fast: false
-      matrix:
-        include:
-          - provider: aws
-            project: vk-lab-ci
-            subdomain: ci
-            production_tls: true
-          # Staging certificates: a labeled run happens per pull request, and
-          # production orders would burn the Let's Encrypt duplicate-certificate
-          # quota this account shares with the personal lab.
-          - provider: civo
-            project: vk-civo-ci
-            subdomain: civoci
-            production_tls: false
     # Matches lab.yml's group expression, which is what stops a run here racing
     # a manual dispatch against the same Terraform state.
     concurrency:
-      group: lab-${{ matrix.provider }}-${{ matrix.project }}
+      group: lab-aws-vk-lab-ci
       cancel-in-progress: false
     uses: ./.github/workflows/lifecycle-provider.yml
     with:
-      provider: ${{ matrix.provider }}
-      project_name: ${{ matrix.project }}
-      subdomain: ${{ matrix.subdomain }}
-      production_tls: ${{ matrix.production_tls }}
+      provider: aws
+      project_name: vk-lab-ci
+      subdomain: ci
+      production_tls: true
       # Not github.ref_name: on a pull_request event that is "<n>/merge", which
       # Argo CD cannot resolve. The head SHA is the revision under test.
+      target_revision: ${{ github.event.pull_request.head.sha || github.ref_name }}
+
+  lifecycle-civo:
+    needs: [validate-terraform, validate-gitops, validate-yaml,
+            validate-actions, validate-secrets, validate-repo]
+    permissions:
+      id-token: write
+      contents: read
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (contains(github.event.pull_request.labels.*.name, 'ci:lifecycle') &&
+       github.event.pull_request.head.repo.full_name == github.repository)
+    concurrency:
+      group: lab-civo-vk-civo-ci
+      cancel-in-progress: false
+    uses: ./.github/workflows/lifecycle-provider.yml
+    with:
+      provider: civo
+      project_name: vk-civo-ci
+      subdomain: civoci
+      # Staging certificates: a labeled run happens per pull request, and
+      # production orders would burn the Let's Encrypt duplicate-certificate
+      # quota this account shares with the personal lab.
+      production_tls: false
       target_revision: ${{ github.event.pull_request.head.sha || github.ref_name }}
 
   # The single required status check on main. Every other job feeds it, and it
@@ -350,7 +365,8 @@ jobs:
       - validate-actions
       - validate-secrets
       - validate-repo
-      - lifecycle
+      - lifecycle-aws
+      - lifecycle-civo
     if: always()
     permissions:
       contents: read
@@ -367,7 +383,8 @@ jobs:
             ${{ needs.validate-terraform.result }} ${{ needs.validate-gitops.result }}
             ${{ needs.validate-yaml.result }} ${{ needs.validate-actions.result }}
             ${{ needs.validate-secrets.result }} ${{ needs.validate-repo.result }}
-          LIFECYCLE_RESULT: ${{ needs.lifecycle.result }}
+          LIFECYCLE_AWS: ${{ needs.lifecycle-aws.result }}
+          LIFECYCLE_CIVO: ${{ needs.lifecycle-civo.result }}
           EVENT_NAME: ${{ github.event_name }}
           BASE_REF: ${{ github.base_ref }}
           HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
@@ -392,9 +409,11 @@ jobs:
           echo "static validation passed."
 
           if [ "$EVENT_NAME" != "pull_request" ]; then
-            [ "$LIFECYCLE_RESULT" = "success" ] || {
-              echo "::error::the lifecycle run did not pass ($LIFECYCLE_RESULT)."; exit 1; }
-            echo "lifecycle passed."
+            if [ "$LIFECYCLE_AWS" != "success" ] || [ "$LIFECYCLE_CIVO" != "success" ]; then
+              echo "::error::lifecycle did not pass (aws=$LIFECYCLE_AWS civo=$LIFECYCLE_CIVO)."
+              exit 1
+            fi
+            echo "lifecycle passed on both providers."
             exit 0
           fi
 
@@ -424,13 +443,21 @@ jobs:
             exit 0
           fi
 
-          case "$LIFECYCLE_RESULT" in
-            success)
-              echo "both providers came up, passed make test, and were destroyed." ;;
-            skipped)
-              echo "::error::this pull request changes infrastructure, so it needs the full lifecycle check. Add the 'ci:lifecycle' label to run it."
-              exit 1 ;;
-            *)
-              echo "::error::the lifecycle check did not pass ($LIFECYCLE_RESULT)."
-              exit 1 ;;
-          esac
+          # Judged per provider, so the message names which cloud failed. Both
+          # are skipped together or run together, so either one answers the
+          # "was it labeled" question.
+          if [ "$LIFECYCLE_AWS" = "skipped" ] && [ "$LIFECYCLE_CIVO" = "skipped" ]; then
+            echo "::error::this pull request changes infrastructure, so it needs the full lifecycle check. Add the 'ci:lifecycle' label to run it."
+            exit 1
+          fi
+
+          GATE=0
+          for pair in "aws:$LIFECYCLE_AWS" "civo:$LIFECYCLE_CIVO"; do
+            case "$pair" in
+              *:success) echo "${pair%%:*}: came up, passed make test, and was destroyed." ;;
+              *)
+                echo "::error::the ${pair%%:*} lifecycle did not pass (${pair#*:})."
+                GATE=1 ;;
+            esac
+          done
+          exit "$GATE"

@@ -71,20 +71,28 @@ wording and spec SHARED-019 Requirement 4 both rule out.
 ### 3. Each provider is an independent chain that always reaches its teardown
 
 One reusable workflow, `lifecycle-provider.yml`, holds `up` -> `test` ->
-`down` for a single provider. `lifecycle-test.yml` calls it from a matrix of
-two: `vk-lab-ci`/`ci` on AWS and `vk-civo-ci`/`civoci` on Civo.
+`down` for a single provider. `lifecycle-test.yml` calls it twice, from two
+explicit jobs: `lifecycle-aws` against `vk-lab-ci`/`ci` and `lifecycle-civo`
+against `vk-civo-ci`/`civoci`.
 
-`fail-fast: false` is load-bearing, not a default carried over. Without it a
-failing AWS leg cancels the Civo leg mid-flight, and the cancelled runner never
-reaches its `down` job - leaking a live cluster. `down` keeps ADR 0026's shape:
-a separate job with its own `if: always()`, because a step-level `always()`
-does not survive the runner being torn down.
+Two jobs rather than one matrix job, deliberately. A matrix names its legs
+after the whole row - `lifecycle (aws, vk-lab-ci, ci, true)` - so the run graph
+collapses both providers into a single box, and the generated name changes
+whenever a matrix field is added. Two jobs cost about ten duplicated lines and
+buy two stable names and two readable parallel tracks. A matrix would also have
+needed `fail-fast: false` to stop one leg cancelling the other; separate jobs
+have no such coupling to disable in the first place.
+
+Neither job needs the other, so a failure in one can never stop the other
+reaching its own teardown. `down` keeps ADR 0026's shape: a separate job with
+its own `if: always()`, because a step-level `always()` does not survive the
+runner being torn down.
 
 The Civo leg uses the Let's Encrypt staging issuer. A labeled run happens per
 pull request, and production orders would burn the duplicate-certificate quota
 this account shares with the personal lab.
 
-Each leg keys its concurrency as `lab-<provider>-<project>`, matching
+Each job keys its concurrency as `lab-<provider>-<project>`, matching
 `lab.yml`. This also repairs a drift: CIVO-140 added the provider segment to
 `lab.yml`'s group but not to `lifecycle-test.yml`'s, so since then the two
 workflows could run against the same project without queueing - the opposite of

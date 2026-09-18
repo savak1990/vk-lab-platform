@@ -36,8 +36,8 @@ requirements and how they are verified.
 
 In scope:
 
-- `.github/workflows/lifecycle-test.yml` — PR trigger, label gate, the
-  provider matrix, and the `pr-gate` job.
+- `.github/workflows/lifecycle-test.yml` — PR trigger, label gate, the two
+  per-provider caller jobs, and the `pr-gate` job.
 - `.github/workflows/lifecycle-provider.yml` — the reusable per-provider
   `up`/`test`/`down` chain.
 - `.github/actions/setup-lab-tools/` — the shared toolchain install.
@@ -73,7 +73,9 @@ Non-goals:
    (constitution §11, AWS-020 R5). Every credentialed job MUST carry an
    explicit same-repository test in addition to the label requirement.
 7. Both providers MUST run at the same time and MUST be independent: a failure
-   in one MUST NOT prevent the other from completing its own teardown.
+   in one MUST NOT prevent the other from completing its own teardown. They
+   MUST be separate jobs, each with its own name in the run graph, rather than
+   legs of one matrix job.
 8. Every run MUST attempt teardown of both providers even after a failure or a
    cancellation (AWS-020 R6), as a separate job with its own `if: always()`.
 9. A teardown MUST be verified, not assumed. Any Bootstrap- or
