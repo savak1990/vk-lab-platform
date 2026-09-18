@@ -324,7 +324,7 @@ jobs:
     with:
       provider: aws
       project_name: vk-lab-ci
-      subdomain: ci
+      subdomain: awsci
       production_tls: true
       # Not github.ref_name: on a pull_request event that is "<n>/merge", which
       # Argo CD cannot resolve. The head SHA is the revision under test.

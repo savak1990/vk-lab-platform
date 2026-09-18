@@ -151,8 +151,8 @@ Remove the label while you iterate. Pushing during a run does not cancel it:
 cancelling would kill the teardown job and leave a cluster billing, so a second
 run queues behind the first instead.
 
-The two CI projects are `vk-lab-ci`/`ci` on AWS and `vk-civo-ci`/`civoci` on
-Civo, both fixed. The Civo leg uses Let's Encrypt **staging** on purpose, so
+The two CI projects are `vk-lab-ci`/`awsci` on AWS and `vk-civo-ci`/`civoci`
+on Civo, both fixed. The Civo leg uses Let's Encrypt **staging** on purpose, so
 per-pull-request runs do not consume the production quota your personal lab
 shares.
 

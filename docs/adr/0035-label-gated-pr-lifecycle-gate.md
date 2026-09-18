@@ -72,7 +72,7 @@ wording and spec SHARED-019 Requirement 4 both rule out.
 
 One reusable workflow, `lifecycle-provider.yml`, holds `up` -> `test` ->
 `down` for a single provider. `lifecycle-test.yml` calls it twice, from two
-explicit jobs: `lifecycle-aws` against `vk-lab-ci`/`ci` and `lifecycle-civo`
+explicit jobs: `lifecycle-aws` against `vk-lab-ci`/`awsci` and `lifecycle-civo`
 against `vk-civo-ci`/`civoci`.
 
 Two jobs rather than one matrix job, deliberately. A matrix names its legs
