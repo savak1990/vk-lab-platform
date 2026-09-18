@@ -107,6 +107,13 @@ Non-goals:
   `make specs-check` now gate merges; neither ran in any workflow before.
 - **D6 — `tfsec` stays report-only.** `soft_fail: true` is retained, so its 41
   untriaged findings do not block merges.
+- **D7 — one leak check is unproven.** `verify-no-leaks.sh` reads Civo resource
+  names over `.name // .label`, which was confirmed against live `network` and
+  `firewall` listings. `civo ip ls -o json` returned an empty list, so the key
+  it emits for a reserved IP is untested: that one check could silently never
+  fire. It must be confirmed while a Civo CI project holds
+  `vk-civo-ci-ingress`. This is the same never-fires failure ADR 0026 records
+  for `tag:GetResources`.
 
 ## 5. Testing / acceptance criteria
 

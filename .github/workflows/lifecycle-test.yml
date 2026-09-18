@@ -355,12 +355,21 @@ jobs:
         run: |
           set -euo pipefail
 
+          # Counted, not just scanned: an expression that rendered empty would
+          # drop silently out of the word split and this job decides every
+          # merge, so a missing result must fail rather than be skipped over.
+          COUNT=0
           for r in $VALIDATE_RESULTS; do
+            COUNT=$((COUNT + 1))
             if [ "$r" != "success" ]; then
               echo "::error::static validation did not pass ($VALIDATE_RESULTS)."
               exit 1
             fi
           done
+          if [ "$COUNT" -ne 6 ]; then
+            echo "::error::expected 6 validation results, read $COUNT ($VALIDATE_RESULTS)."
+            exit 1
+          fi
           echo "static validation passed."
 
           if [ "$EVENT_NAME" != "pull_request" ]; then
