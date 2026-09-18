@@ -284,9 +284,8 @@ jobs:
         with:
           version: "v4.1.4"
 
-      # Not needed by lab.yml's `up`/`down` targets since they never reach a
-      # fresh bootstrap-up/argo-up on a from-scratch project in the same run
-      # the way this workflow's full-up does.
+      # lab.yml installs these too: its full-up/full-down targets reach the
+      # same fresh bootstrap-up/argo-up on a from-scratch project.
       - name: Install dig and htpasswd
         run: sudo apt-get update -qq && sudo apt-get install -y -qq dnsutils apache2-utils
 
