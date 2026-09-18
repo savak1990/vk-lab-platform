@@ -135,7 +135,9 @@ composite target already does.
 Other targets:
 
 ```bash
-make kubeconfig                            # points kubectl at the disposable cluster
+make kubeconfig                            # switches YOUR kubectl context to the disposable cluster
+                                           # (every other target uses .kube/<project>.config instead,
+                                           #  so a bring-up never moves your context - ADR 0034)
 make clear-cache                               # clears .terragrunt-cache after switching PROJECT_NAME/SUBDOMAIN
 make secret-encrypt NAME=<name> VALUE=<value>  # encrypts one secrets/<project>/<name>.enc
 make secret-decrypt NAME=<name>                # prints one secret's plaintext to stdout

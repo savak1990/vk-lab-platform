@@ -20,6 +20,10 @@ POLL_INTERVAL="${ARGO_DOWN_POLL_INTERVAL:-5}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$REPO_ROOT/scripts/lib/region.sh"
 source "$REPO_ROOT/scripts/lib/provider.sh"
+
+# Keeps kubectl and helm on a repo-local kubeconfig: a lifecycle run must never
+# change the context the operator is working in.
+use_isolated_kubeconfig
 PVC_WAIT_TIMEOUT="${ARGO_DOWN_PVC_WAIT_TIMEOUT:-180s}"
 
 # Absence is checked against the provider's own API, not kubectl - a 404
@@ -30,7 +34,7 @@ if ! cluster_exists; then
   exit 0
 fi
 
-configure_kubeconfig
+configure_kubeconfig "$KUBECONFIG"
 
 if ! kubectl cluster-info --request-timeout=5s >/dev/null 2>&1; then
   echo "ARGO-DOWN: ERROR - cluster $CLUSTER_NAME exists but is unreachable via kubectl (cluster-info failed)." >&2

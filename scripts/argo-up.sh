@@ -9,6 +9,10 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$REPO_ROOT/scripts/lib/region.sh"
 source "$REPO_ROOT/scripts/lib/provider.sh"
+
+# Keeps kubectl and helm on a repo-local kubeconfig: a lifecycle run must never
+# change the context the operator is working in.
+use_isolated_kubeconfig
 ARGOCD_CHART_VERSION="${ARGOCD_CHART_VERSION:-10.4.0}"
 TARGET_REVISION="${TARGET_REVISION:-main}"
 REPO_URL="${REPO_URL:-https://github.com/savak1990/vk-lab-platform}"
@@ -76,7 +80,7 @@ aws_resolve_inputs() {
   ADMIN_PASSWORD_BCRYPT_HASH="$(ssm_output "/$PROJECT_NAME/persistent/argocd/admin_password_bcrypt")"
   BACKUP_BUCKET="$(ssm_output "/$PROJECT_NAME/persistent/backups/bucket_name")"
   backup_resolve_generation
-  configure_kubeconfig
+  configure_kubeconfig "$KUBECONFIG"
 }
 
 # serverName is minted per bring-up, so a recovered cluster never archives
@@ -147,7 +151,7 @@ civo_resolve_inputs() {
   # fail-hard loop above.
   backup_resolve_generation
 
-  configure_kubeconfig
+  configure_kubeconfig "$KUBECONFIG"
 }
 
 if [ "$PROVIDER" = civo ]; then

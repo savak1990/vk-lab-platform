@@ -1,5 +1,9 @@
 # 016 — lab.yml manual test plan
 
+> The unqualified `kubectl` commands below run against your current context.
+> Run `make kubeconfig` first — no lifecycle target switches it for you any
+> more (ADR 0034).
+
 Covers the account-role/KMS redesign: a single account-global `lab-role` and
 `alias/lab-secrets` KMS key (replacing per-project `personal-lab-role`/
 per-project KMS key), Route53/ACM moved from Persistent to Bootstrap-lifecycle,

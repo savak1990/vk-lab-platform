@@ -1,5 +1,9 @@
 # 024 — Kafka manual test plan
 
+> The unqualified `kubectl` commands below run against your current context.
+> Run `make kubeconfig` first — no lifecycle target switches it for you any
+> more (ADR 0034).
+
 > **Status: Deferred (2026-08-24).** Kafka/Strimzi was removed from the
 > running platform — see ADR 0017. This walkthrough applies again once
 > `specs/aws/025-Z-kafka` is re-implemented.

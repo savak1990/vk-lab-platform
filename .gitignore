@@ -56,3 +56,6 @@ secrets/*/*
 
 # Subagent-driven-development scratch (ledger, briefs, review packages).
 .superpowers/
+
+# Repo-local kubeconfigs written by the lifecycle targets; never the operator's own.
+.kube/

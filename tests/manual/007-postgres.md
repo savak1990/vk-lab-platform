@@ -1,5 +1,9 @@
 # 007 — Postgres manual test plan
 
+> The unqualified `kubectl` commands below run against your current context.
+> Run `make kubeconfig` first — no lifecycle target switches it for you any
+> more (ADR 0034).
+
 CLI walkthrough proving the destroy/recreate persistence guarantee (spec
 007, Requirement 2) and the storage-growth path (Requirement 7). ~45–60
 min, needs `aws`/`kubectl`/`psql`/`terragrunt` CLIs.

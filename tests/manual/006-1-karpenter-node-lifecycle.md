@@ -1,5 +1,9 @@
 # 006-1 — Karpenter node lifecycle manual test plan
 
+> The unqualified `kubectl` commands below run against your current context.
+> Run `make kubeconfig` first — no lifecycle target switches it for you any
+> more (ADR 0034).
+
 Verifies the empirical assumption spec 006-1's no-sweep design depends on:
 that deleting Argo CD's `root` Application actually drains and terminates
 Karpenter-provisioned nodes (via the `resources-finalizer.argocd.argoproj.io`

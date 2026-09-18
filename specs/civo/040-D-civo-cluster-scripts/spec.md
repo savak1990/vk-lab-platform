@@ -117,6 +117,15 @@ Revert the scripts. There is no data risk. `cluster-down` never touches the pers
 
 ## 14. Execution evidence and status history
 
+- Superseded in part by ADR 0034: `configure_kubeconfig()` is no longer
+  called without a kubeconfig path by `cluster-down.sh`, `argo-up.sh`,
+  `argo-down.sh` or the `test` targets. Those all run against a repo-local
+  kubeconfig now. §4's design is otherwise unchanged, including the
+  `${kcfg[@]:+"${kcfg[@]}"}` idiom, which the new code paths reuse. The
+  `kubeconfig`/`test-kubeconfig` `PROVIDER` `ifeq` split described there is
+  gone: both branches became identical once the aws recipes moved into
+  `provider.sh`.
+
 - 2026-09-06 — created as DRAFT.
 - 2026-09-06 — approved for development by the user; promoted to READY (dependencies still gate the start).
 - 2026-09-07 — implemented via subagent-driven development, 6 tasks (provider.sh helpers, require-persistent.sh, state-down.sh, argo-state.sh/status.sh, cluster-down.sh, Makefile), each with an independent implementer and task reviewer; all approved with only Minor findings deferred (see the plan's ledger at `.superpowers/sdd/2026-09-07-civo-040-cluster-scripts/progress.md` during development, since deleted per the SDD workflow's cleanup step once the branch merged).

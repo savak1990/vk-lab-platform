@@ -24,8 +24,12 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/provider.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/region.sh"
 
+# Keeps kubectl and helm on a repo-local kubeconfig: a lifecycle run must never
+# change the context the operator is working in.
+use_isolated_kubeconfig
+
 if cluster_exists; then
-  configure_kubeconfig
+  configure_kubeconfig "$KUBECONFIG"
 
   if ! kubectl cluster-info --request-timeout=5s >/dev/null 2>&1; then
     echo "CLUSTER-DOWN: ERROR - cluster $CLUSTER_NAME exists but is unreachable via kubectl (cluster-info failed)." >&2
