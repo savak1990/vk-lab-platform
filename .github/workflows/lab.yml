@@ -139,10 +139,11 @@ jobs:
         if: inputs.provider == 'civo'
         run: |
           CIVO_VERSION=1.5.5
-          curl -sSL -o civo.tar.gz "https://github.com/civo/cli/releases/download/v${CIVO_VERSION}/civo-${CIVO_VERSION}-linux-amd64.tar.gz"
+          CIVO_TAR="civo-${CIVO_VERSION}-linux-amd64.tar.gz"
+          curl -sSL -o "$CIVO_TAR" "https://github.com/civo/cli/releases/download/v${CIVO_VERSION}/${CIVO_TAR}"
           curl -sSL -o civo-checksums.sha256 "https://github.com/civo/cli/releases/download/v${CIVO_VERSION}/civo-${CIVO_VERSION}-checksums.sha256"
-          grep " civo-${CIVO_VERSION}-linux-amd64.tar.gz$" civo-checksums.sha256 | sha256sum -c -
-          tar -xzf civo.tar.gz civo
+          grep " ${CIVO_TAR}$" civo-checksums.sha256 | sha256sum -c -
+          tar -xzf "$CIVO_TAR" civo
           sudo mv civo /usr/local/bin/civo
           # yq publishes its checksums in a multi-column format that needs a
           # helper script to read, so the digest is pinned here directly.
@@ -225,10 +226,11 @@ jobs:
         if: inputs.provider == 'civo'
         run: |
           CIVO_VERSION=1.5.5
-          curl -sSL -o civo.tar.gz "https://github.com/civo/cli/releases/download/v${CIVO_VERSION}/civo-${CIVO_VERSION}-linux-amd64.tar.gz"
+          CIVO_TAR="civo-${CIVO_VERSION}-linux-amd64.tar.gz"
+          curl -sSL -o "$CIVO_TAR" "https://github.com/civo/cli/releases/download/v${CIVO_VERSION}/${CIVO_TAR}"
           curl -sSL -o civo-checksums.sha256 "https://github.com/civo/cli/releases/download/v${CIVO_VERSION}/civo-${CIVO_VERSION}-checksums.sha256"
-          grep " civo-${CIVO_VERSION}-linux-amd64.tar.gz$" civo-checksums.sha256 | sha256sum -c -
-          tar -xzf civo.tar.gz civo
+          grep " ${CIVO_TAR}$" civo-checksums.sha256 | sha256sum -c -
+          tar -xzf "$CIVO_TAR" civo
           sudo mv civo /usr/local/bin/civo
 
       - uses: aws-actions/configure-aws-credentials@v4
