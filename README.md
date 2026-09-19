@@ -151,6 +151,10 @@ a spec is exactly the leak it exists for, and `specs-check`, which catches a
 broken spec link or a status letter that no longer matches. One non-Markdown file
 anywhere in the pull request runs everything.
 
+`validate-terraform` also skips when the pull request changes nothing under
+`terraform/`, `secrets/` or `.github/`. A `gitops/`-only change, for example,
+saves those ~9 minutes. The lifecycle check still runs when labeled.
+
 Adding the label starts the run immediately against the pull request's current
 commit — no empty commit, no extra push. Removing and re-adding the label is how
 you re-run it. A run takes about 55 minutes and costs a little under one US

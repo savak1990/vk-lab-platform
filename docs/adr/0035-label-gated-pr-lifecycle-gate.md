@@ -96,6 +96,15 @@ Three rules keep the skip from becoming a hole:
   infrastructure, so `pr-gate` would demand a lifecycle result no label could
   ever produce.
 
+`validate-terraform` has a second, narrower skip. It is the slowest check, about
+8 minutes, and it reads only `terraform/`, `secrets/` (at Terragrunt parse time)
+and the workflows. A pull request that changes none of these - `gitops/` or
+`scripts/` only, for example - skips it. The same three rules apply: the
+classifier's `terraform` output fails closed to `true`, and `pr-gate` accepts
+this skip for `validate-terraform` only. The lifecycle jobs use `!cancelled()`
+plus an explicit "no validate job failed" test, so a skipped `validate-terraform`
+does not skip the clusters, but a failed one still blocks them.
+
 ### 2a. The waiver is a label, and it is loud
 
 `ci:skip-lifecycle` passes the gate without the two-cloud run. It waives only

@@ -34,14 +34,15 @@ permissions:
 
 jobs:
   # Classifies the pull request once, so every later job asks the same question
-  # of the same answer. Two outputs:
+  # of the same answer. Three outputs:
   #   docs_only - every changed file is Markdown; the four heavy validate jobs
   #               below skip themselves.
+  #   terraform - a file validate-terraform reads changed; it skips otherwise.
   #   infra     - a file on the merge-blocking path list changed; pr-gate then
   #               requires the lifecycle check or its waiver.
   #
   # Fails closed: on a manual dispatch, or if the diff cannot be computed, it
-  # reports docs_only=false and infra=true, so everything runs.
+  # reports docs_only=false and terraform=infra=true, so everything runs.
   changes:
     permissions:
       contents: read
@@ -49,6 +50,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       docs_only: ${{ steps.classify.outputs.docs_only }}
+      terraform: ${{ steps.classify.outputs.terraform }}
       infra: ${{ steps.classify.outputs.infra }}
       infra_files: ${{ steps.classify.outputs.infra_files }}
     steps:
@@ -63,6 +65,7 @@ jobs:
         run: |
           set -euo pipefail
           DOCS_ONLY=false
+          TERRAFORM=true
           INFRA=true
           INFRA_FILES=""
 
@@ -77,6 +80,13 @@ jobs:
             # twenty .md files is not a documentation change.
             if ! printf '%s\n' "$CHANGED" | grep -qvE '\.md$'; then
               DOCS_ONLY=true
+            fi
+
+            # secrets/ is read by terragrunt at parse time; the workflows are
+            # here so that a change to this job always runs it.
+            if ! printf '%s\n' "$CHANGED" | grep -vE '\.md$' \
+              | grep -qE '^(terraform/|secrets/|\.github/(workflows|actions)/)'; then
+              TERRAFORM=false
             fi
 
             # This list is the merge-blocking surface of the repository.
@@ -95,9 +105,10 @@ jobs:
             echo "not a pull request, or the diff could not be computed - running everything."
           fi
 
-          echo "docs_only=$DOCS_ONLY  infra=$INFRA"
+          echo "docs_only=$DOCS_ONLY  terraform=$TERRAFORM  infra=$INFRA"
           {
             echo "docs_only=$DOCS_ONLY"
+            echo "terraform=$TERRAFORM"
             echo "infra=$INFRA"
             echo "infra_files<<CHANGES_EOF"
             printf '%s\n' "$INFRA_FILES"
@@ -113,7 +124,8 @@ jobs:
   # anyway, and a missing docs_only output reads as "not docs-only".
   validate-terraform:
     needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.docs_only != 'true' }}
+    # != 'false', so a missing output runs the job.
+    if: ${{ !cancelled() && needs.changes.outputs.terraform != 'false' }}
     # Narrows away the top-level id-token: write - none of spec 019's
     # checks touch AWS, so this job has no use for an OIDC token.
     permissions:
@@ -374,7 +386,7 @@ jobs:
   # one can never stop the other reaching its own teardown. That independence
   # is the whole point; it is not an optimization.
   lifecycle-aws:
-    needs: [validate-terraform, validate-gitops, validate-yaml,
+    needs: [changes, validate-terraform, validate-gitops, validate-yaml,
             validate-actions, validate-secrets, validate-repo]
     # A called workflow can never hold more permissions than its caller grants,
     # so id-token: write has to be restated here or OIDC fails inside it.
@@ -387,11 +399,16 @@ jobs:
     # The skip label is tested here too, not only in pr-gate: a pull request
     # carrying both labels is a contradiction pr-gate rejects, and it should
     # cost nothing to reject rather than two clusters' worth of runtime first.
+    # A skipped validate job must not skip this one; a failed one must.
     if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (contains(github.event.pull_request.labels.*.name, 'ci:lifecycle') &&
-       !contains(github.event.pull_request.labels.*.name, 'ci:skip-lifecycle') &&
-       github.event.pull_request.head.repo.full_name == github.repository)
+      !cancelled() &&
+      !contains(needs.*.result, 'failure') &&
+      !contains(needs.*.result, 'cancelled') &&
+      needs.changes.outputs.docs_only != 'true' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (contains(github.event.pull_request.labels.*.name, 'ci:lifecycle') &&
+        !contains(github.event.pull_request.labels.*.name, 'ci:skip-lifecycle') &&
+        github.event.pull_request.head.repo.full_name == github.repository))
     # Matches lab.yml's group expression, which is what stops a run here racing
     # a manual dispatch against the same Terraform state.
     concurrency:
@@ -408,7 +425,7 @@ jobs:
       target_revision: ${{ github.event.pull_request.head.sha || github.ref_name }}
 
   lifecycle-civo:
-    needs: [validate-terraform, validate-gitops, validate-yaml,
+    needs: [changes, validate-terraform, validate-gitops, validate-yaml,
             validate-actions, validate-secrets, validate-repo]
     permissions:
       id-token: write
@@ -416,11 +433,16 @@ jobs:
     # The skip label is tested here too, not only in pr-gate: a pull request
     # carrying both labels is a contradiction pr-gate rejects, and it should
     # cost nothing to reject rather than two clusters' worth of runtime first.
+    # A skipped validate job must not skip this one; a failed one must.
     if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (contains(github.event.pull_request.labels.*.name, 'ci:lifecycle') &&
-       !contains(github.event.pull_request.labels.*.name, 'ci:skip-lifecycle') &&
-       github.event.pull_request.head.repo.full_name == github.repository)
+      !cancelled() &&
+      !contains(needs.*.result, 'failure') &&
+      !contains(needs.*.result, 'cancelled') &&
+      needs.changes.outputs.docs_only != 'true' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (contains(github.event.pull_request.labels.*.name, 'ci:lifecycle') &&
+        !contains(github.event.pull_request.labels.*.name, 'ci:skip-lifecycle') &&
+        github.event.pull_request.head.repo.full_name == github.repository))
     concurrency:
       group: lab-civo-vk-civo-ci
       cancel-in-progress: false
@@ -459,6 +481,7 @@ jobs:
         env:
           CHANGES_RESULT: ${{ needs.changes.result }}
           DOCS_ONLY: ${{ needs.changes.outputs.docs_only }}
+          TERRAFORM: ${{ needs.changes.outputs.terraform }}
           INFRA: ${{ needs.changes.outputs.infra }}
           INFRA_FILES: ${{ needs.changes.outputs.infra_files }}
           R_TERRAFORM: ${{ needs.validate-terraform.result }}
@@ -482,24 +505,29 @@ jobs:
             exit 1
           fi
 
-          # Each validate job is judged by name. A skip is accepted only for one
-          # of the four heavy jobs, and only on a documentation-only change.
-          # Anything looser would let a mistyped `if:` silently stop validation
-          # on a real infrastructure change while this gate stayed green - the
-          # one failure that would hollow the gate out without anyone noticing.
-          # An empty result fails too, so a job that never reported cannot
-          # pass as a skip.
+          # Each job is judged by name, with the one reason it may skip for; an
+          # empty reason means it must run. A looser rule would let a mistyped
+          # `if:` stop validation while this gate stayed green.
+          DOCS_REASON=""
+          if [ "$DOCS_ONLY" = "true" ]; then
+            DOCS_REASON="documentation-only change"
+          fi
+          TF_REASON="$DOCS_REASON"
+          if [ "$TERRAFORM" = "false" ]; then
+            TF_REASON="no Terraform, Terragrunt or secrets change"
+          fi
+
           COUNT=0
           check() {
-            local name="$1" result="$2" skippable="$3"
+            local name="$1" result="$2" skip_reason="$3"
             COUNT=$((COUNT + 1))
             case "$result" in
               success) ;;
               skipped)
-                if [ "$skippable" = "yes" ] && [ "$DOCS_ONLY" = "true" ]; then
-                  echo "$name: skipped - documentation-only change."
+                if [ -n "$skip_reason" ]; then
+                  echo "$name: skipped - $skip_reason."
                 else
-                  echo "::error::$name was skipped, but this is not a documentation-only change - it must run."
+                  echo "::error::$name was skipped, but its inputs changed - it must run."
                   exit 1
                 fi
                 ;;
@@ -509,12 +537,12 @@ jobs:
                 ;;
             esac
           }
-          check validate-terraform "$R_TERRAFORM" yes
-          check validate-gitops "$R_GITOPS" yes
-          check validate-yaml "$R_YAML" yes
-          check validate-actions "$R_ACTIONS" yes
-          check validate-secrets "$R_SECRETS" no
-          check validate-repo "$R_REPO" no
+          check validate-terraform "$R_TERRAFORM" "$TF_REASON"
+          check validate-gitops "$R_GITOPS" "$DOCS_REASON"
+          check validate-yaml "$R_YAML" "$DOCS_REASON"
+          check validate-actions "$R_ACTIONS" "$DOCS_REASON"
+          check validate-secrets "$R_SECRETS" ""
+          check validate-repo "$R_REPO" ""
           # Guards against a check line being deleted rather than a result
           # going missing, which the per-job check above already catches.
           if [ "$COUNT" -ne 6 ]; then
