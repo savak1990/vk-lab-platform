@@ -14,7 +14,7 @@ depends_on: ["HETZ-037", "HETZ-040"]
 blocked_by: []
 supersedes: []
 created: "2026-09-19"
-updated: "2026-09-19"
+updated: "2026-09-20"
 completed: ""
 ---
 
@@ -111,6 +111,9 @@ step, `kubeadm upgrade node`, drain, the kubelet/kubectl package step,
 against the running release, and a recorded note that the cluster
 autoscaler stays at 1.36.1 until a 1.37 tag exists — allowed because the
 version-skew policy permits the autoscaler to trail the API server.
+`kubectl drain` works because no PodDisruptionBudget exists in M1 (CNPG
+`enablePDB: false`, HETZ-050); if a PDB ever blocks it, fix the PDB rather
+than using `--disable-eviction`.
 
 **(B) Stacked etcd snapshot and restore.** On the control plane: install
 `etcd-client` (or run the matching `etcd` container image) so `etcdctl`
@@ -227,3 +230,5 @@ file.
 ## 14. Execution evidence and status history
 
 - 2026-09-19 — created as READY (kubeadm replan); CKA practice.
+- 2026-09-20 — records why `kubectl drain` is unblocked in M1 (no PDB;
+  decisions.md §3, "Schedulable control plane").

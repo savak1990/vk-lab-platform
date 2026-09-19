@@ -14,7 +14,7 @@ depends_on: ["HETZ-016", "CIVO-050"]
 blocked_by: []
 supersedes: []
 created: "2026-09-11"
-updated: "2026-09-19"
+updated: "2026-09-20"
 completed: ""
 ---
 
@@ -54,6 +54,7 @@ observability values (HETZ-160).
 - `platform.storageClassName`: hetzner → `hcloud-volumes`. Keep the literal in the helper, as for civo, because the name is the chart's default and is referenced, never defined, by shared templates.
 - `gitops/values.yaml` documents the hetzner values `argo-up` sets: `storage.className` unused on hetzner (helper wins), `capacity.spotAvoidance: false`, `postgres.nodeSelector: {}` (set through `--set-json`; Helm deep-merges maps), `awsIdentity.mode: rolesAnywhere`, `externalDns.txtOwnerId`, `envoyGateway.location: nbg1`. The chart defaults stay AWS-equivalent.
 - `gitops-render-check.sh`: add `REQUIRED_OBJECTS_HETZNER` = the civo required set minus civo-only names plus `Application__argocd__hcloud-csi`; `FORBIDDEN_KINDS_HETZNER` = `VolumeSnapshotClass VolumeSnapshotContent VolumeSnapshot EC2NodeClass NodePool` (no `StorageClass`, the CSI chart defines one but it renders inside the chart, not in our tree; the check must still assert no `kubernetes.civo.com/` string appears in the hetzner render); `FORBIDDEN_APPLICATIONS_HETZNER` = `aws-load-balancer-controller ebs-csi-driver karpenter snapshot-controller`. Loop over `civo hetzner local`.
+- `platform-critical` PriorityClass (value 100000) under `platform/hetzner/`, referenced by `priorityClassName` in the Argo CD, Envoy, cert-manager, ESO, ExternalDNS and CNPG values for `target: hetzner`; `preferredDuringSchedulingIgnoredDuringExecution` node affinity to `role=worker` (weight 50) on CNPG, Prometheus, Loki and Tempo; CNPG `enablePDB: false`. The control plane is schedulable on Hetzner (decisions.md §3, "Schedulable control plane"), so priority orders preemption and eviction while the affinity keeps the heavy pods on the worker.
 - `kubeconform -strict -ignore-missing-schemas` runs on the hetzner render as it does for civo.
 
 ## 5. Files/components affected
@@ -120,3 +121,6 @@ data risk.
 - 2026-09-11 — created as DRAFT.
 - 2026-09-11 — reviewed and approved by the user; promoted to READY.
 - 2026-09-19 — kubeadm wording.
+- 2026-09-20 — adds the `platform-critical` PriorityClass, the soft
+  `role=worker` affinity and CNPG `enablePDB: false` (decisions.md §3,
+  "Schedulable control plane").
