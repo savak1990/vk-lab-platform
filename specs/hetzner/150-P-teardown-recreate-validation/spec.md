@@ -10,11 +10,11 @@ recommended_model_tier: "strongest"
 model_rationale: "Judging leak and persistence evidence across a resource model where load balancers, volumes and IPs outlive servers"
 effort_estimate: "One session (4–6 h wall clock, mostly waiting)"
 estimate_confidence: "medium"
-depends_on: ["HETZ-070", "HETZ-120", "HETZ-130"]
+depends_on: ["HETZ-070", "HETZ-120", "HETZ-130", "HETZ-047"]
 blocked_by: []
 supersedes: []
 created: "2026-09-11"
-updated: "2026-09-11"
+updated: "2026-09-19"
 completed: ""
 ---
 
@@ -51,7 +51,7 @@ Classification table, filled during execution:
 
 | Resource | Lifecycle | Owner | On `argo-down` | On `cluster-down` | On `persistent-down` | On `bootstrap-down` |
 |---|---|---|---|---|---|---|
-| Servers ×3 (`cax21`) | cluster | Terraform | — | destroyed | — | — |
+| Servers ×3 (`cx33`) | cluster | Terraform | — | destroyed | — | — |
 | Primary IPv4/IPv6 ×3 | cluster | Terraform via server (`auto_delete` confirmed) | — | deleted with the server; swept if detached | — | — |
 | Firewall | cluster | Terraform | — | destroyed | — | — |
 | hcloud LB11 | cluster | CCM via Envoy Service | deleted (gate waits for it) | must be absent; swept by label | — | — |
@@ -71,7 +71,7 @@ Steps, each with its command and result recorded:
 
 1. `PROVIDER=aws make status` and `PROVIDER=civo make status` (before).
 2. `PROVIDER=hetzner make full-up`.
-3. Verify: 3 nodes Ready, no `uninitialized` taint, Argo `Synced/Healthy`,
+3. Verify: 2 fixed nodes Ready, 0 autoscaled nodes present, no `uninitialized` taint, Argo `Synced/Healthy`,
    Envoy LB with an IPv4, `argo.hetzner.<root-domain>` resolves to it,
    wildcard certificate `Ready` from the production issuer, ESO Secrets
    synced, CNPG `Healthy`, Grafana reachable, `hcloud load-balancer list`
@@ -132,7 +132,7 @@ needed.
 - A volume stuck `attached` after a force-deleted pod delays or blocks
   server deletion. Record the detach time.
 - The control-plane server's primary IPv4 changes on every `make up`; the
-  kubeconfig, the firewall `--tls-san` and the DNS all follow it. Verify
+  kubeconfig, `apiServer.certSANs` and the DNS all follow it. Verify
   that nothing cached the old address (HETZ-040 context rewrite).
 - Hourly billing rounds up; a two-cycle run bills at least 2 h per
   resource.
@@ -146,3 +146,5 @@ needed.
 
 - 2026-09-11 — created as DRAFT. Not run.
 - 2026-09-11 — reviewed and approved by the user; promoted to READY.
+- 2026-09-19 — kubeadm wording.
+- 2026-09-19 — depends on HETZ-047 (argo-down LB ordering).

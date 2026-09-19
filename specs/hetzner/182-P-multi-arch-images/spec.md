@@ -3,7 +3,7 @@ id: "HETZ-182"
 title: "Repo-built images published for linux/arm64 as well as linux/amd64"
 status: "DRAFT"
 priority: "P0"
-milestone: "M1"
+milestone: "M2"
 type: "implementation"
 difficulty: "S"
 recommended_model_tier: "fast"
@@ -14,7 +14,7 @@ depends_on: ["CIVO-180"]
 blocked_by: []
 supersedes: []
 created: "2026-09-11"
-updated: "2026-09-11"
+updated: "2026-09-19"
 completed: ""
 ---
 
@@ -123,3 +123,4 @@ Rollback is the previous digest pin. The workflow change is additive.
 
 - 2026-09-11 — created as DRAFT.
 - 2026-09-11 — reviewed and approved by the user; promoted to READY.
+- 2026-09-19 — moved to M2: nodes are x86 cx33; arm64 images only if CAX returns.

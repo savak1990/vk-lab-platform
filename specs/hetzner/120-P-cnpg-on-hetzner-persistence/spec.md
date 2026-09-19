@@ -7,14 +7,14 @@ milestone: "M1"
 type: "implementation"
 difficulty: "M"
 recommended_model_tier: "standard"
-model_rationale: "The mechanism is decided and implemented by CIVO-180/120; this spec proves it on ARM with two real cycles"
+model_rationale: "The mechanism is decided and implemented by CIVO-180/120; this spec proves it on Hetzner with two real cycles"
 effort_estimate: "One session (4–6 h) including two full down/up cycles"
 estimate_confidence: "medium"
-depends_on: ["HETZ-115", "HETZ-182", "CIVO-120", "CIVO-180"]
+depends_on: ["HETZ-115", "CIVO-120", "CIVO-180"]
 blocked_by: []
 supersedes: []
 created: "2026-09-11"
-updated: "2026-09-11"
+updated: "2026-09-19"
 completed: ""
 ---
 
@@ -31,9 +31,9 @@ completed: ""
 > barman-cloud plugin, an `ObjectStore` pointing at this project's own S3
 > bucket, a `pgbackup` Roles Anywhere role, a generation-scoped `serverName`
 > published to SSM, `bootstrap.recovery` at bring-up and a best-effort
-> `Backup` at teardown. The one Hetzner-specific requirement is that the
-> `cnpg-barman-sidecar` image must publish `linux/arm64` (HETZ-182), because
-> the CAX node family is ARM.
+> `Backup` at teardown. The `cnpg-barman-sidecar` image needs no Hetzner
+> variant: the nodes are x86 `cx33`, so the amd64 image Civo already runs
+> resolves unchanged.
 >
 > §8's criterion *"The teardown gate fails closed on a failed dump"* is the
 > opposite of what now ships. Constitution §4 makes a continuously archiving
@@ -49,7 +49,7 @@ Rows written before `PROVIDER=hetzner make down` are present after
 CIVO-180 and loaded by its restore Job. The hcloud volume is disposable.
 
 Read `specs/civo/120-D-cnpg-on-civo-persistence/spec.md` first. The
-mechanism is identical; this spec adds the ARM image, the Hetzner bucket
+mechanism is identical; this spec adds the Hetzner bucket
 and the Hetzner evidence.
 
 ## 2. Scope and non-goals
@@ -74,8 +74,9 @@ Not in scope:
   restore Job and the `aws-config` ConfigMap gated on
   `awsIdentity.mode == rolesAnywhere`. `PROVIDER=hetzner make persistent-up`
   creates `vk-hetzner-lab-backups` with no change.
-- HETZ-182 publishes `pg-backup` for `linux/arm64`. Without it the CronJob
-  pod fails to pull on CAX21 (`no matching manifest`).
+- The `pg-backup` image CIVO-180 publishes is amd64 and resolves on the
+  x86 `cx33` nodes; HETZ-182 (arm64 variants) is only needed if CAX
+  returns, which is why it is M2 and no longer a dependency here.
 - HETZ-085 issues the `pgbackup-ra-cert` Certificate and the
   `${project}-ra-pgbackup` role for the Hetzner project.
 - `scripts/argo-up.sh` keeps `WATCH_SECONDS=300` on non-AWS providers
@@ -95,8 +96,7 @@ Not in scope:
 - Bring-up: no backup logic in `argo-up`. The restore Job runs `PostSync`
   on the Postgres Application and loads the newest dump when the schema
   is empty.
-- The backup pod is `arm64`. `aws_signing_helper` in the image is the
-  arm64 binary. `aws sts get-caller-identity` from the pod must return the
+- The backup pod runs the amd64 image on `cx33`. `aws sts get-caller-identity` from the pod must return the
   `pgbackup` role through Roles Anywhere over IPv4 egress (research.md,
   IPv6 row).
 
@@ -107,10 +107,10 @@ Not in scope:
 
 ## 6. Implementation steps
 
-1. Confirm CIVO-180 and HETZ-182 are `DONE` and the image digest in values
-   is a manifest list with `linux/arm64`.
+1. Confirm CIVO-180 is `DONE` and the image digest in values resolves for
+   `linux/amd64`.
 2. Run `PROVIDER=hetzner make up`. Confirm the CronJob exists in
-   `cnpg-system` and its pod image resolves on a CAX21 node.
+   `cnpg-system` and its pod image resolves on a `cx33` node.
 3. Trigger the CronJob once by hand:
    `kubectl -n cnpg-system create job --from=cronjob/postgres-backup manual-1`.
    Confirm the object under `s3://vk-hetzner-lab-backups/postgres/`.
@@ -129,8 +129,8 @@ Not in scope:
 
 ## 7. Dependencies and blockers
 
-HETZ-115 (the Cluster), HETZ-182 (arm64 image), CIVO-120 (mechanism
-proof on Civo), CIVO-180 (bucket, image, jobs).
+HETZ-115 (the Cluster), CIVO-120 (mechanism proof on Civo), CIVO-180
+(bucket, image, jobs).
 
 ## 8. Acceptance criteria
 
@@ -162,8 +162,8 @@ until `persistent-down`.
 
 ## 12. Risks and unresolved questions
 
-- Dump and restore duration for 20 GiB on a CAX21 sets the teardown
-  timeout. Measure once. ARM `pg_dump` throughput may differ from x86.
+- Dump and restore duration for 20 GiB on a `cx33` sets the teardown
+  timeout. Measure once.
 - A logical dump restores to the moment of the dump. The teardown gate
   bounds that window for planned teardowns; the daily schedule bounds it
   otherwise.
@@ -183,3 +183,4 @@ until `persistent-down`.
 
 - 2026-09-11 — created as DRAFT.
 - 2026-09-11 — reviewed and approved by the user; promoted to READY.
+- 2026-09-19 — no longer depends on HETZ-182 (x86 nodes).

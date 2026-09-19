@@ -14,7 +14,7 @@ depends_on: ["HETZ-050", "HETZ-085", "CIVO-115"]
 blocked_by: []
 supersedes: []
 created: "2026-09-11"
-updated: "2026-09-11"
+updated: "2026-09-19"
 completed: ""
 ---
 
@@ -124,7 +124,8 @@ template and the gate.
 ## 9. Validation
 
 Offline: `make gitops-check`. Real cloud: one Hetzner bring-up and one
-teardown, about 0.10 EUR (one hour of three CAX21 plus one 20 GB volume).
+teardown, about 0.10 EUR (one hour of the fixed `cx33` pair plus one
+20 GB volume).
 
 ## 10. AWS regression protection
 
@@ -155,3 +156,4 @@ values entry; the render check then fails until the set is reverted too.
 
 - 2026-09-11 — created as DRAFT.
 - 2026-09-11 — reviewed and approved by the user; promoted to READY.
+- 2026-09-19 — cost line re-based on the fixed `cx33` pair; CAX is gone.

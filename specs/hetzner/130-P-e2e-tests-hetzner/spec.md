@@ -14,7 +14,7 @@ depends_on: ["HETZ-045", "HETZ-060", "CIVO-130"]
 blocked_by: []
 supersedes: []
 created: "2026-09-11"
-updated: "2026-09-11"
+updated: "2026-09-19"
 completed: ""
 ---
 
@@ -23,9 +23,9 @@ completed: ""
 ## 1. Outcome and rationale
 
 `PROVIDER=hetzner make test` runs the existing Ginkgo suite against the
-Hetzner cluster with a read-only ServiceAccount token. A self-managed k3s
-has no cloud IAM mapping, so the SA-token path from CIVO-130 is the only
-option. No Go changes.
+Hetzner cluster with a read-only ServiceAccount token. A self-managed
+kubeadm cluster has no cloud IAM mapping, so the SA-token path from
+CIVO-130 is the only option. No Go changes.
 
 Read `specs/civo/130-D-e2e-tests-civo/spec.md` first.
 
@@ -125,3 +125,4 @@ Revert. No data risk.
 
 - 2026-09-11 — created as DRAFT.
 - 2026-09-11 — reviewed and approved by the user; promoted to READY.
+- 2026-09-19 — kubeadm wording.

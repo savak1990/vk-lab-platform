@@ -14,7 +14,7 @@ depends_on: []
 blocked_by: []
 supersedes: []
 created: "2026-09-11"
-updated: "2026-09-11"
+updated: "2026-09-19"
 completed: ""
 ---
 
@@ -28,10 +28,10 @@ or `civo` behaves exactly as it does today. The `hcloud_token()` helper is
 the single place that decrypts the Hetzner API token. This spec lands first
 and alone, as CIVO-010 did, because every later Hetzner spec uses the seam.
 
-No Hetzner-only bootstrap target exists. The k3s bootstrap runs inside
-`cluster-up` through cloud-init, and the readiness wait is part of the
-`cluster-up` script (HETZ-040). The one Hetzner-only helper, `make node-ssh`,
-lands in HETZ-040 and prints a message on the other providers.
+The kubeadm bootstrap runs inside `cluster-up` through
+`scripts/hetzner-bootstrap.sh` (HETZ-035); no target of its own. The one
+Hetzner-only helper, `make node-ssh`, lands in HETZ-040 and prints a
+message on the other providers.
 
 ## 2. Scope and non-goals
 
@@ -125,3 +125,4 @@ One PR together with `specs/hetzner/`. A revert restores the previous Makefile a
 
 - 2026-09-11 — created as DRAFT.
 - 2026-09-11 — reviewed and approved by the user; promoted to READY.
+- 2026-09-19 — kubeadm wording.

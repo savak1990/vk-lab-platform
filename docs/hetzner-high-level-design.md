@@ -44,31 +44,31 @@ shortage move the real numbers:
   CX33–CX53 are sold out in every EU location at the baseline date; CAX
   stays available.
 
-Net effect: **only the ARM (CAX) line still beats Civo materially.** Three
-`cax21` servers (4 vCPU / 8 GB each) cost about 44 EUR/month all-in
-(nodes, load balancer, primary IPs, volumes) for roughly 21 GiB of
-allocatable memory. Civo's three-Medium-node plan costs 80.67 USD (Civo
-prices in USD natively) for 6.8 GiB. The x86 fallback (CPX22) costs about
-71 EUR — close to Civo's price in absolute terms, for less memory — it
-exists only as a hedge against CAX stock-outs, not as the target shape.
-Full table and sources: `specs/hetzner/research.md`.
+Net effect: **2 fixed + 0–2 autoscaled cx33 at 9.99 EUR net each
+meets the 50–100 USD goal with 8 GB per node; CAX ARM was not orderable in
+any EU location on 2026-09-19 (research.md).** Civo's three-Medium-node
+plan costs 80.67 USD (Civo prices in USD natively) for 6.8 GiB. The x86
+fallback (CPX22) costs about 71 EUR — close to Civo's price in absolute
+terms, for less memory — it exists only as a hedge against CX stock-outs,
+not as the target shape. Full table and sources: `specs/hetzner/research.md`.
 
-| | Civo (3 Medium) | Hetzner ARM (3 × CAX21) | Hetzner x86 fallback (3 × CPX22) |
+| | Civo (3 Medium) | Hetzner x86, 1 cp + 1 worker cx33, +0–2 autoscaled | Hetzner x86 fallback (3 × CPX22) |
 |---|---|---|---|
-| Monthly cost, all-in (native currency) | 80.67 USD | ~44 EUR | ~71 EUR |
-| Allocatable memory | 6.8 GiB | ~21 GiB | ~9.6 GiB |
-| Kubernetes | managed | self-bootstrapped k3s | self-bootstrapped k3s |
+| Monthly cost, all-in (native currency) | 80.67 USD | ~32 EUR fixed / ~53 EUR at the 4-node ceiling | ~71 EUR |
+| Allocatable memory | 6.8 GiB | ~14 GiB fixed / ~28 GiB at the ceiling | ~9.6 GiB |
+| Kubernetes | managed | kubeadm-bootstrapped | kubeadm-bootstrapped |
 | Reserved/stable LB IP | yes | no (new IP each `make up`) | no |
 
 Civo and Hetzner price in different currencies (USD vs. EUR); the table
 gives each in its own currency rather than a fabricated conversion. As one
-reference point, Hetzner's own published USD price for `cax21` is 12.49
-USD/node — about 50 USD/month for the three-node total before the load
-balancer, IPs and volumes.
+reference point, `cx33` is 9.99 EUR net per node: 19.98 EUR for the fixed
+pair and 39.96 EUR at the four-node ceiling, before the load balancer,
+IPs and volumes (API prices 2026-09-19).
 
 The lab's stated goal — maximize CPU/memory for 50–100 USD/month — is met
-only by the ARM shape, and only while CAX stays in stock. `HETZ-175`
-exists specifically to fail fast and fall back to x86 when it does not.
+by the CX33 shape, which was orderable in all three EU locations on
+2026-09-19. `HETZ-175` exists to fail fast and fall back to CPX if CX
+stock disappears.
 
 ## 3. Why this is materially harder than Civo
 
@@ -85,22 +85,21 @@ annotations and CLI. Hetzner adds two:
 
 Three consequences follow directly, and none has a Civo precedent:
 
-- **Bootstrap ordering.** A k3s node started with
-  `--kubelet-arg cloud-provider=external` carries the taint
-  `node.cloudprovider.kubernetes.io/uninitialized:NoSchedule` until the
-  Hetzner cloud controller manager (CCM) sets its `providerID`. k3s's own
-  bundled CoreDNS does not tolerate that taint, so a freshly booted
-  cluster has no cluster DNS. Argo CD therefore cannot be the thing that
-  installs the CCM — it would need DNS to reach its own repo server and
-  GitHub, and it has none. The `argo-up` script must helm-install the CCM
-  itself, before Argo CD, in the same untracked-bootstrap class the
-  script already uses for Argo CD's own installation.
+- **Bootstrap ordering.** A kubeadm node started with
+  `cloud-provider: external` carries the `uninitialized` taint; kubeadm's
+  CoreDNS does not tolerate it. Cilium and the CCM do, so the order is
+  init → Cilium → CCM → CoreDNS. Argo CD therefore cannot be the thing
+  that installs the CCM — it would need DNS to reach its own repo server
+  and GitHub, and it has none until the CCM runs. The `argo-up` script
+  must helm-install the CCM itself, before Argo CD, in the same
+  untracked-bootstrap class the script already uses for Argo CD's own
+  installation.
 - **No kubeconfig API.** Civo's CLI hands back a kubeconfig with one
   command. No Hetzner API does this for a self-managed cluster; the only
   paths are SSH to the control-plane node or minting a client certificate
-  locally from a pre-generated k3s CA. The platform uses SSH with a
-  KMS-encrypted key, matching the pattern already used for the CA
-  ceremony.
+  locally from a pre-generated kubeadm CA. The platform fetches
+  `/etc/kubernetes/admin.conf` over SSH with a KMS-encrypted key, matching
+  the pattern already used for the CA ceremony.
 - **Teardown does not cascade.** Civo deletes a cluster's load balancer
   and reaps its resources as part of `civo kubernetes remove`. Hetzner's
   load balancer, volumes and primary IPs are independent resources that
@@ -123,7 +122,7 @@ had hidden.
 
 | Civo behavior | Hetzner reality |
 |---|---|
-| Managed Kubernetes, CCM/CSI preinstalled | Self-bootstrapped k3s; CCM and CSI both absent, both must be installed |
+| Managed Kubernetes, CCM/CSI preinstalled | kubeadm-bootstrapped; CCM and CSI both absent until `argo-up` and Argo install them |
 | `civo kubernetes config` returns a kubeconfig | No equivalent API; SSH with a KMS-encrypted key |
 | Reserved IP keeps the load balancer's address stable | Primary IPs attach to servers only, not load balancers; the LB gets a new address every `make up`; DNS-01 wildcard TLS is used instead of HTTP-01 to avoid depending on a fixed address |
 | Cluster deletion reaps its load balancer | The LB, volumes, and primary IPs are independent resources; teardown must sweep them by label |

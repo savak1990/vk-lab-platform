@@ -56,7 +56,7 @@ done < <(find specs -name '*.md')
 # .claude holds other sessions' worktrees - checkouts of other branches, whose
 # stale paths say nothing about this working tree.
 stale=$(grep -rInE 'specs/((aws|civo|hetzner|local|shared)/)?[0-9]{3}(-[0-9]+)?-[a-z]' . \
-  --exclude-dir=.git --exclude-dir=superpowers --exclude-dir=.terraform \
+  --exclude-dir=.git --exclude-dir=superpowers --exclude-dir=.superpowers --exclude-dir=.terraform \
   --exclude-dir=.terragrunt-cache --exclude-dir=node_modules --exclude-dir=evidence \
   --exclude-dir=.claude || true)
 if [[ -n "$stale" ]]; then
@@ -68,7 +68,7 @@ fi
 while IFS= read -r p; do
   [[ -e "$p" ]] || err "path to a missing spec folder: $p"
 done < <(grep -rIohE 'specs/[a-z]+/[0-9]{3}(-[0-9]+)?-[DAPZ]-[a-z0-9-]+' . \
-  --exclude-dir=.git --exclude-dir=superpowers --exclude-dir=.terraform \
+  --exclude-dir=.git --exclude-dir=superpowers --exclude-dir=.superpowers --exclude-dir=.terraform \
   --exclude-dir=.terragrunt-cache --exclude-dir=node_modules --exclude-dir=evidence \
   --exclude-dir=.claude | sort -u)
 

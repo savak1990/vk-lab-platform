@@ -10,11 +10,11 @@ recommended_model_tier: "standard"
 model_rationale: "Workflow edits on top of CIVO-140 with one new cleanup path and a Hetzner account-limit constraint"
 effort_estimate: "One session (3–4 h) plus one CI run per provider"
 estimate_confidence: "medium"
-depends_on: ["HETZ-015", "HETZ-045", "CIVO-140"]
+depends_on: ["HETZ-015", "HETZ-045", "CIVO-140", "HETZ-047"]
 blocked_by: []
 supersedes: []
 created: "2026-09-11"
-updated: "2026-09-11"
+updated: "2026-09-19"
 completed: ""
 ---
 
@@ -155,3 +155,4 @@ Revert the workflow.
 
 - 2026-09-11 — created as DRAFT.
 - 2026-09-11 — reviewed and approved by the user; promoted to READY.
+- 2026-09-19 — depends on HETZ-047 (argo-down LB ordering).
