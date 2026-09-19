@@ -51,7 +51,7 @@ Classification table, filled during execution:
 
 | Resource | Lifecycle | Owner | On `argo-down` | On `cluster-down` | On `persistent-down` | On `bootstrap-down` |
 |---|---|---|---|---|---|---|
-| Servers ×3 (`cax21`) | cluster | Terraform | — | destroyed | — | — |
+| Servers ×3 (`cx33`) | cluster | Terraform | — | destroyed | — | — |
 | Primary IPv4/IPv6 ×3 | cluster | Terraform via server (`auto_delete` confirmed) | — | deleted with the server; swept if detached | — | — |
 | Firewall | cluster | Terraform | — | destroyed | — | — |
 | hcloud LB11 | cluster | CCM via Envoy Service | deleted (gate waits for it) | must be absent; swept by label | — | — |

@@ -25,17 +25,18 @@ completed: ""
 Grafana at `grafana.hetzner.<root-domain>` shows the cluster, control
 plane, CNPG, Envoy and Argo dashboards with logs from Loki. The stack runs
 on `hcloud-volumes` with the same charts and retention as AWS and Civo.
-Unlike managed k3s on Civo, the control plane is a node in this cluster,
-so its scheduler and controller-manager are scrapeable. Three CAX21 nodes
-give about 21 GiB, so no trimming is needed.
+Unlike the managed control plane on Civo, the control plane is a node in
+this cluster, so its scheduler and controller-manager are scrapeable.
+Two fixed `cx33` nodes (8 GB each) plus 0–2 autoscaled give about 21 GiB,
+so no trimming is needed.
 
 Read `specs/civo/160-D-observability-on-civo/spec.md` first.
 
 ## 2. Scope and non-goals
 
 In scope: the `observability.*` and `storage.*` values for
-`target: hetzner`; control-plane scrape targets; the k3s bundled
-metrics-server decision; sizing on CAX21. Not in scope: Tempo/OTel
+`target: hetzner`; control-plane scrape targets; the Argo-installed
+metrics-server; sizing on `cx33`. Not in scope: Tempo/OTel
 (ADR 0018), retention changes, Hetzner-specific dashboards beyond the
 optional CCM/CSI metrics.
 
@@ -45,8 +46,8 @@ optional CCM/CSI metrics.
   `storage.className`, `capacity.spotAvoidance`,
   `observability.controlPlaneScrapes`, `observability.kubeletInsecureTls`,
   and gates Karpenter assets on `aws`. Its review amendment keeps
-  control-plane scrapes off on Civo because managed k3s hides the control
-  plane. That amendment does not apply here.
+  control-plane scrapes off on Civo because the managed control plane is
+  hidden. That amendment does not apply here.
 - HETZ-035 sets `controllerManager.extraArgs`/`scheduler.extraArgs`
   `bind-address=10.0.1.10`, `etcd.local.extraArgs`
   `listen-metrics-urls=http://10.0.1.10:2381` and
@@ -61,7 +62,7 @@ optional CCM/CSI metrics.
 - Stacked etcd runs as a static pod on the cp; `kubeEtcd.enabled: true`
   scrapes `http://10.0.1.10:2381/metrics` (no client cert needed on the
   http metrics URL).
-- HETZ-020 measured allocatable memory on CAX21 (record the figure here;
+- HETZ-037 records allocatable memory on `cx33` (record the figure here;
   research.md estimates about 7 GiB per node).
 - Every image in the stack publishes `linux/amd64` (research.md, x86 row).
 - `hcloud-volumes` minimum size is 10 GB. The Grafana and Alertmanager
@@ -90,7 +91,8 @@ optional CCM/CSI metrics.
   serving certificates are self-signed unless `serverTLSBootstrap` is
   set, which this package does not set, so Prometheus does not trust
   them otherwise. Record confirmation.
-- node-exporter runs on all three nodes. The control-plane node carries
+- node-exporter runs on the two fixed nodes (and any autoscaled node).
+  The control-plane node carries
   no taint (HETZ-030), so no toleration is needed; add
   `tolerations: [{operator: Exists}]` anyway for the day HETZ-170 taints
   anything.
@@ -106,7 +108,7 @@ optional CCM/CSI metrics.
   `platform/hetzner/observability/`. P3 inside this spec; do not block on
   it.
 - Sizing: Prometheus `resources.limits.memory` 2Gi, Loki 1Gi, Grafana
-  512Mi. A single pod may use up to about 7 GiB on CAX21, so no pod is
+  512Mi. A single pod may use up to about 7 GiB on `cx33`, so no pod is
   near the ceiling. Record requests for HETZ-175.
 
 ## 5. Files/components affected
