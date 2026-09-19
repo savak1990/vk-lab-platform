@@ -68,6 +68,32 @@ absent, and a one-line documentation fix could not merge without spending 55
 minutes on two clouds - which constitution §11's "success or explicit skip"
 wording and spec SHARED-019 Requirement 4 both rule out.
 
+### 2a. The waiver is a label, and it is loud
+
+`ci:skip-lifecycle` passes the gate without the two-cloud run. It waives only
+that half; static validation still has to pass.
+
+The alternative to having one is worse. Without a waiver the only escape from a
+blocked merge is to disable branch protection, which is invisible afterwards and
+removes every protection at once rather than one.
+
+The risk is that it becomes the default: waiting an hour is annoying, applying a
+label is instant, and with `required_approving_review_count: 0` (decision 4)
+nothing but the maintainer's own judgement polices it. The mitigation is
+visibility rather than restriction. `pr-gate` emits a `::warning::` and writes a
+"Lifecycle check waived" block into the run summary naming the files that would
+otherwise have required the check, so a waived merge and a verified merge are
+distinguishable afterwards.
+
+Both labels together is an error, not a precedence rule. Silently preferring one
+would make the gate's behavior depend on something nobody reading the labels can
+see. The skip label is also tested on the lifecycle jobs themselves, so a
+contradictory pull request costs nothing to reject rather than two clusters'
+worth of runtime first.
+
+Frequent use is a signal that the path list in decision 2 is too broad, not that
+the gate is too strict.
+
 ### 3. Each provider is an independent chain that always reaches its teardown
 
 One reusable workflow, `lifecycle-provider.yml`, holds `up` -> `test` ->

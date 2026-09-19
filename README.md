@@ -141,6 +141,7 @@ whether the expensive half is needed:
 | Documentation or specs only | The static checks | green, no cloud spend |
 | Touches `terraform/`, `gitops/`, `scripts/`, `tests/`, `images/`, `Makefile`, `go.mod`, or a workflow | The static checks | red — add the label |
 | …and carries the **`ci:lifecycle`** label | One EKS cluster and one Civo cluster are created, `make test` runs against both, and both are destroyed | green if all of that passed |
+| …and carries **`ci:skip-lifecycle`** instead | The static checks only | green, but the waiver is recorded — see below |
 
 Adding the label starts the run immediately against the pull request's current
 commit — no empty commit, no extra push. Removing and re-adding the label is how
@@ -155,6 +156,28 @@ The two CI projects are `vk-lab-ci`/`awsci` on AWS and `vk-civo-ci`/`civoci`
 on Civo, both fixed. The Civo leg uses Let's Encrypt **staging** on purpose, so
 per-pull-request runs do not consume the production quota your personal lab
 shares.
+
+#### Waiving the check
+
+`ci:skip-lifecycle` merges an infrastructure change without bringing up either
+cluster. It exists for the cases where the hour is genuinely not worth it — a
+revert, a typo in a comment, an urgent fix.
+
+It waives only the two-cloud half. Static validation still has to pass.
+
+The waiver is deliberately loud. `pr-gate` stays green but emits a warning and
+writes a **Lifecycle check waived** block into the run summary, listing the
+files that would otherwise have required the check. A waived merge and a
+verified merge are indistinguishable in the commit history otherwise, and the
+first question asked when `main` breaks is whether the change was ever tested —
+that answer should be findable.
+
+Carrying both labels is an error, not a precedence rule: `pr-gate` fails and
+asks you to remove one, and neither cluster is started.
+
+If you find yourself reaching for the waiver often, the path list is too broad
+for what it is trying to protect. Narrow the list rather than routinely waiving
+the check — a gate that is usually waived is not a gate.
 
 #### When a teardown fails
 
