@@ -2,8 +2,9 @@
 
 This folder holds the planning and specification documents for adding Hetzner
 Cloud as a third execution target next to AWS/EKS and Civo. Unlike Civo,
-Hetzner has no managed Kubernetes: the platform bootstraps k3s itself on
-`hcloud_server`s, `argo-up` helm-installs the Hetzner cloud controller
+Hetzner has no managed Kubernetes: the platform bootstraps Kubernetes with
+kubeadm on `hcloud_server`s (`cluster-up` runs init, join and Cilium over
+SSH); `argo-up` helm-installs the Hetzner cloud controller
 manager before Argo CD (nothing schedules on a node the CCM has not
 initialised), and Argo CD installs the CSI driver. Implementation code does
 not live here. It lands in the
@@ -81,11 +82,11 @@ two additions:
 | HETZ-015 | [015-P-governance-adrs-constitution](015-P-governance-adrs-constitution/spec.md) | ADR 0032, ADR 0029/0030 amendments, constitution §20 per-provider, architecture §10a | READY | P0 | M | strongest | — | M0 |
 | HETZ-016 | [016-P-non-aws-generalisation](016-P-non-aws-generalisation/spec.md) | `= civo` script branches and `eq "civo"` gates become non-AWS; Civo byte-identical | READY | P0 | M | strongest | 010 | M0 |
 | HETZ-018 | [018-P-identity-chain-provider-naming](018-P-identity-chain-provider-naming/spec.md) | Roles Anywhere chain names parametrized by provider; Civo names unchanged | READY | P0 | M | strongest | 010, 016 | M0 |
-| HETZ-020 | [020-P-hetzner-feasibility-spike](020-P-hetzner-feasibility-spike/spec.md) | Throwaway k3s-on-hcloud spike and report | READY | P0 | M | standard | — | M0 |
+| HETZ-020 | [020-P-hetzner-feasibility-spike](020-P-hetzner-feasibility-spike/spec.md) | Shrunk feasibility spike: kubeadm/Cilium/CCM ordering, volume survival, LB lifecycle, limits, invoice | READY | P0 | S | standard | — | M0 |
 | HETZ-025 | [025-P-hetzner-persistent-stack](025-P-hetzner-persistent-stack/spec.md) | `persistent-hetzner` network, subnet, SSH key | READY | P1 | S | standard | 010, 015, 080 | M1 |
-| HETZ-030 | [030-P-hetzner-terraform-k3s-cluster](030-P-hetzner-terraform-k3s-cluster/spec.md) | `cluster-hetzner` firewall and self-bootstrapped k3s on two CX33 servers | READY | P1 | L | strongest | 010, 015, 020, 025 | M1 |
-| HETZ-040 | [040-P-hetzner-cluster-scripts](040-P-hetzner-cluster-scripts/spec.md) | Cluster scripts, SSH kubeconfig, readiness wait, label-based leak sweep | READY | P1 | M | standard | 030 | M1 |
-| HETZ-045 | [045-P-argo-scripts-hetzner-branches](045-P-argo-scripts-hetzner-branches/spec.md) | `argo-up`/`argo-down` Hetzner branches: `hcloud` Secret, CCM helm install, taint wait, LB/DNS waits | READY | P1 | L | strongest | 016, 040, 050 | M1 |
+| HETZ-030 | [030-P-hetzner-terraform-k3s-cluster](030-P-hetzner-terraform-k3s-cluster/spec.md) | `cluster-hetzner` firewall and kubeadm-prepared `cx33` nodes (cloud-init installs packages only) | READY | P1 | M | strongest | 010, 015, 025 | M1 |
+| HETZ-040 | [040-P-hetzner-cluster-scripts](040-P-hetzner-cluster-scripts/spec.md) | Cluster scripts: `hcloud` helpers, SSH helper, `cluster_exists`, `node-ssh`, label-based leak sweep | READY | P1 | M | standard | 030 | M1 |
+| HETZ-045 | [045-P-argo-scripts-hetzner-branches](045-P-argo-scripts-hetzner-branches/spec.md) | `argo-up` Hetzner branch: `hcloud` Secret, CCM helm install, taint wait, root Application, LB/DNS waits | READY | P1 | L | strongest | 016, 037, 050 | M1 |
 | HETZ-050 | [050-P-gitops-hetzner-target-baseline](050-P-gitops-hetzner-target-baseline/spec.md) | `target: hetzner` tree: CSI Application, storage class, render check, golden diffs | READY | P1 | M | standard | 016, CIVO-050 | M1 |
 | HETZ-060 | [060-P-hetzner-ingress-envoy-lb](060-P-hetzner-ingress-envoy-lb/spec.md) | hcloud LB11 via Envoy Service annotations, private-IP targets, dynamic address | READY | P1 | M | standard | 045, 050 | M1 |
 | HETZ-070 | [070-P-tls-and-dns-on-hetzner](070-P-tls-and-dns-on-hetzner/spec.md) | Wildcard DNS-01 TLS, ExternalDNS with a dynamic LB address, TLS Secret persistence | READY | P1 | M | standard | 060, 085, CIVO-075, CIVO-110 | M1 |
@@ -96,8 +97,8 @@ two additions:
 | HETZ-130 | [130-P-e2e-tests-hetzner](130-P-e2e-tests-hetzner/spec.md) | E2E suite on Hetzner via ServiceAccount token | READY | P1 | S | standard | 045, 060, CIVO-130 | M1 |
 | HETZ-140 | [140-P-ci-workflow-hetzner](140-P-ci-workflow-hetzner/spec.md) | `lab.yml` third provider value, `hcloud` CLI, token mask, label sweep in cleanup | READY | P1 | M | standard | 015, 045, CIVO-140 | M1 |
 | HETZ-150 | [150-P-teardown-recreate-validation](150-P-teardown-recreate-validation/spec.md) | Full lifecycle validation on Hetzner with the Hetzner resource classification | READY | P1 | M | strongest | 070, 120, 130 | M1 |
-| HETZ-160 | [160-P-observability-on-hetzner](160-P-observability-on-hetzner/spec.md) | Observability on Hetzner: control-plane scrapes on, ARM images, 10 GiB volume floor | READY | P1 | M | standard | 030, 050, 085, CIVO-160 | M1 |
-| HETZ-170 | [170-P-hetzner-cluster-autoscaler](170-P-hetzner-cluster-autoscaler/spec.md) | Cluster autoscaler `cloudProvider: hetzner`, 0–1 CX33 worker, join token in-cluster | READY | P1 | M | strongest | 030, 040, 045 | M1 |
+| HETZ-160 | [160-P-observability-on-hetzner](160-P-observability-on-hetzner/spec.md) | Observability on Hetzner: control-plane scrapes on, ARM images, 10 GiB volume floor | READY | P1 | M | standard | 037, 050, 085, CIVO-160 | M1 |
+| HETZ-170 | [170-P-hetzner-cluster-autoscaler](170-P-hetzner-cluster-autoscaler/spec.md) | Cluster autoscaler `cloudProvider: hetzner`, 0–2 CX33 workers via `kubeadm join` | READY | P1 | M | strongest | 165 | M1 |
 | HETZ-175 | [175-P-sku-fallback-and-right-size](175-P-sku-fallback-and-right-size/spec.md) | Stock-aware SKU fallback (CX → CPX) and right-sizing on measured data | READY | P2 | S | standard | 160, CIVO-175 | M2 |
 | HETZ-182 | [182-P-multi-arch-images](182-P-multi-arch-images/spec.md) | Repo-built images published for `linux/arm64` as well as `linux/amd64` | DRAFT | P0 | S | fast | CIVO-180 | M1 |
 | HETZ-190 | [190-P-proxy-protocol-client-ip](190-P-proxy-protocol-client-ip/spec.md) | Proxy protocol on the hcloud LB and client IP at Envoy | READY | P3 | S | fast | 060, CIVO-190 | M2 |
