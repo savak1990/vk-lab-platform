@@ -86,6 +86,14 @@ does not touch that guard.
 - `PROJECT_NAME`, used below as the `hcloud` label selector, is already
   exported by `scripts/lib/provider.sh` (HETZ-010); this spec adds no new
   input resolution.
+- The steps ahead of the new block are unchanged and already generic:
+  the `cluster_exists` existence proof (`:32`) and `configure_kubeconfig`
+  (`:37`); the unconditional `backup_teardown` gate (`:82`, generalised by
+  HETZ-016/HETZ-120, best-effort because WAL archiving already made every
+  committed row durable); disarming automated sync on every Application
+  (`:57-80`) before anything destructive runs. The civo-only TLS export
+  (`:46-48`) stays civo-only — hetzner's TLS Secret handling is HETZ-070's
+  concern, not this spec's, and this branch adds none of its own.
 - Hetzner branch, run where the aws/civo NLB wait sits today but placed
   before the Route 53 wait rather than after it: nothing about DNS
   record cleanup gates the LB, and the LB is the object still billing
