@@ -278,3 +278,5 @@ shutdown sequence.
 Read `docs/architecture.md` and `specs/shared/000-D-constitution/spec.md` before
 writing a new spec under `specs/`. See [`specs/`](specs/) for what's
 already implemented (001–016, 024) and what's next.
+
+<!-- docs-only probe: verifies the heavy checks skip; this PR is closed, never merged -->
