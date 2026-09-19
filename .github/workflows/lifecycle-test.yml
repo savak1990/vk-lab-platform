@@ -33,12 +33,87 @@ permissions:
   contents: read
 
 jobs:
-  # Static checks (spec 019/architecture.md §26), folded into this
-  # manually-triggered workflow rather than a separate PR-triggered
-  # validate.yml - one verification entrypoint for now; PR enforcement is a
-  # deliberate later step, not implemented here. These gate `up` so a
-  # failure costs no AWS time/spend.
+  # Classifies the pull request once, so every later job asks the same question
+  # of the same answer. Two outputs:
+  #   docs_only - every changed file is Markdown; the four heavy validate jobs
+  #               below skip themselves.
+  #   infra     - a file on the merge-blocking path list changed; pr-gate then
+  #               requires the lifecycle check or its waiver.
+  #
+  # Fails closed: on a manual dispatch, or if the diff cannot be computed, it
+  # reports docs_only=false and infra=true, so everything runs.
+  changes:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      docs_only: ${{ steps.classify.outputs.docs_only }}
+      infra: ${{ steps.classify.outputs.infra }}
+      infra_files: ${{ steps.classify.outputs.infra_files }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - id: classify
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          DOCS_ONLY=false
+          INFRA=true
+          INFRA_FILES=""
+
+          if [ "$EVENT_NAME" = "pull_request" ] \
+            && git fetch --quiet origin "$BASE_REF" \
+            && CHANGED="$(git diff --name-only "origin/${BASE_REF}...HEAD")" \
+            && [ -n "$CHANGED" ]; then
+            echo "changed files:"
+            printf '%s\n' "$CHANGED" | sed 's/^/  /'
+
+            # Docs-only means every file, not most of them: one .yml among
+            # twenty .md files is not a documentation change.
+            if ! printf '%s\n' "$CHANGED" | grep -qvE '\.md$'; then
+              DOCS_ONLY=true
+            fi
+
+            # This list is the merge-blocking surface of the repository.
+            # Markdown is excluded first, even under these paths: a README in
+            # scripts/ changes no behavior. It also keeps the two outputs
+            # consistent - docs_only=true then always implies infra=false.
+            # Without that, a docs-only change under scripts/ would skip the
+            # validate jobs, and so the lifecycle jobs that need them, while
+            # pr-gate demanded a lifecycle result no label could produce.
+            INFRA_FILES="$(printf '%s\n' "$CHANGED" | grep -vE '\.md$' \
+              | grep -E '^(terraform/|gitops/|scripts/|tests/|images/|go\.(mod|sum)$|Makefile$|\.github/(workflows|actions)/)' || true)"
+            if [ -z "$INFRA_FILES" ]; then
+              INFRA=false
+            fi
+          else
+            echo "not a pull request, or the diff could not be computed - running everything."
+          fi
+
+          echo "docs_only=$DOCS_ONLY  infra=$INFRA"
+          {
+            echo "docs_only=$DOCS_ONLY"
+            echo "infra=$INFRA"
+            echo "infra_files<<CHANGES_EOF"
+            printf '%s\n' "$INFRA_FILES"
+            echo "CHANGES_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+  # Static checks (spec 019/architecture.md §26). They gate the lifecycle jobs,
+  # so a lint failure costs no cloud time.
+  #
+  # The four heavy ones skip on a documentation-only pull request. !cancelled()
+  # rather than the default success() matters: if `changes` itself failed, a
+  # plain `needs` would skip these jobs - failing open. !cancelled() runs them
+  # anyway, and a missing docs_only output reads as "not docs-only".
   validate-terraform:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.docs_only != 'true' }}
     # Narrows away the top-level id-token: write - none of spec 019's
     # checks touch AWS, so this job has no use for an OIDC token.
     permissions:
@@ -128,6 +203,8 @@ jobs:
           soft_fail: true
 
   validate-gitops:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.docs_only != 'true' }}
     permissions:
       contents: read
     runs-on: ubuntu-latest
@@ -189,6 +266,8 @@ jobs:
             rendered-aws.yaml rendered-civo.yaml
 
   validate-yaml:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.docs_only != 'true' }}
     permissions:
       contents: read
     runs-on: ubuntu-latest
@@ -214,6 +293,8 @@ jobs:
             gitops/argocd/*.yaml
 
   validate-actions:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.docs_only != 'true' }}
     permissions:
       contents: read
     runs-on: ubuntu-latest
@@ -298,9 +379,13 @@ jobs:
     # The label is the trigger. It is addable only by someone with write access,
     # which is what keeps an untrusted pull request away from these credentials;
     # the head-repository test is the explicit belt to that braces.
+    # The skip label is tested here too, not only in pr-gate: a pull request
+    # carrying both labels is a contradiction pr-gate rejects, and it should
+    # cost nothing to reject rather than two clusters' worth of runtime first.
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (contains(github.event.pull_request.labels.*.name, 'ci:lifecycle') &&
+       !contains(github.event.pull_request.labels.*.name, 'ci:skip-lifecycle') &&
        github.event.pull_request.head.repo.full_name == github.repository)
     # Matches lab.yml's group expression, which is what stops a run here racing
     # a manual dispatch against the same Terraform state.
@@ -323,9 +408,13 @@ jobs:
     permissions:
       id-token: write
       contents: read
+    # The skip label is tested here too, not only in pr-gate: a pull request
+    # carrying both labels is a contradiction pr-gate rejects, and it should
+    # cost nothing to reject rather than two clusters' worth of runtime first.
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (contains(github.event.pull_request.labels.*.name, 'ci:lifecycle') &&
+       !contains(github.event.pull_request.labels.*.name, 'ci:skip-lifecycle') &&
        github.event.pull_request.head.repo.full_name == github.repository)
     concurrency:
       group: lab-civo-vk-civo-ci
@@ -346,6 +435,7 @@ jobs:
   # (constitution §11).
   pr-gate:
     needs:
+      - changes
       - validate-terraform
       - validate-gitops
       - validate-yaml
@@ -360,37 +450,70 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
       - name: Decide the gate
         env:
-          VALIDATE_RESULTS: >-
-            ${{ needs.validate-terraform.result }} ${{ needs.validate-gitops.result }}
-            ${{ needs.validate-yaml.result }} ${{ needs.validate-actions.result }}
-            ${{ needs.validate-secrets.result }} ${{ needs.validate-repo.result }}
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          DOCS_ONLY: ${{ needs.changes.outputs.docs_only }}
+          INFRA: ${{ needs.changes.outputs.infra }}
+          INFRA_FILES: ${{ needs.changes.outputs.infra_files }}
+          R_TERRAFORM: ${{ needs.validate-terraform.result }}
+          R_GITOPS: ${{ needs.validate-gitops.result }}
+          R_YAML: ${{ needs.validate-yaml.result }}
+          R_ACTIONS: ${{ needs.validate-actions.result }}
+          R_SECRETS: ${{ needs.validate-secrets.result }}
+          R_REPO: ${{ needs.validate-repo.result }}
           LIFECYCLE_AWS: ${{ needs.lifecycle-aws.result }}
           LIFECYCLE_CIVO: ${{ needs.lifecycle-civo.result }}
           EVENT_NAME: ${{ github.event_name }}
-          BASE_REF: ${{ github.base_ref }}
           HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          WANTS_RUN: ${{ contains(github.event.pull_request.labels.*.name, 'ci:lifecycle') }}
+          WANTS_SKIP: ${{ contains(github.event.pull_request.labels.*.name, 'ci:skip-lifecycle') }}
         run: |
           set -euo pipefail
 
-          # Counted, not just scanned: an expression that rendered empty would
-          # drop silently out of the word split and this job decides every
-          # merge, so a missing result must fail rather than be skipped over.
+          # Without a trustworthy classification, nothing below can be decided.
+          if [ "$CHANGES_RESULT" != "success" ]; then
+            echo "::error::could not classify this pull request's changes ($CHANGES_RESULT)."
+            exit 1
+          fi
+
+          # Each validate job is judged by name. A skip is accepted only for one
+          # of the four heavy jobs, and only on a documentation-only change.
+          # Anything looser would let a mistyped `if:` silently stop validation
+          # on a real infrastructure change while this gate stayed green - the
+          # one failure that would hollow the gate out without anyone noticing.
+          # An empty result fails too, so a job that never reported cannot
+          # pass as a skip.
           COUNT=0
-          for r in $VALIDATE_RESULTS; do
+          check() {
+            local name="$1" result="$2" skippable="$3"
             COUNT=$((COUNT + 1))
-            if [ "$r" != "success" ]; then
-              echo "::error::static validation did not pass ($VALIDATE_RESULTS)."
-              exit 1
-            fi
-          done
+            case "$result" in
+              success) ;;
+              skipped)
+                if [ "$skippable" = "yes" ] && [ "$DOCS_ONLY" = "true" ]; then
+                  echo "$name: skipped - documentation-only change."
+                else
+                  echo "::error::$name was skipped, but this is not a documentation-only change - it must run."
+                  exit 1
+                fi
+                ;;
+              *)
+                echo "::error::$name did not pass (${result:-no result})."
+                exit 1
+                ;;
+            esac
+          }
+          check validate-terraform "$R_TERRAFORM" yes
+          check validate-gitops "$R_GITOPS" yes
+          check validate-yaml "$R_YAML" yes
+          check validate-actions "$R_ACTIONS" yes
+          check validate-secrets "$R_SECRETS" no
+          check validate-repo "$R_REPO" no
+          # Guards against a check line being deleted rather than a result
+          # going missing, which the per-job check above already catches.
           if [ "$COUNT" -ne 6 ]; then
-            echo "::error::expected 6 validation results, read $COUNT ($VALIDATE_RESULTS)."
+            echo "::error::expected 6 validation results, judged $COUNT."
             exit 1
           fi
           echo "static validation passed."
@@ -409,24 +532,46 @@ jobs:
             exit 1
           fi
 
-          # Which files this pull request touches decides whether the heavy
-          # check is required at all. Without this, a one-line README fix could
-          # not merge without spending ~55 minutes on two clouds. Constitution
-          # §11 asks the gate to report success OR an explicit skip.
-          git fetch --quiet origin "$BASE_REF"
-          CHANGED="$(git diff --name-only "origin/${BASE_REF}...HEAD")"
-          echo "changed files:"
-          printf '%s\n' "$CHANGED" | sed 's/^/  /'
-
-          # This list is the merge-blocking surface of the repository.
-          if printf '%s\n' "$CHANGED" | grep -qE '^(terraform/|gitops/|scripts/|tests/|images/|go\.(mod|sum)$|Makefile$|\.github/(workflows|actions)/)'; then
-            INFRA=yes
-          else
-            INFRA=no
+          # Two contradictory instructions are an error, not a precedence rule.
+          # Picking one silently would make the gate's behavior depend on a
+          # rule nobody reading the labels can see.
+          if [ "$WANTS_RUN" = "true" ] && [ "$WANTS_SKIP" = "true" ]; then
+            echo "::error::this pull request carries both 'ci:lifecycle' and 'ci:skip-lifecycle'. Remove one - they ask for opposite things."
+            exit 1
           fi
 
-          if [ "$INFRA" = "no" ]; then
+          if [ "$INFRA" != "true" ]; then
             echo "no infrastructure change - the lifecycle check is not required for this pull request."
+            exit 0
+          fi
+
+          # The waiver. Deliberately loud: a waived merge and a verified merge
+          # are otherwise indistinguishable afterwards, and the first question
+          # asked when main breaks is whether the change was ever tested. The
+          # warning and the summary entry make that answer findable in the run.
+          #
+          # It waives only the two-cloud half; static validation above has
+          # already had to pass. Frequent use is a signal that the path list is
+          # too broad, not that the gate is too strict.
+          if [ "$WANTS_SKIP" = "true" ]; then
+            echo "::warning::the lifecycle check was WAIVED by the 'ci:skip-lifecycle' label. These files would otherwise have required it."
+            printf '%s\n' "$INFRA_FILES" | sed 's/^/  waived: /'
+            # The backtick is passed as an argument rather than written into
+            # the format string: shellcheck reads a backtick inside quotes as
+            # a command substitution, whichever quoting style is used.
+            BT='`'
+            {
+              echo "### Lifecycle check waived"
+              echo
+              echo "This pull request merged **without** bringing up either cluster."
+              printf -- 'It carried the %sci:skip-lifecycle%s label.\n' "$BT" "$BT"
+              echo
+              echo "Paths that would otherwise have required the check:"
+              echo
+              printf '%s\n' "$INFRA_FILES" | while IFS= read -r f; do
+                printf -- '- %s%s%s\n' "$BT" "$f" "$BT"
+              done
+            } >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 

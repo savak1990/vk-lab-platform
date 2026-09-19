@@ -5,8 +5,8 @@
 | Milestone | Goal | Specs | Exit criterion |
 |---|---|---|---|
 | M0 Foundations | Operator surface, governance, the two generalisation refactors, feasibility facts | 010, 015, 016, 018, 020 | AWS and Civo unchanged (golden renders, `make -n`); ADRs merged; spike report answers the CCM-ordering, kubeconfig, volume-survival and LB-deletion questions |
-| M1 Viable Hetzner platform | `PROVIDER=hetzner make full-up` brings up k3s on three CAX21, Argo, CCM/CSI, Envoy with wildcard TLS, DNS, ESO, CNPG with persistent dumps, observability; `make down`/`up` preserves data; CI can run it | 025–160, 182 | HETZ-150 passes; idle cost recorded against the 43 EUR model |
-| M2 Scale and harden | Autoscaler 0–2, stock-aware SKU fallback, right-sizing, client IP | 170, 175, 190 | each spec's DoD |
+| M1 Viable Hetzner platform | `PROVIDER=hetzner make full-up` brings up k3s on two fixed CX33 plus a cluster autoscaler for a third, Argo, CCM/CSI, Envoy with wildcard TLS, DNS, ESO, CNPG with barman-cloud backups, observability; `make down`/`up` preserves data; CI can run it | 025–170, 182 | HETZ-150 passes; idle cost recorded against the 32 EUR fixed / 42 EUR ceiling model (research.md shape F) |
+| M2 Scale and harden | Stock-aware SKU fallback (CX → CPX), right-sizing, client IP | 175, 190 | each spec's DoD |
 
 ## Dependency graph
 

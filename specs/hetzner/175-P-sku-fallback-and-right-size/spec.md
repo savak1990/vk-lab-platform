@@ -1,6 +1,6 @@
 ---
 id: "HETZ-175"
-title: "Stock-aware SKU fallback (CAX to CPX) and right-sizing on measured data"
+title: "Stock-aware SKU fallback (CX to CPX) and right-sizing on measured data"
 status: "READY"
 priority: "P2"
 milestone: "M2"
