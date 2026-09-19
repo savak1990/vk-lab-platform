@@ -14,7 +14,7 @@ depends_on: ["HETZ-037", "HETZ-045"]
 blocked_by: []
 supersedes: []
 created: "2026-09-19"
-updated: "2026-09-19"
+updated: "2026-09-20"
 completed: ""
 ---
 
@@ -77,10 +77,11 @@ beyond the manual steps this spec documents.
   runtime) and is not a source to copy from — this spec's cloud-init is
   built from HETZ-030's own template instead.
   https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/hetzner/README.md
-- HETZ-030 §4 builds one cloud-init template, `templates/node.yaml.tftpl`,
-  that installs `containerd.io`, `kubeadm`, `kubelet`, `kubectl` and the
-  kernel prerequisites only — no join token, no cluster state — and caps
-  the rendered size at 32 KiB. That "package-install only" property is
+- HETZ-030 §4 builds two cloud-init templates. The control plane's own,
+  `templates/control-plane.yaml.tftpl`, is irrelevant here; the worker
+  one, `templates/node.yaml.tftpl`, installs `containerd.io`, `kubeadm`,
+  `kubelet`, `kubectl` and the kernel prerequisites only — no join token,
+  no cluster state — and caps the rendered size at 32 KiB. That "package-install only" property is
   exactly why the same file is reusable for an autoscaled node: this
   spec reads it straight from the checkout `argo-up` already runs in,
   substitutes the same `${kubernetes_version}` and `${containerd_version}`
@@ -145,8 +146,12 @@ beyond the manual steps this spec documents.
   or corrects it against a real response, not yet run — then `kubeadm
   join 10.0.1.10:6443 --token $TOKEN --discovery-token-ca-cert-hash
   sha256:$HASH --node-name "$(hostname)"`. The control-plane endpoint is
-  the fixed private IP HETZ-035 initialised with, not a variable this
-  spec resolves itself.
+  the fixed private IP the control plane initialised with, not a variable
+  this spec resolves itself. The join config needs no
+  `KubeletConfiguration`: `kubeadm join` downloads the cluster's
+  `kubelet-config` ConfigMap, so an autoscaled node inherits the same
+  `systemReserved`, `kubeReserved` and `evictionHard` the control plane
+  set at `kubeadm init` (HETZ-030).
 - Write the Secret: `kubectl create secret generic
   hcloud-autoscaler -n kube-system --from-literal=token="$TOKEN"
   --from-literal=ca_hash="$HASH" --from-literal=cloud_init="$RENDERED" \
@@ -286,3 +291,9 @@ cluster-side token before the Secret.
 
 - 2026-09-19 — created as READY (kubeadm replan); takes the credential
   design of the old HETZ-170.
+- 2026-09-20 — option C: HETZ-030 now has two templates; this spec still
+  reads only the worker one, `templates/node.yaml.tftpl`, whose
+  two-placeholder property is unchanged.
+- 2026-09-20 — review fix: the autoscaled node's kubelet reservations are
+  recorded as inherited from the cluster's `kubelet-config` ConfigMap on
+  join, not set in this spec's rendered cloud-init.

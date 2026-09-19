@@ -14,7 +14,7 @@ depends_on: ["HETZ-037", "HETZ-050", "HETZ-085", "CIVO-160"]
 blocked_by: []
 supersedes: []
 created: "2026-09-11"
-updated: "2026-09-19"
+updated: "2026-09-20"
 completed: ""
 ---
 
@@ -49,7 +49,8 @@ optional CCM/CSI metrics.
   and gates Karpenter assets on `aws`. Its review amendment keeps
   control-plane scrapes off on Civo because the managed control plane is
   hidden. That amendment does not apply here.
-- HETZ-035 sets `controllerManager.extraArgs`/`scheduler.extraArgs`
+- HETZ-030's `control-plane.yaml.tftpl` sets
+  `controllerManager.extraArgs`/`scheduler.extraArgs`
   `bind-address=10.0.1.10`, `etcd.local.extraArgs`
   `listen-metrics-urls=http://10.0.1.10:2381` and
   `KubeProxyConfiguration.metricsBindAddress=10.0.1.10:10249`, so
@@ -172,7 +173,8 @@ Revert the values. Argo prunes. Volumes are deleted with the PVCs.
   uses the Prometheus ServiceAccount bearer token and needs the
   `system:monitoring`-style RBAC that kube-prometheus-stack ships. If
   that rejects it, fall back to `authentication-skip-lookup=true` under
-  `scheduler.extraArgs` in HETZ-035 and record the change there.
+  `scheduler.extraArgs` in HETZ-030's control-plane template and record
+  the change there.
 - The 10 GB floor means every future small PVC costs 0.57 EUR/month;
   note it in `research.md`.
 
@@ -187,3 +189,6 @@ Revert the values. Argo prunes. Volumes are deleted with the PVCs.
 - 2026-09-19 — kubeadm: stacked etcd scraped, kube-proxy kept,
   metrics-server Argo-installed; depends on HETZ-037 (Cilium) instead
   of HETZ-030; x86 images.
+- 2026-09-20 — option C: the control-plane metrics `extraArgs` are set by
+  HETZ-030's `control-plane.yaml.tftpl`, not by HETZ-035 (decisions.md §3,
+  "Control-plane metrics").

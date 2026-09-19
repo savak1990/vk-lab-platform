@@ -14,7 +14,7 @@ depends_on: ["HETZ-045", "HETZ-020"]
 blocked_by: []
 supersedes: []
 created: "2026-09-19"
-updated: "2026-09-19"
+updated: "2026-09-20"
 completed: ""
 ---
 
@@ -88,7 +88,11 @@ does not touch that guard.
   input resolution.
 - The steps ahead of the new block are unchanged and already generic:
   the `cluster_exists` existence proof (`:32`) and `configure_kubeconfig`
-  (`:37`); the unconditional `backup_teardown` gate (`:82`, generalised by
+  (`:37`) — on hetzner `cluster_exists` true means a kubeadm cluster
+  exists, which it does from the control plane's own boot (HETZ-030), not
+  that `argo-up` ever ran; every step below therefore tolerates a cluster
+  that holds no Argo CD, which is why the LB wait treats an already-absent
+  Envoy Service as a no-op rather than an error; the unconditional `backup_teardown` gate (`:82`, generalised by
   HETZ-016/HETZ-120, best-effort because WAL archiving already made every
   committed row durable); disarming automated sync on every Application
   (`:57-80`) before anything destructive runs. The civo-only TLS export
@@ -225,3 +229,6 @@ path to persistent state.
 
 - 2026-09-19 — created as READY (kubeadm replan); takes the `argo-down`
   part of the old HETZ-045.
+- 2026-09-20 — review fix: §4 states what `cluster_exists` true does and
+  does not prove on hetzner, and that the Argo guard tolerates a cluster
+  with no Argo CD in it.

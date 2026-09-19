@@ -3,8 +3,10 @@
 This folder holds the planning and specification documents for adding Hetzner
 Cloud as a third execution target next to AWS/EKS and Civo. Unlike Civo,
 Hetzner has no managed Kubernetes: the platform bootstraps Kubernetes with
-kubeadm on `hcloud_server`s (`cluster-up` runs init, join and Cilium over
-SSH); `argo-up` helm-installs the Hetzner cloud controller
+kubeadm on `hcloud_server`s (the control plane runs `kubeadm init` and the
+Cilium install from its own cloud-init at first boot; `cluster-up` joins
+the workers over SSH and fetches the kubeconfig); `argo-up` helm-installs
+the Hetzner cloud controller
 manager before Argo CD (nothing schedules on a node the CCM has not
 initialised), and Argo CD installs the CSI driver. Implementation code does
 not live here. It lands in the
@@ -84,9 +86,9 @@ two additions:
 | HETZ-018 | [018-P-identity-chain-provider-naming](018-P-identity-chain-provider-naming/spec.md) | Roles Anywhere chain names parametrized by provider; Civo names unchanged | READY | P0 | M | strongest | 010, 016 | M0 |
 | HETZ-020 | [020-P-hetzner-feasibility-spike](020-P-hetzner-feasibility-spike/spec.md) | Shrunk feasibility spike: kubeadm/Cilium/CCM ordering, volume survival, LB lifecycle, limits, invoice | READY | P0 | S | standard | — | M0 |
 | HETZ-025 | [025-P-hetzner-persistent-stack](025-P-hetzner-persistent-stack/spec.md) | `persistent-hetzner` network, subnet, SSH key | READY | P1 | S | standard | 010, 015, 080 | M1 |
-| HETZ-030 | [030-P-hetzner-terraform-kubeadm-nodes](030-P-hetzner-terraform-kubeadm-nodes/spec.md) | `cluster-hetzner` firewall and kubeadm-prepared `cx33` nodes (cloud-init installs packages only) | READY | P1 | M | strongest | 010, 015, 025 | M1 |
-| HETZ-035 | [035-P-hetzner-kubeadm-bootstrap](035-P-hetzner-kubeadm-bootstrap/spec.md) | `cluster-up` runs `scripts/hetzner-bootstrap.sh`: kubeadm init on the cp, admin.conf kubeconfig, kubeadm join on workers, idempotent re-run | READY | P1 | M | strongest | 030, 040, 020 | M1 |
-| HETZ-037 | [037-P-hetzner-cilium-cni](037-P-hetzner-cilium-cni/spec.md) | Cilium installed by the bootstrap script; `cluster-up` ends when every node is Ready | READY | P1 | M | standard | 035 | M1 |
+| HETZ-030 | [030-P-hetzner-terraform-kubeadm-nodes](030-P-hetzner-terraform-kubeadm-nodes/spec.md) | `cluster-hetzner` firewall, a self-initializing kubeadm control plane and package-prepared workers on `cx33` | READY | P1 | M | strongest | 010, 015, 025 | M1 |
+| HETZ-035 | [035-P-hetzner-kubeadm-bootstrap](035-P-hetzner-kubeadm-bootstrap/spec.md) | `kubeadm join` over SSH from `cluster-up`, `admin.conf` kubeconfig, idempotent re-run | READY | P1 | M | strongest | 030, 040, 020 | M1 |
+| HETZ-037 | [037-P-hetzner-cilium-cni](037-P-hetzner-cilium-cni/spec.md) | Cilium from the control plane's cloud-init; `cluster-up` ends when every node is Ready | READY | P1 | M | standard | 030, 035 | M1 |
 | HETZ-040 | [040-P-hetzner-cluster-scripts](040-P-hetzner-cluster-scripts/spec.md) | Cluster scripts: `hcloud` helpers, SSH helper, `cluster_exists`, `node-ssh`, label-based leak sweep | READY | P1 | M | standard | 030 | M1 |
 | HETZ-045 | [045-P-argo-scripts-hetzner-branches](045-P-argo-scripts-hetzner-branches/spec.md) | `argo-up` Hetzner branch: `hcloud` Secret, CCM helm install, taint wait, root Application, LB/DNS waits | READY | P1 | M | strongest | 016, 037, 050 | M1 |
 | HETZ-047 | [047-P-argo-down-hetzner-lb-ordering](047-P-argo-down-hetzner-lb-ordering/spec.md) | `argo-down` Hetzner branch: Envoy Service and LB removed before the cascade; CCM release never uninstalled | READY | P1 | S | standard | 045, 020 | M1 |

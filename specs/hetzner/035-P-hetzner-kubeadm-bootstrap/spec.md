@@ -1,20 +1,20 @@
 ---
 id: "HETZ-035"
-title: "kubeadm bootstrap over SSH: init, join, kubeconfig, idempotent re-run"
+title: "kubeadm join over SSH from cluster-up, admin.conf kubeconfig, idempotent re-run"
 status: "READY"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
 difficulty: "M"
 recommended_model_tier: "strongest"
-model_rationale: "kubeadm config, SSH orchestration and idempotence interact; a wrong flag is invisible until the CCM stage"
+model_rationale: "Join configuration, SSH orchestration and idempotence interact; a wrong flag is invisible until the CCM stage"
 effort_estimate: "One session (4–6 h) plus boot waits"
 estimate_confidence: "medium"
 depends_on: ["HETZ-030", "HETZ-040", "HETZ-020"]
 blocked_by: []
 supersedes: []
 created: "2026-09-19"
-updated: "2026-09-19"
+updated: "2026-09-20"
 completed: ""
 ---
 
@@ -22,26 +22,32 @@ completed: ""
 
 ## 1. Outcome and rationale
 
-After HETZ-030's servers exist, the hetzner arm of `cluster-up` runs
-`scripts/hetzner-bootstrap.sh`, which turns them into a kubeadm cluster
-over SSH: render the kubeadm config, `kubeadm init` on the control plane,
-fetch `admin.conf` into the isolated kubeconfig (ADR 0034), `kubeadm join`
-on every worker. Nodes stay `NotReady` with the
-`node.cloudprovider.kubernetes.io/uninitialized` taint until HETZ-037
-(Cilium) and HETZ-045 (the cloud controller manager) run. Re-running the
-script against an already-initialized cluster is a no-op. This is the CKA
-path: every command is one the exam asks for.
+The control plane initializes itself at first boot, from its own
+cloud-init (HETZ-030): `kubeadm init` and the Cilium install have already
+run by the time an operator sees a prompt. The hetzner arm of `cluster-up`
+then runs `scripts/hetzner-bootstrap.sh`, which waits for the control
+plane's `/var/lib/lab/cp-bootstrap-done` marker, fetches `admin.conf` into
+the isolated kubeconfig (ADR 0034), and runs `kubeadm join` on every
+worker over SSH. No secret travels through `user_data` to make this work:
+kubeadm mints the token on the control plane at join time. Every node
+keeps the `node.cloudprovider.kubernetes.io/uninitialized` taint until
+HETZ-045's cloud controller manager runs. Re-running the script against an
+already-joined cluster is a no-op. This is still the CKA path: `kubeadm
+token create`, `kubeadm join` and the kubeconfig handling are all commands
+the exam asks for.
 
 ## 2. Scope and non-goals
 
 In scope: `scripts/hetzner-bootstrap.sh` and its functions
-(`render_kubeadm_config`, `kubeadm_init`, `kubeadm_join_workers`,
-`wait_for_api`), the hetzner arm of `configure_kubeconfig` in
-`scripts/lib/provider.sh`, the `cluster-up` and `kubeconfig` Make arms, and
-`scripts/lib/versions.sh`'s `KUBERNETES_VERSION`. Not in scope: the Cilium
-install (HETZ-037), the cloud controller manager and CSI (HETZ-045,
-HETZ-050), the cluster autoscaler join path (HETZ-170), and `hetzner_ssh`,
-`cluster_exists` and `hcloud_list` themselves, which HETZ-040 owns.
+(`wait_for_control_plane`, `kubeadm_join_workers`, `wait_for_api`), the
+hetzner arm of `configure_kubeconfig` in `scripts/lib/provider.sh`, the
+`cluster-up` and `kubeconfig` Make arms, and `scripts/lib/versions.sh`'s
+`KUBERNETES_VERSION`. Not in scope: `kubeadm init`, the kubeadm config
+document and the Cilium install, which are HETZ-030's control-plane
+cloud-init; the Cilium values and the node readiness wait (HETZ-037); the
+cloud controller manager and CSI (HETZ-045, HETZ-050); the cluster
+autoscaler join path (HETZ-170); and `hetzner_ssh`, `cluster_exists` and
+`hcloud_list` themselves, which HETZ-040 owns.
 
 ## 3. Current state / evidence
 
@@ -49,17 +55,24 @@ HETZ-050), the cluster autoscaler join path (HETZ-170), and `hetzner_ssh`,
   the control plane at private IP `10.0.1.10`, workers from `10.0.1.11`),
   labels every server `role=control-plane|worker`, and writes SSM
   `/${project}/cluster-hetzner/k8s/control_plane_ip`,
-  `control_plane_private_ip`, `worker_ips` and `server_ids`. Cloud-init
-  installs `containerd.io`, `kubeadm`, `kubelet`, `kubectl` and the kernel
-  prerequisites only — no join token, no cluster state, no `kubeadm init`.
-  `scripts/lib/versions.sh` carries `KUBERNETES_VERSION` (1.36.x).
+  `control_plane_private_ip`, `worker_ips` and `server_ids`. Worker
+  cloud-init installs `containerd.io`, `kubeadm`, `kubelet`, `kubectl` and
+  the kernel prerequisites only. The control plane's cloud-init also
+  renders `/root/kubeadm-config.yaml`, runs `kubeadm init --config …`,
+  installs Cilium and touches
+  `/var/lib/lab/cp-bootstrap-done`; no token, CA or kubeconfig is in
+  `user_data` or Terraform state. `scripts/lib/versions.sh` carries
+  `KUBERNETES_VERSION` (1.36.x).
 - HETZ-040 supplies `hetzner_ssh <ip> <cmd...>` (decrypts the SSH key into
   a temp dir with a trap, `StrictHostKeyChecking=accept-new`) and
   `hcloud_list`, and defines `cluster_exists()` as two-part: the control
   plane server carries label `role=control-plane` **and** SSH to it shows
-  `/etc/kubernetes/admin.conf` present. A server that exists but was never
-  initialized therefore does not read as a cluster, which this spec's
-  idempotence check depends on.
+  `/etc/kubernetes/admin.conf` present. Since HETZ-030's control plane
+  initializes itself, that file appears about two minutes after create,
+  without this script running — so `cluster_exists()` reports a cluster
+  as soon as the control plane is up, and this spec's idempotence rests on
+  the per-worker `/etc/kubernetes/kubelet.conf` check, not on the control
+  plane's.
 - ADR 0034 (isolated kubeconfig for lifecycle scripts): lifecycle scripts
   write the lab cluster into a repo-local `.kube/${PROJECT_NAME}.config`
   selected through `KUBECONFIG`, never `~/.kube/config`; `configure_kubeconfig
@@ -101,29 +114,25 @@ HETZ-050), the cluster autoscaler join path (HETZ-170), and `hetzner_ssh`,
 ## 4. Design and contracts
 
 `scripts/hetzner-bootstrap.sh`, sourced by the hetzner arm of
-`cluster-up`, after HETZ-030's `terragrunt apply` returns:
+`cluster-up`, after HETZ-030's `terragrunt apply` returns. The functions
+run in this order:
 
-- `render_kubeadm_config()` builds one YAML document, piped over SSH
-  straight to `/root/kubeadm-config.yaml` on the control plane — never
-  written to a temp file on the operator machine, because it holds no
-  secret. `InitConfiguration`: `nodeRegistration.name=${project}-cp-1`,
-  `nodeRegistration.kubeletExtraArgs` `cloud-provider=external` and
-  `node-ip=10.0.1.10`, `nodeRegistration.taints: []` (keeps the control
-  plane schedulable), `localAPIEndpoint.advertiseAddress=10.0.1.10`.
-  `ClusterConfiguration`: `kubernetesVersion` from `KUBERNETES_VERSION`,
-  `controlPlaneEndpoint="10.0.1.10:6443"`, `networking.podSubnet
-  10.244.0.0/16`, `networking.serviceSubnet 10.96.0.0/12`,
-  `apiServer.certSANs=[<control_plane_ip>]`,
-  `controllerManager.extraArgs bind-address=10.0.1.10`,
-  `scheduler.extraArgs bind-address=10.0.1.10`,
-  `etcd.local.extraArgs listen-metrics-urls=http://10.0.1.10:2381`.
-  `KubeletConfiguration`: `cgroupDriver: systemd`.
-  `KubeProxyConfiguration`: `metricsBindAddress: 10.0.1.10:10249`.
-- `kubeadm_init()` skips when `hetzner_ssh <cp> test -f
-  /etc/kubernetes/admin.conf` succeeds and prints "already initialized";
-  otherwise runs `hetzner_ssh <cp> kubeadm init --config
-  /root/kubeadm-config.yaml --upload-certs` and aborts the whole script on
-  a non-zero exit.
+- `wait_for_control_plane()` is one SSH call, not a local poll loop:
+  `hetzner_ssh <cp> 'for i in $(seq 1 60); do test -f
+  /var/lib/lab/cp-bootstrap-done && exit 0; sleep 10; done; exit 1'`. The
+  loop count is `HETZNER_CP_BOOTSTRAP_SECONDS` (default 600) divided by
+  the 10 s sleep, so the budget is unchanged while the SSH key is
+  decrypted once and exactly one temp dir exists for the whole wait. SSH
+  may be refused for the first seconds after create, so the call itself is
+  retried until it connects, which is not an error while the budget lasts;
+  every other poll this script runs over SSH takes the same shape, the
+  loop on the remote side. On timeout it prints `cloud-init status
+  --long`, `tail -n 50 /var/log/cloud-init-output.log`, `journalctl -u
+  cloud-final --no-pager -n 50` and the last 50 lines of `journalctl -u
+  kubelet` from the control plane, then exits 1 — a boot-time `kubeadm
+  init` failure, and a helm download that fails after a successful init,
+  are both invisible to Terraform, so this is where the operator gets the
+  evidence without a second manual command.
 - `configure_kubeconfig([path])`, hetzner arm: `hetzner_ssh <cp> cat
   /etc/kubernetes/admin.conf`; rewrite `https://10.0.1.10:6443` to
   `https://<control_plane_ip>:6443`; rename the context, cluster and user
@@ -138,19 +147,26 @@ HETZ-050), the cluster autoscaler join path (HETZ-170), and `hetzner_ssh`,
   otherwise `JOIN=$(hetzner_ssh <cp> kubeadm token create
   --print-join-command)` and write `/root/kubeadm-join.yaml` on the worker
   with the `discovery.bootstrapToken` fields parsed out of `$JOIN`, plus
-  `nodeRegistration.name=<worker server name>` and
+  `nodeRegistration.name=<worker server name>`,
   `nodeRegistration.kubeletExtraArgs` `cloud-provider=external` and
-  `node-ip=<worker private ip>`; run `kubeadm join --config
+  `node-ip=<worker private ip>`. The join config carries no
+  `KubeletConfiguration`: the reservations come from the cluster's
+  `kubelet-config` ConfigMap, written at `kubeadm init` (HETZ-030) and
+  downloaded by every join. Then run `kubeadm join --config
   /root/kubeadm-join.yaml` on the worker over SSH. Never prints `$JOIN` or
   any other `kubeadm token` output to the script's own stdout; under
   `GITHUB_ACTIONS` that output is masked like every other secret.
 - `wait_for_api()` polls `kubectl get --raw /readyz` against the fetched
-  kubeconfig every 10 s for up to 5 min, then returns; it does not wait for
-  `Ready` nodes, because no CNI exists yet at this stage (HETZ-037).
+  kubeconfig every 10 s for up to 5 min, then returns. It deliberately
+  stops at the API server: a freshly joined worker needs a further minute
+  or two before its kubelet reports `Ready`, and HETZ-037's
+  `wait_for_nodes_ready()` owns that wait.
 - Idempotence: a second `scripts/hetzner-bootstrap.sh` run against an
-  already-initialized, already-joined cluster performs zero `kubeadm`
-  calls — `kubeadm_init` and every worker's join loop iteration print
-  "already initialized" / "already joined" and return.
+  already-joined cluster performs zero `kubeadm` calls —
+  `wait_for_control_plane()` finds the marker on its first poll and every
+  worker's join loop iteration prints "already joined" and returns. The
+  control plane's own cloud-init runs once per server lifetime, so nothing
+  re-initializes it.
 
 ## 5. Files/components affected
 
@@ -163,13 +179,15 @@ present from HETZ-030).
 
 ## 6. Implementation steps
 
-1. Write `render_kubeadm_config()` and `kubeadm_init()`; run both by hand
-   against a live HETZ-030 cluster over SSH and confirm `kubectl get
-   --raw /readyz` from the control plane.
-2. Write `kubeadm_join_workers()`; join the one worker and confirm
-   `kubectl get nodes` lists both servers, `NotReady`.
-3. Write `configure_kubeconfig`'s hetzner arm and the `cluster-up` /
-   `kubeconfig` Make arms; run `make kubeconfig` from the operator machine.
+1. Write `wait_for_control_plane()`; run it against a freshly created
+   HETZ-030 control plane, record the create-to-marker time, and force the
+   timeout path with a short `HETZNER_CP_BOOTSTRAP_SECONDS` to confirm it
+   prints all four diagnostic commands §4 lists.
+2. Write `configure_kubeconfig`'s hetzner arm and the `cluster-up` /
+   `kubeconfig` Make arms; run `make kubeconfig` from the operator machine
+   and confirm `kubectl get nodes` lists the control plane.
+3. Write `kubeadm_join_workers()` and `wait_for_api()`; join the one
+   worker and confirm `kubectl get nodes` lists both servers.
 4. Run `scripts/hetzner-bootstrap.sh` a second time against the same
    cluster; confirm zero `kubeadm` calls.
 5. Two full `cluster-up` cycles end to end (HETZ-030's apply through this
@@ -177,20 +195,24 @@ present from HETZ-030).
 
 ## 7. Dependencies and blockers
 
-HETZ-030 supplies the initialized-but-clusterless servers, their names,
-private IPs and SSM outputs. HETZ-040 supplies `hetzner_ssh`,
+HETZ-030 supplies the servers, their names, private IPs and SSM outputs,
+and the control plane that has already initialized itself and installed
+Cilium by first boot. HETZ-040 supplies `hetzner_ssh`,
 `cluster_exists` and `hcloud_list`, which this script calls but does not
-define. HETZ-020's feasibility spike recorded the init → Cilium → CCM →
-CoreDNS ordering this spec assumes without re-proving it.
+define. HETZ-020's feasibility spike recorded the init → Cilium → CCM → CoreDNS
+ordering this spec assumes without re-proving it; under option C the first
+two steps happen at boot rather than from this script, which does not
+change the ordering.
 
 ## 8. Acceptance criteria
 
-- `kubectl get nodes` lists `control_plane_count + worker_count` nodes,
-  all `NotReady`, all carrying
-  `node.cloudprovider.kubernetes.io/uninitialized`.
-- `kubectl get pods -n kube-system` shows `etcd`, `kube-apiserver`,
-  `kube-controller-manager` and `kube-scheduler` `Running`, and `coredns`
-  `Pending`.
+- `kubectl get nodes` lists `control_plane_count + worker_count` nodes.
+  The control plane is `Ready` when the script starts, because its own
+  cloud-init installed Cilium (HETZ-030); the workers reach `Ready` after
+  HETZ-037's wait. Every node still carries
+  `node.cloudprovider.kubernetes.io/uninitialized`, and `kubectl get pods
+  -n kube-system` shows `coredns` `Pending` until HETZ-045's cloud
+  controller manager clears that taint.
 - `kubectl get --raw /readyz` returns `ok`.
 - A second `cluster-up` run makes zero `kubeadm` calls.
 - `make kubeconfig` writes context `${PROJECT_NAME}-hetzner`.
@@ -216,9 +238,12 @@ recorded pre-change output.
 
 `PROVIDER=hetzner make cluster-down` destroys the servers this script ran
 against; there is no cluster state outside them to roll back. A failed
-`kubeadm init` or `join` leaves a partially initialized server; re-running
-the script is safe because every step is guarded by the same file-presence
-check `cluster_exists()` uses.
+`kubeadm join` leaves a half-joined worker; re-running the script is safe,
+because the join is guarded by the worker's own
+`/etc/kubernetes/kubelet.conf` check. A control plane whose boot-time
+`kubeadm init` failed cannot be repaired by re-running this script — the
+recovery is `cluster-down` then `cluster-up`, which boots a fresh server
+and runs its cloud-init again.
 
 ## 12. Risks and unresolved questions
 
@@ -236,6 +261,16 @@ check `cluster_exists()` uses.
 - A control-plane reboot takes the API server down for roughly a minute;
   scripts calling this one should not treat a single failed poll as fatal
   without a retry budget.
+- A boot-time `kubeadm init` failure is visible only over SSH: Terraform
+  reports a healthy `running` server and this script sees a marker that
+  never appears. `wait_for_control_plane()`'s timeout path printing
+  `cloud-init status --long`, the cloud-init output log, the `cloud-final`
+  journal and the kubelet journal is the whole of the diagnosis path, so
+  it must not be dropped for brevity.
+- `HETZNER_CP_BOOTSTRAP_SECONDS` must stay comfortably above the observed
+  create-to-marker time (§6 step 1 records it): image pulls during
+  `kubeadm init` dominate it and vary with Hetzner-side network
+  conditions.
 
 ## 13. Definition of done
 
@@ -249,3 +284,12 @@ check `cluster_exists()` uses.
 - 2026-09-19 — created as READY (kubeadm replan); takes the
   cluster-creation part of the old HETZ-030 and the kubeconfig part of the
   old HETZ-040.
+- 2026-09-20 — option C: `kubeadm init` and the kubeadm config render move
+  into the control plane's cloud-init (HETZ-030); this script waits for the
+  boot marker, joins the workers and fetches the kubeconfig (decisions.md
+  §3, "Bootstrap driver").
+- 2026-09-20 — review fixes: the marker wait is one SSH call with the loop
+  on the remote side; the join config drops its duplicated
+  `KubeletConfiguration` in favour of the cluster's `kubelet-config`
+  ConfigMap; the timeout dump gains the cloud-init output log and the
+  `cloud-final` journal.

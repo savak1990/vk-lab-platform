@@ -14,7 +14,7 @@ depends_on: []
 blocked_by: []
 supersedes: []
 created: "2026-09-11"
-updated: "2026-09-19"
+updated: "2026-09-20"
 completed: ""
 ---
 
@@ -36,7 +36,8 @@ message on the other providers.
 ## 2. Scope and non-goals
 
 In scope: `Makefile`, `scripts/lib/provider.sh`, the `hcloud_token` and
-`hcloud_cli` helpers, the secret path rule for `hcloud-token`, the
+`hcloud_cli` helpers, the `SECRET_SCOPE=global` decrypt of
+`hetzner-token`, the
 `test-kubeconfig` stub arm, and a `make -n`
 golden proof for `aws` and `civo`.
 Not in scope: any Hetzner Terraform (HETZ-025/030), script branches that need
@@ -56,22 +57,22 @@ refactor (HETZ-016).
 
 - `Makefile:10` guard becomes `filter aws civo hetzner`; the error text becomes "PROVIDER must be aws, civo or hetzner". Every other `ifeq ($(PROVIDER),civo)` block gains an `else ifeq ($(PROVIDER),hetzner)` arm. The aws and civo recipe text does not change by one byte.
 - Defaults when `PROVIDER=hetzner`: `PROJECT_NAME ?= vk-hetzner-lab`, `SUBDOMAIN ?= hetzner`, `CLUSTER_DIR = cluster-hetzner`, `CLUSTER_NAME = $(PROJECT_NAME)`, `PERSISTENT_EXTRA_DIR = persistent-hetzner`, `BOOTSTRAP_EXCLUDE = acm`, `PERSISTENT_EXCLUDE = vpc`. `scripts/lib/provider.sh` exports the same values in a third branch. An explicit operator override always wins, as for civo.
-- `hcloud_token()` in `provider.sh`: runs `scripts/secret-decrypt.sh hcloud-token`, prints `::add-mask::<value>` when `GITHUB_ACTIONS` is set, exports `HCLOUD_TOKEN`, and never echoes the token otherwise. The Terraform provider and the CLI read `HCLOUD_TOKEN`; the token never appears in tfvars, state, or arguments.
+- `hcloud_token()` in `provider.sh`: runs `SECRET_SCOPE=global scripts/secret-decrypt.sh hetzner-token`, prints `::add-mask::<value>` when `GITHUB_ACTIONS` is set, exports `HCLOUD_TOKEN`, and never echoes the token otherwise. The Terraform provider and the CLI read `HCLOUD_TOKEN`; the token never appears in tfvars, state, or arguments.
 - `hcloud_cli()`: runs `hcloud "$@"` with `HCLOUD_TOKEN` exported. No config redirect is needed. Add `HCLOUD_CONFIG=/dev/null` anyway so that a stray `hcloud context` on an operator machine can never leak into a run.
 - `hcloud_list_names()`: `hcloud <resource> list -o json -l project=<project>` piped through `jq -r '.[].name'`. Unlike the civo CLI, an empty result is `[]`, so no shape check is needed. HETZ-040 uses it.
-- Secret path rule: `secret-decrypt.sh` and `secret-encrypt.sh` add `hcloud-token` to the repo-root list. `secrets/hcloud-token.enc` is committed KMS ciphertext under `alias/lab-secrets`; `.gitignore` gets `!secrets/hcloud-token.enc`.
+- Secret path rule: none to add. `secret-decrypt.sh` and `secret-encrypt.sh` already resolve an account-global secret from the `SECRET_SCOPE=global` argument rather than from a name list, so `hetzner-token` needs no entry. `secrets/hetzner-token.enc` is committed KMS ciphertext under `alias/lab-secrets`, beside `civo-token.enc`.
 - `test-kubeconfig` (`Makefile:204-207`): the hetzner arm prints "implemented in HETZ-130" and exits 1, as the civo stub does. `kubeconfig` (`:182`) prints "implemented in HETZ-040".
 - State: `PROVIDER=hetzner make state-up` creates `vk-hetzner-lab-tf-state` through the unchanged `state-up`. Nothing else in this spec touches state.
-- Manual prerequisite, documented in `secrets/README.md`: create a Hetzner Cloud project named `vk-hetzner-lab` in the Console, create one Read&Write API token in that project, encrypt it with `SECRET_NAME=hcloud-token make secret-encrypt`, commit the `.enc` file. Never create the token in a project that holds anything else: every reader of the token owns the whole project (ADR 0030 amendment, HETZ-015).
+- Manual prerequisite, documented in `secrets/README.md`: create a Hetzner Cloud project named `vk-hetzner-lab` in the Console, create one Read&Write API token in that project, encrypt it with `SECRET_SCOPE=global SECRET_NAME=hetzner-token make secret-encrypt`, commit the `.enc` file. Never create the token in a project that holds anything else: every reader of the token owns the whole project (ADR 0030 amendment, HETZ-015).
 
 ## 5. Files/components affected
 
 - `Makefile` (edit): guard, defaults, the hetzner arm in four `ifeq` blocks.
 - `scripts/lib/provider.sh` (edit): third branch, `hcloud_token`, `hcloud_cli`, `hcloud_list_names`.
-- `scripts/secret-decrypt.sh`, `scripts/secret-encrypt.sh` (edit): the `hcloud-token` path rule.
-- `secrets/README.md` (edit): `hcloud-token.enc`, the project and token prerequisite.
-- `.gitignore` (edit): `!secrets/hcloud-token.enc`.
-- `secrets/hcloud-token.enc` (new, ciphertext).
+- `scripts/secret-decrypt.sh`, `scripts/secret-encrypt.sh`: no edit — `SECRET_SCOPE=global` already covers `hetzner-token`.
+- `secrets/README.md` (edit): `hetzner-token.enc`, the project and token prerequisite.
+- `.gitignore`: no edit — `!secrets/*.enc` already tracks it.
+- `secrets/hetzner-token.enc` (already committed, ciphertext).
 - No Terraform, GitOps, or CI changes.
 
 ## 6. Implementation steps
@@ -79,9 +80,8 @@ refactor (HETZ-016).
 1. Capture golden `make -n` output for the 16 lifecycle targets with `PROVIDER` unset, `PROVIDER=aws`, and `PROVIDER=civo`.
 2. Edit the guard and the defaults. Add the hetzner arms.
 3. Extend `provider.sh`. Run `shellcheck`.
-4. Extend the secret path rule. Encrypt and commit the token.
-5. Diff the goldens. All three must be empty.
-6. Record `PROVIDER=hetzner make -n cluster-up`, `persistent-up`, `kubeconfig`, `test-kubeconfig` in §14.
+4. Diff the goldens. All three must be empty.
+5. Record `PROVIDER=hetzner make -n cluster-up`, `persistent-up`, `kubeconfig`, `test-kubeconfig` in §14.
 
 ## 7. Dependencies and blockers
 
@@ -93,7 +93,7 @@ None. HETZ-015 and HETZ-020 run in parallel. HETZ-016 starts after this spec is 
 - `make up PROVIDER=gcp` fails at parse time with the new message. Nothing else runs.
 - `PROVIDER=hetzner make -n cluster-up` shows `terraform/live/cluster-hetzner`. `PROJECT_NAME` resolves to `vk-hetzner-lab`, `SUBDOMAIN` to `hetzner`, `CLUSTER_NAME` to `vk-hetzner-lab`. `PROVIDER=hetzner PROJECT_NAME=other make -n cluster-up` keeps `other`. Both `PROVIDER=hetzner make` and `make PROVIDER=hetzner` forms agree.
 - `shellcheck scripts/lib/provider.sh scripts/secret-*.sh` is clean. `hcloud_token` prints the mask line only under `GITHUB_ACTIONS`.
-- `scripts/secret-decrypt.sh hcloud-token >/dev/null` exits 0 on a workstation with KMS access. Never capture or display its stdout.
+- `SECRET_SCOPE=global scripts/secret-decrypt.sh hetzner-token >/dev/null` exits 0 on a workstation with KMS access. Never capture or display its stdout.
 - `hcloud_cli server list` with `HCLOUD_TOKEN` set writes nothing under `~/.config/hcloud/`.
 
 ## 9. Validation
@@ -126,3 +126,8 @@ One PR together with `specs/hetzner/`. A revert restores the previous Makefile a
 - 2026-09-11 — created as DRAFT.
 - 2026-09-11 — reviewed and approved by the user; promoted to READY.
 - 2026-09-19 — kubeadm wording.
+- 2026-09-20 — review fix: §6's "extend the secret path rule" step is
+  deleted and the rest renumbered; §4 and §5 already state that
+  `SECRET_SCOPE=global` covers `hetzner-token` with no path-rule or
+  `.gitignore` edit.
+- 2026-09-20 — the committed ciphertext is `secrets/hetzner-token.enc`, account-global like `civo-token.enc`, read with `SECRET_SCOPE=global`; no path-rule or `.gitignore` edit is needed. The helper name `hcloud_token()` and the env var `HCLOUD_TOKEN` are unchanged.
