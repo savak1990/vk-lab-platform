@@ -61,8 +61,8 @@ equivalent; **n/a** = not applicable on Hetzner.
 | SSH key | — | `hcloud_ssh_key` from a committed public key; private key `secrets/<project>/hetzner-ssh-key.enc` | new | 025 |
 | Cluster | `civo_kubernetes_cluster` (managed) | `hcloud_firewall` + `control_plane_count` + `worker_count` `hcloud_server` (`cx33`, `ubuntu-24.04` x86, hostname = server name) with cloud-init installing containerd.io, kubeadm, kubelet, kubectl; `scripts/hetzner-bootstrap.sh` runs `kubeadm init` and `kubeadm join` | new | 030, 035 |
 | Capacity | fixed pool of three Medium | 1 cp + 1 worker fixed; autoscaler 0–2 extra `cx33` in M1; ceiling 4 nodes | mirror | 030, 170 |
-| Kubeconfig | `civo kubernetes config` | `/etc/kubernetes/admin.conf` over SSH, server rewritten to the public IP | new | 040 |
-| Readiness | `kubectl get nodes` (provider `ready` unreliable) | Terraform returns when servers exist; the bootstrap script runs init/join/Cilium and waits for every node Ready | mirror | 040 |
+| Kubeconfig | `civo kubernetes config` | `/etc/kubernetes/admin.conf` over SSH, server rewritten to the public IP | new | 035 |
+| Readiness | `kubectl get nodes` (provider `ready` unreliable) | Terraform returns when servers exist; the bootstrap script runs init/join/Cilium and waits for every node Ready | mirror | 037 |
 | Leak sweep | `civo` CLI by name/network | `hcloud` CLI by label `project=<project>` over servers, load balancers, volumes, primary IPs, firewalls | mirror | 040 |
 | CCM | pre-installed by Civo | helm release installed by `argo-up` before Argo CD (untracked bootstrap class, like Argo CD itself); `kube-system/hcloud` Secret (keys `token`, `network`) created by `argo-up` | new | 045 |
 | CSI | pre-installed by Civo | Argo Application at wave −3 under `platform/hetzner/`; reads the same `hcloud` Secret | new | 050 |

@@ -275,8 +275,8 @@ and HETZ-040's sweep removes any that Terraform lost.
 
 - 2026-09-11 — created as DRAFT.
 - 2026-09-11 — reviewed and approved by the user; promoted to READY.
-- 2026-09-19 — node shape revised to two fixed `cx33` plus an autoscaled
-  third (decisions.md §3, Node shape): every ARM server type failed a
+- 2026-09-19 — node shape revised to two fixed `cx33` plus 0–2 autoscaled
+  (ceiling 4) (decisions.md §3, Node shape): every ARM server type failed a
   real create in every EU location; `cx33` succeeded in all three.
 - 2026-09-19 — rewritten for kubeadm: cloud-init installs packages only,
   the cluster is created by HETZ-035; folder renamed.

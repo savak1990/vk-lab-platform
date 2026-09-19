@@ -95,8 +95,8 @@ optional CCM/CSI metrics.
   set, which this package does not set, so Prometheus does not trust
   them otherwise. Record confirmation.
 - node-exporter runs on the two fixed nodes (and any autoscaled node).
-  The control-plane node carries
-  no taint (HETZ-030), so no toleration is needed; add
+  The control-plane node carries no taint (HETZ-035,
+  `nodeRegistration.taints: []`), so no toleration is needed; add
   `tolerations: [{operator: Exists}]` anyway for the day HETZ-170 taints
   anything.
 - metrics-server: kubeadm ships no metrics-server; the shared

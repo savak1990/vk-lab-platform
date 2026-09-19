@@ -44,7 +44,7 @@ shortage move the real numbers:
   CX33–CX53 are sold out in every EU location at the baseline date; CAX
   stays available.
 
-Net effect: **3 × cx33 (or 2 fixed + 2 autoscaled) at 9.99 EUR net each
+Net effect: **2 fixed + 0–2 autoscaled cx33 at 9.99 EUR net each
 meets the 50–100 USD goal with 8 GB per node; CAX ARM was not orderable in
 any EU location on 2026-09-19 (research.md).** Civo's three-Medium-node
 plan costs 80.67 USD (Civo prices in USD natively) for 6.8 GiB. The x86
@@ -61,9 +61,9 @@ not as the target shape. Full table and sources: `specs/hetzner/research.md`.
 
 Civo and Hetzner price in different currencies (USD vs. EUR); the table
 gives each in its own currency rather than a fabricated conversion. As one
-reference point, Hetzner's own published USD price for `cax21` is 12.49
-USD/node — about 50 USD/month for the three-node total before the load
-balancer, IPs and volumes.
+reference point, `cx33` is 9.99 EUR net per node: 19.98 EUR for the fixed
+pair and 39.96 EUR at the four-node ceiling, before the load balancer,
+IPs and volumes (API prices 2026-09-19).
 
 The lab's stated goal — maximize CPU/memory for 50–100 USD/month — is met
 by the CX33 shape, which was orderable in all three EU locations on
