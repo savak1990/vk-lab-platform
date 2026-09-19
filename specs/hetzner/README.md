@@ -105,6 +105,7 @@ two additions:
 | HETZ-170 | [170-P-hetzner-cluster-autoscaler](170-P-hetzner-cluster-autoscaler/spec.md) | Cluster autoscaler `cloudProvider: hetzner`, 0–2 CX33 workers via `kubeadm join` | READY | P1 | M | strongest | 165 | M1 |
 | HETZ-175 | [175-P-sku-fallback-and-right-size](175-P-sku-fallback-and-right-size/spec.md) | Stock-aware SKU fallback (CX → CPX) and right-sizing on measured data | READY | P2 | S | standard | 160, CIVO-175 | M2 |
 | HETZ-182 | [182-P-multi-arch-images](182-P-multi-arch-images/spec.md) | Repo-built images published for `linux/arm64` as well as `linux/amd64` | DRAFT | P0 | S | fast | CIVO-180 | M1 |
+| HETZ-185 | [185-P-kubeadm-operations-runbook](185-P-kubeadm-operations-runbook/spec.md) | CKA practice runbook: kubeadm upgrade 1.36 → 1.37, stacked etcd snapshot/restore, certificate checks | READY | P2 | M | standard | 037, 040 | M1 |
 | HETZ-190 | [190-P-proxy-protocol-client-ip](190-P-proxy-protocol-client-ip/spec.md) | Proxy protocol on the hcloud LB and client IP at Envoy | READY | P3 | S | fast | 060, CIVO-190 | M2 |
 
 The headers in each `spec.md` are the source of truth. Keep this table in sync.
