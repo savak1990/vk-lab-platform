@@ -56,7 +56,7 @@ done
 # --- Route 53 -------------------------------------------------------------
 # The fqdn embeds the root domain and is treated as private (ADR 0023), so a
 # leak is reported by zone id, never by name.
-if ! ROOT_DOMAIN="$("$REPO_ROOT/scripts/secret-decrypt.sh" root-domain)"; then
+if ! ROOT_DOMAIN="$(SECRET_SCOPE=global "$REPO_ROOT/scripts/secret-decrypt.sh" root-domain)"; then
   echo "VERIFY-NO-LEAKS: ERROR - could not decrypt root-domain; cannot check for a leaked zone." >&2
   exit 1
 fi

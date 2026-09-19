@@ -39,7 +39,7 @@ persistent_exclude_filters() {
 # GitHub Actions logs; never echoes it anywhere else.
 civo_token() {
   local token
-  token="$("$PROVIDER_SH_REPO_ROOT/scripts/secret-decrypt.sh" civo-token)"
+  token="$(SECRET_SCOPE=global "$PROVIDER_SH_REPO_ROOT/scripts/secret-decrypt.sh" civo-token)"
   if [ -n "${GITHUB_ACTIONS:-}" ]; then
     echo "::add-mask::$token"
   fi

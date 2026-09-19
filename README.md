@@ -241,7 +241,7 @@ label once a run finishes.
   `root-domain` is the one exception: it's a real external domain, so it's
   only filled in from `$ROOT_DOMAIN` when set, and otherwise must already
   exist under `secrets/<project>/root-domain.enc`
-  (`make secret-encrypt NAME=root-domain VALUE=<domain>`) — `bootstrap-up`
+  (`make secret-encrypt NAME=root-domain VALUE=<domain> SCOPE=global`) — `bootstrap-up`
   is what actually requires/decrypts it, since Route53 lives there now.
 - **Disposable** — EKS, Karpenter, Argo CD, and everything it manages
   (Postgres, Kafka, Envoy Gateway, NLB, observability). Created by
