@@ -1,7 +1,7 @@
 ---
 id: "SHARED-035"
 title: "Label-gated two-provider lifecycle check as the required status check on main"
-status: "IN_PROGRESS"
+status: "DONE"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -15,6 +15,7 @@ blocked_by: []
 supersedes: []
 created: "2026-09-19"
 updated: "2026-09-19"
+completed: "2026-09-19"
 ---
 
 # SHARED-035 — PR lifecycle gate
@@ -142,4 +143,71 @@ Non-goals:
 
 ## 6. Evidence
 
-To be recorded when the live runs complete.
+Merged as `e3c096a` (PR #19). Branch protection applied 2026-09-19.
+
+### The green run — `35431306872`, all 13 jobs
+
+| Leg | up | test | down | leak check |
+|---|---|---|---|---|
+| aws / `vk-lab-ci` / `awsci` | 27m 20s | 38s | 23m 44s | clean |
+| civo / `vk-civo-ci` / `civoci` | 22m 15s | 34s | 8m 27s | clean |
+
+60 minutes wall clock, both providers in parallel. Log lines:
+
+```
+deleted /vk-civo-ci/persistent/civo/tls/platform-public
+  - issuer=C = US, O = Let's Encrypt, CN = (STAGING) Artificial Amaranth YE1
+VERIFY-NO-LEAKS: no bootstrap or persistent resources remain for vk-civo-ci.
+VERIFY-NO-LEAKS: no bootstrap or persistent resources remain for vk-lab-ci.
+```
+
+Account swept afterwards: no EKS cluster, no EC2 instance, no load balancer, no
+Civo cluster, no project bucket, no project SSM parameter, and only the external
+root zone in Route 53.
+
+### Acceptance criteria
+
+| # | Criterion | Evidence |
+|---|---|---|
+| 1 | No label → validates run, lifecycle skips, gate red | run `35401560469`: six green, `lifecycle` skipped, `pr-gate` failed naming the label |
+| 2 | Label starts a run with no further push | run `35428218623` fired on the `labeled` event |
+| 3 | Both providers pass and tear down | run `35431306872`, table above |
+| 4 | Nothing survives | account sweep above |
+| 5 | Docs-only passes without the label | this pull request |
+| 6 | One provider fails, the other still tears down | run `35404144325`: both `up` jobs failed, **both `down` jobs still ran** |
+| 7 | Direct push to `main` rejected | `! [remote rejected] main -> main (protected branch hook declined)`, as admin |
+| 8 | Squash is the only merge method | `allow_merge_commit=false`, `allow_rebase_merge=false` |
+
+Criterion 6 was proven by accident rather than by the planned deliberate
+failure: a cancelled run left orphaned zones, both `up` jobs failed on
+`require-unique-subdomain.sh`, and both `down` jobs ran anyway. That is the
+same property the planned test would have shown.
+
+### Branch protection, as applied
+
+```json
+{"checks": ["pr-gate"], "strict": false, "admins": true,
+ "reviews": 0, "force_push": false, "deletions": false, "linear": true}
+```
+
+### What the failures taught, and what changed because of them
+
+1. **A cancelled run leaves orphans no teardown can reach.** terraform creates a
+   resource and then records it; killed in between, the resource is live and
+   absent from state. `full-down` then reports success and deletes nothing -
+   confirmed by running it twice. `scripts/force-clean-ci.sh` exists because of
+   this, and the original recovery text in the README and ADR 0035 was wrong.
+2. **A held `.tflock` blocks the teardown meant to clean up.** The lock outlives
+   the run that took it.
+3. **Orphaned SSM parameters are the quiet blocker.** They cost nothing, so no
+   bill reveals them, but `aws_ssm_parameter` creates without overwrite and the
+   next `bootstrap-up` fails with `ParameterAlreadyExists`.
+4. **`lab-role` cannot answer `GetParametersByPath` for a project prefix.** That
+   action authorizes against `parameter/<project>/`, while the role grants the
+   layer paths. `verify-no-leaks.sh` uses `describe-parameters` instead, which
+   is granted on `*` for exactly this purpose. The check failing closed rather
+   than reporting an unverified "clean" is the behavior it was written for.
+5. **A Terraform plugin cache made validation slower, not faster.** Measured
+   across four runs: 7m45s without, 8m55s-10m11s with. Removed, and recorded in
+   a comment so it is not tried again. The cost is Terragrunt's per-unit init
+   overhead; parallelising the loop is the fix if it needs one.

@@ -1,7 +1,8 @@
 ---
 id: "SHARED-017"
-status: "READY"
-updated: "2026-09-17"
+status: "DONE"
+updated: "2026-09-19"
+completed: "2026-09-19"
 ---
 # 016 — Branch Protection
 
@@ -43,3 +44,45 @@ Excludes: the fast-validation workflow itself (018 — this spec only reserves t
 - Attempting to force-push or delete `main` is rejected by GitHub.
 - A pull request against `main` can be merged only after any currently-required status checks pass (initially none, until spec 019 lands).
 - No AWS resource or Terraform state is affected by this spec — verified by there being none to check.
+
+## Implementation
+
+Applied 2026-09-19, together with `specs/shared/035-D-pr-lifecycle-gate/`, which
+built the required status check this spec reserved a slot for.
+
+```json
+{"checks": ["pr-gate"], "strict": false, "admins": true,
+ "reviews": 0, "force_push": false, "deletions": false, "linear": true}
+```
+
+Against this spec's requirements:
+
+- **R1, R2** — direct pushes, force-pushes and deletion of `main` are rejected.
+  Verified as the repository admin: `! [remote rejected] main -> main (protected
+  branch hook declined)`, with `enforce_admins` on, so there is no silent
+  bypass for the owner.
+- **R4** — the required-check slot is filled by `pr-gate`, not left empty.
+- **R5** — no bypass has been used. Should one ever be needed, the rule has to
+  be disabled and re-enabled deliberately, which is visible, rather than
+  admin-bypassed silently.
+
+Two settings deviate from a naive reading, both deliberate and both recorded in
+ADR 0035:
+
+- `required_approving_review_count` is **0**. R1 asks for a pull request, not an
+  approval; requiring one approval on a single-maintainer repository would lock
+  the maintainer out of their own `main`.
+- `strict` is **false**. Requiring a branch to be up to date with `main` would
+  re-run a 55-minute two-cloud check after every unrelated merge. The cost is
+  that the gate proves "this pull request's code works", not "this pull request
+  merged into current `main` works".
+
+Also applied, beyond this spec's own scope: squash is now the only merge method
+and merged branches are deleted automatically.
+
+R3 (complete before Atlantis consumes PR events) is satisfied by ordering -
+`specs/aws/018-P-atlantis-terraform-automation/` has not started.
+
+Configured through the GitHub API rather than the Settings UI, as this spec's
+implementation hints allow. It remains a manual, one-time setting, not
+Terraform-managed.
