@@ -1,3 +1,4 @@
+# Probe: a no-op change to exercise the full lifecycle gate. Not for merge.
 data "aws_ssm_parameter" "root_domain" {
   name = "/account/root_domain"
 }
