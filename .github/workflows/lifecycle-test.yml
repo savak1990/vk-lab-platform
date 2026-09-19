@@ -1,49 +1,36 @@
 name: lifecycle-test
 
-# On-demand full-lifecycle validation (constitution §11, spec 014, spec 020):
-# full-up -> test -> full-down against an isolated project/subdomain, always
-# torn down even on failure. Isolation is by PROJECT_NAME/SUBDOMAIN (ADR
-# 0026), not a separate terraform/live/ci/ tree - a deliberate, documented
-# deviation from spec 020 Requirement 2, reusing lab.yml's existing
-# per-project isolation instead of building a second state hierarchy.
+# The merge gate. Static checks on every pull request; a full two-provider
+# lifecycle - full-up, make test, full-down against one AWS cluster and one
+# Civo cluster at the same time - when a maintainer adds the `ci:lifecycle`
+# label. `pr-gate` below is the single required status check on main.
+#
+# The heavy half is opt-in because it costs roughly 55 minutes and a little
+# under a dollar. Adding the label starts it against the pull request's current
+# head commit; removing and re-adding the label is the re-run handle.
+#
+# Isolation is by PROJECT_NAME/SUBDOMAIN (ADR 0026), not a separate
+# terraform/live/ci/ tree - a documented deviation from spec AWS-020
+# Requirement 2, reusing the per-project isolation lab.yml already has.
 on:
+  pull_request:
+    types: [opened, reopened, synchronize, labeled, unlabeled]
   workflow_dispatch:
-    inputs:
-      project_name:
-        description: "PROJECT_NAME for this run - use a name distinct from your personal lab's."
-        type: string
-        default: vk-lab-ci
-      subdomain:
-        description: "SUBDOMAIN for this run - must be unique per project (scripts/require-unique-subdomain.sh enforces this)."
-        type: string
-        default: ci
 
-run-name: "lifecycle-test (${{ inputs.project_name }})"
+run-name: >-
+  lifecycle-test${{ github.event_name == 'pull_request' && format(' (#{0})', github.event.pull_request.number) || ' (manual)' }}
 
-# Same group expression lab.yml uses. Isolation here is by PROJECT_NAME, not
-# a separate state tree, so a run against the same project_name from either
-# workflow must queue rather than race the same S3 state - a distinct group
-# name would defeat that.
+# Per pull request, not per project: a new push supersedes nothing, because
+# cancelling a run would kill its teardown job and leak a cluster. The
+# per-project serialization that protects Terraform state is a separate group,
+# declared on the `lifecycle` job below.
 concurrency:
-  group: lab-${{ inputs.project_name }}
+  group: lifecycle-test-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: false
 
 permissions:
   id-token: write
   contents: read
-
-env:
-  PROJECT_NAME: ${{ inputs.project_name }}
-  SUBDOMAIN: ${{ inputs.subdomain }}
-  # Known credentials for debugging a failed run (logging into ArgoCD/Grafana
-  # as test/test rather than digging a generated password out of a torn-down
-  # cluster), and a prerequisite if this workflow later grows a mode=resilience
-  # recreate cycle (spec 020) - a fresh runner regenerating a random
-  # postgres-app-password would desync from a backup-recovered database
-  # (generate-secrets.sh's own warning, ADR 0014). Accepted exposure: ArgoCD/
-  # Grafana admin password is the literal string "test", reachable over public
-  # HTTPS at argo.<subdomain>.<root-domain> for this run's ~1.5h - see ADR 0026.
-  FIXED_TEST_PASSWORDS: "true"
 
 jobs:
   # Static checks (spec 019/architecture.md §26), folded into this
@@ -58,6 +45,12 @@ jobs:
       contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # A shared TF_PLUGIN_CACHE_DIR was tried here and removed: measured over
+    # four runs it was consistently slower (7m45s without it, 8m55s-10m11s
+    # with), because restoring and saving the cache costs more than the plugin
+    # downloads it avoids. The runtime is Terragrunt's per-unit init overhead,
+    # not the downloads. Parallelising the unit loop is the fix if this needs
+    # to get faster.
     steps:
       - uses: actions/checkout@v4
 
@@ -254,112 +247,204 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  up:
+  # Two checks the Makefile already owns and no workflow ran until now:
+  # gitops-check diffs the rendered aws manifests against the committed golden
+  # baseline, and specs-check verifies the specs/ layout and its links. Both
+  # were confirmed to run with no AWS credentials at all, which is what lets
+  # them sit in fast validation.
+  validate-repo:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      # gitops-render-check.sh pipes the render through yq; nothing here runs
+      # terraform or terragrunt.
+      - name: Set up the lab toolchain
+        uses: ./.github/actions/setup-lab-tools
+        with:
+          scope: test
+          yq: "true"
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: "v4.1.4"
+
+      - run: make gitops-check
+
+      - run: make specs-check
+
+  # Both providers at once, each an independent up -> test -> down chain.
+  #
+  # Two explicit jobs rather than one matrix job. A matrix would name its legs
+  # after the whole row - "lifecycle (aws, vk-lab-ci, ci, true)" - which reads
+  # badly in the run graph, collapses both providers into one box, and changes
+  # whenever a matrix field is added. Two jobs cost ten duplicated lines and
+  # give two stable names and two readable tracks.
+  #
+  # Neither job needs the other, so they run at the same time, and a failure in
+  # one can never stop the other reaching its own teardown. That independence
+  # is the whole point; it is not an optimization.
+  lifecycle-aws:
+    needs: [validate-terraform, validate-gitops, validate-yaml,
+            validate-actions, validate-secrets, validate-repo]
+    # A called workflow can never hold more permissions than its caller grants,
+    # so id-token: write has to be restated here or OIDC fails inside it.
+    permissions:
+      id-token: write
+      contents: read
+    # The label is the trigger. It is addable only by someone with write access,
+    # which is what keeps an untrusted pull request away from these credentials;
+    # the head-repository test is the explicit belt to that braces.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (contains(github.event.pull_request.labels.*.name, 'ci:lifecycle') &&
+       github.event.pull_request.head.repo.full_name == github.repository)
+    # Matches lab.yml's group expression, which is what stops a run here racing
+    # a manual dispatch against the same Terraform state.
+    concurrency:
+      group: lab-aws-vk-lab-ci
+      cancel-in-progress: false
+    uses: ./.github/workflows/lifecycle-provider.yml
+    with:
+      provider: aws
+      project_name: vk-lab-ci
+      subdomain: awsci
+      production_tls: true
+      # Not github.ref_name: on a pull_request event that is "<n>/merge", which
+      # Argo CD cannot resolve. The head SHA is the revision under test.
+      target_revision: ${{ github.event.pull_request.head.sha || github.ref_name }}
+
+  lifecycle-civo:
+    needs: [validate-terraform, validate-gitops, validate-yaml,
+            validate-actions, validate-secrets, validate-repo]
+    permissions:
+      id-token: write
+      contents: read
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (contains(github.event.pull_request.labels.*.name, 'ci:lifecycle') &&
+       github.event.pull_request.head.repo.full_name == github.repository)
+    concurrency:
+      group: lab-civo-vk-civo-ci
+      cancel-in-progress: false
+    uses: ./.github/workflows/lifecycle-provider.yml
+    with:
+      provider: civo
+      project_name: vk-civo-ci
+      subdomain: civoci
+      # Staging certificates: a labeled run happens per pull request, and
+      # production orders would burn the Let's Encrypt duplicate-certificate
+      # quota this account shares with the personal lab.
+      production_tls: false
+      target_revision: ${{ github.event.pull_request.head.sha || github.ref_name }}
+
+  # The single required status check on main. Every other job feeds it, and it
+  # always reports - a required check that stays pending blocks a merge forever
+  # (constitution §11).
+  pr-gate:
     needs:
       - validate-terraform
       - validate-gitops
       - validate-yaml
       - validate-actions
       - validate-secrets
+      - validate-repo
+      - lifecycle-aws
+      - lifecycle-civo
+    if: always()
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-
-      - uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: "1.15.9"
-          terraform_wrapper: false
+          fetch-depth: 0
 
-      - name: Set up Terragrunt
-        run: |
-          TG_VERSION=1.1.3
-          curl -sSL -o terragrunt_linux_amd64 "https://github.com/gruntwork-io/terragrunt/releases/download/v${TG_VERSION}/terragrunt_linux_amd64"
-          curl -sSL -o SHA256SUMS "https://github.com/gruntwork-io/terragrunt/releases/download/v${TG_VERSION}/SHA256SUMS"
-          grep " terragrunt_linux_amd64$" SHA256SUMS | sha256sum -c -
-          chmod +x terragrunt_linux_amd64
-          sudo mv terragrunt_linux_amd64 /usr/local/bin/terragrunt
-
-      - uses: azure/setup-helm@v4
-        with:
-          version: "v4.1.4"
-
-      # lab.yml installs these too: its full-up/full-down targets reach the
-      # same fresh bootstrap-up/argo-up on a from-scratch project.
-      - name: Install dig and htpasswd
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq dnsutils apache2-utils
-
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
-          aws-region: eu-west-1
-          role-duration-seconds: 14400
-
-      - run: make full-up
-
-  test:
-    needs: up
-    runs-on: ubuntu-latest
-    timeout-minutes: 120
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
-          aws-region: eu-west-1
-          role-duration-seconds: 14400
-
-      - run: make test
-
-  # Always runs, even if `up` or `test` failed or the run was cancelled - a
-  # separate job with its own if: always(), not an always()-guarded step
-  # inside `up`, because a step-level always() does not run once the runner
-  # itself is torn down by a cancellation (the reason the failure-path
-  # question at the start of this workflow's design was decided this way).
-  down:
-    needs: [up, test]
-    # always() alone would also fire when the new validate-* jobs fail `up`
-    # out of the run entirely (needs.up.result == 'skipped') - full-down
-    # against a project this run never created is pointless at best; guard
-    # against it rather than relying on full-down's own idempotency.
-    if: always() && needs.up.result != 'skipped'
-    runs-on: ubuntu-latest
-    timeout-minutes: 120
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: "1.15.9"
-          terraform_wrapper: false
-
-      - name: Set up Terragrunt
-        run: |
-          TG_VERSION=1.1.3
-          curl -sSL -o terragrunt_linux_amd64 "https://github.com/gruntwork-io/terragrunt/releases/download/v${TG_VERSION}/terragrunt_linux_amd64"
-          curl -sSL -o SHA256SUMS "https://github.com/gruntwork-io/terragrunt/releases/download/v${TG_VERSION}/SHA256SUMS"
-          grep " terragrunt_linux_amd64$" SHA256SUMS | sha256sum -c -
-          chmod +x terragrunt_linux_amd64
-          sudo mv terragrunt_linux_amd64 /usr/local/bin/terragrunt
-
-      - uses: azure/setup-helm@v4
-        with:
-          version: "v4.1.4"
-
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
-          aws-region: eu-west-1
-          role-duration-seconds: 14400
-
-      - run: make full-down
+      - name: Decide the gate
         env:
-          # Always this run's own project_name, not a user-typed input - every
-          # dispatch of this workflow is expected to end in full-down (ADR
-          # 0026 decision 1), so there is no confirmation decision left to make.
-          CONFIRM_DESTROY: ${{ inputs.project_name }}
+          VALIDATE_RESULTS: >-
+            ${{ needs.validate-terraform.result }} ${{ needs.validate-gitops.result }}
+            ${{ needs.validate-yaml.result }} ${{ needs.validate-actions.result }}
+            ${{ needs.validate-secrets.result }} ${{ needs.validate-repo.result }}
+          LIFECYCLE_AWS: ${{ needs.lifecycle-aws.result }}
+          LIFECYCLE_CIVO: ${{ needs.lifecycle-civo.result }}
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        run: |
+          set -euo pipefail
+
+          # Counted, not just scanned: an expression that rendered empty would
+          # drop silently out of the word split and this job decides every
+          # merge, so a missing result must fail rather than be skipped over.
+          COUNT=0
+          for r in $VALIDATE_RESULTS; do
+            COUNT=$((COUNT + 1))
+            if [ "$r" != "success" ]; then
+              echo "::error::static validation did not pass ($VALIDATE_RESULTS)."
+              exit 1
+            fi
+          done
+          if [ "$COUNT" -ne 6 ]; then
+            echo "::error::expected 6 validation results, read $COUNT ($VALIDATE_RESULTS)."
+            exit 1
+          fi
+          echo "static validation passed."
+
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            if [ "$LIFECYCLE_AWS" != "success" ] || [ "$LIFECYCLE_CIVO" != "success" ]; then
+              echo "::error::lifecycle did not pass (aws=$LIFECYCLE_AWS civo=$LIFECYCLE_CIVO)."
+              exit 1
+            fi
+            echo "lifecycle passed on both providers."
+            exit 0
+          fi
+
+          if [ "$HEAD_REPO" != "$GITHUB_REPOSITORY" ]; then
+            echo "::error::this pull request comes from a fork. The lifecycle check needs AWS and Civo credentials, which a fork never receives - a maintainer must re-run it from a branch in this repository."
+            exit 1
+          fi
+
+          # Which files this pull request touches decides whether the heavy
+          # check is required at all. Without this, a one-line README fix could
+          # not merge without spending ~55 minutes on two clouds. Constitution
+          # §11 asks the gate to report success OR an explicit skip.
+          git fetch --quiet origin "$BASE_REF"
+          CHANGED="$(git diff --name-only "origin/${BASE_REF}...HEAD")"
+          echo "changed files:"
+          printf '%s\n' "$CHANGED" | sed 's/^/  /'
+
+          # This list is the merge-blocking surface of the repository.
+          if printf '%s\n' "$CHANGED" | grep -qE '^(terraform/|gitops/|scripts/|tests/|images/|go\.(mod|sum)$|Makefile$|\.github/(workflows|actions)/)'; then
+            INFRA=yes
+          else
+            INFRA=no
+          fi
+
+          if [ "$INFRA" = "no" ]; then
+            echo "no infrastructure change - the lifecycle check is not required for this pull request."
+            exit 0
+          fi
+
+          # Judged per provider, so the message names which cloud failed. Both
+          # are skipped together or run together, so either one answers the
+          # "was it labeled" question.
+          if [ "$LIFECYCLE_AWS" = "skipped" ] && [ "$LIFECYCLE_CIVO" = "skipped" ]; then
+            echo "::error::this pull request changes infrastructure, so it needs the full lifecycle check. Add the 'ci:lifecycle' label to run it."
+            exit 1
+          fi
+
+          GATE=0
+          for pair in "aws:$LIFECYCLE_AWS" "civo:$LIFECYCLE_CIVO"; do
+            case "$pair" in
+              *:success) echo "${pair%%:*}: came up, passed make test, and was destroyed." ;;
+              *)
+                echo "::error::the ${pair%%:*} lifecycle did not pass (${pair#*:})."
+                GATE=1 ;;
+            esac
+          done
+          exit "$GATE"

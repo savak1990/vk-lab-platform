@@ -127,6 +127,74 @@ No repository secret is involved. The run assumes `lab-role` through OIDC, and
 the Civo API token is decrypted from `secrets/civo-token.enc` with that same
 role, then masked in the log.
 
+### The merge gate
+
+`main` is protected: every change lands through a pull request, and squash is
+the only merge method.
+
+One status check, **`pr-gate`**, decides whether a pull request can merge. It
+always reports, never sits pending, and it works out from the changed files
+whether the expensive half is needed:
+
+| Your pull request | What runs | `pr-gate` |
+|---|---|---|
+| Documentation or specs only | The static checks | green, no cloud spend |
+| Touches `terraform/`, `gitops/`, `scripts/`, `tests/`, `images/`, `Makefile`, `go.mod`, or a workflow | The static checks | red — add the label |
+| …and carries the **`ci:lifecycle`** label | One EKS cluster and one Civo cluster are created, `make test` runs against both, and both are destroyed | green if all of that passed |
+
+Adding the label starts the run immediately against the pull request's current
+commit — no empty commit, no extra push. Removing and re-adding the label is how
+you re-run it. A run takes about 55 minutes and costs a little under one US
+dollar for both clouds.
+
+Remove the label while you iterate. Pushing during a run does not cancel it:
+cancelling would kill the teardown job and leave a cluster billing, so a second
+run queues behind the first instead.
+
+The two CI projects are `vk-lab-ci`/`awsci` on AWS and `vk-civo-ci`/`civoci`
+on Civo, both fixed. The Civo leg uses Let's Encrypt **staging** on purpose, so
+per-pull-request runs do not consume the production quota your personal lab
+shares.
+
+#### When a teardown fails
+
+Each provider tears itself down even when its bring-up failed, and
+`scripts/verify-no-leaks.sh` then asserts that nothing survived.
+
+A run that is **cancelled** is the case to know about. Terraform creates a
+resource and only then records it in state; kill it in between and the resource
+is live in AWS but absent from state. `require-unique-subdomain.sh` then refuses
+every later run for that project, so the gate stays red for everyone.
+
+A `full-down` does not fix this, and it is worth knowing why before you try it:
+`terraform destroy` reads state, not your account, so an empty state produces an
+empty destroy plan and the teardown reports success while deleting nothing.
+
+Run this instead, once per affected provider:
+
+```bash
+CONFIRM_DESTROY=vk-lab-ci PROJECT_NAME=vk-lab-ci SUBDOMAIN=awsci \
+  ./scripts/force-clean-ci.sh aws
+
+CONFIRM_DESTROY=vk-civo-ci PROJECT_NAME=vk-civo-ci SUBDOMAIN=civoci \
+  ./scripts/force-clean-ci.sh civo
+```
+
+It clears the stale state lock, deletes the orphaned zone, and deletes the
+orphaned `/<project>/` SSM parameters. That last one is the trap: the parameters
+are free, so nothing flags them, but the next `bootstrap-up` fails with
+`ParameterAlreadyExists` for a reason that looks unrelated.
+
+The script refuses if the project's own state still tracks the zone — there,
+`full-down` really is the right tool — and refuses any zone holding a record
+beyond its own NS and SOA. Then re-add the label.
+
+One more non-obvious case: GitHub keeps at most one pending job per concurrency
+group. Labelling a third pull request while two labelled runs are already in
+flight cancels its lifecycle job rather than queueing it. Nothing has been
+created at that point so nothing leaks, but `pr-gate` goes red — re-add the
+label once a run finishes.
+
 - **Account** — the shared secrets KMS key (`alias/lab-secrets`), the
   shared `lab-role` every project's GitHub Actions run assumes (scoped by
   naming convention, not per-project), the GitHub OIDC provider, and

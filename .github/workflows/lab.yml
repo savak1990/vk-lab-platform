@@ -16,22 +16,28 @@ on:
   workflow_dispatch:
     inputs:
       provider:
-        description: "PROVIDER: aws (EKS) or civo (k3s)."
+        description: "provider"
         type: choice
         options:
           - aws
           - civo
         default: aws
+      # Blank uses the provider's default - vk-lab-platform on aws,
+      # vk-civo-lab on civo. Lowercase alphanumeric and hyphen, 23 characters
+      # at most. A new name creates a wholly separate cluster and state bucket.
       project_name:
-        description: "PROJECT_NAME: blank uses the provider's default (aws vk-lab-platform, civo vk-civo-lab). Lowercase alphanumeric/hyphen, max 23 chars. A new name creates a wholly separate cluster and state bucket."
+        description: "project_name (blank = default)"
         type: string
         default: ""
+      # Blank uses the provider's default - lab on aws, civo on civo. Give a
+      # custom project its own; require-unique-subdomain.sh refuses a zone
+      # another project already owns, before any apply.
       subdomain:
-        description: "SUBDOMAIN: blank uses the provider's default (aws lab, civo civo). Give a custom project its own - require-unique-subdomain.sh refuses a zone another project already owns, before any apply."
+        description: "subdomain (blank = default)"
         type: string
         default: ""
       target:
-        description: make target
+        description: "target"
         type: choice
         options:
           - status
@@ -45,12 +51,16 @@ on:
           - full-up
           - full-down
         default: up
+      # civo only, inert on aws. Untick for a throwaway project: staging
+      # spares the production quota shared with the personal lab.
       production_tls:
-        description: "civo only, ignored on aws: order a real Let's Encrypt certificate. Untick for a throwaway project - staging spares the production quota shared with the personal lab."
+        description: "production_tls (civo only)"
         type: boolean
         default: true
+      # platform-down/full-down only. Type the RESOLVED project name exactly:
+      # what project_name holds, or the provider default when it is blank.
       confirm_destroy:
-        description: "For platform-down/full-down: type the RESOLVED project name exactly - what project_name holds, or the provider default (vk-lab-platform / vk-civo-lab) when it is blank."
+        description: "confirm_destroy (resolved project name)"
         type: string
         default: ""
 
@@ -107,56 +117,10 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - uses: hashicorp/setup-terraform@v3
+      - name: Set up the lab toolchain
+        uses: ./.github/actions/setup-lab-tools
         with:
-          terraform_version: "1.15.9" # matches every module's required_version
-          terraform_wrapper: false # the wrapper breaks terragrunt's own stdout/stderr capture
-
-      # No official Terragrunt setup action - ubuntu-latest doesn't ship it
-      # (unlike aws-cli/kubectl/helm/jq, confirmed already present). Pinned
-      # release binary, checksum-verified before trusting it.
-      - name: Set up Terragrunt
-        run: |
-          TG_VERSION=1.1.3
-          curl -sSL -o terragrunt_linux_amd64 "https://github.com/gruntwork-io/terragrunt/releases/download/v${TG_VERSION}/terragrunt_linux_amd64"
-          curl -sSL -o SHA256SUMS "https://github.com/gruntwork-io/terragrunt/releases/download/v${TG_VERSION}/SHA256SUMS"
-          grep " terragrunt_linux_amd64$" SHA256SUMS | sha256sum -c -
-          chmod +x terragrunt_linux_amd64
-          sudo mv terragrunt_linux_amd64 /usr/local/bin/terragrunt
-
-      # ubuntu-latest's preinstalled helm predates --server-side/--force-conflicts
-      # (argo-up.sh's root-application install, also used by argo-down.sh's
-      # `helm status`/`helm uninstall`). Pinned to the same version used to
-      # develop this repo.
-      - uses: azure/setup-helm@v4
-        with:
-          version: "v4.1.4"
-
-      # generate-secrets.sh calls htpasswd with no fallback whenever a project
-      # has no committed argocd-admin-password.bcrypt, and argo-up.sh's DNS
-      # wait can never succeed without dig. Both are reached by full-up/
-      # full-down on any project name other than the two committed ones.
-      - name: Install dig and htpasswd
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq dnsutils apache2-utils
-
-      - name: Set up the Civo CLI and yq
-        if: inputs.provider == 'civo'
-        run: |
-          CIVO_VERSION=1.5.5
-          CIVO_TAR="civo-${CIVO_VERSION}-linux-amd64.tar.gz"
-          curl -sSL -o "$CIVO_TAR" "https://github.com/civo/cli/releases/download/v${CIVO_VERSION}/${CIVO_TAR}"
-          curl -sSL -o civo-checksums.sha256 "https://github.com/civo/cli/releases/download/v${CIVO_VERSION}/civo-${CIVO_VERSION}-checksums.sha256"
-          grep " ${CIVO_TAR}$" civo-checksums.sha256 | sha256sum -c -
-          tar -xzf "$CIVO_TAR" civo
-          sudo mv civo /usr/local/bin/civo
-          # yq publishes its checksums in a multi-column format that needs a
-          # helper script to read, so the digest is pinned here directly.
-          YQ_VERSION=4.53.6
-          YQ_SHA256=c5f056448f973ae7d39b5401949648a78f2dc1947d6a8eb65be60d5c504b9385
-          curl -sSL -o yq "https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}/yq_linux_amd64"
-          echo "${YQ_SHA256}  yq" | sha256sum -c -
-          chmod +x yq
-          sudo mv yq /usr/local/bin/yq
+          provider: ${{ inputs.provider }}
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -242,17 +206,13 @@ jobs:
           go-version-file: go.mod
 
       # make test-kubeconfig reaches configure_test_kubeconfig, which builds the
-      # kubeconfig through the Civo CLI. yq is not on this path.
-      - name: Set up the Civo CLI
-        if: inputs.provider == 'civo'
-        run: |
-          CIVO_VERSION=1.5.5
-          CIVO_TAR="civo-${CIVO_VERSION}-linux-amd64.tar.gz"
-          curl -sSL -o "$CIVO_TAR" "https://github.com/civo/cli/releases/download/v${CIVO_VERSION}/${CIVO_TAR}"
-          curl -sSL -o civo-checksums.sha256 "https://github.com/civo/cli/releases/download/v${CIVO_VERSION}/civo-${CIVO_VERSION}-checksums.sha256"
-          grep " ${CIVO_TAR}$" civo-checksums.sha256 | sha256sum -c -
-          tar -xzf "$CIVO_TAR" civo
-          sudo mv civo /usr/local/bin/civo
+      # kubeconfig through the Civo CLI - but nothing here shells out to
+      # terraform, terragrunt or helm, hence scope: test.
+      - name: Set up the lab toolchain
+        uses: ./.github/actions/setup-lab-tools
+        with:
+          provider: ${{ inputs.provider }}
+          scope: test
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:

@@ -1,0 +1,184 @@
+name: lifecycle-provider
+
+# One provider's full lifecycle - full-up, test, full-down - as a reusable
+# workflow. lifecycle-test.yml calls it once per provider from a matrix, so the
+# up/test/down shape is written once rather than twice.
+#
+# The teardown guarantee lives here: `down` is a separate job with its own
+# if: always(), not an always()-guarded step inside `up`. A step-level always()
+# does not run once the runner itself is torn down by a cancellation.
+on:
+  workflow_call:
+    inputs:
+      provider:
+        description: "aws or civo."
+        type: string
+        required: true
+      project_name:
+        description: "PROJECT_NAME for this run. Also the CONFIRM_DESTROY value."
+        type: string
+        required: true
+      subdomain:
+        description: "SUBDOMAIN for this run - unique per project."
+        type: string
+        required: true
+      production_tls:
+        description: "civo only: order a real Let's Encrypt certificate rather than a staging one."
+        type: boolean
+        required: false
+        default: false
+      target_revision:
+        description: "The git revision Argo CD reconciles gitops/ from - a commit SHA on a pull request."
+        type: string
+        required: true
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  PROVIDER: ${{ inputs.provider }}
+  PROJECT_NAME: ${{ inputs.project_name }}
+  SUBDOMAIN: ${{ inputs.subdomain }}
+  # Known credentials for debugging a failed run, rather than digging a
+  # generated password out of a torn-down cluster. Accepted exposure: ArgoCD and
+  # Grafana admin is the literal string "test", reachable over public HTTPS for
+  # the run's lifetime - see ADR 0026.
+  FIXED_TEST_PASSWORDS: "true"
+
+jobs:
+  up:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up the lab toolchain
+        uses: ./.github/actions/setup-lab-tools
+        with:
+          provider: ${{ inputs.provider }}
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: eu-west-1
+          role-duration-seconds: 14400 # matches the role's own max_session_duration
+
+      # After the AWS credentials: the token is KMS ciphertext in the repo, so
+      # decrypting it needs the assumed role. ::add-mask:: must reach the step's
+      # own stdout, never a $(...) capture, and is per job.
+      - name: Register the Civo token mask
+        if: inputs.provider == 'civo'
+        run: bash -c 'source scripts/lib/region.sh; source scripts/lib/provider.sh; civo_token'
+
+      - run: make full-up
+        env:
+          # Argo CD otherwise reconciles gitops/ from main regardless of the
+          # revision under test, so a pull request could not test a GitOps change.
+          TARGET_REVISION: ${{ inputs.target_revision }}
+          # Read only by argo-up.sh's civo branch; inert on aws.
+          TLS_ISSUER: ${{ inputs.production_tls && 'letsencrypt-prod' || 'letsencrypt-staging' }}
+
+  test:
+    needs: up
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Set up the lab toolchain
+        uses: ./.github/actions/setup-lab-tools
+        with:
+          provider: ${{ inputs.provider }}
+          scope: test
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: eu-west-1
+          role-duration-seconds: 14400
+
+      - name: Register the Civo token mask
+        if: inputs.provider == 'civo'
+        run: bash -c 'source scripts/lib/region.sh; source scripts/lib/provider.sh; civo_token'
+
+      - run: make test
+        env:
+          # A staging certificate chains to a root no Go client trusts. An aws
+          # run and a production civo run leave this blank, so a real
+          # certificate regression still fails the suite.
+          E2E_INSECURE_TLS: ${{ (inputs.provider == 'civo' && !inputs.production_tls) && '1' || '' }}
+
+  # Runs even if up or test failed, or the run was cancelled. The guard against
+  # 'skipped' keeps a full-down from firing against a project this run never
+  # created - pointless at best, rather than relying on full-down's idempotency.
+  down:
+    needs: [up, test]
+    if: always() && needs.up.result != 'skipped'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up the lab toolchain
+        uses: ./.github/actions/setup-lab-tools
+        with:
+          provider: ${{ inputs.provider }}
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: eu-west-1
+          role-duration-seconds: 14400
+
+      - name: Register the Civo token mask
+        if: inputs.provider == 'civo'
+        run: bash -c 'source scripts/lib/region.sh; source scripts/lib/provider.sh; civo_token'
+
+      - run: make full-down
+        env:
+          # This run's own project name, never a typed input - every run of this
+          # workflow is expected to end in a teardown, so there is no
+          # confirmation decision left to make.
+          CONFIRM_DESTROY: ${{ inputs.project_name }}
+
+      # argo-down exports the serving certificate to an Advanced-tier
+      # SecureString that survives teardown on purpose, to spare an ACME order
+      # on the next bring-up. Advanced tier is billed per parameter per month,
+      # and a staging certificate is worth nothing to keep. The decision reads
+      # the stored certificate's own issuer rather than this run's
+      # production_tls input, so a teardown that ran with a different input
+      # cannot silently leave a billed parameter behind. Anything unreadable is
+      # kept, never deleted.
+      - name: Drop a staging TLS parameter left by full-down
+        if: always() && inputs.provider == 'civo'
+        run: |
+          set -uo pipefail
+          NAME="/${PROJECT_NAME}/persistent/civo/tls/platform-public"
+          VALUE="$(aws ssm get-parameter --region eu-west-1 --name "$NAME" \
+            --with-decryption --query 'Parameter.Value' --output text 2>/dev/null || true)"
+          if [ -z "$VALUE" ] || [ "$VALUE" = "None" ]; then
+            echo "no $NAME stored - nothing to do."
+            exit 0
+          fi
+          ISSUER="$(printf '%s' "$VALUE" | grep -m1 -E '^[[:space:]]+tls\.crt:' \
+            | sed 's/.*: *//' | base64 -d 2>/dev/null | openssl x509 -noout -issuer 2>/dev/null || true)"
+          case "$ISSUER" in
+            *STAGING*)
+              aws ssm delete-parameter --region eu-west-1 --name "$NAME"
+              echo "deleted $NAME - $ISSUER" ;;
+            "")
+              echo "kept $NAME - could not read its issuer." ;;
+            *)
+              echo "kept $NAME - $ISSUER" ;;
+          esac
+
+      # A successful terraform destroy is not proof of a successful shutdown.
+      # cluster-down.sh already sweeps the disposable layer; this covers the
+      # bootstrap and persistent layers below it, which nothing checked before.
+      - name: Verify no leaks
+        run: ./scripts/verify-no-leaks.sh "${{ inputs.provider }}"
