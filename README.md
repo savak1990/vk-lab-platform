@@ -160,9 +160,10 @@ commit — no empty commit, no extra push. Removing and re-adding the label is h
 you re-run it. A run takes about 55 minutes and costs a little under one US
 dollar for both clouds.
 
-Remove the label while you iterate. Pushing during a run does not cancel it:
-cancelling would kill the teardown job and leave a cluster billing, so a second
-run queues behind the first instead.
+Remove the label while you iterate. A push cancels the older run's static
+checks, so the new commit's checks start at once. It never cancels a lifecycle
+job: that would kill the teardown job and leave a cluster billing, so a second
+lifecycle run queues behind the first instead.
 
 The two CI projects are `vk-lab-ci`/`awsci` on AWS and `vk-civo-ci`/`civoci`
 on Civo, both fixed. The Civo leg uses Let's Encrypt **staging** on purpose, so

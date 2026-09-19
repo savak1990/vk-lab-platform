@@ -263,6 +263,12 @@ signature of a bring-up that died early, a populated one is something in use.
   pull request while two labeled runs are in flight cancels its `lifecycle` job
   rather than queueing it. No infrastructure exists at that point, so nothing
   leaks, but `pr-gate` goes red for a non-obvious reason.
+- There is no workflow-level concurrency group. It made every new run wait for
+  the previous one, so the merge box showed no checks for the new commit. Now a
+  newer run cancels only the older run's validate jobs, which also skips that
+  run's lifecycle jobs before they start. The lifecycle jobs keep their own
+  per-project groups with `cancel-in-progress: false`, which serialize the
+  Terraform state and never stop a teardown.
 - `lab.yml` still has no cleanup-on-failure step. A failed manual dispatch still
   leaves infrastructure standing; the guarantee added here covers CI runs only.
 
