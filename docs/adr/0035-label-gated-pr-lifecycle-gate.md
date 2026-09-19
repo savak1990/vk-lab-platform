@@ -96,6 +96,16 @@ Three rules keep the skip from becoming a hole:
   infrastructure, so `pr-gate` would demand a lifecycle result no label could
   ever produce.
 
+`validate-terraform` has a second, narrower skip. It is the slowest check, about
+8 minutes, and it reads only `terraform/`, `secrets/` (at Terragrunt parse time)
+and `lifecycle-test.yml`, which defines the job. A pull request that changes
+none of these - `gitops/`, `scripts/` or another workflow only, for example -
+skips it. The same three rules apply: the
+classifier's `terraform` output fails closed to `true`, and `pr-gate` accepts
+this skip for `validate-terraform` only. The lifecycle jobs use `!cancelled()`
+plus an explicit "no validate job failed" test, so a skipped `validate-terraform`
+does not skip the clusters, but a failed one still blocks them.
+
 ### 2a. The waiver is a label, and it is loud
 
 `ci:skip-lifecycle` passes the gate without the two-cloud run. It waives only
@@ -253,6 +263,12 @@ signature of a bring-up that died early, a populated one is something in use.
   pull request while two labeled runs are in flight cancels its `lifecycle` job
   rather than queueing it. No infrastructure exists at that point, so nothing
   leaks, but `pr-gate` goes red for a non-obvious reason.
+- There is no workflow-level concurrency group. It made every new run wait for
+  the previous one, so the merge box showed no checks for the new commit. Now a
+  newer run cancels only the older run's validate jobs, which also skips that
+  run's lifecycle jobs before they start. The lifecycle jobs keep their own
+  per-project groups with `cancel-in-progress: false`, which serialize the
+  Terraform state and never stop a teardown.
 - `lab.yml` still has no cleanup-on-failure step. A failed manual dispatch still
   leaves infrastructure standing; the guarantee added here covers CI runs only.
 

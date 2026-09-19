@@ -95,6 +95,9 @@ Non-goals:
 12. Direct pushes, force-pushes and deletion of `main` MUST be rejected
     (SHARED-017 R1, R2).
 13. Squash MUST be the only available merge method.
+14. `validate-terraform` MUST skip when no non-Markdown file under `terraform/`
+    or `secrets/` changed, and `.github/workflows/lifecycle-test.yml` did not
+    change. That skip MUST NOT skip the lifecycle jobs, and `pr-gate` MUST reject it in any other case.
 
 ## 4. Deviations from the specs this implements
 
@@ -140,6 +143,8 @@ Non-goals:
    `pr-gate` is red. This is the proof for Requirement 7.
 7. `git push origin main` is rejected once branch protection is applied.
 8. The repository offers squash as the only merge method.
+9. A pull request touching only `gitops/` skips `validate-terraform`, runs the
+   other five validate jobs, and passes `pr-gate` with a waiver.
 
 ## 6. Evidence
 

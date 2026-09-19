@@ -151,14 +151,19 @@ a spec is exactly the leak it exists for, and `specs-check`, which catches a
 broken spec link or a status letter that no longer matches. One non-Markdown file
 anywhere in the pull request runs everything.
 
+`validate-terraform` also skips when the pull request changes nothing under
+`terraform/`, `secrets/` or `lifecycle-test.yml`. A `gitops/`-only change, for example,
+saves those ~9 minutes. The lifecycle check still runs when labeled.
+
 Adding the label starts the run immediately against the pull request's current
 commit — no empty commit, no extra push. Removing and re-adding the label is how
 you re-run it. A run takes about 55 minutes and costs a little under one US
 dollar for both clouds.
 
-Remove the label while you iterate. Pushing during a run does not cancel it:
-cancelling would kill the teardown job and leave a cluster billing, so a second
-run queues behind the first instead.
+Remove the label while you iterate. A push cancels the older run's static
+checks, so the new commit's checks start at once. It never cancels a lifecycle
+job: that would kill the teardown job and leave a cluster billing, so a second
+lifecycle run queues behind the first instead.
 
 The two CI projects are `vk-lab-ci`/`awsci` on AWS and `vk-civo-ci`/`civoci`
 on Civo, both fixed. The Civo leg uses Let's Encrypt **staging** on purpose, so
