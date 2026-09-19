@@ -14,7 +14,7 @@ depends_on: ["HETZ-016", "HETZ-037", "HETZ-050"]
 blocked_by: []
 supersedes: []
 created: "2026-09-11"
-updated: "2026-09-19"
+updated: "2026-09-20"
 completed: ""
 ---
 
@@ -55,7 +55,7 @@ script).
 - `argo-up.sh:80-135` `civo_resolve_inputs`: a 10-name SSM batch at the `get-parameters` cap. `:177-193` `civo_wait_for_lb_ip` compares the Service IP with the reserved IP. `:195-216` `civo_wait_for_dns`. `:217` `ensure_ca_secret`. `:336-382` `install_argocd` drops spot affinity when `PROVIDER != civo`. `:403-424` `civo_install_root_application` passes `reservedIp` and `firewallId`.
 - After HETZ-016 these branches read `[ "$PROVIDER" != aws ]` and the functions carry no `civo_` prefix; the SSM TLS path is `/${project}/persistent/${PROVIDER}/tls/platform-public`.
 - kubeadm's own CoreDNS Deployment tolerates `CriticalAddonsOnly` and the control-plane taint only, not `uninitialized`; Cilium's DaemonSet (HETZ-037) tolerates every taint; the CCM chart `hcloud/hcloud-cloud-controller-manager` tolerates `uninitialized`/`not-ready` and, with `networking.enabled`, runs `hostNetwork: true` with `dnsPolicy: Default` (chart `deployment.yaml`), so CoreDNS turns `Running` the moment the CCM clears the taint — this ordering carries no chicken-and-egg deadlock on this bootstrap path. https://kubernetes.io/blog/2025/02/14/cloud-controller-manager-chicken-egg-problem/
-- HETZ-035 initialises the control plane with `cloud-provider: external` and pod CIDR `10.244.0.0/16`; HETZ-037 installs Cilium in VXLAN mode right after. By the time `argo-up` starts, every node is `Ready` and still carries `node.cloudprovider.kubernetes.io/uninitialized:NoSchedule`.
+- HETZ-030's control-plane cloud-init initialises the control plane with `cloud-provider: external` and pod CIDR `10.244.0.0/16` and installs Cilium in VXLAN mode at first boot; HETZ-035 joins the workers; HETZ-037 waits for every node Ready. By the time `argo-up` starts, every node is `Ready` and still carries `node.cloudprovider.kubernetes.io/uninitialized:NoSchedule`.
 
 ## 4. Design and contracts
 
@@ -143,3 +143,6 @@ none beyond the dump gate, which fails closed.
 - 2026-09-11 — reviewed and approved by the user; promoted to READY.
 - 2026-09-19 — rewritten for kubeadm: CoreDNS evidence from kubeadm
   manifests; `argo-down` moved to HETZ-047; depends on HETZ-037.
+- 2026-09-20 — review fix: §3 credits the control-plane cloud-init
+  (HETZ-030) with the init and the Cilium install, HETZ-035 with the
+  worker joins and HETZ-037 with the Ready wait.

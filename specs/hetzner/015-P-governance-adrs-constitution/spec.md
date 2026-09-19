@@ -14,7 +14,7 @@ depends_on: []
 blocked_by: []
 supersedes: []
 created: "2026-09-11"
-updated: "2026-09-19"
+updated: "2026-09-20"
 completed: ""
 ---
 
@@ -59,7 +59,7 @@ bootstrap script design (HETZ-035).
 
 Each ADR has the status Proposed until the PR merges.
 
-- **0032 Hetzner as a third disposable target with a kubeadm-bootstrapped control plane.** Hetzner sells no Kubernetes. Terraform creates servers whose cloud-init installs kubeadm, kubelet and containerd with fixed versions and nothing else; no Kubernetes object is created by Terraform or cloud-init. The control plane is Disposable. Because a node the CCM has not initialised schedules nothing, not even CoreDNS, `argo-up` helm-installs the hcloud CCM before Argo CD; this release joins Argo CD in the existing untracked-bootstrap class (`CLAUDE.md` already exempts the Argo CD install). The CSI driver and every other controller are Argo Applications. The project is `vk-hetzner-lab`, subdomain `hetzner`, stacks `persistent-hetzner`/`cluster-hetzner`, own state bucket, shared account layer. Rejected: `kube-hetzner` (Terraform installs charts), the standalone Hetzner installer (no Terraform state), IPv6-only nodes (SSM has no IPv6 endpoint).
+- **0032 Hetzner as a third disposable target with a kubeadm-bootstrapped control plane.** Hetzner sells no Kubernetes. Terraform creates servers whose cloud-init installs kubeadm, kubelet and containerd with fixed versions, and on the control plane runs `kubeadm init` and the CNI install at first boot. The ADR must argue why Terraform rendering `user_data` that runs `kubeadm init` at first boot does not breach the ownership rule: Terraform creates no Kubernetes object, holds no kubeconfig and configures no Kubernetes or Helm provider — it writes a server's boot script, and the cluster is created by the node's own first boot, which is the node's work and not Terraform's (decisions.md §3, "Bootstrap driver"). The control plane is Disposable. Because a node the CCM has not initialised schedules nothing, not even CoreDNS, `argo-up` helm-installs the hcloud CCM before Argo CD; this release joins Argo CD in the existing untracked-bootstrap class (`CLAUDE.md` already exempts the Argo CD install). The CSI driver and every other controller are Argo Applications. The project is `vk-hetzner-lab`, subdomain `hetzner`, stacks `persistent-hetzner`/`cluster-hetzner`, own state bucket, shared account layer. Rejected: `kube-hetzner` (Terraform installs charts), the standalone Hetzner installer (no Terraform state), IPv6-only nodes (SSM has no IPv6 endpoint).
 - **0030 amendment "Provider API tokens".** Generalise the title from Civo to provider tokens. Hetzner tokens are per project with Read or Read&Write only. The Hetzner token must live in-cluster as `kube-system/hcloud` because the CCM and CSI read it. Mitigation: a dedicated Hetzner project holds nothing but this lab, so a Secret reader gains the lab project and nothing else; `argo-up` creates the Secret untracked; rotation is delete-token, re-encrypt, commit, `argo-up`. The Civo text stays as written.
 - **0029 note.** On self-managed kubeadm clusters the API server accepts `apiServer.extraArgs` `service-account-issuer=<public URL>` and `service-account-jwks-uri`, so IAM OIDC federation is possible on Hetzner. Roles Anywhere is kept because it reuses CIVO-080 to CIVO-110 unchanged and keeps one identity mechanism across non-EKS targets. The note records federation as the alternative and names the cost of switching (six DONE specs).
 - **0024 note.** Hetzner location `nbg1`, network zone `eu-central`, declared in `root.hcl` (`hcloud_location`) and `scripts/lib/region.sh` (`HCLOUD_LOCATION`). AWS region unchanged.
@@ -123,7 +123,7 @@ None. HETZ-010 and HETZ-020 run in parallel. HETZ-025 and HETZ-140 wait for this
 
 ## 8. Acceptance criteria
 
-- ADR 0032 states who installs the CCM, why Argo cannot, and why the bootstrap script creating a kubeadm cluster does not breach the ownership rule.
+- ADR 0032 states who installs the CCM, why Argo cannot, and why a Terraform-rendered `user_data` that runs `kubeadm init` at the node's first boot does not breach the ownership rule.
 - ADR 0030's amendment names the in-cluster Secret, the project-scoping mitigation, and the rotation steps.
 - §20's Civo column is semantically identical to the previous §20 text; a reviewer confirms it row by row.
 - `docs/civo-high-level-design.md` §3 and §5 have a Hetzner column that matches `specs/hetzner/architecture.md` §2 and §4.
@@ -158,3 +158,6 @@ One PR. A revert removes the documents. Nothing depends on them at run time.
 - 2026-09-11 — created as DRAFT.
 - 2026-09-11 — reviewed and approved by the user; promoted to READY.
 - 2026-09-19 — kubeadm wording.
+- 2026-09-20 — review fix: ADR 0032 must argue the ownership rule against
+  the boot-time `kubeadm init` Terraform renders into `user_data`, not
+  against a bootstrap script; §8 matches.

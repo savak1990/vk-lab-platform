@@ -107,14 +107,18 @@ the report.
    `controlPlaneEndpoint: 10.0.1.10:6443`, `apiServer.certSANs: [<public
    ip>]`. In the product these steps are the control plane's own
    cloud-init (HETZ-030); the spike may run them by hand or from a
-   cloud-init copy of `control-plane.yaml.tftpl` — either way, record the
-   time from create to `/var/lib/lab/cp-bootstrap-done`, because HETZ-035's
-   wait budget is sized against it. Fetch `/etc/kubernetes/admin.conf` over
+   cloud-init copy of `control-plane.yaml.tftpl`. On the cloud-init path,
+   record the time from create to `/var/lib/lab/cp-bootstrap-done`; on the
+   by-hand path, record the time from create to the control plane turning
+   `Ready`. Either figure is what HETZ-035's wait budget is sized
+   against. Fetch `/etc/kubernetes/admin.conf` over
    SSH. Confirm the node is
    `NotReady` with the `node.cloudprovider.kubernetes.io/uninitialized`
    taint and CoreDNS `Pending`. `helm install cilium cilium/cilium
    --version 1.20.2 -n kube-system --set ipam.mode=kubernetes --set
-   kubeProxyReplacement=false`; confirm the node turns `Ready` while
+   routingMode=tunnel --set tunnelProtocol=vxlan --set
+   kubeProxyReplacement=false --set operator.replicas=1`, the product's
+   own value set (HETZ-037); confirm the node turns `Ready` while
    CoreDNS stays `Pending`. Create Secret `kube-system/hcloud`. `helm
    install hccm hcloud/hcloud-cloud-controller-manager -n kube-system --set
    networking.enabled=true --set networking.clusterCIDR=10.244.0.0/16`.
@@ -236,3 +240,6 @@ Console and record why.
 - 2026-09-20 — option C: item 1 records the boot-to-marker time, because
   the product runs init and Cilium from the control plane's cloud-init
   (decisions.md §3, "Bootstrap driver").
+- 2026-09-20 — review fix: item 1's Cilium values match the product's
+  (`routingMode=tunnel`, `tunnelProtocol=vxlan`, `operator.replicas=1`),
+  and the timing to record is stated per path.

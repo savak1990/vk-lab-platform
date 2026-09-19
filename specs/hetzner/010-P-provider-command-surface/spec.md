@@ -80,9 +80,8 @@ refactor (HETZ-016).
 1. Capture golden `make -n` output for the 16 lifecycle targets with `PROVIDER` unset, `PROVIDER=aws`, and `PROVIDER=civo`.
 2. Edit the guard and the defaults. Add the hetzner arms.
 3. Extend `provider.sh`. Run `shellcheck`.
-4. Extend the secret path rule. Encrypt and commit the token.
-5. Diff the goldens. All three must be empty.
-6. Record `PROVIDER=hetzner make -n cluster-up`, `persistent-up`, `kubeconfig`, `test-kubeconfig` in §14.
+4. Diff the goldens. All three must be empty.
+5. Record `PROVIDER=hetzner make -n cluster-up`, `persistent-up`, `kubeconfig`, `test-kubeconfig` in §14.
 
 ## 7. Dependencies and blockers
 
@@ -127,4 +126,8 @@ One PR together with `specs/hetzner/`. A revert restores the previous Makefile a
 - 2026-09-11 — created as DRAFT.
 - 2026-09-11 — reviewed and approved by the user; promoted to READY.
 - 2026-09-19 — kubeadm wording.
+- 2026-09-20 — review fix: §6's "extend the secret path rule" step is
+  deleted and the rest renumbered; §4 and §5 already state that
+  `SECRET_SCOPE=global` covers `hetzner-token` with no path-rule or
+  `.gitignore` edit.
 - 2026-09-20 — the committed ciphertext is `secrets/hetzner-token.enc`, account-global like `civo-token.enc`, read with `SECRET_SCOPE=global`; no path-rule or `.gitignore` edit is needed. The helper name `hcloud_token()` and the env var `HCLOUD_TOKEN` are unchanged.
