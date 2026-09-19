@@ -1,6 +1,6 @@
 ---
 id: "HETZ-160"
-title: "Observability stack on Hetzner: control-plane scrapes enabled, ARM images, hcloud-volumes with the 10 GB floor"
+title: "Observability stack on Hetzner: control-plane scrapes enabled, x86 images, hcloud-volumes with the 10 GB floor"
 status: "READY"
 priority: "P1"
 milestone: "M1"
@@ -10,11 +10,11 @@ recommended_model_tier: "standard"
 model_rationale: "Values-level changes on the shared stack; the self-managed control plane inverts one Civo amendment and adds scrape targets"
 effort_estimate: "One session (4–6 h)"
 estimate_confidence: "medium"
-depends_on: ["HETZ-030", "HETZ-050", "HETZ-085", "CIVO-160"]
+depends_on: ["HETZ-037", "HETZ-050", "HETZ-085", "CIVO-160"]
 blocked_by: []
 supersedes: []
 created: "2026-09-11"
-updated: "2026-09-11"
+updated: "2026-09-19"
 completed: ""
 ---
 
@@ -47,13 +47,23 @@ optional CCM/CSI metrics.
   and gates Karpenter assets on `aws`. Its review amendment keeps
   control-plane scrapes off on Civo because managed k3s hides the control
   plane. That amendment does not apply here.
-- HETZ-030 starts k3s with `--kube-controller-manager-arg bind-address=<cp private ip>`
-  and `--kube-scheduler-arg bind-address=<cp private ip>`, keeps the
-  bundled metrics-server, disables `local-storage`, and uses SQLite, so
-  there is no etcd.
+- HETZ-035 sets `controllerManager.extraArgs`/`scheduler.extraArgs`
+  `bind-address=10.0.1.10`, `etcd.local.extraArgs`
+  `listen-metrics-urls=http://10.0.1.10:2381` and
+  `KubeProxyConfiguration.metricsBindAddress=10.0.1.10:10249`, so
+  scheduler, controller-manager, etcd and kube-proxy metrics are
+  scrapeable on the private IP.
+- kubeadm ships no metrics-server; the shared `metrics-server`
+  Application is enabled on hetzner (`metricsServerEnabled` returns
+  true) with `--kubelet-insecure-tls`, because kubeadm's kubelet
+  serving certificates are self-signed unless `serverTLSBootstrap` is
+  set; the render check requires exactly one metrics-server Deployment.
+- Stacked etcd runs as a static pod on the cp; `kubeEtcd.enabled: true`
+  scrapes `http://10.0.1.10:2381/metrics` (no client cert needed on the
+  http metrics URL).
 - HETZ-020 measured allocatable memory on CAX21 (record the figure here;
   research.md estimates about 7 GiB per node).
-- Every image in the stack publishes `linux/arm64` (research.md, ARM row).
+- Every image in the stack publishes `linux/amd64` (research.md, x86 row).
 - `hcloud-volumes` minimum size is 10 GB. The Grafana and Alertmanager
   claims of 1 Gi become 10 GB volumes each.
 - Civo's injected `otel-collector` DaemonSet does not exist on Hetzner.
@@ -71,21 +81,25 @@ optional CCM/CSI metrics.
   both with `endpoints: [<cp private ip>]` from `argo-up` (SSM
   `/<project>/cluster-hetzner/k8s/control_plane_private_ip`) and
   `serviceMonitor.https: true`, `insecureSkipVerify: true`;
-  `kubeEtcd.enabled: false` (SQLite); `kubeProxy` per the k3s default
-  (k3s runs kube-proxy with flannel; try `enabled: true` with
-  `endpoints` = the three private IPs, record the result).
-- `observability.kubeletInsecureTls`: test `false` first; k3s kubelet
-  serving certs are signed by the k3s server CA which Prometheus does not
-  trust, so `true` is the expected outcome. Record it.
+  `kubeEtcd.enabled: true`, scraping `http://10.0.1.10:2381/metrics`
+  (stacked etcd, no client cert needed on the http metrics URL);
+  `kubeProxy` per the kubeadm default (kube-proxy stays,
+  `kubeProxyReplacement=false`; Cilium runs VXLAN; try `enabled: true`
+  with `endpoints` = the three private IPs, record the result).
+- `observability.kubeletInsecureTls: true`, because kubeadm's kubelet
+  serving certificates are self-signed unless `serverTLSBootstrap` is
+  set, which this package does not set, so Prometheus does not trust
+  them otherwise. Record confirmation.
 - node-exporter runs on all three nodes. The control-plane node carries
   no taint (HETZ-030), so no toleration is needed; add
   `tolerations: [{operator: Exists}]` anyway for the day HETZ-170 taints
   anything.
-- metrics-server: the k3s bundled one stays (decisions.md §3). The shared
-  `metrics-server.yaml` Application must not render on hetzner; gate it
-  with `observability.metricsServer.enabled`, `false` on hetzner, `true`
-  elsewhere. The render check forbids a second `metrics-server`
-  Deployment on hetzner.
+- metrics-server: kubeadm ships no metrics-server; the shared
+  `metrics-server` Application is enabled on hetzner
+  (`metricsServerEnabled` returns true) with `--kubelet-insecure-tls`,
+  because kubeadm's kubelet serving certificates are self-signed unless
+  `serverTLSBootstrap` is set; the render check requires exactly one
+  metrics-server Deployment.
 - Karpenter ServiceMonitor, alert and dashboard stay gated to `aws`.
 - Optional: enable `HCLOUD_METRICS_ENABLED` on the CCM (`argo-up` helm
   values) and the CSI chart's `metrics.enabled`, with ServiceMonitors under
@@ -118,7 +132,7 @@ values), `scripts/argo-up.sh` (control-plane private IP relay),
 
 ## 7. Dependencies and blockers
 
-HETZ-030 (bind flags, metrics-server decision), HETZ-050 (storage class,
+HETZ-037 (Cilium, kube-proxy retained), HETZ-050 (storage class,
 render sets), HETZ-085 (Grafana admin secret through ESO), CIVO-160
 (hoisted stack and values keys).
 
@@ -127,7 +141,8 @@ render sets), HETZ-085 (Grafana admin secret through ESO), CIVO-160
 - All observability pods Ready on hetzner; Grafana reachable through HTTPS
   (after HETZ-070); CNPG, Argo and control-plane dashboards populated.
 - `kube-controller-manager` and `kube-scheduler` targets are `up`.
-- Exactly one metrics-server Deployment exists (`kube-system`, k3s).
+- Exactly one metrics-server Deployment exists (the shared
+  `metrics-server` Application, `kube-system`).
 - aws and civo golden diffs are empty.
 
 ## 9. Validation
@@ -147,12 +162,12 @@ Revert the values. Argo prunes. Volumes are deleted with the PVCs.
 
 ## 12. Risks and unresolved questions
 
-- k3s exposes scheduler and controller-manager metrics with
-  authentication; the ServiceMonitor uses the Prometheus ServiceAccount
-  bearer token and needs the `system:monitoring`-style RBAC that
-  kube-prometheus-stack ships. If k3s rejects it, fall back to
-  `--kube-scheduler-arg authentication-skip-lookup=true` in HETZ-030 and
-  record the change there.
+- The self-managed control plane exposes scheduler and
+  controller-manager metrics with authentication; the ServiceMonitor
+  uses the Prometheus ServiceAccount bearer token and needs the
+  `system:monitoring`-style RBAC that kube-prometheus-stack ships. If
+  that rejects it, fall back to `authentication-skip-lookup=true` under
+  `scheduler.extraArgs` in HETZ-035 and record the change there.
 - The 10 GB floor means every future small PVC costs 0.57 EUR/month;
   note it in `research.md`.
 
@@ -164,3 +179,6 @@ Revert the values. Argo prunes. Volumes are deleted with the PVCs.
 
 - 2026-09-11 — created as DRAFT.
 - 2026-09-11 — reviewed and approved by the user; promoted to READY.
+- 2026-09-19 — kubeadm: stacked etcd scraped, kube-proxy kept,
+  metrics-server Argo-installed; depends on HETZ-037 (Cilium) instead
+  of HETZ-030; x86 images.

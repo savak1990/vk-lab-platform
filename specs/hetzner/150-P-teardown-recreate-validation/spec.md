@@ -14,7 +14,7 @@ depends_on: ["HETZ-070", "HETZ-120", "HETZ-130"]
 blocked_by: []
 supersedes: []
 created: "2026-09-11"
-updated: "2026-09-11"
+updated: "2026-09-19"
 completed: ""
 ---
 
@@ -71,7 +71,7 @@ Steps, each with its command and result recorded:
 
 1. `PROVIDER=aws make status` and `PROVIDER=civo make status` (before).
 2. `PROVIDER=hetzner make full-up`.
-3. Verify: 3 nodes Ready, no `uninitialized` taint, Argo `Synced/Healthy`,
+3. Verify: 2 fixed nodes Ready, 0 autoscaled nodes present, no `uninitialized` taint, Argo `Synced/Healthy`,
    Envoy LB with an IPv4, `argo.hetzner.<root-domain>` resolves to it,
    wildcard certificate `Ready` from the production issuer, ESO Secrets
    synced, CNPG `Healthy`, Grafana reachable, `hcloud load-balancer list`
@@ -132,7 +132,7 @@ needed.
 - A volume stuck `attached` after a force-deleted pod delays or blocks
   server deletion. Record the detach time.
 - The control-plane server's primary IPv4 changes on every `make up`; the
-  kubeconfig, the firewall `--tls-san` and the DNS all follow it. Verify
+  kubeconfig, `apiServer.certSANs` and the DNS all follow it. Verify
   that nothing cached the old address (HETZ-040 context rewrite).
 - Hourly billing rounds up; a two-cycle run bills at least 2 h per
   resource.
@@ -146,3 +146,4 @@ needed.
 
 - 2026-09-11 — created as DRAFT. Not run.
 - 2026-09-11 — reviewed and approved by the user; promoted to READY.
+- 2026-09-19 — kubeadm wording.

@@ -14,7 +14,7 @@ depends_on: []
 blocked_by: []
 supersedes: []
 created: "2026-09-11"
-updated: "2026-09-11"
+updated: "2026-09-19"
 completed: ""
 ---
 
@@ -24,9 +24,10 @@ completed: ""
 
 An accepted decision exists for every rule that the Hetzner target bends. The
 architecture document, the constitution, and the Civo high-level design all
-describe three execution targets. As a result, HETZ-030 (cloud-init installs
-k3s), HETZ-045 (`argo-up` helm-installs the CCM), and HETZ-080 (per-project
-Roles Anywhere under a per-provider name) do not silently bypass ADR 0029,
+describe three execution targets. As a result, HETZ-030 (cloud-init
+prepares the nodes), HETZ-035 (kubeadm creates the cluster), HETZ-045
+(`argo-up` helm-installs the CCM), and HETZ-080 (per-project Roles
+Anywhere under a per-provider name) do not silently bypass ADR 0029,
 ADR 0030, constitution §3/§5/§8/§14/§16/§20, or the ownership rule in
 `CLAUDE.md`.
 
@@ -43,7 +44,7 @@ The scope includes these items:
 - `terraform/live/persistent/README.md` line for `persistent-hetzner`.
 
 The scope does not include code, the identity refactor (HETZ-018), or the
-cloud-init design (HETZ-030).
+bootstrap script design (HETZ-035).
 
 ## 3. Current state / evidence
 
@@ -58,9 +59,9 @@ cloud-init design (HETZ-030).
 
 Each ADR has the status Proposed until the PR merges.
 
-- **0032 Hetzner as a third disposable target with a self-bootstrapped k3s control plane.** Hetzner sells no Kubernetes. Terraform creates servers whose cloud-init installs the k3s binary with fixed flags and nothing else; no Kubernetes object is created by Terraform or cloud-init. The control plane is Disposable. Because a node the CCM has not initialised schedules nothing, not even CoreDNS, `argo-up` helm-installs the hcloud CCM before Argo CD; this release joins Argo CD in the existing untracked-bootstrap class (`CLAUDE.md` already exempts the Argo CD install). The CSI driver and every other controller are Argo Applications. The project is `vk-hetzner-lab`, subdomain `hetzner`, stacks `persistent-hetzner`/`cluster-hetzner`, own state bucket, shared account layer. Rejected: `kube-hetzner` (Terraform installs charts), `hetzner-k3s` (no Terraform state), IPv6-only nodes (SSM has no IPv6 endpoint).
+- **0032 Hetzner as a third disposable target with a kubeadm-bootstrapped control plane.** Hetzner sells no Kubernetes. Terraform creates servers whose cloud-init installs kubeadm, kubelet and containerd with fixed versions and nothing else; no Kubernetes object is created by Terraform or cloud-init. The control plane is Disposable. Because a node the CCM has not initialised schedules nothing, not even CoreDNS, `argo-up` helm-installs the hcloud CCM before Argo CD; this release joins Argo CD in the existing untracked-bootstrap class (`CLAUDE.md` already exempts the Argo CD install). The CSI driver and every other controller are Argo Applications. The project is `vk-hetzner-lab`, subdomain `hetzner`, stacks `persistent-hetzner`/`cluster-hetzner`, own state bucket, shared account layer. Rejected: `kube-hetzner` (Terraform installs charts), the standalone Hetzner installer (no Terraform state), IPv6-only nodes (SSM has no IPv6 endpoint).
 - **0030 amendment "Provider API tokens".** Generalise the title from Civo to provider tokens. Hetzner tokens are per project with Read or Read&Write only. The Hetzner token must live in-cluster as `kube-system/hcloud` because the CCM and CSI read it. Mitigation: a dedicated Hetzner project holds nothing but this lab, so a Secret reader gains the lab project and nothing else; `argo-up` creates the Secret untracked; rotation is delete-token, re-encrypt, commit, `argo-up`. The Civo text stays as written.
-- **0029 note.** On self-managed k3s the API server accepts `--kube-apiserver-arg=service-account-issuer=<public URL>` and `service-account-jwks-uri`, so IAM OIDC federation is possible on Hetzner. Roles Anywhere is kept because it reuses CIVO-080 to CIVO-110 unchanged and keeps one identity mechanism across non-EKS targets. The note records federation as the alternative and names the cost of switching (six DONE specs).
+- **0029 note.** On self-managed kubeadm clusters the API server accepts `apiServer.extraArgs` `service-account-issuer=<public URL>` and `service-account-jwks-uri`, so IAM OIDC federation is possible on Hetzner. Roles Anywhere is kept because it reuses CIVO-080 to CIVO-110 unchanged and keeps one identity mechanism across non-EKS targets. The note records federation as the alternative and names the cost of switching (six DONE specs).
 - **0024 note.** Hetzner location `nbg1`, network zone `eu-central`, declared in `root.hcl` (`hcloud_location`) and `scripts/lib/region.sh` (`HCLOUD_LOCATION`). AWS region unchanged.
 - **0002 note.** Zone `hetzner.<root-domain>`, `txtOwnerId=vk-hetzner-lab`.
 - **0022 note.** Admin kubeconfig fetched over SSH with a KMS-encrypted key; test identity via ServiceAccount token, as on Civo.
@@ -82,9 +83,9 @@ not the AWS `Project=` capitalised form. This spec decides that mapping;
 HETZ-025/030 apply it. Resources the CCM and CSI create carry the labels the
 controllers set; HETZ-040's sweep must also match those.
 
-`docs/architecture.md` §10a: add a Hetzner column (control plane: platform
-k3s; ingress: hcloud LB + Envoy TLS; storage: `hcloud-volumes`; identity:
-Roles Anywhere; capacity: fixed three CAX21).
+`docs/architecture.md` §10a: add a Hetzner column (control plane:
+kubeadm; ingress: hcloud LB + Envoy TLS; storage: `hcloud-volumes`;
+identity: Roles Anywhere; capacity: fixed `cx33` nodes).
 
 `docs/civo-high-level-design.md`: §3 stage table gains a Hetzner column; §5
 contract gains a "Hetzner source" column copied from
@@ -100,7 +101,7 @@ sentence.
 
 ## 5. Files/components affected
 
-- `docs/adr/0032-hetzner-self-bootstrapped-k3s-target.md` (new).
+- `docs/adr/00NN-hetzner-kubeadm-target.md` (new; NN assigned on landing).
 - `docs/adr/0029-…`, `0030-…`, `0024-…`, `0002-…`, `0022-…` (edit, dated notes).
 - `specs/shared/000-D-constitution/spec.md` §20 (rewrite as a table).
 - `docs/architecture.md` §10a (edit).
@@ -122,7 +123,7 @@ None. HETZ-010 and HETZ-020 run in parallel. HETZ-025 and HETZ-140 wait for this
 
 ## 8. Acceptance criteria
 
-- ADR 0032 states who installs the CCM, why Argo cannot, and why cloud-init creating a k3s process does not breach the ownership rule.
+- ADR 0032 states who installs the CCM, why Argo cannot, and why the bootstrap script creating a kubeadm cluster does not breach the ownership rule.
 - ADR 0030's amendment names the in-cluster Secret, the project-scoping mitigation, and the rotation steps.
 - §20's Civo column is semantically identical to the previous §20 text; a reviewer confirms it row by row.
 - `docs/civo-high-level-design.md` §3 and §5 have a Hetzner column that matches `specs/hetzner/architecture.md` §2 and §4.
@@ -156,3 +157,4 @@ One PR. A revert removes the documents. Nothing depends on them at run time.
 
 - 2026-09-11 — created as DRAFT.
 - 2026-09-11 — reviewed and approved by the user; promoted to READY.
+- 2026-09-19 — kubeadm wording.

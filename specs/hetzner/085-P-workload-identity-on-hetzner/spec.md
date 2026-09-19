@@ -14,7 +14,7 @@ depends_on: ["HETZ-045", "HETZ-050", "HETZ-080", "CIVO-085", "CIVO-090", "CIVO-1
 blocked_by: []
 supersedes: []
 created: "2026-09-11"
-updated: "2026-09-11"
+updated: "2026-09-19"
 completed: ""
 ---
 
@@ -109,7 +109,7 @@ CN mismatch against the role trust policy (compare with HETZ-080 §4).
 
 - The credential-helper repository has in the past published per-platform tags only; if 1.8.5 has no manifest list, pin the arm64 platform digest for hetzner and keep the amd64 digest for civo through a per-target value.
 - `amazon/aws-cli` publishes arm64; if a future pin does not, the test pod falls back to `alpine/k8s` with the AWS CLI installed at start.
-- The `hop-limit 1` rule holds on flannel as on Civo, but the sidecar's localhost endpoint is unreachable from a `hostNetwork` pod on the same node; the test pods must not use `hostNetwork`.
+- The `hop-limit 1` rule holds on Cilium VXLAN as it did on flannel (verify once), but the sidecar's localhost endpoint is unreachable from a `hostNetwork` pod on the same node; the test pods must not use `hostNetwork`.
 - ESO's ClusterRole can still read the CA Secret (CIVO-205 open); Hetzner inherits that until CIVO-205 lands.
 
 ## 13. Definition of done
@@ -122,3 +122,4 @@ CN mismatch against the role trust policy (compare with HETZ-080 §4).
 
 - 2026-09-11 — created as DRAFT.
 - 2026-09-11 — reviewed and approved by the user; promoted to READY.
+- 2026-09-19 — kubeadm wording.

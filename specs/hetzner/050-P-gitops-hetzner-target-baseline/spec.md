@@ -14,7 +14,7 @@ depends_on: ["HETZ-016", "CIVO-050"]
 blocked_by: []
 supersedes: []
 created: "2026-09-11"
-updated: "2026-09-11"
+updated: "2026-09-19"
 completed: ""
 ---
 
@@ -44,7 +44,7 @@ observability values (HETZ-160).
 - `_helpers.tpl:18-22` maps civo to `civo-volume` and everything else to `.Values.storage.className`.
 - `scripts/gitops-render-check.sh:63-79` holds `REQUIRED_OBJECTS_CIVO`, `FORBIDDEN_KINDS_CIVO` (includes `StorageClass`), `FORBIDDEN_APPLICATIONS_CIVO`; `:122` loops over `civo local`.
 - The hcloud CSI chart `hcloud/hcloud-csi` v2.23.0 ships StorageClass `hcloud-volumes` with `defaultStorageClass: true`, `reclaimPolicy: Delete`, `WaitForFirstConsumer`, expansion on, and reads `kube-system/hcloud` key `token` (research.md).
-- k3s ships `local-path` as a default StorageClass unless `--disable local-storage` is set. HETZ-030 sets that flag, so `hcloud-volumes` is the only default class.
+- kubeadm ships no StorageClass; `hcloud-volumes` from the CSI chart is the only default class.
 - Sync waves in use: ESO `-2`, Envoy Gateway `-1`, cert-manager `0`, identity and TLS issuers `1`, wildcard certificate `2`. Waves are uniform across targets.
 
 ## 4. Design and contracts
@@ -105,9 +105,6 @@ data risk.
   Keep `Delete` in M1.
 - Volumes are 10 GB minimum; 1Gi PVC requests round up to 10 GB (HETZ-160
   cost note).
-- If HETZ-030 does not disable `local-storage`, two default classes exist
-  and PVCs without an explicit class fail with `more than one default`.
-  This spec asserts the flag in HETZ-030 §4.
 - The `hcloud` Secret is created by `argo-up`, not by this tree; a render
   is valid without it, a sync is not. `argo-up` ordering (HETZ-045) is the
   guarantee.
@@ -122,3 +119,4 @@ data risk.
 
 - 2026-09-11 — created as DRAFT.
 - 2026-09-11 — reviewed and approved by the user; promoted to READY.
+- 2026-09-19 — kubeadm wording.

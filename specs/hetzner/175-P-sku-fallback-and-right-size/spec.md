@@ -14,7 +14,7 @@ depends_on: ["HETZ-160", "CIVO-175"]
 blocked_by: []
 supersedes: []
 created: "2026-09-11"
-updated: "2026-09-11"
+updated: "2026-09-19"
 completed: ""
 ---
 
@@ -42,7 +42,7 @@ that CIVO-175 does not already make.
 
 ## 3. Current state / evidence
 
-- HETZ-030 fixes `cax21` in `modules/hcloud-k3s`.
+- HETZ-030 fixes `cx33` in `terraform/modules/hcloud-nodes`.
 - `research.md` cost model: shape C (3 × CAX21) 43.89 EUR; shape D (3 × CPX22) 70.89 EUR; shape E (3 × CX33) 37.89 EUR but sold out at the baseline date.
 - All platform images are multi-arch (`research.md`), so an x86 fallback needs no image change.
 - Hetzner's API reports per-location availability through `GET /v1/server_types` (`deprecation`) and `GET /v1/datacenters` (`server_types.available`); the `hcloud` CLI exposes it as `hcloud server-type describe <type>`.
@@ -50,14 +50,14 @@ that CIVO-175 does not already make.
 
 ## 4. Design and contracts
 
-- `variable "server_type"` in `modules/hcloud-k3s`, default `cax21`, passed from `cluster-hetzner/k8s/terragrunt.hcl` via `HCLOUD_SERVER_TYPE` (operator input, like `PROJECT_NAME`). One type for all three nodes; mixed pools are out of scope.
+- `variable "server_type"` in `terraform/modules/hcloud-nodes`, default `cx33`, passed from `cluster-hetzner/k8s/terragrunt.hcl` via `HCLOUD_SERVER_TYPE` (operator input, like `PROJECT_NAME`). One server type for every node; mixed pools are out of scope.
 - Fallback table, recorded in `research.md` and in this spec: `cax21` (default, ARM, 8 GB) → `cpx32` (x86, 8 GB, 35.49 EUR each) → `cpx22` (x86, 4 GB, 19.49 EUR each). CX types are listed only as opportunistic (`cx33`) because their stock is unreliable.
 - Pre-flight in `scripts/cluster-up.sh` (hetzner branch): `hcloud datacenter list -o json` filtered to `nbg1`, check `server_types.available` contains the numeric id of `HCLOUD_SERVER_TYPE`; on failure print the fallback table and exit 2 before `terragrunt apply`.
 - Right-sizing: the same values keys as CIVO-175 (`observability.*.resources`, `postgres.resources`, ESO, ExternalDNS, Envoy), adjusted from measured p95 with the CIVO-175 headroom rule, and a per-target override only where CAX21 differs from Civo Medium.
 
 ## 5. Files/components affected
 
-- `terraform/modules/hcloud-k3s/variables.tf`, `terraform/live/cluster-hetzner/k8s/terragrunt.hcl`.
+- `terraform/modules/hcloud-nodes/variables.tf`, `terraform/live/cluster-hetzner/k8s/terragrunt.hcl`.
 - `Makefile` (`HCLOUD_SERVER_TYPE ?= cax21`, exported on hetzner only), `scripts/lib/provider.sh`.
 - `scripts/cluster-up.sh` hetzner branch (pre-flight).
 - `gitops/values.yaml` (measured requests/limits; hetzner overrides).
@@ -116,3 +116,4 @@ reverted with one values commit.
 
 - 2026-09-11 — created as DRAFT.
 - 2026-09-11 — reviewed and approved by the user; promoted to READY.
+- 2026-09-19 — kubeadm wording.
