@@ -27,8 +27,9 @@ plane, CNPG, Envoy and Argo dashboards with logs from Loki. The stack runs
 on `hcloud-volumes` with the same charts and retention as AWS and Civo.
 Unlike the managed control plane on Civo, the control plane is a node in
 this cluster, so its scheduler and controller-manager are scrapeable.
-Two fixed `cx33` nodes (8 GB each) plus 0–2 autoscaled give about 21 GiB,
-so no trimming is needed.
+Two fixed `cx33` nodes (8 GB each) plus 0–2 autoscaled give about 14 GiB
+fixed and up to about 28 GiB at the four-node ceiling, so no trimming is
+needed.
 
 Read `specs/civo/160-D-observability-on-civo/spec.md` first.
 
@@ -86,7 +87,9 @@ optional CCM/CSI metrics.
   (stacked etcd, no client cert needed on the http metrics URL);
   `kubeProxy` per the kubeadm default (kube-proxy stays,
   `kubeProxyReplacement=false`; Cilium runs VXLAN; try `enabled: true`
-  with `endpoints` = the three private IPs, record the result).
+  with `endpoints` = the private IPs of the fixed nodes (two in M1;
+  autoscaled nodes are not scrape targets for control-plane metrics),
+  record the result).
 - `observability.kubeletInsecureTls: true`, because kubeadm's kubelet
   serving certificates are self-signed unless `serverTLSBootstrap` is
   set, which this package does not set, so Prometheus does not trust
@@ -124,8 +127,8 @@ values), `scripts/argo-up.sh` (control-plane private IP relay),
 1. Add the values and the metrics-server gate. aws and civo golden diffs
    must be empty.
 2. Run `PROVIDER=hetzner make up`. All pods Ready. Grafana login with the
-   ESO secret. Dashboards populated. Loki receives logs from all three
-   nodes.
+   ESO secret. Dashboards populated. Loki receives logs from every node,
+   fixed and autoscaled.
 3. In Prometheus, confirm `up{job="kube-controller-manager"}` and
    `up{job="kube-scheduler"}` are 1. Record `kubeProxy` and
    `kubeletInsecureTls` outcomes.
