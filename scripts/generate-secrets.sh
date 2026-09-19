@@ -28,6 +28,7 @@ ROOT_DOMAIN="${ROOT_DOMAIN:-}"
 FIXED_TEST_PASSWORDS="${FIXED_TEST_PASSWORDS:-false}"
 source "$SCRIPT_DIR/lib/region.sh"
 source "$SCRIPT_DIR/lib/provider.sh"
+source "$SCRIPT_DIR/lib/secret-scope.sh"
 SECRETS_DIR="$REPO_ROOT/secrets/$PROJECT_NAME"
 
 random_password() {
@@ -35,15 +36,14 @@ random_password() {
     --password-length 32 --output text --query RandomPassword
 }
 
-# root-domain is account-global, filed under secrets/ directly - see secret-encrypt.sh.
 generate_if_missing() {
-  local name="$1" value="$2"
-  local file="$REPO_ROOT/secrets/root-domain.enc"
-  [ "$name" = "root-domain" ] || file="$SECRETS_DIR/$name.enc"
+  local name="$1" value="$2" scope="$3"
+  local file
+  file="$(secret_path "$name" "$scope")"
   if [ -f "$file" ]; then
     echo "Skipping $name - $file already exists"
   else
-    SECRET_NAME="$name" SECRET_VALUE="$value" "$SCRIPT_DIR/secret-encrypt.sh"
+    SECRET_SCOPE="$scope" SECRET_NAME="$name" SECRET_VALUE="$value" "$SCRIPT_DIR/secret-encrypt.sh"
   fi
 }
 
@@ -65,7 +65,7 @@ generate_password_if_missing() {
 }
 
 if [ -n "$ROOT_DOMAIN" ]; then
-  generate_if_missing root-domain "$ROOT_DOMAIN"
+  generate_if_missing root-domain "$ROOT_DOMAIN" global
 fi
 
 generate_password_if_missing postgres-app-password

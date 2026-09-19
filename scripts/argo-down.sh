@@ -142,7 +142,7 @@ kubectl delete httproute -A --all >/dev/null 2>&1 || true
 # actually cleaned up). Poll Route 53 directly for its own TXT ownership
 # records under the lab zone until none remain, instead of trusting timing.
 SUBDOMAIN="${SUBDOMAIN:-lab}"
-ROOT_DOMAIN="$("$REPO_ROOT/scripts/secret-decrypt.sh" root-domain)"
+ROOT_DOMAIN="$(SECRET_SCOPE=global "$REPO_ROOT/scripts/secret-decrypt.sh" root-domain)"
 FQDN="${SUBDOMAIN}.${ROOT_DOMAIN}"
 ZONE_ID="$(aws route53 list-hosted-zones-by-name --dns-name "$FQDN" --region "$LAB_REGION" \
   --query "HostedZones[?Name=='${FQDN}.'].Id" --output text 2>/dev/null || true)"

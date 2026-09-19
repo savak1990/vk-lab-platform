@@ -328,11 +328,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # Two checks the Makefile already owns and no workflow ran until now:
-  # gitops-check diffs the rendered aws manifests against the committed golden
-  # baseline, and specs-check verifies the specs/ layout and its links. Both
-  # were confirmed to run with no AWS credentials at all, which is what lets
-  # them sit in fast validation.
+  # Checks the Makefile owns: gitops-check diffs the rendered aws manifests
+  # against the committed golden baseline, specs-check verifies the specs/
+  # layout and its links, and secrets-check exercises secret-encrypt/decrypt
+  # path resolution against a fake aws. All run with no AWS credentials at
+  # all, which is what lets them sit in fast validation.
   validate-repo:
     permissions:
       contents: read
@@ -356,6 +356,8 @@ jobs:
       - run: make gitops-check
 
       - run: make specs-check
+
+      - run: make secrets-check
 
   # Both providers at once, each an independent up -> test -> down chain.
   #

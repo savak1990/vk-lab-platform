@@ -1,31 +1,28 @@
 #!/usr/bin/env bash
-# Encrypts a value into secrets/$PROJECT_NAME/<name>.enc (or secrets/<name>.enc
-# for the account-global root-domain) using the shared,
-# account-global KMS key (alias/lab-secrets, created by account-up - not
-# per-project). NAME/VALUE come from the environment
-# (SECRET_NAME/SECRET_VALUE), not argv, so an unusual VALUE never has to
-# survive shell command-line parsing.
-# Usage: SECRET_NAME=<name> SECRET_VALUE=<value> scripts/secret-encrypt.sh
+# Encrypts a value into secrets/$PROJECT_NAME/<name>.enc (SECRET_SCOPE=project,
+# the default) or secrets/<name>.enc (SECRET_SCOPE=global, one value shared by
+# every PROJECT_NAME in the account) using the shared, account-global KMS key
+# (alias/lab-secrets, created by account-up - not per-project). NAME/VALUE/SCOPE
+# come from the environment (SECRET_NAME/SECRET_VALUE/SECRET_SCOPE), not argv,
+# so an unusual VALUE never has to survive shell command-line parsing.
+# Usage: [SECRET_SCOPE=global] SECRET_NAME=<name> SECRET_VALUE=<value> scripts/secret-encrypt.sh
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/region.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/lib/secret-scope.sh"
 KMS_KEY="alias/lab-secrets"
 
 NAME="${SECRET_NAME:-}"
 VALUE="${SECRET_VALUE:-}"
 
-test -n "$NAME" || { echo "Usage: SECRET_NAME=<name> SECRET_VALUE=<value> scripts/secret-encrypt.sh"; exit 1; }
-test -n "$VALUE" || { echo "Usage: SECRET_NAME=<name> SECRET_VALUE=<value> scripts/secret-encrypt.sh"; exit 1; }
+test -n "$NAME" || { echo "Usage: [SECRET_SCOPE=global] SECRET_NAME=<name> SECRET_VALUE=<value> scripts/secret-encrypt.sh"; exit 1; }
+test -n "$VALUE" || { echo "Usage: [SECRET_SCOPE=global] SECRET_NAME=<name> SECRET_VALUE=<value> scripts/secret-encrypt.sh"; exit 1; }
 
-# root-domain and civo-token are account-global, not per-project - see secrets/README.md.
-if [ "$NAME" = "root-domain" ] || [ "$NAME" = "civo-token" ]; then
-  DEST="$REPO_ROOT/secrets/$NAME.enc"
-else
-  mkdir -p "$REPO_ROOT/secrets/$PROJECT_NAME"
-  DEST="$REPO_ROOT/secrets/$PROJECT_NAME/$NAME.enc"
-fi
+SCOPE="$(secret_scope)"
+DEST="$(secret_path "$NAME" "$SCOPE")"
+mkdir -p "$(dirname "$DEST")"
 TMP="$(mktemp "$DEST.tmp.XXXXXX")"
 trap 'rm -f "$TMP"' EXIT
 

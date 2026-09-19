@@ -21,16 +21,24 @@ That key lives in the platform's single region, `eu-west-1` — the same region
 everything else applies in, so `make secret-encrypt`/`secret-decrypt`/
 `generate-secrets` always resolve it (ADR 0024).
 
-Files live under a per-project directory, `secrets/<PROJECT_NAME>/<name>.enc`
-(`PROJECT_NAME` defaults to `vk-lab-platform`), so a different `PROJECT_NAME`
-run (e.g. a CI/disposable-account run) gets its own secret set without
-colliding with the personal lab's — **except `root-domain.enc` and
-`civo-token.enc`**, filed directly under `secrets/` with no project
-directory, since both are account-global: one value shared by every
-`PROJECT_NAME` in the account. `root-domain.enc` is applied once by
-`terraform/live/account/root-domain`; `civo-token.enc` holds the Civo API
-token, read by `scripts/lib/provider.sh`'s `civo_token` helper
-(`PROVIDER=civo` only). For a throwaway
+Every value has one of two scopes, chosen with `SCOPE=` on `make
+secret-encrypt`/`secret-decrypt` (`SECRET_SCOPE=` on the scripts):
+
+- `project` (the default): `secrets/<PROJECT_NAME>/<name>.enc`
+  (`PROJECT_NAME` defaults to `vk-lab-platform`), so a different
+  `PROJECT_NAME` run (e.g. a CI/disposable-account run) gets its own secret
+  set without colliding with the personal lab's.
+- `global`: `secrets/<name>.enc`, no project directory — one value shared by
+  every `PROJECT_NAME` in the account. Today: `root-domain.enc` (applied once
+  by `terraform/live/account/root-domain`), `civo-token.enc` (the Civo API
+  token, read by `scripts/lib/provider.sh`'s `civo_token` helper,
+  `PROVIDER=civo` only) and `hetzner-token.enc` (the Hetzner Cloud API token,
+  for the planned `PROVIDER=hetzner` target).
+
+The scope is never guessed from the name: a `decrypt` in the wrong scope
+fails and names the scope where the file does exist. `.gitignore` tracks
+`secrets/*.enc` and `secrets/*/*.enc`, so a new global value needs no
+ignore-rule change. For a throwaway
 CI/test environment,
 `make generate-secrets` creates this project's secrets automatically
 (root domain from an argument, a fixed test Postgres password) instead of
@@ -45,11 +53,12 @@ Rules (constitution §5/§14, architecture.md §18):
 ## Encrypting a new value
 
 ```
-make secret-encrypt NAME=<name> VALUE=<plaintext-value>
+make secret-encrypt NAME=<name> VALUE=<plaintext-value> [SCOPE=global]
 ```
 
-Writes `secrets/$PROJECT_NAME/<name>.enc`. Commit that file; never commit
-the plaintext value you passed as `VALUE`.
+Writes `secrets/$PROJECT_NAME/<name>.enc`, or `secrets/<name>.enc` with
+`SCOPE=global`. Commit that file; never commit the plaintext value you
+passed as `VALUE`.
 
 ## Generating throwaway secrets for CI/test environments
 
@@ -69,10 +78,12 @@ and publicly known.
 ## Decrypting a value
 
 ```
-make secret-decrypt NAME=<name>
+make secret-decrypt NAME=<name> [SCOPE=global]
 ```
 
-Prints the plaintext to stdout. This works standalone from a laptop or CI —
+Prints the plaintext to stdout. A global value (`root-domain`, `civo-token`,
+`hetzner-token`) needs `SCOPE=global`; without it the command fails and
+points at the global file. This works standalone from a laptop or CI —
 it only needs `aws kms decrypt` against the ciphertext file and permission
 to use the KMS key. It has no dependency on Terraform state, outputs, or
 any in-cluster component, so it works from spec 002 onward, long before Pod
@@ -98,7 +109,7 @@ before `make persistent-up` can succeed:
 
 - `root-domain.enc` — the account's real root domain value (account-global,
   not under a project directory), consumed by `terraform/live/account/root-domain`.
-  Create it via `make secret-encrypt NAME=root-domain VALUE=<your real root domain>`,
+  Create it via `make secret-encrypt NAME=root-domain VALUE=<your real root domain> SCOPE=global`,
   and make sure a public Route 53 hosted zone for that exact domain
   already exists in the target AWS account (looked up by name).
 - `vk-lab-platform/postgres-app-password.enc` — the in-cluster Postgres

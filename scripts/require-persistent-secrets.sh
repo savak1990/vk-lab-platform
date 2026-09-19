@@ -8,30 +8,23 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
-SECRETS_DIR="$REPO_ROOT/secrets/$PROJECT_NAME"
+source "$(dirname "${BASH_SOURCE[0]}")/lib/secret-scope.sh"
 
-secret_path() {
-  # root-domain is account-global - see secrets/README.md.
-  if [ "$1" = "root-domain" ]; then
-    echo "$REPO_ROOT/secrets/root-domain.enc"
-  else
-    echo "$SECRETS_DIR/$1.enc"
-  fi
-}
+scope_of() { [ "$1" = root-domain ] && echo global || echo project; }
 
 missing=()
 for name in root-domain postgres-app-password grafana-admin-password; do
-  test -f "$(secret_path "$name")" || missing+=("$name")
+  test -f "$(secret_path "$name" "$(scope_of "$name")")" || missing+=("$name")
 done
 
 if [ "${#missing[@]}" -gt 0 ]; then
   echo "Missing secret(s) for PROJECT_NAME=$PROJECT_NAME:" >&2
   for name in "${missing[@]}"; do
-    echo "  - $(secret_path "$name")" >&2
+    echo "  - $(secret_path "$name" "$(scope_of "$name")")" >&2
   done
   echo "Create them first, e.g.:" >&2
   for name in "${missing[@]}"; do
-    echo "  PROJECT_NAME=$PROJECT_NAME make secret-encrypt NAME=$name VALUE=<value>" >&2
+    echo "  PROJECT_NAME=$PROJECT_NAME make secret-encrypt NAME=$name VALUE=<value> SCOPE=$(scope_of "$name")" >&2
   done
   exit 1
 fi

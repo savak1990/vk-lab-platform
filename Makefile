@@ -1,4 +1,4 @@
-.PHONY: up down full-up full-down platform-up platform-down state-up state-down status clusters require-valid-project-name account-up account-down bootstrap-up bootstrap-down secret-encrypt secret-decrypt generate-secrets civo-ca-init persistent-up persistent-down clear-cache cluster-up cluster-down kubeconfig test-kubeconfig test-kubeconfig-isolated argo-up argo-down test
+.PHONY: up down full-up full-down platform-up platform-down state-up state-down status clusters require-valid-project-name account-up account-down bootstrap-up bootstrap-down secret-encrypt secret-decrypt secrets-check generate-secrets civo-ca-init persistent-up persistent-down clear-cache cluster-up cluster-down kubeconfig test-kubeconfig test-kubeconfig-isolated argo-up argo-down test
 
 .NOTPARALLEL:
 
@@ -248,17 +248,27 @@ require-valid-project-name:
 clear-cache:
 	find terraform/live -type d -name .terragrunt-cache -prune -exec rm -rf {} +
 
-## Encrypts a value into secrets/<NAME>.enc using the shared account-global KMS key.
-## Usage: make secret-encrypt NAME=test VALUE=secret
+## Encrypts a value with the shared account-global KMS key into
+## secrets/$(PROJECT_NAME)/<NAME>.enc (SCOPE=project, the default) or
+## secrets/<NAME>.enc (SCOPE=global: one value for every project in the account).
+## Usage: make secret-encrypt NAME=test VALUE=secret [SCOPE=global]
 secret-encrypt: export SECRET_NAME := $(NAME)
 secret-encrypt: export SECRET_VALUE := $(VALUE)
+secret-encrypt: export SECRET_SCOPE := $(SCOPE)
 secret-encrypt:
 	@./scripts/secret-encrypt.sh
 
-## Decrypts secrets/<NAME>.enc and prints the plaintext to stdout.
-## Usage: make secret-decrypt NAME=test
+## Decrypts secrets/$(PROJECT_NAME)/<NAME>.enc (SCOPE=project, the default) or
+## secrets/<NAME>.enc (SCOPE=global) and prints the plaintext to stdout.
+## Usage: make secret-decrypt NAME=test [SCOPE=global]
+secret-decrypt: export SECRET_SCOPE := $(SCOPE)
 secret-decrypt:
 	@./scripts/secret-decrypt.sh "$(NAME)"
+
+## Runs the KMS-free path-resolution test for secret-encrypt/secret-decrypt.
+## Usage: make secrets-check
+secrets-check:
+	@./tests/scripts/secret-scope-test.sh
 
 ## Generates throwaway secrets/$(PROJECT_NAME)/ files for a CI/test
 ## environment: root-domain from ROOT_DOMAIN and fixed, publicly-known

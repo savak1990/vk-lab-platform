@@ -57,7 +57,7 @@ if aws s3api head-object --bucket "$STATE_BUCKET" --key "$LOCK" --region "$LAB_R
 fi
 
 # --- 2. the orphaned hosted zone ------------------------------------------
-if ! ROOT_DOMAIN="$("$REPO_ROOT/scripts/secret-decrypt.sh" root-domain)"; then
+if ! ROOT_DOMAIN="$(SECRET_SCOPE=global "$REPO_ROOT/scripts/secret-decrypt.sh" root-domain)"; then
   echo "FORCE-CLEAN-CI: ERROR - could not decrypt root-domain." >&2
   exit 1
 fi

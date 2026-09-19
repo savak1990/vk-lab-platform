@@ -33,9 +33,7 @@ secrets/*/*
 !secrets/*/*.enc
 !secrets/*/*.bcrypt
 !secrets/*/civo-ca-cert*.pem
-!secrets/root-domain.enc
-!secrets/civo-token.enc
-!secrets/hetzner-token.enc
+!secrets/*.enc
 !secrets/README.md
 
 # Raw key material — ignore even under secrets/ directories

@@ -27,7 +27,7 @@ STATE_KEY="bootstrap/route53/terraform.tfstate"
 # lab-role already holds kms:* on alias/lab-secrets (for the SSM
 # SecureString parameters), so CI decrypts root-domain.enc directly too -
 # no separate ROOT_DOMAIN GitHub secret needed.
-ROOT_DOMAIN="$("$REPO_ROOT/scripts/secret-decrypt.sh" root-domain)"
+ROOT_DOMAIN="$(SECRET_SCOPE=global "$REPO_ROOT/scripts/secret-decrypt.sh" root-domain)"
 FQDN="${SUBDOMAIN}.${ROOT_DOMAIN}"
 
 # list-hosted-zones-by-name matches by prefix/lexicographic position, not
