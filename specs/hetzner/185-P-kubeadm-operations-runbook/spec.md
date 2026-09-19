@@ -114,17 +114,18 @@ version-skew policy permits the autoscaler to trail the API server.
 
 **(B) Stacked etcd snapshot and restore.** On the control plane: install
 `etcd-client` (or run the matching `etcd` container image) so `etcdctl`
-and `etcdutl` exist; `ETCDCTL_API=3 etcdctl --endpoints=https://127.0.0.1:2379
+and `etcdutl` exist; create a marker `ConfigMap`, so the snapshot taken
+next contains it; `ETCDCTL_API=3 etcdctl --endpoints=https://127.0.0.1:2379
 --cacert=/etc/kubernetes/pki/etcd/ca.crt
 --cert=/etc/kubernetes/pki/etcd/server.crt
 --key=/etc/kubernetes/pki/etcd/server.key snapshot save /root/snap.db`;
-create a marker `ConfigMap`; delete it; `etcdutl snapshot restore
+delete the marker `ConfigMap`; `etcdutl snapshot restore
 /root/snap.db --data-dir /var/lib/etcd-restored`; move
 `/etc/kubernetes/manifests/{kube-apiserver,etcd}.yaml` out of the manifests
 directory to stop both static pods; edit `etcd.yaml`'s `hostPath` to point
 at `/var/lib/etcd-restored`; move both manifests back; confirm the marker
 `ConfigMap` is present again, proving the restore rolled the cluster back
-to the pre-deletion snapshot.
+to the snapshot taken before the deletion.
 
 **(C) Certificate expiry and renewal.** On the control plane:
 `kubeadm certs check-expiration`; `kubeadm certs renew all`; restart the
@@ -146,8 +147,8 @@ after each procedure).
 2. Execute procedure (A) against a real HETZ-037 cluster; record timings
    and every error verbatim; confirm `kubectl version` reports 1.37 on
    every node afterward.
-3. Execute procedure (B); confirm the marker `ConfigMap` is present after
-   the restore.
+3. Execute procedure (B); confirm the marker `ConfigMap`, created before
+   the snapshot and deleted after it, is present again after the restore.
 4. Execute procedure (C); confirm `kubeadm certs check-expiration` shows
    renewed dates and `make kubeconfig` succeeds against the restarted API
    server.
@@ -166,8 +167,8 @@ procedure in §4 uses.
 
 - All three procedures in §4 are executed on a real HETZ-037 cluster;
   nodes are `Ready` after each one.
-- The marker `ConfigMap` created in procedure (B) is present after the
-  etcd restore.
+- The marker `ConfigMap` procedure (B) creates before the snapshot and
+  deletes after it is present again after the etcd restore.
 - `kubectl version` reports 1.37 on every node after procedure (A).
 - `make down` followed by `make up` yields a 1.36 cluster again.
 - The runbook is committed with its recorded output (timings and every
@@ -218,7 +219,8 @@ file.
 
 - [ ] All three procedures executed on a real cluster with timings and
       verbatim errors recorded
-- [ ] Marker `ConfigMap` survives the etcd restore
+- [ ] Marker `ConfigMap` deleted after the snapshot is present again
+      after the etcd restore
 - [ ] `make down`/`make up` confirmed to restore the pinned 1.36 cluster
 - [ ] Index updated; status `DONE`
 
