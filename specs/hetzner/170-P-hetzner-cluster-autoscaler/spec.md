@@ -53,7 +53,7 @@ mixed CPU architectures, scaling the fixed pool down, an HA control plane
   binary reads `HCLOUD_CLUSTER_CONFIG` as base64 JSON —
   `imagesForArch.amd64: ubuntu-24.04`, `nodeConfigs.workers.cloudInit`
   (itself base64, the joined cloud-init), `serverLabels: {project,
-  scope: platform, lifecycle: disposable, managed-by: autoscaler, role:
+  scope: platform, lifecycle: disposable, managed_by: autoscaler, role:
   worker}` — plus the separate scalars `HCLOUD_NETWORK`, `HCLOUD_FIREWALL`,
   `HCLOUD_SSH_KEY`, `HCLOUD_PUBLIC_IPV4=true`, `HCLOUD_PUBLIC_IPV6=true`,
   and node-group syntax `--nodes=<min>:<max>:<TYPE>:<LOCATION>:<name>`.
@@ -81,10 +81,14 @@ mixed CPU architectures, scaling the fixed pool down, an HA control plane
 - Application `platform/hetzner/autoscaler/application.yaml`, chart
   `cluster-autoscaler` pinned (`CLUSTER_AUTOSCALER_VERSION=1.36.1` in
   `scripts/lib/versions.sh`), `cloudProvider: hetzner`,
-  `autoscalingGroups: [{name: workers, minSize: 0, maxSize: 2}]`, extra
-  args `--nodes=0:2:CX33:NBG1:workers`,
+  `autoscalingGroups` left empty, extra args
+  `--nodes=0:2:CX33:NBG1:workers`,
   `--skip-nodes-with-system-pods=false`,
   `--skip-nodes-with-local-storage=false`, `--scale-down-unneeded-time=10m`.
+  The `--nodes` flag is the single source of the node group — the hetzner
+  provider reads the server type and location from it — so verify against
+  the pinned chart that an empty `autoscalingGroups` renders no second
+  `--nodes` flag.
   Sync-wave 0; runs on the fixed pool, no toleration needed, because a
   fixed node carries no taint by the time Argo CD renders this
   Application (HETZ-045).
@@ -97,10 +101,11 @@ mixed CPU architectures, scaling the fixed pool down, an HA control plane
   CCM. `HCLOUD_CLUSTER_CONFIG` comes from a second Secret,
   `kube-system/hcloud-autoscaler-config`, via `envFrom` (this spec
   controls that key's name). `HCLOUD_FIREWALL` and `HCLOUD_SSH_KEY` are
-  plain `extraEnv` values relayed through the root Application's Helm
-  values from SSM (`cluster-hetzner/firewall/firewall_id`,
-  `persistent-hetzner/ssh-key/ssh_key_id`) — ids, not secrets, so a
-  literal value suffices; `HCLOUD_PUBLIC_IPV4=true` and
+  plain `extraEnv` values taking the Helm values `autoscaler.firewallId`
+  and `autoscaler.sshKeyId`, which the root Application relays from the
+  SSM names `cluster-hetzner/firewall/firewall_id` and
+  `persistent-hetzner/ssh-key/ssh_key_id` that HETZ-045 §4's batch 1
+  reads — ids, not secrets, so a literal value suffices; `HCLOUD_PUBLIC_IPV4=true` and
   `HCLOUD_PUBLIC_IPV6=true` are static `extraEnv` values matching
   HETZ-030's `public_net` config on the fixed nodes.
 - Exact mechanism for `kube-system/hcloud-autoscaler-config`: a new
@@ -118,12 +123,11 @@ mixed CPU architectures, scaling the fixed pool down, an HA control plane
   --from-literal=HCLOUD_CLUSTER_CONFIG="$CONFIG" --dry-run=client -o yaml
   | kubectl apply -f -` — piped, never through a temp file, never
   echoed, same convention as every other Hetzner credential write.
-- Teardown. `argo-down`'s cascade (HETZ-047) deletes the autoscaler
-  Application and waits until it is actually gone — polled, not assumed
-  from the delete call returning — before the cascade proceeds to the
-  CCM and LB teardown, so an in-flight scale-down event never races the
-  LB removal. Independently, `cluster-down`'s pre-destroy sweep
-  (HETZ-040, unchanged by this spec) deletes any `managed-by=autoscaler`
+- Teardown. `argo-down`'s cascade (HETZ-047, unchanged by this spec)
+  deletes the autoscaler Application like every other child; no bespoke
+  wait is added for it. What guarantees no autoscaled server survives
+  `cluster-down` is `cluster-down`'s pre-destroy sweep (HETZ-040,
+  unchanged by this spec), which deletes any `managed_by=autoscaler`
   server still present — one that never had time to scale down, or one
   the autoscaler crashed before removing — before `terragrunt destroy`,
   because the firewall and subnet destroy hangs on an attached server
@@ -151,14 +155,14 @@ already covers autoscaler-created servers.
    nodes.
 3. Burst test: a Deployment sized to overflow the one fixed worker.
    Observe 0→2 scale-up within 5 minutes (timed); both new nodes Ready
-   with `providerID` set; `hcloud server list -l managed-by=autoscaler`
+   with `providerID` set; `hcloud server list -l managed_by=autoscaler`
    shows two.
 4. Delete the Deployment. Observe both nodes deleted within 10 minutes of
    the pods clearing (timed), matching `--scale-down-unneeded-time=10m`.
 5. Repeat step 3, then run `make down` with both autoscaled nodes present.
-   Confirm `argo-down` waits for the autoscaler Application to be gone,
-   `cluster-down`'s sweep reports zero leaks, `terragrunt destroy` does
-   not hang, and a following `terragrunt plan` shows no drift.
+   Confirm `cluster-down`'s sweep deletes both autoscaled servers and
+   reports zero leaks, `terragrunt destroy` does not hang, and a
+   following `terragrunt plan` shows no drift.
 
 ## 7. Dependencies and blockers
 
@@ -207,8 +211,8 @@ sweep reaps them at the next `cluster-down`.
 - Kubelet version drift: if `scripts/lib/versions.sh`'s
   `KUBERNETES_VERSION` changes without a matching `make down`/`make up`
   on the fixed pool, an autoscaled node (built from the same
-  `node_cloud_init_b64` render, HETZ-165 §4) joins at a different minor
-  than the control plane.
+  `templates/node.yaml.tftpl` render that HETZ-165 §4 performs from the
+  checkout) joins at a different minor than the control plane.
 - A node that joins but never gets `providerID` — most likely a
   `KUBELET_EXTRA_ARGS` render missing `--cloud-provider=external` — never
   clears the CCM's `uninitialized` taint or becomes schedulable; the
@@ -220,8 +224,9 @@ sweep reaps them at the next `cluster-down`.
 ## 13. Definition of done
 
 - [ ] Scale 0→2 and 2→0 evidence recorded with timings
-- [ ] Teardown-with-nodes-present evidence recorded; HETZ-040's sweep and
-      HETZ-047's Application-gone wait both confirmed
+- [ ] Teardown-with-nodes-present evidence recorded; HETZ-040's sweep
+      confirmed to delete every autoscaled server before `terragrunt
+      destroy`
 - [ ] Index updated; status `DONE`
 
 ## 14. Execution evidence and status history

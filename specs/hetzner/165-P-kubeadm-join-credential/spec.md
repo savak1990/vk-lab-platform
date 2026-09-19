@@ -41,7 +41,7 @@ substitution-friendly constraint that places on that template, added in
 the same commit as this spec's creation.
 
 Not in scope: HETZ-170's autoscaler Application itself, which consumes
-this Secret but is not written yet; HETZ-030's node cloud-init template
+this Secret; HETZ-030's node cloud-init template
 content, beyond keeping it substitution-friendly for this spec's own
 render; `hetzner_ssh`, `cluster_exists` and
 the kubeadm bootstrap/join mechanics on the fixed nodes, which HETZ-035
@@ -52,8 +52,8 @@ beyond the manual steps this spec documents.
 
 ## 3. Current state / evidence
 
-- HETZ-045 §4 places the hook: `ensure_autoscaler_secret()` (not yet
-  written) runs immediately after `wait_for_nodes_initialized()`, before
+- HETZ-045 §4 places the hook: `ensure_autoscaler_secret()` runs
+  immediately after `wait_for_nodes_initialized()`, before
   the fast path returns, and is the consumer of the `worker_ips` /
   `control_plane_private_ip` SSM reads that batch grew to carry.
 - research.md, "Bootstrap tokens" row: default TTL 24 h; `kubeadm token
@@ -126,11 +126,16 @@ beyond the manual steps this spec documents.
 - Cloud-init render: `ensure_autoscaler_secret()` reads
   `terraform/modules/hcloud-nodes/templates/node.yaml.tftpl` directly
   from the checkout `argo-up` already runs in — no SSM parameter, no new
-  Terraform output. It substitutes `${kubernetes_version}` and
-  `${containerd_version}` with the same pins `scripts/lib/versions.sh`
-  exports as `TF_VAR_kubernetes_version`/`TF_VAR_containerd_version`
-  (`envsubst` restricted to those two names, so an unrelated `$`-sequence
-  elsewhere in the template is never touched), then appends one final
+  Terraform output. The template's placeholders are the
+  Terraform variable names `${kubernetes_version}` and
+  `${containerd_version}`, so the script exports
+  `kubernetes_version="$KUBERNETES_VERSION"` and
+  `containerd_version="$CONTAINERD_VERSION"` from
+  `scripts/lib/versions.sh`'s pins — the same values Terraform receives
+  as `TF_VAR_kubernetes_version`/`TF_VAR_containerd_version` — and runs
+  `envsubst '${kubernetes_version} ${containerd_version}'`, restricted to
+  those two names so an unrelated `$`-sequence elsewhere in the template
+  is never touched. It then appends one final
   `runcmd` block to the substituted text: first
   `echo "KUBELET_EXTRA_ARGS=--cloud-provider=external --node-ip=$(curl
   -sf http://169.254.169.254/hetzner/v1/metadata/private-networks | awk
@@ -204,7 +209,7 @@ listed as direct dependencies here.
 - One hand-created node —
   `hcloud server create --type cx33 --location nbg1 --image
   ubuntu-24.04 --network <id> --user-data-from-file <decoded cloud_init>
-  --label project=<p> --label scope=platform --label managed-by=autoscaler
+  --label project=<p> --label scope=platform --label managed_by=autoscaler
   --name workers-test` — joins, gets a `providerID`, and becomes `Ready`
   within 5 minutes.
 - `PROVIDER=hetzner make cluster-down` sweeps that hand-created server

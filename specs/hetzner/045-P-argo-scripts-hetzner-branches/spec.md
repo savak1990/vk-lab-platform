@@ -40,8 +40,7 @@ spec.
 
 In scope: the hetzner seams in `scripts/argo-up.sh`,
 `scripts/lib/provider.sh`, and the root-application relay in
-`gitops/bootstrap/`. Not in scope: `argo-down` on hetzner. HETZ-047 (not
-yet written) owns that design whole — the LB-before-cascade ordering, the
+`gitops/bootstrap/`. Not in scope: `argo-down` on hetzner. HETZ-047 owns that design whole — the LB-before-cascade ordering, the
 PVC wait, and the acceptance criterion that used to live here move there
 entirely, and this spec no longer touches `scripts/argo-down.sh` at all.
 Also not in scope: the CA Secret content (HETZ-085 adds consumers;
@@ -60,18 +59,19 @@ script).
 
 ## 4. Design and contracts
 
-- Inputs. `hetzner_resolve_inputs()` reads two SSM batches. Batch 1: `bootstrap/route53/{fqdn,zone_id}`, `persistent/argocd/admin_password_bcrypt`, `persistent-hetzner/network/network_id`, `cluster-hetzner/k8s/control_plane_ip`, `cluster-hetzner/k8s/control_plane_private_ip`, `cluster-hetzner/k8s/worker_ips`. Batch 2: `bootstrap/rolesanywhere/{trust_anchor_arn,profile_arn}`, `bootstrap/rolesanywhere/role_arn/{eso,external-dns,cert-manager,pgbackup}`. Batch 1 grows from five names to seven, still under the 10-name `get-parameters` cap; `control_plane_private_ip` and `worker_ips` are the two additions. The TLS parameter is read by the generalised import function, not here. Then `configure_kubeconfig`.
+- Inputs. `hetzner_resolve_inputs()` reads two SSM batches. Batch 1: `bootstrap/route53/{fqdn,zone_id}`, `persistent/argocd/admin_password_bcrypt`, `persistent-hetzner/network/network_id`, `cluster-hetzner/k8s/control_plane_ip`, `cluster-hetzner/k8s/control_plane_private_ip`, `cluster-hetzner/k8s/worker_ips`, `cluster-hetzner/firewall/firewall_id`, `persistent-hetzner/ssh-key/ssh_key_id`. Batch 2: `bootstrap/rolesanywhere/{trust_anchor_arn,profile_arn}`, `bootstrap/rolesanywhere/role_arn/{eso,external-dns,cert-manager,pgbackup}`. Batch 1 grows from five names to nine, still under the 10-name `get-parameters` cap; `control_plane_private_ip`, `worker_ips`, `firewall_id` and `ssh_key_id` are the four additions, the last two feeding HETZ-170's autoscaler env. The TLS parameter is read by the generalised import function, not here. Then `configure_kubeconfig`.
 - `ensure_hcloud_ccm()` runs before `ensure_ca_secret` and before the fast path, so re-runs repair it. `argo-up` fails fast when `cluster_exists` (HETZ-040, reached transitively through HETZ-037 → HETZ-035 → HETZ-040) is false — there is nothing to install the CCM into. It creates or updates `kube-system/hcloud` with keys `token=$HCLOUD_TOKEN` and `network=<network_id>` through `kubectl create secret generic --dry-run=client -o yaml | kubectl apply -f -` (pipe, no temp file, never echoed). It runs `helm repo add hcloud https://charts.hetzner.cloud` once and `helm upgrade --install hccm hcloud/hcloud-cloud-controller-manager -n kube-system --version "$HCCM_CHART_VERSION" --set networking.enabled=true --set networking.clusterCIDR=10.244.0.0/16 --set env.HCLOUD_NETWORK_ROUTES_ENABLED.value="false" --set env.HCLOUD_LOAD_BALANCERS_LOCATION.value=$HCLOUD_LOCATION --set env.HCLOUD_LOAD_BALANCERS_USE_PRIVATE_IP.value="true" --set env.HCLOUD_LOAD_BALANCERS_DISABLE_IPV6.value="true" --wait`. Routes stay off because Cilium runs its own VXLAN datapath, not the CCM's route controller. https://github.com/hetznercloud/hcloud-cloud-controller-manager/blob/main/docs/guides/private-network-setup.md
 - `wait_for_nodes_initialized()`: poll until no node has the `uninitialized` taint and every node has `spec.providerID` starting with `hcloud://`, bounded by `HETZNER_ARGO_UP_CCM_WATCH_SECONDS` (default 180). Then confirm `coredns` in `kube-system` is Available. HETZ-165's `ensure_autoscaler_secret()` runs immediately after this call, before the fast path returns, and is the consumer of the `worker_ips`/`control_plane_private_ip` batch-1 reads above.
 - `install_argocd()` on hetzner: same as civo (no spot affinity). No toleration is needed, because the taint is gone.
-- Root install: `--set target=hetzner`, project, repo, revision, `postgres.storageSize`, `envoyGateway.fqdn`, `envoyGateway.location=$HCLOUD_LOCATION`, `externalDns.txtOwnerId=$PROJECT_NAME`, the four role ARNs, trust anchor, profile, `tls.issuer`, `tls.acmeEmail`, `tls.hostedZoneId`. No `reservedIp`, no `firewallId`. `gitops/bootstrap/values.yaml` and `root-application.yaml` relay `envoyGateway.location`.
+- Root install: `--set target=hetzner`, project, repo, revision, `postgres.storageSize`, `envoyGateway.fqdn`, `envoyGateway.location=$HCLOUD_LOCATION`, `externalDns.txtOwnerId=$PROJECT_NAME`, the four role ARNs, trust anchor, profile, `tls.issuer`, `tls.acmeEmail`, `tls.hostedZoneId`, `autoscaler.firewallId=$FIREWALL_ID`, `autoscaler.sshKeyId=$SSH_KEY_ID`. No `reservedIp`. `gitops/bootstrap/values.yaml` and `root-application.yaml` relay `envoyGateway.location`, `autoscaler.firewallId` and `autoscaler.sshKeyId`.
 - `wait_for_lb_ip()` (generalised): succeed when `status.loadBalancer.ingress[0].ip` is non-empty. On civo it additionally equals the reserved IP; on hetzner any IP passes. `wait_for_dns()` compares `dig +short argo.$FQDN` with that discovered IP; bounded, non-fatal, as on civo. `WATCH_SECONDS` keeps the civo shortening until root health is proven on hetzner (HETZ-115 adds the first CNPG health signal).
 
 ## 5. Files/components affected
 
 `scripts/argo-up.sh`, `scripts/lib/provider.sh`,
 `gitops/bootstrap/values.yaml`, `gitops/bootstrap/templates/root-application.yaml`,
-`gitops/values.yaml` (`envoyGateway.location`). Pin the CCM chart version
+`gitops/values.yaml` (`envoyGateway.location`, `autoscaler.firewallId`,
+`autoscaler.sshKeyId`). Pin the CCM chart version
 in `scripts/lib/versions.sh`, next to the Argo CD and Cilium chart
 versions.
 
