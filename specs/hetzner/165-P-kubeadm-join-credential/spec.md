@@ -14,7 +14,7 @@ depends_on: ["HETZ-037", "HETZ-045"]
 blocked_by: []
 supersedes: []
 created: "2026-09-19"
-updated: "2026-09-19"
+updated: "2026-09-20"
 completed: ""
 ---
 
@@ -77,10 +77,11 @@ beyond the manual steps this spec documents.
   runtime) and is not a source to copy from — this spec's cloud-init is
   built from HETZ-030's own template instead.
   https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/hetzner/README.md
-- HETZ-030 §4 builds one cloud-init template, `templates/node.yaml.tftpl`,
-  that installs `containerd.io`, `kubeadm`, `kubelet`, `kubectl` and the
-  kernel prerequisites only — no join token, no cluster state — and caps
-  the rendered size at 32 KiB. That "package-install only" property is
+- HETZ-030 §4 builds two cloud-init templates. The control plane's own,
+  `templates/control-plane.yaml.tftpl`, is irrelevant here; the worker
+  one, `templates/node.yaml.tftpl`, installs `containerd.io`, `kubeadm`,
+  `kubelet`, `kubectl` and the kernel prerequisites only — no join token,
+  no cluster state — and caps the rendered size at 32 KiB. That "package-install only" property is
   exactly why the same file is reusable for an autoscaled node: this
   spec reads it straight from the checkout `argo-up` already runs in,
   substitutes the same `${kubernetes_version}` and `${containerd_version}`
@@ -286,3 +287,6 @@ cluster-side token before the Secret.
 
 - 2026-09-19 — created as READY (kubeadm replan); takes the credential
   design of the old HETZ-170.
+- 2026-09-20 — option C: HETZ-030 now has two templates; this spec still
+  reads only the worker one, `templates/node.yaml.tftpl`, whose
+  two-placeholder property is unchanged.

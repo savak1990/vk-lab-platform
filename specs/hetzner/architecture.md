@@ -10,10 +10,11 @@ branch `civo-115-cnpg-cluster-on-civo`, 2026-09-11. Paths marked
 Hetzner Cloud sells servers, private networks, firewalls, load balancers
 and volumes over one API, priced far below EKS and, on ARM, below Civo.
 It sells no Kubernetes. The platform therefore owns the control plane:
-cloud-init prepares the nodes (containerd, kubeadm, kubelet, kubectl —
-packages only, no cluster state); `cluster-up` runs `kubeadm init` on the
-control plane and `kubeadm join` on the worker over SSH, then installs
-Cilium from the same script. `argo-up` helm-installs the Hetzner cloud
+cloud-init prepares every node (containerd, kubeadm, kubelet, kubectl);
+on the control plane it also renders the kubeadm config and runs `kubeadm
+init` and the Cilium install at first boot, so no token, CA or kubeconfig
+ever enters `user_data`; `cluster-up` then joins the workers over SSH and
+fetches the kubeconfig. `argo-up` helm-installs the Hetzner cloud
 controller manager (CCM) before Argo CD, because no node schedules
 anything until the CCM runs, and Argo CD then installs the CSI driver as
 an ordinary Application. Civo pre-installs both. Everything above that
@@ -27,8 +28,10 @@ reused through the generalisation specs HETZ-016 and HETZ-018.
 make bootstrap-up  → state bucket, Route 53 hetzner zone, Roles Anywhere unit   (bootstrap, ACM excluded)
 make persistent-up → SSM secrets, S3 backup bucket                               (persistent, VPC excluded)
                    + hcloud network/subnet, hcloud SSH key                        (terraform/live/persistent-hetzner)
-make cluster-up    → hcloud firewall, 1 cp + 1 worker CX33 servers, cloud-init packages only (terraform/live/cluster-hetzner)
-                   → kubeadm init/join, Cilium, wait Ready                       (scripts/hetzner-bootstrap.sh, HETZ-035/037)
+make cluster-up    → hcloud firewall, 1 cp + 1 worker CX33 servers, cloud-init
+                     (cp: kubeadm init + Cilium; workers: packages)               (terraform/live/cluster-hetzner)
+                   → kubeadm join on each worker over SSH, admin.conf kubeconfig,
+                     wait Ready                                                    (scripts/hetzner-bootstrap.sh, HETZ-035/037)
 make argo-up       → SSM read → kubeconfig → hcloud Secret → helm hcloud CCM
                    → wait for the uninitialized taint to clear → CA Secret
                    → helm argocd → helm root-application(target=hetzner)         (scripts/argo-up.sh)
@@ -59,10 +62,10 @@ equivalent; **n/a** = not applicable on Hetzner.
 | Persistent network | `civo_network`, free | `hcloud_network` + `hcloud_network_subnet` (`eu-central`, `10.0.0.0/16`), free | mirror | 025 |
 | Reserved IP | `civo_reserved_ip` for the LB | **none**: primary IPs attach to servers only; the LB owns its address and gets a new one per `make up` | n/a | 025, 060 |
 | SSH key | — | `hcloud_ssh_key` from a committed public key; private key `secrets/<project>/hetzner-ssh-key.enc` | new | 025 |
-| Cluster | `civo_kubernetes_cluster` (managed) | `hcloud_firewall` + `control_plane_count` + `worker_count` `hcloud_server` (`cx33`, `ubuntu-24.04` x86, hostname = server name) with cloud-init installing containerd.io, kubeadm, kubelet, kubectl; `scripts/hetzner-bootstrap.sh` runs `kubeadm init` and `kubeadm join` | new | 030, 035 |
+| Cluster | `civo_kubernetes_cluster` (managed) | `hcloud_firewall` + `control_plane_count` + `worker_count` `hcloud_server` (`cx33`, `ubuntu-24.04` x86, hostname = server name); cloud-init on the control plane renders the kubeadm config and runs `kubeadm init` + Cilium at first boot, workers install containerd.io, kubeadm, kubelet, kubectl only; `scripts/hetzner-bootstrap.sh` runs `kubeadm join` | new | 030, 035 |
 | Capacity | fixed pool of three Medium | 1 cp + 1 worker fixed; autoscaler 0–2 extra `cx33` in M1; ceiling 4 nodes | mirror | 030, 170 |
 | Kubeconfig | `civo kubernetes config` | `/etc/kubernetes/admin.conf` over SSH, server rewritten to the public IP | new | 035 |
-| Readiness | `kubectl get nodes` (provider `ready` unreliable) | Terraform returns when servers exist; the bootstrap script runs init/join/Cilium and waits for every node Ready | mirror | 037 |
+| Readiness | `kubectl get nodes` (provider `ready` unreliable) | Terraform returns when servers exist; the control plane initializes itself at boot, and the bootstrap script joins the workers and then waits for every node Ready | mirror | 037 |
 | Leak sweep | `civo` CLI by name/network | `hcloud` CLI by label `project=<project>` over servers, load balancers, volumes, primary IPs, firewalls | mirror | 040 |
 | CCM | pre-installed by Civo | helm release installed by `argo-up` before Argo CD (untracked bootstrap class, like Argo CD itself); `kube-system/hcloud` Secret (keys `token`, `network`) created by `argo-up` | new | 045 |
 | CSI | pre-installed by Civo | Argo Application at wave −3 under `platform/hetzner/`; reads the same `hcloud` Secret | new | 050 |
@@ -140,16 +143,18 @@ Two traps have no Civo precedent and shape 030, 045 and 050:
    `not-ready` and runs `hostNetwork`, so
    `kubeadm init → Cilium → CCM → CoreDNS` resolves without a hook
    (https://kubernetes.io/blog/2025/02/14/cloud-controller-manager-chicken-egg-problem/).
-   `scripts/hetzner-bootstrap.sh` installs Cilium right after
-   `kubeadm init`/`join`, and `argo-up` installs the CCM before Argo CD, in
-   the same untracked-bootstrap class Argo CD's own release uses. The CSI
+   The control plane's cloud-init installs Cilium right after its own
+   `kubeadm init`, so the CNI is up before any worker joins, and `argo-up`
+   installs the CCM before Argo CD, in the same untracked-bootstrap class
+   Argo CD's own release uses. The CSI
    driver has no such constraint and stays an Argo Application.
 2. **Terraform returns before Kubernetes exists.** `hcloud_server` is
    complete when the server boots, not when cloud-init finishes.
-   `scripts/hetzner-bootstrap.sh`, not Terraform, runs `kubeadm init`/`join`
-   and waits for every node Ready after Cilium installs; `argo-up`
-   separately waits for the uninitialized taint to clear once the CCM is
-   installed.
+   Terraform does not wait for the control plane's cloud-init either:
+   `scripts/hetzner-bootstrap.sh` waits for the control plane's
+   bootstrap marker, joins the workers and waits for every node Ready;
+   `argo-up` separately waits for the uninitialized taint to clear once
+   the CCM is installed.
 
 ## 7. Decision areas (mapping to specs)
 
