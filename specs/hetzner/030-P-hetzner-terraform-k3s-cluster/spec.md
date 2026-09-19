@@ -1,6 +1,6 @@
 ---
 id: "HETZ-030"
-title: "cluster-hetzner stack: firewall and a self-bootstrapped k3s cluster on three CAX21 servers"
+title: "cluster-hetzner stack: firewall and a self-bootstrapped k3s cluster on two CX33 servers"
 status: "READY"
 priority: "P1"
 milestone: "M1"
@@ -14,7 +14,7 @@ depends_on: ["HETZ-010", "HETZ-015", "HETZ-020", "HETZ-025"]
 blocked_by: []
 supersedes: []
 created: "2026-09-11"
-updated: "2026-09-11"
+updated: "2026-09-19"
 completed: ""
 ---
 
@@ -22,9 +22,9 @@ completed: ""
 
 ## 1. Outcome and rationale
 
-`PROVIDER=hetzner make cluster-up` creates a firewall and three `cax21`
+`PROVIDER=hetzner make cluster-up` creates a firewall and two `cx33`
 servers in the persistent network. Cloud-init installs k3s: the first server
-runs `k3s server`, the other two run `k3s agent` and join over the private
+runs `k3s server`, the second runs `k3s agent` and joins over the private
 network. No Traefik, no ServiceLB, no k3s cloud controller. The stack writes
 the values that later stages need to SSM. `cluster-down` destroys the
 servers and the firewall and does not touch the persistent units. Terraform
@@ -45,7 +45,7 @@ in-cluster resource.
 - `terraform/live/cluster/eks/terragrunt.hcl:13-22` shows the cross-stack `dependency` pattern with `get_repo_root()`; `cluster-civo/k8s` reads `persistent-civo/network` the same way. This spec reads `persistent-hetzner/{network,ssh-key}`.
 - `research.md`: `hcloud_server` requires `name`, `server_type`, `image`; `user_data` ≤ 32 KiB; `ssh_keys` immutable; `network { network_id, ip, alias_ips = [] }`; `firewall_ids`; `labels`; `public_net`. `hcloud_firewall` rules are default-deny inbound when attached, and outbound becomes default-deny as soon as any `out` rule exists. Firewalls attach to servers only.
 - `research.md`: k3s flags `--disable-cloud-controller`, `--kubelet-arg cloud-provider=external`, `--disable servicelb,traefik`, `--tls-san`, `--node-ip`, `--node-external-ip`, `--flannel-iface`; the single-server datastore is SQLite; `--etcd-expose-metrics` applies to embedded etcd only. Metadata: `169.254.169.254/hetzner/v1/metadata/public-ipv4`; `userdata` is readable from the node without authentication.
-- HETZ-020 supplies: the exact `cax21` and arm64 `ubuntu-24.04` image strings, the private NIC name, boot-to-Ready timing, and the label charset check.
+- HETZ-020 supplies: the `cx33` and x86 `ubuntu-24.04` image strings (both confirmed by real creates on 2026-09-19), the private NIC name, boot-to-Ready timing, and the label charset check.
 - decisions.md: one schedulable server plus two agents (SQLite); metrics-server stays bundled; port 22 open to the world, key-only; control-plane metrics exposed on the private address.
 
 ## 4. Design and contracts
@@ -58,14 +58,14 @@ Firewall (`cluster-hetzner/firewall`, module `hcloud-firewall`):
 Servers (`cluster-hetzner/k8s`, module `hcloud-k3s`):
 
 - `random_password.k3s_token` (48 chars, alphanumeric). It is in state and inside `user_data`; both are disposable and regenerated on every `make up`; the metadata service exposes it to any process on the node. architecture.md §5 records this. It grants node join only.
-- Three `hcloud_server`: `${project}-cp`, `${project}-worker-1`, `${project}-worker-2`; `server_type = "cax21"`, `image = <arm64 ubuntu-24.04 name from HETZ-020>`, `location = "nbg1"`, `ssh_keys = [dependency.ssh_key.outputs.id]`, `public_net { ipv4_enabled = true, ipv6_enabled = true }` (IPv4 is required: SSM has no IPv6 endpoint and Hetzner has no NAT), `network { network_id, ip, alias_ips = [] }` with `cp` at `10.0.1.10` and workers at `10.0.1.11`/`.12`, `labels = { project, scope = "platform", lifecycle = "disposable", managed_by = "terraform", role = "node", k3s_role = "server"|"agent" }`, `shutdown_before_deletion = true`, `depends_on` so the cp is created before the workers.
+- Two `hcloud_server`: `${project}-cp`, `${project}-worker-1`; `server_type = "cx33"`, `image = "ubuntu-24.04"`, `location = "nbg1"`, `ssh_keys = [dependency.ssh_key.outputs.id]`, `public_net { ipv4_enabled = true, ipv6_enabled = true }` (IPv4 is required: SSM has no IPv6 endpoint and Hetzner has no NAT), `network { network_id, ip, alias_ips = [] }` with `cp` at `10.0.1.10` and the worker at `10.0.1.11` (the autoscaled third node, HETZ-170, takes a subnet address), `labels = { project, scope = "platform", lifecycle = "disposable", managed_by = "terraform", role = "node", k3s_role = "server"|"agent" }`, `shutdown_before_deletion = true`, `depends_on` so the cp is created before the worker.
 - `lifecycle { ignore_changes = [user_data, image, ssh_keys] }`. Rationale: a cloud-init edit or an image rename must never replace the control plane silently, because replacement is cluster loss. A k3s version bump is a `make down` then `make up`. The plan output states this in a comment in the module.
 - Cloud-init, `templatefile()` per role, under 32 KiB, `#cloud-config` with a `runcmd`:
   - cp: `PUB=$(curl -sf http://169.254.169.254/hetzner/v1/metadata/public-ipv4)`; then `curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=<pinned, e.g. v1.36.4+k3s1> K3S_TOKEN=<token> sh -s - server --disable-cloud-controller --disable servicelb,traefik,local-storage --kubelet-arg cloud-provider=external --node-ip 10.0.1.10 --node-external-ip $PUB --tls-san $PUB --flannel-iface <nic> --kube-controller-manager-arg bind-address=10.0.1.10 --kube-scheduler-arg bind-address=10.0.1.10 --write-kubeconfig-mode 0600`. No `--cluster-init`: the datastore is SQLite, so there is no etcd and no `--etcd-expose-metrics`. Metrics for the scheduler and controller manager bind to the private address only (HETZ-160 scrapes them there). `metrics-server` is not disabled (decision). `local-storage` is disabled so k3s does not install the `local-path` StorageClass as default; `hcloud-volumes` from the CSI chart (HETZ-050) is the only default class.
   - agents: `sh -s - agent --server https://10.0.1.10:6443 --token <token> --node-ip <private ip> --node-external-ip $PUB --kubelet-arg cloud-provider=external --flannel-iface <nic>`.
   - Both: `apt-get` is not run; the image has `curl`. A `bootcmd` waits until the private NIC has its address before `runcmd` starts.
 - Outputs to SSM as plain String: `/${project}/cluster-hetzner/k8s/control_plane_ip`, `/…/control_plane_private_ip`, `/…/server_ids` (comma list). The kubeconfig is never an output and never in state; HETZ-040 fetches it over SSH.
-- Terraform returns when the three servers are `running`, not when k3s is up. `cluster-up` (HETZ-040) waits for `kubectl get nodes` to list three nodes.
+- Terraform returns when the two servers are `running`, not when k3s is up. `cluster-up` (HETZ-040) waits for `kubectl get nodes` to list two nodes.
 
 ## 5. Files/components affected
 
@@ -90,13 +90,13 @@ HETZ-025 supplies network, subnet, and SSH key ids. HETZ-020 supplies the image 
 
 ## 8. Acceptance criteria
 
-- Three servers reach `running` and, within 5 minutes of `apply`, `kubectl get nodes` lists three nodes with the pinned k3s version. Before HETZ-045 they carry `node.cloudprovider.kubernetes.io/uninitialized` and CoreDNS is Pending; that is expected here, not a failure.
+- Two servers reach `running` and, within 5 minutes of `apply`, `kubectl get nodes` lists two nodes with the pinned k3s version. Before HETZ-045 they carry `node.cloudprovider.kubernetes.io/uninitialized` and CoreDNS is Pending; that is expected here, not a failure.
 - `kubectl get pods -A` shows no `traefik`, `svclb-`, `local-path-provisioner` or `cloud-controller-manager` pods; `kubectl get sc` lists no `local-path`.
 - `nc -zv <cp ip> 22 6443` succeeds; `nc -zv <cp ip> 80 443 10250 30000` fails; `nc -zv <worker ip> 6443` fails.
 - `terraform state pull | jq` shows no `kubeconfig` key and no private key material; the join token is present and documented.
 - SSM parameters exist under `/vk-hetzner-lab/cluster-hetzner/`.
 - `cluster-down` leaves the network, subnet, and SSH key; `hcloud primary-ip list` is empty (server IPs are deleted with the servers).
-- One create/destroy cycle costs under 1 EUR (three servers for under an hour at 0.0168 EUR/h each plus IPs).
+- One create/destroy cycle costs under 1 EUR (two servers for under an hour at 0.0160 EUR/h each plus IPs).
 
 ## 9. Validation
 
@@ -112,11 +112,11 @@ The destroy is the rollback. Nothing persistent is created. A failed cloud-init 
 
 ## 12. Risks and unresolved questions
 
-- CAX21 stock: `apply` fails with a placement error when `nbg1` is sold out. The module exposes `server_type` as a variable so HETZ-175's fallback is a tfvars change; `apply` is not retried in a loop.
+- CX33 stock: `apply` fails with a placement error when `nbg1` is sold out (CX is the stock-limited line; `cx33` was orderable in nbg1, fsn1 and hel1 on 2026-09-19). The module exposes `server_type` as a variable so HETZ-175's fallback is a tfvars change; `apply` is not retried in a loop.
 - The account default limit of 5 servers blocks a second cluster (CI) until a limit increase; HETZ-020 §4 item 11 decides whether to request it before M1.
 - `user_data` exposure of the join token through the metadata service: accepted and documented; HETZ-170 revisits if the token gains any other power.
 - `ignore_changes` on `user_data` means a flag fix ships only through `down`/`up`; the spec accepts this for a disposable cluster.
-- The arm64 image name and the NIC name come from HETZ-020; if Hetzner renames either, `apply` fails loudly rather than booting a wrong image.
+- The image name and the NIC name come from HETZ-020; if Hetzner renames either, `apply` fails loudly rather than booting a wrong image.
 - A single control plane: an `apt` unattended-upgrade reboot takes the API down for about a minute; acceptable for a lab, noted for HETZ-150.
 - Private-network readiness in cloud-init: if the NIC appears after `runcmd`, k3s binds the wrong interface. The `bootcmd` wait is the guard; HETZ-020 item 2 confirms the timing.
 
@@ -131,3 +131,4 @@ The destroy is the rollback. Nothing persistent is created. A failed cloud-init 
 
 - 2026-09-11 — created as DRAFT.
 - 2026-09-11 — reviewed and approved by the user; promoted to READY.
+- 2026-09-19 — node shape revised to two fixed `cx33` plus an autoscaled third (decisions.md §3, Node shape): every CAX type failed a real create in every EU location; `cx33` succeeded in all three.

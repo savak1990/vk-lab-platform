@@ -8,7 +8,7 @@
 | Project identity | `PROVIDER=hetzner` defaults `PROJECT_NAME=vk-hetzner-lab`, `SUBDOMAIN=hetzner`: own state bucket, own zone `hetzner.<root-domain>`, own SSM prefix, own Roles Anywhere unit. Account layer shared |
 | Goal | Maximise CPU and memory for 50–100 USD per month; Hetzner replaces only the compute path, AWS keeps Route 53, SSM, KMS, S3, GitHub OIDC |
 | Kubernetes | Self-bootstrapped k3s on `hcloud_server`s (no managed offering exists); Terraform owns the servers; `argo-up` helm-installs the CCM before Argo CD (nothing schedules until it runs); Argo CD owns everything else in-cluster, including the CSI driver |
-| Node plan (M1) | Three `cax21` ARM servers (4 vCPU / 8 GB each) in `nbg1`; server 1 is a schedulable k3s server, 2–3 are agents; autoscaler in M2 |
+| Node plan (M1) | **Revised 2026-09-19.** `cx33` x86 servers (4 vCPU / 8 GB / 80 GB each) in `nbg1`: two fixed (server 1 is a schedulable k3s server, server 2 an agent) plus the cluster autoscaler adding a third `cx33` only when pods stay pending. Ceiling three nodes, 24 GB. Was: three `cax21` ARM, autoscaler in M2 — every CAX type fails a real create in every EU location on 2026-09-19 (research.md) |
 | Location | `nbg1`, network zone `eu-central`; declared once per layer, never derived |
 | AWS access from workloads | IAM Roles Anywhere, same chain as Civo, names parametrized by provider (HETZ-018) |
 | Kubeconfig | SSH with a KMS-encrypted private key committed as `secrets/<project>/hetzner-ssh-key.enc`; public key in Terraform |
@@ -34,7 +34,7 @@
 
 | Decision | Options | Recommendation | Trade-offs | Reversible | Affected specs | Blocks READY |
 |---|---|---|---|---|---|---|
-| Node shape | (a) 3 × CAX21 ARM; (b) CAX11 + 2 × CAX21; (c) 3 × CX33 x86; (d) 3 × CPX22 x86 | **Decided 2026-09-11: (a).** ≈43 EUR/month for ~21 GiB; every platform image publishes arm64 | CAX stock is limited since 2026-09-02; HETZ-175 defines the CPX fallback; `pg-backup` must be built multi-arch (HETZ-182) | high | 030, 160, 175, 182 | no |
+| Node shape | (a) 3 × CAX21 ARM; (b) CAX11 + 2 × CAX21; (c) 3 × CX33 x86; (d) 3 × CPX22 x86; (e) 2 × CX33 fixed + 1 × CX33 autoscaled | **Decided 2026-09-19: (e)**, superseding (a) of 2026-09-11. Same 4 vCPU / 8 GB per node as CAX21 at 9.99 EUR net each (API price 2026-09-19); 19.98 EUR net fixed, 29.97 EUR net at the three-node ceiling. Real creates of `cx33` succeeded in nbg1, fsn1 and hel1 on 2026-09-19; every CAX type failed everywhere with `unsupported location for server type` | x86 removes the arm64 requirement from HETZ-085/160/182 for M1; CX is the stock-limited line since 2026-09-02, so HETZ-175's fallback is now CX → CPX; the autoscaler (HETZ-170) moves into M1 because the third node depends on it | high | 030, 160, 170, 175, 182 | no |
 | Location | nbg1 / fsn1 / hel1 | **Decided 2026-09-11: nbg1** | none material; all `eu-central` | high | 025, 030 | no |
 | Kubeconfig retrieval | (a) SSH with a KMS-encrypted key; (b) pre-generated k3s CA, kubeconfig minted locally | **Decided 2026-09-11: (a).** Also gives node access for debugging a self-managed cluster | (b) would put the CA bundle in `user_data`, readable from the metadata service by any `hostNetwork` pod, and needs a per-cluster key stored somewhere | high | 025, 040 | no |
 | Identity chain naming | (a) parametrize by provider, Civo unchanged; (b) reuse `civo` names verbatim; (c) rename provider-neutral now | **Decided 2026-09-11: (a).** The trust anchor is per project (bootstrap unit), so one anchor per provider is the existing shape | (c) would touch the live Civo trust anchor and committed Civo secrets | high | 018, 080 | no |
@@ -44,7 +44,7 @@
 | Control-plane metrics | expose scheduler/controller-manager/etcd metrics on the private address via k3s flags | yes: educational value, no cost; scrape targets on the private IP only | more cloud-init flags | high | 030, 160 | no |
 | SSH port 22 exposure | (a) 0.0.0.0/0, key-only; (b) operator/CI IP allowlist | (a): GitHub runners have no fixed IP, same reasoning as 6443 on Civo; password auth is off on Ubuntu 24.04 | brute-force noise in `auth.log`; consider fail2ban later | high | 030 | no |
 | Stable LB address | (a) accept a new LB IP per `make up`, rely on ExternalDNS; (b) Terraform-owned LB with `hcloud_load_balancer` and label-selector targets | (a): the CCM cannot adopt an existing LB; (b) would make Terraform own an ingress object Argo also reconciles | DNS-01 removes the HTTP-01 ordering flake; DNS TTL is the only propagation delay | high | 060, 070 | no |
-| Autoscaler credential | join token and Hetzner token in-cluster | M2; the Hetzner token is in-cluster already for CCM; the autoscaler adds only the join token; a dedicated second token for the autoscaler is optional | anyone reading the Secret can add a node | high | 170 | no |
+| Autoscaler credential | join token and Hetzner token in-cluster | M1 since 2026-09-19 (the third node is autoscaled, see Node shape); the Hetzner token is in-cluster already for CCM; the autoscaler adds only the join token; a dedicated second token for the autoscaler is optional | anyone reading the Secret can add a node | high | 170 | no |
 | CI provider runs | enable `PROVIDER=hetzner` in `lab.yml` now vs later | now, behind the environment and concurrency group, after HETZ-150 passes once by hand | account default limit of 5 servers: CI and lab cannot both run 3-node clusters until a limit increase | high | 140 | no |
 
 ## 4. Rejected alternatives
@@ -55,5 +55,6 @@
 - IPv6-only nodes: SSM Parameter Store has no IPv6 endpoint and Hetzner has no managed NAT; one primary IPv4 per node costs 0.50 EUR.
 - Floating IP for the LB: the CCM cannot attach one to a load balancer.
 - x86 CPX as the default: 3 × CPX22 costs about what Civo costs for less memory; it is the stock fallback only.
+- ARM CAX as the default (the 2026-09-11 choice): not orderable in any EU location on 2026-09-19; revisit only if a real `hcloud server create --type cax21` succeeds again and the arm64 image work (HETZ-182) is worth the saving.
 - OIDC federation instead of Roles Anywhere: possible on k3s but discards six DONE Civo specs; documented as the alternative in ADR 0029's note.
 - Static AWS access keys anywhere: forbidden by constitution §5.

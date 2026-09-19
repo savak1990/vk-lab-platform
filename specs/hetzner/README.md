@@ -83,7 +83,7 @@ two additions:
 | HETZ-018 | [018-P-identity-chain-provider-naming](018-P-identity-chain-provider-naming/spec.md) | Roles Anywhere chain names parametrized by provider; Civo names unchanged | READY | P0 | M | strongest | 010, 016 | M0 |
 | HETZ-020 | [020-P-hetzner-feasibility-spike](020-P-hetzner-feasibility-spike/spec.md) | Throwaway k3s-on-hcloud spike and report | READY | P0 | M | standard | — | M0 |
 | HETZ-025 | [025-P-hetzner-persistent-stack](025-P-hetzner-persistent-stack/spec.md) | `persistent-hetzner` network, subnet, SSH key | READY | P1 | S | standard | 010, 015, 080 | M1 |
-| HETZ-030 | [030-P-hetzner-terraform-k3s-cluster](030-P-hetzner-terraform-k3s-cluster/spec.md) | `cluster-hetzner` firewall and self-bootstrapped k3s on three CAX21 servers | READY | P1 | L | strongest | 010, 015, 020, 025 | M1 |
+| HETZ-030 | [030-P-hetzner-terraform-k3s-cluster](030-P-hetzner-terraform-k3s-cluster/spec.md) | `cluster-hetzner` firewall and self-bootstrapped k3s on two CX33 servers | READY | P1 | L | strongest | 010, 015, 020, 025 | M1 |
 | HETZ-040 | [040-P-hetzner-cluster-scripts](040-P-hetzner-cluster-scripts/spec.md) | Cluster scripts, SSH kubeconfig, readiness wait, label-based leak sweep | READY | P1 | M | standard | 030 | M1 |
 | HETZ-045 | [045-P-argo-scripts-hetzner-branches](045-P-argo-scripts-hetzner-branches/spec.md) | `argo-up`/`argo-down` Hetzner branches: `hcloud` Secret, CCM helm install, taint wait, LB/DNS waits | READY | P1 | L | strongest | 016, 040, 050 | M1 |
 | HETZ-050 | [050-P-gitops-hetzner-target-baseline](050-P-gitops-hetzner-target-baseline/spec.md) | `target: hetzner` tree: CSI Application, storage class, render check, golden diffs | READY | P1 | M | standard | 016, CIVO-050 | M1 |
@@ -97,8 +97,8 @@ two additions:
 | HETZ-140 | [140-P-ci-workflow-hetzner](140-P-ci-workflow-hetzner/spec.md) | `lab.yml` third provider value, `hcloud` CLI, token mask, label sweep in cleanup | READY | P1 | M | standard | 015, 045, CIVO-140 | M1 |
 | HETZ-150 | [150-P-teardown-recreate-validation](150-P-teardown-recreate-validation/spec.md) | Full lifecycle validation on Hetzner with the Hetzner resource classification | READY | P1 | M | strongest | 070, 120, 130 | M1 |
 | HETZ-160 | [160-P-observability-on-hetzner](160-P-observability-on-hetzner/spec.md) | Observability on Hetzner: control-plane scrapes on, ARM images, 10 GiB volume floor | READY | P1 | M | standard | 030, 050, 085, CIVO-160 | M1 |
-| HETZ-170 | [170-P-hetzner-cluster-autoscaler](170-P-hetzner-cluster-autoscaler/spec.md) | Cluster autoscaler `cloudProvider: hetzner`, 0–2 CAX21 workers, join token in-cluster | READY | P3 | M | strongest | 030, 040, 045 | M2 |
-| HETZ-175 | [175-P-sku-fallback-and-right-size](175-P-sku-fallback-and-right-size/spec.md) | Stock-aware SKU fallback (CAX → CPX) and right-sizing on measured data | READY | P2 | S | standard | 160, CIVO-175 | M2 |
+| HETZ-170 | [170-P-hetzner-cluster-autoscaler](170-P-hetzner-cluster-autoscaler/spec.md) | Cluster autoscaler `cloudProvider: hetzner`, 0–1 CX33 worker, join token in-cluster | READY | P1 | M | strongest | 030, 040, 045 | M1 |
+| HETZ-175 | [175-P-sku-fallback-and-right-size](175-P-sku-fallback-and-right-size/spec.md) | Stock-aware SKU fallback (CX → CPX) and right-sizing on measured data | READY | P2 | S | standard | 160, CIVO-175 | M2 |
 | HETZ-182 | [182-P-multi-arch-images](182-P-multi-arch-images/spec.md) | Repo-built images published for `linux/arm64` as well as `linux/amd64` | DRAFT | P0 | S | fast | CIVO-180 | M1 |
 | HETZ-190 | [190-P-proxy-protocol-client-ip](190-P-proxy-protocol-client-ip/spec.md) | Proxy protocol on the hcloud LB and client IP at Envoy | READY | P3 | S | fast | 060, CIVO-190 | M2 |
 

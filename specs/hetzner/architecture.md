@@ -25,7 +25,7 @@ reused through the generalisation specs HETZ-016 and HETZ-018.
 make bootstrap-up  → state bucket, Route 53 hetzner zone, Roles Anywhere unit   (bootstrap, ACM excluded)
 make persistent-up → SSM secrets, S3 backup bucket                               (persistent, VPC excluded)
                    + hcloud network/subnet, hcloud SSH key                        (terraform/live/persistent-hetzner)
-make cluster-up    → hcloud firewall, 3 × CAX21 servers, cloud-init k3s           (terraform/live/cluster-hetzner)
+make cluster-up    → hcloud firewall, 2 × CX33 servers, cloud-init k3s           (terraform/live/cluster-hetzner)
                    → wait for nodes Ready via SSH-fetched kubeconfig              (scripts, HETZ-040)
 make argo-up       → SSM read → kubeconfig → hcloud Secret → helm hcloud CCM
                    → wait for the uninitialized taint to clear → CA Secret
@@ -57,10 +57,10 @@ equivalent; **n/a** = not applicable on Hetzner.
 | Persistent network | `civo_network`, free | `hcloud_network` + `hcloud_network_subnet` (`eu-central`, `10.0.0.0/16`), free | mirror | 025 |
 | Reserved IP | `civo_reserved_ip` for the LB | **none**: primary IPs attach to servers only; the LB owns its address and gets a new one per `make up` | n/a | 025, 060 |
 | SSH key | — | `hcloud_ssh_key` from a committed public key; private key `secrets/<project>/hetzner-ssh-key.enc` | new | 025 |
-| Cluster | `civo_kubernetes_cluster` (managed) | `hcloud_firewall` + 3 × `hcloud_server` (`cax21`, `ubuntu-24.04` arm64) with cloud-init installing k3s; server 1 runs `k3s server`, 2–3 run `k3s agent` | new | 030 |
-| Capacity | fixed pool of three Medium | fixed three CAX21 (4 vCPU / 8 GB); autoscaler 0–2 extra in M2 | mirror | 030, 170 |
+| Cluster | `civo_kubernetes_cluster` (managed) | `hcloud_firewall` + 2 × `hcloud_server` (`cx33`, `ubuntu-24.04` x86) with cloud-init installing k3s; server 1 runs `k3s server`, server 2 runs `k3s agent`; a third `cx33` joins through the autoscaler (170) | new | 030, 170 |
+| Capacity | fixed pool of three Medium | fixed two CX33 (4 vCPU / 8 GB); autoscaler 0–1 extra CX33 in M1, ceiling three nodes | mirror | 030, 170 |
 | Kubeconfig | `civo kubernetes config` | `ssh root@<cp> cat /etc/rancher/k3s/k3s.yaml`, server rewritten to the public IP | new | 040 |
-| Readiness | `kubectl get nodes` (provider `ready` unreliable) | Terraform returns when servers exist, not when k3s is up; scripts wait for 3 nodes Ready | mirror | 040 |
+| Readiness | `kubectl get nodes` (provider `ready` unreliable) | Terraform returns when servers exist, not when k3s is up; scripts wait for the fixed nodes (2) Ready | mirror | 040 |
 | Leak sweep | `civo` CLI by name/network | `hcloud` CLI by label `project=<project>` over servers, load balancers, volumes, primary IPs, firewalls | mirror | 040 |
 | CCM | pre-installed by Civo | helm release installed by `argo-up` before Argo CD (untracked bootstrap class, like Argo CD itself); `kube-system/hcloud` Secret (keys `token`, `network`) created by `argo-up` | new | 045 |
 | CSI | pre-installed by Civo | Argo Application at wave −3 under `platform/hetzner/`; reads the same `hcloud` Secret | new | 050 |
@@ -70,7 +70,7 @@ equivalent; **n/a** = not applicable on Hetzner.
 | TLS | HTTP-01 then DNS-01 wildcard (CIVO-075) | start at the DNS-01 end state; HTTP-01 never used | reuse | 070 |
 | DNS | ExternalDNS via sidecar, waits on the reserved IP | same chart; waits use the discovered LB address | reuse + branch | 070 |
 | Workload identity | Roles Anywhere chain, x86 sidecar digest | same chain; CA ceremony and Roles Anywhere unit for the Hetzner project (080); certificates and multi-arch sidecars (085) | reuse | 080, 085 |
-| PostgreSQL | CNPG on `civo-volume`, barman-cloud plugin to S3 | CNPG on `hcloud-volumes`; same plugin; the `cnpg-barman-sidecar` image must be arm64 | mirror | 115, 120, 182 |
+| PostgreSQL | CNPG on `civo-volume`, barman-cloud plugin to S3 | CNPG on `hcloud-volumes`; same plugin; the `cnpg-barman-sidecar` image is amd64 on CX33; arm64 (182) only if CAX returns | mirror | 115, 120, 182 |
 | Observability | control-plane scrapes off (managed k3s hides it) | control-plane scrapes **on** (k3s flags bind scheduler/controller-manager/etcd metrics); k3s bundled metrics-server kept; 10 GB volume floor | mirror | 160 |
 | Tests | SA-token context `${PROJECT_NAME}-civo-test` | `${PROJECT_NAME}-hetzner-test` | mirror | 130 |
 | CI | `lab.yml` provider input aws\|civo | three values; `hcloud` CLI; cleanup sweeps volumes/LBs/IPs | mirror | 140 |
@@ -153,7 +153,7 @@ Two traps have no Civo precedent and shape 030, 045 and 050:
 | B lifecycle and Argo | same stage model; non-AWS branches generalised; CCM helm-installed by `argo-up` before Argo CD | 016, 040, 045 |
 | C cluster/networking/ingress | firewall 22 + 6443 public, everything else private; LB11 with private-IP targets; no reserved IP | 025, 030, 060 |
 | D storage/CNPG | `hcloud-volumes`; barman-cloud plugin to S3; no snapshots | 050, 115, 120 |
-| E capacity | 3 × CAX21 ARM; autoscaler 0–2 in M2; stock fallback to CPX | 030, 170, 175 |
+| E capacity | 2 × CX33 x86 fixed + 0–1 autoscaled (decided 2026-09-19); stock fallback CX → CPX | 030, 170, 175 |
 | F identity/secrets | Roles Anywhere per project, names per provider; ceremony before the first `bootstrap-up`; token in-cluster | 018, 080, 085, 015 |
 | G destruction/recovery | label sweep for LBs, volumes, IPs, extra servers | 040, 140, 150 |
 | H tests/CI/cost | Ginkgo reuse; `lab.yml`; cost model in `research.md` | 130, 140, 175 |
