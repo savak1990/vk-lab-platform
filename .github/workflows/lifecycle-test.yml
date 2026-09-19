@@ -467,7 +467,13 @@ jobs:
               echo
               echo "Paths that would otherwise have required the check:"
               echo
-              printf '%s\n' "$MATCHED" | sed 's/^/- `/; s/$/`/'
+              # The backtick is passed as an argument rather than written into
+              # the format string: shellcheck reads a backtick inside quotes as
+              # a command substitution, whichever quoting style is used.
+              BT='`'
+              printf '%s\n' "$MATCHED" | while IFS= read -r f; do
+                printf -- '- %s%s%s\n' "$BT" "$f" "$BT"
+              done
             } >> "$GITHUB_STEP_SUMMARY"
             printf '%s\n' "$MATCHED" | sed 's/^/  waived: /'
             exit 0
