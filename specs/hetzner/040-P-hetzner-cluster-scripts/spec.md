@@ -14,7 +14,7 @@ depends_on: ["HETZ-030"]
 blocked_by: []
 supersedes: []
 created: "2026-09-11"
-updated: "2026-09-19"
+updated: "2026-09-20"
 completed: ""
 ---
 
@@ -54,15 +54,16 @@ autoscaler itself (HETZ-170) beyond the sweep that removes its servers.
 - `scripts/cluster-down.sh:51-95` sweeps Civo resources by name with `civo_list_names`. It can only report a leaked LB, because the civo CLI has no delete verb for it.
 - `scripts/status.sh:59-60` reads `cluster_name` from `terraform/live/cluster-civo/k8s`.
 - `Makefile:152-155` calls `civo_token` before the terragrunt apply; `:182-184` is the civo `kubeconfig` arm.
-- HETZ-030 creates `${project}-cp-1` and `${project}-worker-1`, labels every server `project=${project}`, `scope=platform`, `lifecycle=disposable`, `managed_by=terraform`, `role=control-plane|worker`, and writes `/${project}/cluster-hetzner/k8s/{control_plane_ip,control_plane_private_ip,worker_ips,server_ids}` to SSM. Its cloud-init installs packages only, so a server can exist with no cluster on it. HETZ-025 commits the SSH public key and `secrets/<project>/hetzner-ssh-key.enc`.
-- HETZ-035 creates the cluster with `kubeadm init`; `/etc/kubernetes/admin.conf` on the control plane is the durable sign that it ran. HETZ-170's autoscaler creates servers Terraform does not know, labelled `managed_by=autoscaler`.
+- HETZ-030 creates `${project}-cp-1` and `${project}-worker-1`, labels every server `project=${project}`, `scope=platform`, `lifecycle=disposable`, `managed_by=terraform`, `role=control-plane|worker`, and writes `/${project}/cluster-hetzner/k8s/{control_plane_ip,control_plane_private_ip,worker_ips,server_ids}` to SSM. Its worker cloud-init installs packages only; the control plane's cloud-init runs `kubeadm init` and the Cilium install at first boot, so the control plane is a working single-node cluster about two minutes after create. HETZ-025 commits the SSH public key and `secrets/<project>/hetzner-ssh-key.enc`.
+- `/etc/kubernetes/admin.conf` on the control plane is the durable sign that a kubeadm cluster exists. Since HETZ-030's control plane initializes itself at boot, it appears without HETZ-035 running; HETZ-035 joins the workers and fetches that file. HETZ-170's autoscaler creates servers Terraform does not know, labelled `managed_by=autoscaler`.
 - `hcloud` CLI v1.68.0 (verified 2026-09-19) is stateless when `HCLOUD_TOKEN` is set; it writes no file unless `hcloud context create` runs (research.md).
 
 ## 4. Design and contracts
 
 - `hcloud_token()` decrypts `hetzner-token` (`SECRET_SCOPE=global`), masks it under `GITHUB_ACTIONS`, exports `HCLOUD_TOKEN`. `hcloud_cli()` runs `hcloud "$@"` with `HCLOUD_CONFIG` pointed at an empty `mktemp` file, so no context file is ever written. `hcloud_list(resource, selector)` runs `hcloud <resource> list -l "$selector" -o json` and prints names; an empty list prints nothing (the CLI prints `[]`, no plain-text trap as on Civo).
-- `hetzner_ssh(ip, cmd...)`: decrypts `hetzner-ssh-key` into a `mktemp -d` directory as a mode-0600 file; `trap 'rm -rf "$dir"' EXIT INT TERM`; runs `ssh -i "$dir/key" -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$dir/known_hosts" -o ConnectTimeout=10 root@<ip> "$@"` and returns its exit status. HETZ-035 uses it for `kubeadm init`, `kubeadm join` and the `admin.conf` fetch; `cluster_exists` and `node-ssh` use it here. Nothing prints the key.
-- `cluster_exists()` on hetzner is two-part: `hcloud_list server "project=${PROJECT_NAME},role=control-plane"` is non-empty AND `hetzner_ssh <cp ip> test -f /etc/kubernetes/admin.conf` succeeds, with the cp IP from SSM `/${PROJECT_NAME}/cluster-hetzner/k8s/control_plane_ip`. Servers without a cluster (a HETZ-030 apply that HETZ-035 never followed, or a failed `kubeadm init`) return false, so `cluster-down` skips the root-Application guard and destroys directly instead of asking a cluster that does not exist.
+- `hetzner_ssh(ip, cmd...)`: decrypts `hetzner-ssh-key` into a `mktemp -d` directory as a mode-0600 file; `trap 'rm -rf "$dir"' EXIT INT TERM`; runs `ssh -i "$dir/key" -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$dir/known_hosts" -o ConnectTimeout=10 root@<ip> "$@"` and returns its exit status. HETZ-035 uses it for the bootstrap-marker wait, `kubeadm join` and the `admin.conf` fetch; `cluster_exists` and `node-ssh` use it here. Nothing prints the key.
+- `cluster_exists()` on hetzner is two-part: `hcloud_list server "project=${PROJECT_NAME},role=control-plane"` is non-empty AND `hetzner_ssh <cp ip> test -f /etc/kubernetes/admin.conf` succeeds, with the cp IP from SSM `/${PROJECT_NAME}/cluster-hetzner/k8s/control_plane_ip`. It answers one question only — does a kubeadm cluster exist — and it is true from the moment the control plane finishes booting, because that server initializes itself (HETZ-030). A server whose boot-time `kubeadm init` failed still returns false.
+- The Argo guard in `cluster-down` is a separate, later check, not a consequence of `cluster_exists`. Three cases: no control-plane server, so `cluster_exists` is false and the script destroys directly; a cluster with no Argo CD on it, where the script fetches the kubeconfig and asks for the `root` Application, reads `no matches for kind` or `not found`, and destroys directly; and a cluster with a `root` Application actually present, which is the only case that refuses. A missing CRD or a missing object must never be treated as a failed query.
 - Host-key trust: `accept-new` with a per-call known_hosts file trusts the first key seen for that IP. The IP is fresh from Terraform seconds earlier and the API server certificate check follows over TLS, so the window for a MITM is the SSH fetch itself. Pinning is possible through `hcloud server ssh` (same trust model) or by reading the host key from the server console; both are deferred (§12).
 - `cluster-down.sh` on hetzner, **before** `terragrunt run --all destroy`: delete every server matching `project=${PROJECT_NAME},managed_by=autoscaler` (`hcloud server delete`) and poll `hcloud_list` until none remain (up to 3 min). The autoscaler is gone with the cluster by then (HETZ-047), so nothing recreates them; a server that Terraform never created would otherwise keep its primary IP and any attached volume alive after the fixed nodes are destroyed.
 - `cluster-down.sh` on hetzner, after `terragrunt run --all destroy`: sweep by label `project=${PROJECT_NAME}` in this order — load balancers (`hcloud load-balancer delete`), volumes (`hcloud volume detach` then `delete`), servers not created by Terraform (`hcloud server delete`), primary IPs that are unassigned (`hcloud primary-ip delete`), firewalls (`hcloud firewall delete`). Report each deletion. A leaked volume or LB fails the run with exit 1 after the sweep, as on Civo, so a cascade bug surfaces.
@@ -96,8 +97,9 @@ it can be drafted in parallel.
 
 ## 8. Acceptance criteria
 
-- On bare HETZ-030 servers `cluster_exists` returns false; `make cluster-down` destroys them without consulting Argo, sweeps a hand-made labelled volume and a hand-made `managed_by=autoscaler` server, and exits 1 because the volume leaked. `hcloud server list`, `load-balancer list`, `volume list`, `primary-ip list` filtered by `project=${PROJECT_NAME}` are all empty afterwards.
-- On a HETZ-035 cluster `cluster_exists` returns true and `make cluster-down` refuses while a root Application exists.
+- On HETZ-030 servers that HETZ-035 never followed, `cluster_exists` returns true once the control plane has finished booting; `make cluster-down` finds no `root` Application, destroys them without refusing, sweeps a hand-made labelled volume and a hand-made `managed_by=autoscaler` server, and exits 1 because the volume leaked. `hcloud server list`, `load-balancer list`, `volume list`, `primary-ip list` filtered by `project=${PROJECT_NAME}` are all empty afterwards.
+- On a cluster with Argo CD installed, `make cluster-down` refuses while a `root` Application exists.
+- `cluster_exists` returns false when no control-plane server exists, and false on a control plane whose boot-time `kubeadm init` failed.
 - `make node-ssh` opens a root shell on `${PROJECT_NAME}-cp-1` on hetzner and exits 0 with a message on aws and civo.
 - `make status` lists the `persistent-hetzner` and `cluster-hetzner` units.
 - No script prints the Hetzner token or the SSH private key; the temp dir is gone after every run, including an interrupted one; `$HOME/.config/hcloud` never appears.
@@ -138,3 +140,4 @@ the persistent units, because they live in a separate stack directory.
 - 2026-09-11 — created as DRAFT.
 - 2026-09-11 — reviewed and approved by the user; promoted to READY.
 - 2026-09-19 — rewritten for kubeadm: kubeconfig and readiness moved to HETZ-035/037; two-part `cluster_exists`; autoscaled servers swept before destroy.
+- 2026-09-20 — option C: the control plane initializes itself at boot, so `cluster_exists` is true before HETZ-035 runs; the Argo guard is stated as a separate three-case check (decisions.md §3, "Bootstrap driver").

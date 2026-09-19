@@ -262,8 +262,9 @@ Servers (`cluster-hetzner/k8s`, module `hcloud-nodes`):
 ## 6. Implementation steps
 
 1. Write the modules and both cloud-init templates; render each with
-   `terraform console` and check size and syntax with `cloud-init schema
-   --config-file`.
+   `terraform console`, check size and syntax with `cloud-init schema
+   --config-file`, and diff the package sections of the two templates —
+   they must be identical.
 2. Write the units with `dependency` blocks on
    `persistent-hetzner/{network,ssh-key}` and `cluster-hetzner/firewall`;
    mock outputs for `validate` and `plan`.
