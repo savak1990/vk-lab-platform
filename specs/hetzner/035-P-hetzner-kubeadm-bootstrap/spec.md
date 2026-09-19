@@ -58,8 +58,8 @@ autoscaler join path (HETZ-170); and `hetzner_ssh`, `cluster_exists` and
   `control_plane_private_ip`, `worker_ips` and `server_ids`. Worker
   cloud-init installs `containerd.io`, `kubeadm`, `kubelet`, `kubectl` and
   the kernel prerequisites only. The control plane's cloud-init also
-  renders `/root/kubeadm-config.yaml`, runs `kubeadm init --config …
-  --upload-certs`, installs Cilium and touches
+  renders `/root/kubeadm-config.yaml`, runs `kubeadm init --config …`,
+  installs Cilium and touches
   `/var/lib/lab/cp-bootstrap-done`; no token, CA or kubeconfig is in
   `user_data` or Terraform state. `scripts/lib/versions.sh` carries
   `KUBERNETES_VERSION` (1.36.x).
@@ -117,15 +117,22 @@ autoscaler join path (HETZ-170); and `hetzner_ssh`, `cluster_exists` and
 `cluster-up`, after HETZ-030's `terragrunt apply` returns. The functions
 run in this order:
 
-- `wait_for_control_plane()` polls `hetzner_ssh <cp> test -f
-  /var/lib/lab/cp-bootstrap-done` every 10 s, bounded by
-  `HETZNER_CP_BOOTSTRAP_SECONDS` (default 600), and returns as soon as the
-  marker exists. SSH itself may be refused for the first seconds after
-  create, which is not an error while the budget lasts. On timeout it
-  prints `cloud-init status --long` and the last 50 lines of `journalctl
-  -u kubelet` from the control plane, then exits 1 — a boot-time `kubeadm
-  init` failure is invisible to Terraform, so this is where the operator
-  gets the evidence without a second manual command.
+- `wait_for_control_plane()` is one SSH call, not a local poll loop:
+  `hetzner_ssh <cp> 'for i in $(seq 1 60); do test -f
+  /var/lib/lab/cp-bootstrap-done && exit 0; sleep 10; done; exit 1'`. The
+  loop count is `HETZNER_CP_BOOTSTRAP_SECONDS` (default 600) divided by
+  the 10 s sleep, so the budget is unchanged while the SSH key is
+  decrypted once and exactly one temp dir exists for the whole wait. SSH
+  may be refused for the first seconds after create, so the call itself is
+  retried until it connects, which is not an error while the budget lasts;
+  every other poll this script runs over SSH takes the same shape, the
+  loop on the remote side. On timeout it prints `cloud-init status
+  --long`, `tail -n 50 /var/log/cloud-init-output.log`, `journalctl -u
+  cloud-final --no-pager -n 50` and the last 50 lines of `journalctl -u
+  kubelet` from the control plane, then exits 1 — a boot-time `kubeadm
+  init` failure, and a helm download that fails after a successful init,
+  are both invisible to Terraform, so this is where the operator gets the
+  evidence without a second manual command.
 - `configure_kubeconfig([path])`, hetzner arm: `hetzner_ssh <cp> cat
   /etc/kubernetes/admin.conf`; rewrite `https://10.0.1.10:6443` to
   `https://<control_plane_ip>:6443`; rename the context, cluster and user
@@ -142,11 +149,10 @@ run in this order:
   with the `discovery.bootstrapToken` fields parsed out of `$JOIN`, plus
   `nodeRegistration.name=<worker server name>`,
   `nodeRegistration.kubeletExtraArgs` `cloud-provider=external` and
-  `node-ip=<worker private ip>`, and a `KubeletConfiguration` carrying the
-  same `systemReserved: {cpu: 500m, memory: 1Gi}`, `kubeReserved: {cpu:
-  250m, memory: 512Mi}` and `evictionHard: {memory.available: 300Mi}` the
-  control plane sets (HETZ-030), so every node schedules against the same
-  allocatable figure; run `kubeadm join --config
+  `node-ip=<worker private ip>`. The join config carries no
+  `KubeletConfiguration`: the reservations come from the cluster's
+  `kubelet-config` ConfigMap, written at `kubeadm init` (HETZ-030) and
+  downloaded by every join. Then run `kubeadm join --config
   /root/kubeadm-join.yaml` on the worker over SSH. Never prints `$JOIN` or
   any other `kubeadm token` output to the script's own stdout; under
   `GITHUB_ACTIONS` that output is masked like every other secret.
@@ -176,7 +182,7 @@ present from HETZ-030).
 1. Write `wait_for_control_plane()`; run it against a freshly created
    HETZ-030 control plane, record the create-to-marker time, and force the
    timeout path with a short `HETZNER_CP_BOOTSTRAP_SECONDS` to confirm it
-   prints `cloud-init status --long` and the kubelet journal.
+   prints all four diagnostic commands §4 lists.
 2. Write `configure_kubeconfig`'s hetzner arm and the `cluster-up` /
    `kubeconfig` Make arms; run `make kubeconfig` from the operator machine
    and confirm `kubectl get nodes` lists the control plane.
@@ -258,8 +264,9 @@ and runs its cloud-init again.
 - A boot-time `kubeadm init` failure is visible only over SSH: Terraform
   reports a healthy `running` server and this script sees a marker that
   never appears. `wait_for_control_plane()`'s timeout path printing
-  `cloud-init status --long` and the kubelet journal is the whole of the
-  diagnosis path, so it must not be dropped for brevity.
+  `cloud-init status --long`, the cloud-init output log, the `cloud-final`
+  journal and the kubelet journal is the whole of the diagnosis path, so
+  it must not be dropped for brevity.
 - `HETZNER_CP_BOOTSTRAP_SECONDS` must stay comfortably above the observed
   create-to-marker time (§6 step 1 records it): image pulls during
   `kubeadm init` dominate it and vary with Hetzner-side network
@@ -281,3 +288,8 @@ and runs its cloud-init again.
   into the control plane's cloud-init (HETZ-030); this script waits for the
   boot marker, joins the workers and fetches the kubeconfig (decisions.md
   §3, "Bootstrap driver").
+- 2026-09-20 — review fixes: the marker wait is one SSH call with the loop
+  on the remote side; the join config drops its duplicated
+  `KubeletConfiguration` in favour of the cluster's `kubelet-config`
+  ConfigMap; the timeout dump gains the cloud-init output log and the
+  `cloud-final` journal.

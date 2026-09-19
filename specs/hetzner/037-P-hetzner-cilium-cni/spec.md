@@ -10,7 +10,7 @@ recommended_model_tier: "standard"
 model_rationale: "One helm release with fixed values, placed in a template another spec renders, plus a bounded wait; the judgement is in the values and the connectivity test"
 effort_estimate: "Half a session (2–3 h) plus waits"
 estimate_confidence: "medium"
-depends_on: ["HETZ-035"]
+depends_on: ["HETZ-030", "HETZ-035"]
 blocked_by: []
 supersedes: []
 created: "2026-09-19"
@@ -36,9 +36,11 @@ joins. `PROVIDER=hetzner make cluster-up` succeeds only once every node is
 ## 2. Scope and non-goals
 
 In scope: the Cilium helm values and the `helm` lines they become in
-HETZ-030's `templates/control-plane.yaml.tftpl`,
-`scripts/lib/versions.sh`'s `CILIUM_CHART_VERSION` and its export as
-`TF_VAR_cilium_chart_version`, `wait_for_nodes_ready()` in
+HETZ-030's `templates/control-plane.yaml.tftpl`, the value of
+`CILIUM_CHART_VERSION` — HETZ-030 declares it in
+`scripts/lib/versions.sh` and exports it as
+`TF_VAR_cilium_chart_version`, this spec chooses the pin and justifies
+it — `wait_for_nodes_ready()` in
 `scripts/hetzner-bootstrap.sh`, and the hetzner arm of the `cluster-up`
 Make target insofar as its exit status now depends on
 `wait_for_nodes_ready`. The template file itself belongs to HETZ-030;
@@ -104,20 +106,22 @@ function in `scripts/hetzner-bootstrap.sh`, called after
   `routingMode=tunnel` with `tunnelProtocol=vxlan` is the documented
   default datapath and needs no CCM route programming;
   `kubeProxyReplacement=false` keeps kube-proxy, which is kubeadm's own
-  shape and the exam's; `operator.replicas=1` matches the node count
-  (research.md, "Cilium 1.20.2 on Hetzner"). No
+  shape and the exam's; `operator.replicas=1` is one operator replica on
+  a two-node cluster, a single point of failure accepted at this node
+  count (§12). No
   `k8sServiceHost`/`k8sServicePort` value is set — that pair only matters
   when Cilium replaces kube-proxy, which this does not. No `--wait`: the
   boot marker means the release was created, and this spec's own wait is
   what proves health. The release sits outside Argo CD's tree, the same
   untracked-helm-release shape as Argo CD itself and the coming CCM
   (decisions.md §3); `argo-up` never touches Cilium.
-- `CILIUM_CHART_VERSION=1.20.2` lives in `scripts/lib/versions.sh`
-  alongside `KUBERNETES_VERSION`, and the hetzner `cluster-up` arm exports
-  it as `TF_VAR_cilium_chart_version` so the template's
-  `${cilium_chart_version}` resolves; the Terraform variable has no
-  default, so a missing export fails the apply rather than pinning a stale
-  chart.
+- `CILIUM_CHART_VERSION=1.20.2` is the value this spec chooses. The
+  declaration in `scripts/lib/versions.sh` and the export as
+  `TF_VAR_cilium_chart_version` are HETZ-030's, which consumes the pin
+  alongside `KUBERNETES_VERSION`, `CONTAINERD_VERSION` and
+  `HELM_VERSION`, so the template's `${cilium_chart_version}` resolves;
+  the Terraform variable has no default, so a missing export fails the
+  apply rather than pinning a stale chart.
 - Cloud-init runs once per server lifetime, so the install happens exactly
   once however many times `cluster-up` runs — the idempotence that
   HETZ-035 gets from its per-worker file checks, this spec gets from the
@@ -147,15 +151,16 @@ function in `scripts/hetzner-bootstrap.sh`, called after
 `cilium_chart_version` variable they read);
 `scripts/hetzner-bootstrap.sh` (adds `wait_for_nodes_ready()` and its call
 after `kubeadm_join_workers()`); `scripts/lib/versions.sh`
-(`CILIUM_CHART_VERSION`); `Makefile` (no new target; the hetzner
-`cluster-up` arm exports `TF_VAR_cilium_chart_version`, and its exit
-status now depends on `wait_for_nodes_ready` through the script it already
-calls).
+(`CILIUM_CHART_VERSION`'s value only — HETZ-030 declares the entry);
+`Makefile` (no new target; the hetzner `cluster-up` arm already exports
+`TF_VAR_cilium_chart_version` under HETZ-030, and its exit status now
+depends on `wait_for_nodes_ready` through the script it already calls).
 
 ## 6. Implementation steps
 
-1. Add `CILIUM_CHART_VERSION` to `scripts/lib/versions.sh` and its
-   `TF_VAR_cilium_chart_version` export to the hetzner `cluster-up` arm.
+1. Confirm `CILIUM_CHART_VERSION` in `scripts/lib/versions.sh` carries
+   this spec's value and that HETZ-030's hetzner `cluster-up` arm exports
+   `TF_VAR_cilium_chart_version`.
 2. Prove the helm line by hand against a live control plane first, then
    put it into HETZ-030's `templates/control-plane.yaml.tftpl` and
    re-check the render with `terraform console` and `cloud-init schema`.
@@ -173,15 +178,18 @@ calls).
 ## 7. Dependencies and blockers
 
 HETZ-030 supplies the control-plane template this spec's helm lines live
-in and the `cilium_chart_version` variable they read. HETZ-035 supplies
-the joined workers and the kubeconfig this spec's `kubectl` calls use. Nothing in HETZ-045 or HETZ-050 is required first — CoreDNS
+in, declares `CILIUM_CHART_VERSION` and `HELM_VERSION` in
+`scripts/lib/versions.sh`, and consumes both as `TF_VAR_*`; this spec owns
+the values' rationale and the readiness wait. HETZ-035 supplies the joined
+workers and the kubeconfig this spec's `kubectl` calls use. Nothing in HETZ-045 or HETZ-050 is required first — CoreDNS
 staying `Pending` past this spec's own acceptance is the expected
 handoff to HETZ-045.
 
 ## 8. Acceptance criteria
 
-- Every node reports `Ready` within 10 minutes of `terragrunt apply`
-  returning.
+- Every node reports `Ready` within `HETZNER_CP_BOOTSTRAP_SECONDS +
+  HETZNER_NODE_READY_SECONDS` of `terragrunt apply` returning (defaults
+  600 + 600 s); the measured time is recorded.
 - `kubectl -n kube-system rollout status ds/cilium` (or `cilium status
   --wait` where the CLI is available) reports healthy.
 - The two-pod cross-node ping in §4 succeeds.
@@ -254,3 +262,8 @@ plane, which the operator reaches with `make node-ssh`, or
   bootstrap script into the control plane's cloud-init (HETZ-030); this
   spec keeps the values, the version pin and the readiness wait
   (decisions.md §3, "Bootstrap driver").
+- 2026-09-20 — review fixes: `depends_on` gains HETZ-030, which declares
+  `CILIUM_CHART_VERSION` and `HELM_VERSION` and consumes them as
+  `TF_VAR_*` while this spec keeps the values' rationale; the
+  `operator.replicas=1` rationale moves from research.md to §12; the §8
+  readiness bound is stated in the two `HETZNER_*` budgets.

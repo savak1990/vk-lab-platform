@@ -25,7 +25,8 @@ flowchart TD
   030 --> 040[040 cluster scripts]
   030 --> 035
   040 --> 035
-  035 --> 037[037 Cilium CNI]
+  030 --> 037[037 Cilium CNI]
+  035 --> 037
   037 --> 045[045 argo scripts]
   016 --> 045
   050[050 gitops baseline] --> 045

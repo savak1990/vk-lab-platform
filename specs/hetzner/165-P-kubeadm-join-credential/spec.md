@@ -146,8 +146,12 @@ beyond the manual steps this spec documents.
   or corrects it against a real response, not yet run — then `kubeadm
   join 10.0.1.10:6443 --token $TOKEN --discovery-token-ca-cert-hash
   sha256:$HASH --node-name "$(hostname)"`. The control-plane endpoint is
-  the fixed private IP HETZ-035 initialised with, not a variable this
-  spec resolves itself.
+  the fixed private IP the control plane initialised with, not a variable
+  this spec resolves itself. The join config needs no
+  `KubeletConfiguration`: `kubeadm join` downloads the cluster's
+  `kubelet-config` ConfigMap, so an autoscaled node inherits the same
+  `systemReserved`, `kubeReserved` and `evictionHard` the control plane
+  set at `kubeadm init` (HETZ-030).
 - Write the Secret: `kubectl create secret generic
   hcloud-autoscaler -n kube-system --from-literal=token="$TOKEN"
   --from-literal=ca_hash="$HASH" --from-literal=cloud_init="$RENDERED" \
@@ -290,3 +294,6 @@ cluster-side token before the Secret.
 - 2026-09-20 — option C: HETZ-030 now has two templates; this spec still
   reads only the worker one, `templates/node.yaml.tftpl`, whose
   two-placeholder property is unchanged.
+- 2026-09-20 — review fix: the autoscaled node's kubelet reservations are
+  recorded as inherited from the cluster's `kubelet-config` ConfigMap on
+  join, not set in this spec's rendered cloud-init.

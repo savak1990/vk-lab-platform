@@ -28,7 +28,7 @@ persistent network. Every node's cloud-init installs `containerd.io`,
 `kubeadm`, `kubelet`, `kubectl` and the kernel prerequisites. On the
 control plane it also renders `/root/kubeadm-config.yaml` from the node's
 own metadata (the public IPv4 for `apiServer.certSANs`), runs `kubeadm
-init --config … --upload-certs`, installs Cilium with helm, and drops a
+init --config …`, installs Cilium with helm, and drops a
 `/var/lib/lab/cp-bootstrap-done` marker; the control plane is therefore a
 working single-node cluster about two minutes after create, in parallel
 with Terraform finishing. Workers install packages only. No token, CA or
@@ -149,9 +149,14 @@ Servers (`cluster-hetzner/k8s`, module `hcloud-nodes`):
   `Makefile`'s hetzner `cluster-up` arm exports all four as
   `TF_VAR_*` from `scripts/lib/versions.sh`, so a missing export fails
   loudly rather than silently pinning a stale version.
-  `CILIUM_CHART_VERSION` is HETZ-037's pin and `HELM_VERSION` is this
-  spec's; both are consumed here, neither is redefined here. `control_plane_count` defaults to 1,
-  `worker_count` defaults to 1, `server_type` defaults to `cx33`.
+  All four are declared in `scripts/lib/versions.sh` by this spec, which
+  consumes them as `TF_VAR_*`; HETZ-037 owns the rationale for the Cilium
+  values and for `CILIUM_CHART_VERSION`'s value, not its declaration.
+  `worker_count` defaults to 1 and `server_type` defaults to `cx33`.
+  `control_plane_count` defaults to 1 and carries `validation { condition
+  = var.control_plane_count == 1; error_message = "HA control plane needs
+  a stable controlPlaneEndpoint; see decisions.md" }` until an HA spec
+  lifts it.
 - Two cloud-init templates under `templates/`, each a standalone
   `#cloud-config` document rendered with `templatefile()`. They are not
   composed: two `#cloud-config` documents cannot be concatenated, and
@@ -203,11 +208,18 @@ Servers (`cluster-hetzner/k8s`, module `hcloud-nodes`):
     etcd and the API server out of memory pressure when workloads fill
     the node; `KubeProxyConfiguration` with `metricsBindAddress:
     10.0.1.10:10249`.
+  - kubeadm stores the `KubeletConfiguration` given at `init` in the
+    `kube-system/kubelet-config` ConfigMap, and every `kubeadm join`
+    downloads it. `cgroupDriver`, `systemReserved`, `kubeReserved` and
+    `evictionHard` are therefore cluster-wide from this one document:
+    Terraform workers (HETZ-035) and autoscaled workers (HETZ-165) inherit
+    them on join and repeat none of it.
+    https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/kubelet-integration/
   - `runcmd`, after the package steps: wait for `enp7s0`; read the node's
     own public IPv4 from `169.254.169.254/hetzner/v1/metadata` and write
     it into `apiServer.certSANs`, so no `apply`-time value pins the
-    address; `kubeadm init --config /root/kubeadm-config.yaml
-    --upload-certs`; install helm from the pinned tarball
+    address; `kubeadm init --config /root/kubeadm-config.yaml`; install
+    helm from the pinned tarball
     (`${helm_version}`); `helm repo add cilium https://helm.cilium.io`;
     `helm upgrade --install cilium cilium/cilium --version
     ${cilium_chart_version} -n kube-system --set ipam.mode=kubernetes
@@ -221,10 +233,10 @@ Servers (`cluster-hetzner/k8s`, module `hcloud-nodes`):
     `--wait`. HETZ-037's readiness wait is what proves health.
   - No token, CA or kubeconfig enters `user_data` or Terraform state;
     kubeadm generates them on the node and they stay there.
-  - Size: this is the larger of the two renders — the two apt keyrings
-    dominate it and the kubeadm document adds roughly a kilobyte, so both
-    renders are expected in the 8–12 KiB range against the 32 KiB cap.
-    §6 measures them rather than assuming.
+  - Size: the two apt keyrings dominate both renders. The worker render
+    is expected at 8–10 KiB and the control-plane render at 12–16 KiB (the
+    kubeadm document plus the helm lines), both well under the 32 KiB cap.
+    §6 step 1 measures them rather than assuming.
 - Outputs to SSM as plain String:
   `/${project}/cluster-hetzner/k8s/control_plane_ip`,
   `/…/control_plane_private_ip`, `/…/worker_ips` (comma-separated list),
@@ -242,8 +254,9 @@ Servers (`cluster-hetzner/k8s`, module `hcloud-nodes`):
   `templates/control-plane.yaml.tftpl` (new); `versions.tf` pins
   `hetznercloud/hcloud`; lock files.
 - `scripts/lib/versions.sh` gains `KUBERNETES_VERSION`,
-  `CONTAINERD_VERSION` and `HELM_VERSION`; `CILIUM_CHART_VERSION` is
-  added there by HETZ-037 and only consumed here.
+  `CONTAINERD_VERSION`, `HELM_VERSION` and `CILIUM_CHART_VERSION`; this
+  spec declares all four, and HETZ-037 owns the Cilium pin's value and
+  rationale.
 - `Makefile`: the hetzner `cluster-up` arm exports
   `TF_VAR_kubernetes_version`, `TF_VAR_containerd_version`,
   `TF_VAR_helm_version` and `TF_VAR_cilium_chart_version` before the
@@ -295,7 +308,8 @@ writes.
   pinned `kubernetes_version`; `containerd --version` prints a 2.3.x
   version; `kubeadm config images pull --kubernetes-version v1.36.x`
   exits 0; `systemctl is-active containerd` prints `active`.
-- Over SSH on the control plane within 5 minutes of `apply`: `cloud-init
+- Over SSH on the control plane within `HETZNER_CP_BOOTSTRAP_SECONDS`
+  (default 600 s) of `apply`: `cloud-init
   status --wait` exits 0; `/etc/kubernetes/admin.conf` exists; `kubectl
   --kubeconfig /etc/kubernetes/admin.conf get nodes` lists the control
   plane `Ready` (Cilium is up) and still carrying
@@ -359,14 +373,21 @@ and HETZ-040's sweep removes any that Terraform lost.
   reports a healthy `running` server: it is read only with `cloud-init
   status --long` and `journalctl -u kubelet` over SSH, which HETZ-035
   prints from the control plane when its wait times out.
-- `--upload-certs` is inert at one control plane; it is kept so a later HA
-  spec adds control planes without changing the init contract.
+- An HA spec adds `--upload-certs` and the certificate key handling; at
+  one control plane the flag would only create a `kubeadm-certs` Secret
+  nobody reads, so `kubeadm init` carries no such flag here.
+- A helm download or `helm upgrade --install` that fails at boot after a
+  successful `kubeadm init` leaves a cluster with no CNI and no marker.
+  `tail -n 50 /var/log/cloud-init-output.log` and `journalctl -u
+  cloud-final` on the control plane show it; HETZ-035's timeout path
+  prints both.
 - The package section is duplicated in both templates, so a package or
   repository change made in one and not the other gives workers and the
   control plane different versions; the §6 render step diffs the two
   package sections.
-- `control_plane_count > 1` now fails earlier than HETZ-035's explicit
-  rejection: the control-plane template hardcodes `10.0.1.10` for
+- `control_plane_count > 1` fails at `plan` on the variable's own
+  `validation` block, earlier than HETZ-035's explicit rejection: the
+  control-plane template hardcodes `10.0.1.10` for
   `advertiseAddress` and `controlPlaneEndpoint`, so a second control plane
   would render a wrong config at the Terraform layer.
 
@@ -395,3 +416,8 @@ and HETZ-040's sweep removes any that Terraform lost.
   package-only worker template HETZ-165 reuses; the script joins the
   workers and fetches the kubeconfig (decisions.md §3, "Bootstrap
   driver").
+- 2026-09-20 — review fixes: `--upload-certs` dropped from the boot-time
+  `kubeadm init`; the `KubeletConfiguration` is recorded as cluster-wide
+  through the `kubelet-config` ConfigMap; all four version pins are
+  declared here; `control_plane_count` gains a `validation` block; the
+  size band is split per template.
