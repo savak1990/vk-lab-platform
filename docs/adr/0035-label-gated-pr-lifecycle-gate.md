@@ -149,12 +149,33 @@ as does its `Ephemeral=true` tag - no resource in this repository carries that
 tag today, so the reaper would be a large change to every Terraform stack.
 
 The residual risk is unchanged from ADR 0026 but now costs more: a run that
-dies without completing `down` leaves a hosted zone that makes
+dies without completing `down` leaves orphans that make
 `require-unique-subdomain.sh` refuse every later run for that project - which,
-with a merge gate, means every merge. Recovery is to dispatch `lab.yml` with
-`target: full-down`, the CI project name, and the same name in
-`confirm_destroy`. That path already exists and needs no new machinery; it is
-documented in the README rather than automated.
+with a merge gate, means every merge.
+
+Recovery is **not** a `full-down`. That was the first design of this decision
+and it is wrong, which was established by running it: both dispatches reported
+success and deleted nothing. `terraform destroy` reads state, not the account,
+and the orphan exists precisely because state was never written. An empty state
+produces an empty destroy plan.
+
+Three things survive a killed bring-up, and `scripts/force-clean-ci.sh <provider>`
+removes all three:
+
+- `bootstrap/route53/terraform.tfstate.tflock` - a held lock makes the next
+  apply *or* destroy refuse to start, so the teardown meant to clean up cannot
+  run until this is cleared;
+- the hosted zone, which is what `require-unique-subdomain.sh` reports;
+- the `/<project>/` SSM parameters. This is the quiet one. They cost nothing,
+  so no bill reveals them, but `aws_ssm_parameter` creates without overwrite -
+  the next `bootstrap-up` fails with `ParameterAlreadyExists` and the cause
+  looks unrelated to the run that caused it.
+
+The script deletes without terraform's plan in front of it, so it carries the
+same `CONFIRM_DESTROY` guard every other destroy path uses, refuses a zone this
+project's state still tracks (there, `full-down` is the right tool), and refuses
+a zone holding any record beyond its own NS and SOA - an empty zone is the
+signature of a bring-up that died early, a populated one is something in use.
 
 ## Consequences
 

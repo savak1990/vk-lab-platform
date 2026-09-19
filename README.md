@@ -159,14 +159,35 @@ shares.
 #### When a teardown fails
 
 Each provider tears itself down even when its bring-up failed, and
-`scripts/verify-no-leaks.sh` then asserts that nothing survived. If that job
-itself fails, a Route 53 zone can be left behind — and
-`require-unique-subdomain.sh` will then refuse every later run for that
-project, so the gate stays red for everyone.
+`scripts/verify-no-leaks.sh` then asserts that nothing survived.
 
-To clear it, dispatch **lab** by hand with `target: full-down`, the CI project
-name in `project_name`, its subdomain, and the same project name typed into
-`confirm_destroy`. Then re-add the label.
+A run that is **cancelled** is the case to know about. Terraform creates a
+resource and only then records it in state; kill it in between and the resource
+is live in AWS but absent from state. `require-unique-subdomain.sh` then refuses
+every later run for that project, so the gate stays red for everyone.
+
+A `full-down` does not fix this, and it is worth knowing why before you try it:
+`terraform destroy` reads state, not your account, so an empty state produces an
+empty destroy plan and the teardown reports success while deleting nothing.
+
+Run this instead, once per affected provider:
+
+```bash
+CONFIRM_DESTROY=vk-lab-ci PROJECT_NAME=vk-lab-ci SUBDOMAIN=awsci \
+  ./scripts/force-clean-ci.sh aws
+
+CONFIRM_DESTROY=vk-civo-ci PROJECT_NAME=vk-civo-ci SUBDOMAIN=civoci \
+  ./scripts/force-clean-ci.sh civo
+```
+
+It clears the stale state lock, deletes the orphaned zone, and deletes the
+orphaned `/<project>/` SSM parameters. That last one is the trap: the parameters
+are free, so nothing flags them, but the next `bootstrap-up` fails with
+`ParameterAlreadyExists` for a reason that looks unrelated.
+
+The script refuses if the project's own state still tracks the zone — there,
+`full-down` really is the right tool — and refuses any zone holding a record
+beyond its own NS and SOA. Then re-add the label.
 
 One more non-obvious case: GitHub keeps at most one pending job per concurrency
 group. Labelling a third pull request while two labelled runs are already in

@@ -42,6 +42,8 @@ In scope:
   `up`/`test`/`down` chain.
 - `.github/actions/setup-lab-tools/` — the shared toolchain install.
 - `scripts/verify-no-leaks.sh` — the post-teardown assertion.
+- `scripts/force-clean-ci.sh` — recovery from a cancelled bring-up, which no
+  teardown can reach.
 - Branch protection on `main` and the repository's merge-method settings.
 
 Non-goals:
@@ -80,6 +82,10 @@ Non-goals:
    cancellation (AWS-020 R6), as a separate job with its own `if: always()`.
 9. A teardown MUST be verified, not assumed. Any Bootstrap- or
    Persistent-lifecycle resource surviving `full-down` MUST fail the job.
+9a. Recovery from a cancelled run MUST exist as a script, not as prose. A
+    cancelled run leaves a state lock, a hosted zone and SSM parameters that
+    `terraform destroy` cannot see, and the parameters block the next
+    `bootstrap-up` while costing nothing that would reveal them.
 10. Runs against the same project MUST be serialized against each other and
     against `lab.yml` (constitution §11, AWS-020 R7), using the same
     concurrency group expression `lab.yml` uses.
