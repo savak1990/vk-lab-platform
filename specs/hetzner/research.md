@@ -75,7 +75,7 @@ Everything in the Civo AWS table still holds: Roles Anywhere trust model, creden
 
 ## Cost model (EUR/month excl. VAT, 15 June 2026 prices, eu-central)
 
-Five candidate node shapes. Every shape adds one LB11 (7.49), Primary IPv4 per node (0.50 each), a 20 GB CNPG volume (1.14) and four observability volumes at the 10 GB minimum each (40 GB, 2.29). Network, firewall, SSH key: 0.
+Six candidate node shapes. Every shape adds one LB11 (7.49), Primary IPv4 per node (0.50 each), a 20 GB CNPG volume (1.14) and four observability volumes at the 10 GB minimum each (40 GB, 2.29). Network, firewall, SSH key: 0.
 
 | Shape | Nodes | Node cost | IPv4 | LB11 | Volumes | **Total** | Allocatable RAM (doc figures, unmeasured) |
 |---|---|---|---|---|---|---|---|

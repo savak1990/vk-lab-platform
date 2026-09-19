@@ -5,8 +5,8 @@
 | Milestone | Goal | Specs | Exit criterion |
 |---|---|---|---|
 | M0 Foundations | Operator surface, governance, the two generalisation refactors, feasibility facts | 010, 015, 016, 018, 020 | AWS and Civo unchanged (golden renders, `make -n`); ADRs merged; spike report answers the CCM-ordering, kubeconfig, volume-survival and LB-deletion questions |
-| M1 Viable Hetzner platform | `PROVIDER=hetzner make full-up` brings up a kubeadm cluster (1 cp + 1 worker `cx33`, Cilium), the hcloud CCM, Argo, CSI, Envoy with wildcard TLS, DNS, ESO, CNPG with barman-cloud backups, observability, and the cluster autoscaler for 0–2 extra workers; `make down`/`up` preserves data; CI can run it | 025–170, 182 | HETZ-150 passes; idle cost recorded against the 32 EUR fixed / 53 EUR ceiling model (research.md shape F) |
-| M2 Scale and harden | Stock-aware SKU fallback (CX → CPX), right-sizing, client IP | 175, 190 | each spec's DoD |
+| M1 Viable Hetzner platform | `PROVIDER=hetzner make full-up` brings up a kubeadm cluster (1 cp + 1 worker `cx33`, Cilium), the hcloud CCM, Argo, CSI, Envoy with wildcard TLS, DNS, ESO, CNPG with barman-cloud backups, observability, and the cluster autoscaler for 0–2 extra workers; `make down`/`up` preserves data; CI can run it | 025–170, 185 | HETZ-150 passes; idle cost recorded against the 32 EUR fixed / 53 EUR ceiling model (research.md shape F) |
+| M2 Scale and harden | Stock-aware SKU fallback (CX → CPX), right-sizing, arm64 images if CAX returns, client IP | 175, 182, 190 | each spec's DoD |
 
 ## Dependency graph
 
@@ -48,9 +48,8 @@ flowchart TD
   085 --> 115
   C115[CIVO-115] --> 115
   115 --> 120[120 CNPG persistence]
-  182[182 multi-arch images] --> 120
   C180[CIVO-180/120] --> 120
-  C180 --> 182
+  C180 --> 182[182 multi-arch images]
   045 --> 130[130 e2e]
   060 --> 130
   C130[CIVO-130] --> 130
@@ -76,7 +75,7 @@ flowchart TD
 
 ## Critical path
 
-015 → 010 → 016 → 018 → 080 → 025 → 030 → 040 → 035 → 037 → 045 (with 050) → 085 → 060 → 070 → 115 → 182 → 120 → 150. 047, 160, 165/170 and 185 hang off 045/037 in parallel.
+015 → 010 → 016 → 018 → 080 → 025 → 030 → 040 → 035 → 037 → 045 (with 050) → 085 → 060 → 070 → 115 → 120 → 150. 047, 160, 165/170 and 185 hang off 045/037 in parallel.
 
 Parallel tracks once 045/050 land: ingress (060 → 070), identity (085),
 observability (160), tests (130), CI (140). 020 can run any time after the
@@ -93,7 +92,7 @@ and 020, 025, 030, 040 do not.
 ## First three PRs
 
 1. **PR 1 — HETZ-010 + this package.** `PROVIDER=hetzner` value, defaults, `hcloud_token()`, `secrets/hcloud-token.enc`, third arm in every guard and enum; adds `specs/hetzner/`. Regression: `make -n up` identical for `aws` and `civo`.
-2. **PR 2 — HETZ-015.** ADR 0032, amendments to 0029/0030/0024/0002/0022, constitution §20 per-provider table, architecture §10a. No code.
+2. **PR 2 — HETZ-015.** The Hetzner ADR (number assigned on landing; 0032–0035 are taken), amendments to 0029/0030/0024/0002/0022, constitution §20 per-provider table, architecture §10a. No code.
 3. **PR 3 — HETZ-016 + HETZ-018.** The two generalisation refactors with golden renders for `aws` and `civo` proving zero change, plus the Civo lifecycle test run once. These are the riskiest PRs in the package because they touch DONE Civo code; they go in before any Hetzner resource exists.
 
 Then HETZ-020 (spike, manual session, no PR needed beyond the report), and
@@ -101,7 +100,8 @@ the M1 chain.
 
 **Sequencing against `specs/local/`.** A parallel package adds `PROVIDER=local`
 and edits the same sites: `Makefile:10`, `validateTarget`, `provider.sh`,
-constitution §17/§20, architecture §10a, and it also claims ADR 0032. Land
+constitution §17/§20, architecture §10a, and it also claims the Hetzner
+ADR (number assigned on landing; 0032–0035 are taken). Land
 PR 1 and PR 2 after the local package's 010/015 equivalents (or land the
 shared guard and helper edits once for both), and renumber the Hetzner ADR
 to the next free number at that time.
@@ -117,4 +117,4 @@ to the next free number at that time.
 | Civo tasks that do not apply | architecture.md §3 rows marked n/a (reserved IP, bundled StorageClass) and decisions.md §4 |
 | Same headers as Civo tasks | every `spec.md`; README format note |
 | AWS access identical to Civo | 018, 080 |
-| Cost within 50–100 USD with maximal CPU/memory | research.md cost model, shape A–E; 175 |
+| Cost within 50–100 USD with maximal CPU/memory | research.md cost model, shape A–F; 175 |

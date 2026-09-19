@@ -25,7 +25,7 @@ completed: ""
 `make cluster-up` on Hetzner fails fast with a clear message when the
 chosen server type is out of stock in `nbg1`, and the operator can switch
 to a documented x86 fallback with one variable. After seven days of
-Prometheus data the shared requests and limits are adjusted for the CAX21
+Prometheus data the shared requests and limits are adjusted for the `cx33`
 node size, and the cost model is updated with measured figures.
 
 The fallback exists because Hetzner limits CX and CAX stock since
@@ -43,7 +43,7 @@ that CIVO-175 does not already make.
 ## 3. Current state / evidence
 
 - HETZ-030 fixes `cx33` in `terraform/modules/hcloud-nodes`.
-- `research.md` cost model: shape C (3 × CAX21) 43.89 EUR; shape D (3 × CPX22) 70.89 EUR; shape E (3 × CX33) 37.89 EUR but sold out at the baseline date.
+- `research.md` cost model: the ARM shape C 43.89 EUR; shape D (3 × CPX22) 70.89 EUR; shape E (3 × CX33) 37.89 EUR but sold out at the baseline date.
 - All platform images are multi-arch (`research.md`), so an x86 fallback needs no image change.
 - Hetzner's API reports per-location availability through `GET /v1/server_types` (`deprecation`) and `GET /v1/datacenters` (`server_types.available`); the `hcloud` CLI exposes it as `hcloud server-type describe <type>`.
 - CIVO-175 defines the measurement method (seven days, `container_memory_working_set_bytes` p95 and CPU p95 per workload).
@@ -51,14 +51,14 @@ that CIVO-175 does not already make.
 ## 4. Design and contracts
 
 - `variable "server_type"` in `terraform/modules/hcloud-nodes`, default `cx33`, passed from `cluster-hetzner/k8s/terragrunt.hcl` via `HCLOUD_SERVER_TYPE` (operator input, like `PROJECT_NAME`). One server type for every node; mixed pools are out of scope.
-- Fallback table, recorded in `research.md` and in this spec: `cax21` (default, ARM, 8 GB) → `cpx32` (x86, 8 GB, 35.49 EUR each) → `cpx22` (x86, 4 GB, 19.49 EUR each). CX types are listed only as opportunistic (`cx33`) because their stock is unreliable.
+- Fallback table, recorded in `research.md` and in this spec: `cx33` (default, x86, 8 GB) → `cpx32` (x86, 8 GB, 35.49 EUR each) → `cpx22` (x86, 4 GB, 19.49 EUR each); CAX types are listed only if a real create succeeds again, because ARM stock has not returned.
 - Pre-flight in `scripts/cluster-up.sh` (hetzner branch): `hcloud datacenter list -o json` filtered to `nbg1`, check `server_types.available` contains the numeric id of `HCLOUD_SERVER_TYPE`; on failure print the fallback table and exit 2 before `terragrunt apply`.
-- Right-sizing: the same values keys as CIVO-175 (`observability.*.resources`, `postgres.resources`, ESO, ExternalDNS, Envoy), adjusted from measured p95 with the CIVO-175 headroom rule, and a per-target override only where CAX21 differs from Civo Medium.
+- Right-sizing: the same values keys as CIVO-175 (`observability.*.resources`, `postgres.resources`, ESO, ExternalDNS, Envoy), adjusted from measured p95 with the CIVO-175 headroom rule, and a per-target override only where `cx33` differs from Civo Medium.
 
 ## 5. Files/components affected
 
 - `terraform/modules/hcloud-nodes/variables.tf`, `terraform/live/cluster-hetzner/k8s/terragrunt.hcl`.
-- `Makefile` (`HCLOUD_SERVER_TYPE ?= cax21`, exported on hetzner only), `scripts/lib/provider.sh`.
+- `Makefile` (`HCLOUD_SERVER_TYPE ?= cx33`, exported on hetzner only), `scripts/lib/provider.sh`.
 - `scripts/cluster-up.sh` hetzner branch (pre-flight).
 - `gitops/values.yaml` (measured requests/limits; hetzner overrides).
 - `specs/hetzner/research.md` cost model and SKU table.

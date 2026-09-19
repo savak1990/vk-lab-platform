@@ -124,7 +124,8 @@ template and the gate.
 ## 9. Validation
 
 Offline: `make gitops-check`. Real cloud: one Hetzner bring-up and one
-teardown, about 0.10 EUR (one hour of three CAX21 plus one 20 GB volume).
+teardown, about 0.10 EUR (one hour of the fixed `cx33` pair plus one
+20 GB volume).
 
 ## 10. AWS regression protection
 

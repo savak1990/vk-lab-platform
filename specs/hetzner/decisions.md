@@ -13,7 +13,7 @@
 | AWS access from workloads | IAM Roles Anywhere, same chain as Civo, names parametrized by provider (HETZ-018) |
 | Kubeconfig | `/etc/kubernetes/admin.conf` fetched over SSH with the KMS-encrypted key; server address rewritten to the public IP |
 | Hetzner token | KMS-encrypted in repo (`secrets/hcloud-token.enc`), decrypted at run time, masked in CI; **also** placed in `kube-system/hcloud` by `argo-up` because CCM and CSI need it |
-| Persistence | CNPG barman-cloud plugin to S3 (ADR 0032, which reversed ADR 0031) — Hetzner CSI has no snapshot or clone either. The Civo design carries over whole, including the sidecar image, which must additionally be arm64 |
+| Persistence | CNPG barman-cloud plugin to S3 (ADR 0032, which reversed ADR 0031) — Hetzner CSI has no snapshot or clone either. The Civo design carries over whole, including the sidecar image, which is amd64 on cx33 |
 | TLS | cert-manager at Envoy, wildcard through DNS-01 (Civo end state); HTTP-01 never used on Hetzner |
 | AWS and Civo regression | both stay byte-identical; golden renders for `aws` and `civo`, `make -n` identity for both |
 
@@ -45,7 +45,7 @@
 | SSH port 22 exposure | (a) 0.0.0.0/0, key-only; (b) operator/CI IP allowlist | (a): GitHub runners have no fixed IP, same reasoning as 6443 on Civo; password auth is off on Ubuntu 24.04 | brute-force noise in `auth.log`; consider fail2ban later | high | 030 | no |
 | Stable LB address | (a) accept a new LB IP per `make up`, rely on ExternalDNS; (b) Terraform-owned LB with `hcloud_load_balancer` and label-selector targets | (a): the CCM cannot adopt an existing LB; (b) would make Terraform own an ingress object Argo also reconciles | DNS-01 removes the HTTP-01 ordering flake; DNS TTL is the only propagation delay | high | 060, 070 | no |
 | Autoscaler credential | join token and Hetzner token in-cluster | M1: `argo-up` creates `kube-system/hcloud-autoscaler` with a bootstrap token from `kubeadm token create --ttl 0` and the CA hash; the token grants node join only; the Hetzner token is in-cluster already for CCM/CSI | the join token is readable from the metadata service on autoscaled nodes only; the fixed nodes' `user_data` holds no secret | high | 165, 170 | no |
-| CI provider runs | enable `PROVIDER=hetzner` in `lab.yml` now vs later | now, behind the environment and concurrency group, after HETZ-150 passes once by hand | account default limit of 5 servers: CI and lab cannot both run 3-node clusters until a limit increase | high | 140 | no |
+| CI provider runs | enable `PROVIDER=hetzner` in `lab.yml` now vs later | now, behind the environment and concurrency group, after HETZ-150 passes once by hand | account default limit of 5 servers: CI and lab cannot both run 4-node clusters until a limit increase | high | 140 | no |
 
 ## 4. Rejected alternatives
 
@@ -56,6 +56,6 @@
 - Floating IP for the LB: the CCM cannot attach one to a load balancer.
 - x86 CPX as the default: 3 × CPX22 costs about what Civo costs for less memory; it is the stock fallback only.
 - ARM CAX as the default (the 2026-09-11 choice): not orderable in any EU location on 2026-09-19; revisit only if a real `hcloud server create --type cax21` succeeds again and the arm64 image work (HETZ-182) is worth the saving.
-- OIDC federation instead of Roles Anywhere: possible on k3s but discards six DONE Civo specs; documented as the alternative in ADR 0029's note.
+- OIDC federation instead of Roles Anywhere: possible on a self-managed kubeadm control plane but discards six DONE Civo specs; documented as the alternative in ADR 0029's note.
 - Static AWS access keys anywhere: forbidden by constitution §5.
 - k3s as the bootstrap (the 2026-09-11 choice): hides kubeadm, etcd, static pods and kubelet-under-systemd, which the CKA syllabus (25 % cluster architecture/installation, 30 % troubleshooting) and the upgrade runbook need; the SQLite datastore has no snapshot/restore practice. Replaced by kubeadm on 2026-09-19.

@@ -94,9 +94,9 @@ two additions:
 | HETZ-060 | [060-P-hetzner-ingress-envoy-lb](060-P-hetzner-ingress-envoy-lb/spec.md) | hcloud LB11 via Envoy Service annotations, private-IP targets, dynamic address | READY | P1 | M | standard | 045, 050 | M1 |
 | HETZ-070 | [070-P-tls-and-dns-on-hetzner](070-P-tls-and-dns-on-hetzner/spec.md) | Wildcard DNS-01 TLS, ExternalDNS with a dynamic LB address, TLS Secret persistence | READY | P1 | M | standard | 060, 085, CIVO-075, CIVO-110 | M1 |
 | HETZ-080 | [080-P-ca-ceremony-and-rolesanywhere-hetzner](080-P-ca-ceremony-and-rolesanywhere-hetzner/spec.md) | CA ceremony and `bootstrap/rolesanywhere` for the Hetzner project, before its first `bootstrap-up` | READY | P0 | S | strongest | 018, CIVO-080, CIVO-082 | M1 |
-| HETZ-085 | [085-P-workload-identity-on-hetzner](085-P-workload-identity-on-hetzner/spec.md) | CA issuer Secret, per-consumer Certificates, multi-arch sidecars for ESO and ExternalDNS on ARM | READY | P0 | M | strongest | 045, 050, 080, CIVO-085, CIVO-090, CIVO-100 | M1 |
+| HETZ-085 | [085-P-workload-identity-on-hetzner](085-P-workload-identity-on-hetzner/spec.md) | CA issuer Secret, per-consumer Certificates, credential-helper sidecars for ESO and ExternalDNS | READY | P0 | M | strongest | 045, 050, 080, CIVO-085, CIVO-090, CIVO-100 | M1 |
 | HETZ-115 | [115-P-cnpg-cluster-on-hetzner](115-P-cnpg-cluster-on-hetzner/spec.md) | CNPG Cluster on `hcloud-volumes`, data disposable | READY | P1 | S | standard | 050, 085, CIVO-115 | M1 |
-| HETZ-120 | [120-P-cnpg-on-hetzner-persistence](120-P-cnpg-on-hetzner-persistence/spec.md) | CNPG persistence through the barman-cloud plugin | DRAFT | P1 | M | standard | 115, 182, CIVO-120, CIVO-180 | M1 |
+| HETZ-120 | [120-P-cnpg-on-hetzner-persistence](120-P-cnpg-on-hetzner-persistence/spec.md) | CNPG persistence through the barman-cloud plugin | DRAFT | P1 | M | standard | 115, CIVO-120, CIVO-180 | M1 |
 | HETZ-130 | [130-P-e2e-tests-hetzner](130-P-e2e-tests-hetzner/spec.md) | E2E suite on Hetzner via ServiceAccount token | READY | P1 | S | standard | 045, 060, CIVO-130 | M1 |
 | HETZ-140 | [140-P-ci-workflow-hetzner](140-P-ci-workflow-hetzner/spec.md) | `lab.yml` third provider value, `hcloud` CLI, token mask, label sweep in cleanup | READY | P1 | M | standard | 015, 045, CIVO-140, 047 | M1 |
 | HETZ-150 | [150-P-teardown-recreate-validation](150-P-teardown-recreate-validation/spec.md) | Full lifecycle validation on Hetzner with the Hetzner resource classification | READY | P1 | M | strongest | 070, 120, 130, 047 | M1 |
@@ -104,7 +104,7 @@ two additions:
 | HETZ-165 | [165-P-kubeadm-join-credential](165-P-kubeadm-join-credential/spec.md) | `argo-up` creates the long-lived bootstrap token, CA hash and rendered join cloud-init in `kube-system/hcloud-autoscaler` | READY | P1 | S | standard | 037, 045 | M1 |
 | HETZ-170 | [170-P-hetzner-cluster-autoscaler](170-P-hetzner-cluster-autoscaler/spec.md) | Cluster autoscaler `cloudProvider: hetzner`, 0–2 CX33 workers via `kubeadm join` | READY | P1 | M | strongest | 165 | M1 |
 | HETZ-175 | [175-P-sku-fallback-and-right-size](175-P-sku-fallback-and-right-size/spec.md) | Stock-aware SKU fallback (CX → CPX) and right-sizing on measured data | READY | P2 | S | standard | 160, CIVO-175 | M2 |
-| HETZ-182 | [182-P-multi-arch-images](182-P-multi-arch-images/spec.md) | Repo-built images published for `linux/arm64` as well as `linux/amd64` | DRAFT | P0 | S | fast | CIVO-180 | M1 |
+| HETZ-182 | [182-P-multi-arch-images](182-P-multi-arch-images/spec.md) | Repo-built images published for `linux/arm64` as well as `linux/amd64` | DRAFT | P0 | S | fast | CIVO-180 | M2 |
 | HETZ-185 | [185-P-kubeadm-operations-runbook](185-P-kubeadm-operations-runbook/spec.md) | CKA practice runbook: kubeadm upgrade 1.36 → 1.37, stacked etcd snapshot/restore, certificate checks | READY | P2 | M | standard | 037, 040 | M1 |
 | HETZ-190 | [190-P-proxy-protocol-client-ip](190-P-proxy-protocol-client-ip/spec.md) | Proxy protocol on the hcloud LB and client IP at Envoy | READY | P3 | S | fast | 060, CIVO-190 | M2 |
 
