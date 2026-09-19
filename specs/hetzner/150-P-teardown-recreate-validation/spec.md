@@ -10,7 +10,7 @@ recommended_model_tier: "strongest"
 model_rationale: "Judging leak and persistence evidence across a resource model where load balancers, volumes and IPs outlive servers"
 effort_estimate: "One session (4–6 h wall clock, mostly waiting)"
 estimate_confidence: "medium"
-depends_on: ["HETZ-070", "HETZ-120", "HETZ-130"]
+depends_on: ["HETZ-070", "HETZ-120", "HETZ-130", "HETZ-047"]
 blocked_by: []
 supersedes: []
 created: "2026-09-11"
@@ -147,3 +147,4 @@ needed.
 - 2026-09-11 — created as DRAFT. Not run.
 - 2026-09-11 — reviewed and approved by the user; promoted to READY.
 - 2026-09-19 — kubeadm wording.
+- 2026-09-19 — depends on HETZ-047 (argo-down LB ordering).
