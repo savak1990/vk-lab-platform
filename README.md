@@ -138,10 +138,18 @@ whether the expensive half is needed:
 
 | Your pull request | What runs | `pr-gate` |
 |---|---|---|
-| Documentation or specs only | The static checks | green, no cloud spend |
+| Only `.md` files — specs, docs, README | Secret scanning and the specs layout check, ~30 seconds | green, no cloud spend |
 | Touches `terraform/`, `gitops/`, `scripts/`, `tests/`, `images/`, `Makefile`, `go.mod`, or a workflow | The static checks | red — add the label |
 | …and carries the **`ci:lifecycle`** label | One EKS cluster and one Civo cluster are created, `make test` runs against both, and both are destroyed | green if all of that passed |
 | …and carries **`ci:skip-lifecycle`** instead | The static checks only | green, but the waiver is recorded — see below |
+
+A pull request is **documentation-only** when every changed file ends in `.md`.
+It skips the four heavy checks — Terraform, GitOps, YAML and Actions lint — which
+is the ~9 minutes of `validate-terraform` on every other pull request. Two checks
+still run, because both matter for Markdown: `gitleaks`, since a token pasted into
+a spec is exactly the leak it exists for, and `specs-check`, which catches a
+broken spec link or a status letter that no longer matches. One non-Markdown file
+anywhere in the pull request runs everything.
 
 Adding the label starts the run immediately against the pull request's current
 commit — no empty commit, no extra push. Removing and re-adding the label is how
