@@ -71,7 +71,7 @@ equivalent; **n/a** = not applicable on Hetzner.
 | Load balancing | Civo LB via `kubernetes.civo.com/*` | LB11 via `load-balancer.hetzner.cloud/{location,type,name,use-private-ip,ipv6-disabled}`; no firewall on LBs; no bundled LoadBalancer controller | mirror | 060 |
 | TLS | HTTP-01 then DNS-01 wildcard (CIVO-075) | start at the DNS-01 end state; HTTP-01 never used | reuse | 070 |
 | DNS | ExternalDNS via sidecar, waits on the reserved IP | same chart; waits use the discovered LB address | reuse + branch | 070 |
-| Workload identity | Roles Anywhere chain, x86 sidecar digest | same chain; CA ceremony and Roles Anywhere unit for the Hetzner project (080); certificates and multi-arch sidecars (085) | reuse | 080, 085 |
+| Workload identity | Roles Anywhere chain, x86 sidecar digest | same chain; CA ceremony and Roles Anywhere unit for the Hetzner project (080); certificates and credential-helper sidecars (085) | reuse | 080, 085 |
 | PostgreSQL | CNPG on `civo-volume`, barman-cloud plugin to S3 | CNPG on `hcloud-volumes`; same plugin; the `cnpg-barman-sidecar` image is amd64 on CX33; arm64 (182) only if CAX returns | mirror | 115, 120, 182 |
 | Observability | control-plane scrapes off (the managed control plane hides it) | control-plane scrapes **on** (kubeadm extraArgs bind scheduler/controller-manager/etcd metrics to the private IP); metrics-server Argo-installed; 10 GB volume floor | mirror | 160 |
 | Tests | SA-token context `${PROJECT_NAME}-civo-test` | `${PROJECT_NAME}-hetzner-test` | mirror | 130 |

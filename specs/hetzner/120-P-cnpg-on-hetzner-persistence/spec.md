@@ -7,7 +7,7 @@ milestone: "M1"
 type: "implementation"
 difficulty: "M"
 recommended_model_tier: "standard"
-model_rationale: "The mechanism is decided and implemented by CIVO-180/120; this spec proves it on ARM with two real cycles"
+model_rationale: "The mechanism is decided and implemented by CIVO-180/120; this spec proves it on Hetzner with two real cycles"
 effort_estimate: "One session (4–6 h) including two full down/up cycles"
 estimate_confidence: "medium"
 depends_on: ["HETZ-115", "CIVO-120", "CIVO-180"]
@@ -49,7 +49,7 @@ Rows written before `PROVIDER=hetzner make down` are present after
 CIVO-180 and loaded by its restore Job. The hcloud volume is disposable.
 
 Read `specs/civo/120-D-cnpg-on-civo-persistence/spec.md` first. The
-mechanism is identical; this spec adds the ARM image, the Hetzner bucket
+mechanism is identical; this spec adds the Hetzner bucket
 and the Hetzner evidence.
 
 ## 2. Scope and non-goals
@@ -96,8 +96,7 @@ Not in scope:
 - Bring-up: no backup logic in `argo-up`. The restore Job runs `PostSync`
   on the Postgres Application and loads the newest dump when the schema
   is empty.
-- The backup pod is `arm64`. `aws_signing_helper` in the image is the
-  arm64 binary. `aws sts get-caller-identity` from the pod must return the
+- The backup pod runs the amd64 image on `cx33`. `aws sts get-caller-identity` from the pod must return the
   `pgbackup` role through Roles Anywhere over IPv4 egress (research.md,
   IPv6 row).
 
