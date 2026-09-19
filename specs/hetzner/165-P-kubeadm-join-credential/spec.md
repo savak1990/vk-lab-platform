@@ -35,13 +35,15 @@ token, which is a separate Secret (HETZ-045).
 
 In scope: `ensure_autoscaler_secret()` in `scripts/argo-up.sh`, the
 `kube-system/hcloud-autoscaler` Secret's three keys, and the cross-spec
-edit this design forces on HETZ-030 — a new `node_cloud_init_b64` SSM
-output, added to that spec's own §4 output list and §14 history in the
-same commit as this spec's creation.
+edit this design forces on HETZ-030 — a §14 history line recording that
+`templates/node.yaml.tftpl` is also rendered by this spec, and the
+substitution-friendly constraint that places on that template, added in
+the same commit as this spec's creation.
 
 Not in scope: HETZ-170's autoscaler Application itself, which consumes
 this Secret but is not written yet; HETZ-030's node cloud-init template
-content, beyond the one new output; `hetzner_ssh`, `cluster_exists` and
+content, beyond keeping it substitution-friendly for this spec's own
+render; `hetzner_ssh`, `cluster_exists` and
 the kubeadm bootstrap/join mechanics on the fixed nodes, which HETZ-035
 and HETZ-040 already own; an HA control plane, which would change the
 `10.0.1.10:6443` endpoint this spec's rendered join line hard-codes
@@ -79,9 +81,16 @@ beyond the manual steps this spec documents.
   that installs `containerd.io`, `kubeadm`, `kubelet`, `kubectl` and the
   kernel prerequisites only — no join token, no cluster state — and caps
   the rendered size at 32 KiB. That "package-install only" property is
-  exactly why the same render is reusable for an autoscaled node: this
-  spec appends a join `runcmd` to a copy of it rather than maintaining a
-  second template.
+  exactly why the same file is reusable for an autoscaled node: this
+  spec reads it straight from the checkout `argo-up` already runs in,
+  substitutes the same `${kubernetes_version}` and `${containerd_version}`
+  placeholders Terraform fills via `templatefile()`, and appends a join
+  `runcmd` block rather than maintaining a second template. HETZ-030's
+  own `templatefile()` call still owns the fixed-node render; this spec
+  never calls Terraform and never touches `terraform/live/`.
+- This spec carries the rendered cloud-init through the repo checkout
+  and the Kubernetes Secret only — no SSM parameter is in the path
+  between the template and the autoscaler's node.
 - HETZ-020 §4 item 5 (spike checklist, autoscaler-style join): a
   hand-created third node, cloud-init built from the same packages plus
   `kubeadm join` using a `--ttl 0` token, with
@@ -114,20 +123,22 @@ beyond the manual steps this spec documents.
   --description autoscaler)`; `HASH=$(hetzner_ssh <cp> 'openssl x509
   -pubkey -in /etc/kubernetes/pki/ca.crt | openssl pkey -pubin -outform
   der | openssl dgst -sha256 -hex | sed "s/^.* //"')`.
-- Cloud-init render: `ensure_autoscaler_secret()` calls a new helper in
-  `scripts/lib/provider.sh`, `node_cloud_init_b64()`, that reads
-  `/${project}/cluster-hetzner/k8s/node_cloud_init_b64` with its own
-  single `get-parameter` call — the same one-parameter shape
-  `backup_recovery_handle()` already uses there — kept separate from
-  HETZ-045's batch-1 `get-parameters` read in `argo-up.sh`, which is
-  already at seven of the ten-name cap and carries scalar values only; a
-  multi-kilobyte template does not belong grouped with them. Base64-decode
-  it, append one final
-  `runcmd` block: first
+- Cloud-init render: `ensure_autoscaler_secret()` reads
+  `terraform/modules/hcloud-nodes/templates/node.yaml.tftpl` directly
+  from the checkout `argo-up` already runs in — no SSM parameter, no new
+  Terraform output. It substitutes `${kubernetes_version}` and
+  `${containerd_version}` with the same pins `scripts/lib/versions.sh`
+  exports as `TF_VAR_kubernetes_version`/`TF_VAR_containerd_version`
+  (`envsubst` restricted to those two names, so an unrelated `$`-sequence
+  elsewhere in the template is never touched), then appends one final
+  `runcmd` block to the substituted text: first
   `echo "KUBELET_EXTRA_ARGS=--cloud-provider=external --node-ip=$(curl
   -sf http://169.254.169.254/hetzner/v1/metadata/private-networks | awk
-  '/ip:/{print $2; exit}')" > /etc/default/kubelet`, then `kubeadm join
-  10.0.1.10:6443 --token $TOKEN --discovery-token-ca-cert-hash
+  '/ip:/{print $2; exit}')" > /etc/default/kubelet` — the `awk` pattern
+  is this spec's assumption about the `private-networks` metadata
+  response shape; HETZ-020 §4 item 5 is the checklist item that confirms
+  or corrects it against a real response, not yet run — then `kubeadm
+  join 10.0.1.10:6443 --token $TOKEN --discovery-token-ca-cert-hash
   sha256:$HASH --node-name "$(hostname)"`. The control-plane endpoint is
   the fixed private IP HETZ-035 initialised with, not a variable this
   spec resolves itself.
@@ -136,13 +147,14 @@ beyond the manual steps this spec documents.
   --from-literal=ca_hash="$HASH" --from-literal=cloud_init="$RENDERED" \
   --dry-run=client -o yaml | kubectl apply -f -` — piped, never through a
   temp file, never echoed.
-- Size guard: the rendered cloud-init, base64-encoded, is the value of a
-  plain-`String` SSM parameter (HETZ-030 §4); the Standard tier caps a
-  `String` at 4096 bytes, and the Advanced tier at 8192. The template
-  itself must stay a "package-install only" render with no per-server
-  value baked in — the fixed nodes' HETZ-030 output and this spec's read
-  are the same parameter, so a future edit that adds a per-server value
-  to the template breaks both consumers at once (§12).
+- Size guard: Hetzner's `user_data` cap is 32 KiB per server (HETZ-030
+  §3), and this spec's own render — the substituted template plus the
+  appended `runcmd` block — is the value that ends up there once the
+  autoscaler hands it to a new server. `ensure_autoscaler_secret()`
+  measures the rendered file with `wc -c` before writing the Secret and
+  fails with a clear message ("rendered cloud-init exceeds the 32 KiB
+  Hetzner user_data limit") when the count exceeds 32768, rather than
+  writing a Secret the autoscaler cannot actually use.
 - Rotation: `kubectl delete secret hcloud-autoscaler -n kube-system`,
   then `hetzner_ssh <cp> kubeadm token delete <old-token-id>`, then a
   fresh `argo-up` — never delete the cluster-side token before the
@@ -151,18 +163,19 @@ beyond the manual steps this spec documents.
 
 ## 5. Files/components affected
 
-`scripts/argo-up.sh` (`ensure_autoscaler_secret`); `scripts/lib/provider.sh`
-(`node_cloud_init_b64`, the single-parameter SSM read); `terraform/modules/hcloud-nodes`
-(the `node_cloud_init_b64` output, added to HETZ-030 §4's output list in
-this same commit); `specs/hetzner/030-P-hetzner-terraform-kubeadm-nodes/spec.md`
-(§4 output list, §14 history — the cross-spec edit).
+`scripts/argo-up.sh` (`ensure_autoscaler_secret`, which reads
+`terraform/modules/hcloud-nodes/templates/node.yaml.tftpl` as a plain
+file, not a Terraform output); `specs/hetzner/030-P-hetzner-terraform-kubeadm-nodes/spec.md`
+(§14 history — the cross-spec edit recording that the template is also
+rendered by this spec and must stay substitution-friendly).
 
 ## 6. Implementation steps
 
-1. Add the `node_cloud_init_b64` output to `hcloud-nodes` and to HETZ-030
-   §4/§14 (this commit).
-2. Write `ensure_autoscaler_secret()`: token, hash, its own
-   `get-parameter` read, render, Secret write.
+1. Add the HETZ-030 §14 line recording the template's dual use (this
+   commit).
+2. Write `ensure_autoscaler_secret()`: token, hash, the template
+   read/substitute/append render with its `wc -c` size guard, Secret
+   write.
 3. Run `PROVIDER=hetzner make argo-up` on the HETZ-045 baseline; confirm
    the Secret's three keys and `kubeadm token list` shows the new token
    with `<forever>`.
@@ -177,10 +190,10 @@ HETZ-037 supplies the Ready, Cilium-networked nodes this design assumes
 already exist before the CCM gate. HETZ-045 supplies
 `wait_for_nodes_initialized()`, the call site immediately after it, and
 the CCM-initialised nodes with `providerID` set. `hetzner_ssh` and
-`cluster_exists` (HETZ-040) and HETZ-030's rendered template arrive
-transitively through those two, the same way HETZ-047 §7 describes its
-own transitive dependencies, and are not listed as direct dependencies
-here.
+`cluster_exists` (HETZ-040) and the `templates/node.yaml.tftpl` file
+itself (HETZ-030) arrive transitively through those two, the same way
+HETZ-047 §7 describes its own transitive dependencies, and are not
+listed as direct dependencies here.
 
 ## 8. Acceptance criteria
 
@@ -198,6 +211,10 @@ here.
   before the Terraform destroy (HETZ-040's label-based sweep).
 - A second `argo-up` keeps the same token; `kubeadm token list` is
   unchanged.
+- `ensure_autoscaler_secret()` measures its rendered cloud-init with
+  `wc -c` and aborts with a clear message, writing no Secret, when the
+  count exceeds 32768 (tested once by forcing an oversized render, then
+  reverted).
 
 ## 9. Validation
 
@@ -216,7 +233,7 @@ recorded pre-change output.
 
 ## 11. Rollout and rollback/recovery
 
-Revert the script and the `hcloud-nodes` output. Deleting the Secret
+Revert the script. Deleting the Secret
 does not affect the running fixed nodes; it only stops the autoscaler
 (HETZ-170) from being able to grow the pool until the next `argo-up`
 recreates it. Rotation is documented in §4 and never deletes the
@@ -229,9 +246,10 @@ cluster-side token before the Secret.
   node) — documented, accepted, because the token is join-only. The
   fixed nodes carry no such secret, because HETZ-030 renders their
   cloud-init before this token exists.
-- The Hetzner API on port 6443 is public; a leaked token lets anyone with
-  network reach add a node to the cluster until it is rotated. Rotate on
-  any suspicion of exposure (§4).
+- The Kubernetes API server on port 6443 is public (the join endpoint
+  `10.0.1.10:6443` is private, but the firewall opens 6443 on the public
+  IP); a leaked token lets anyone with network reach add a node to the
+  cluster until it is rotated. Rotate on any suspicion of exposure (§4).
 - The autoscaler's node name (`<pool>-<hex>`) must keep equaling its
   hostname for the CCM's fallback lookup to work; this spec's join line
   relies on that naming already holding rather than setting
@@ -240,15 +258,17 @@ cluster-side token before the Secret.
   is possible if `scripts/lib/versions.sh` changes without a matching
   `make down`/`make up` cycle on the fixed nodes; both this spec's reused
   template and the fixed nodes read the same pin.
-- `node_cloud_init_b64` is a plain-`String` SSM parameter shared with
-  HETZ-030's own consumers; the Standard tier's 4096-byte cap may not
-  hold once the real template (two apt keyrings plus the sysctl and
-  kernel-module writes) is measured, in which case the parameter needs
-  the Advanced tier — not yet decided, because the template does not
-  exist as code yet. If the template ever gains a per-server value (a
-  hostname, an IP), this output breaks for both the fixed-node and the
-  autoscaler consumer at once, because both read the same rendered
-  string.
+- `templates/node.yaml.tftpl` is read and substituted by this spec's
+  script the same way HETZ-030's `templatefile()` call substitutes it
+  for the fixed nodes; if that template ever gains a placeholder beyond
+  `${kubernetes_version}` and `${containerd_version}`, or a per-server
+  value, this spec's plain-substitution read breaks silently until the
+  next real run is checked against the size guard and the join outcome.
+  HETZ-030 §14 records the constraint this places on that template.
+- The size guard (§4/§8) bounds the render at 32 KiB, but leaves no
+  margin measured yet — the real template plus two apt keyrings is not
+  written as code, so the actual headroom under the cap is unknown
+  until then.
 
 ## 13. Definition of done
 

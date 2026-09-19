@@ -152,11 +152,7 @@ Servers (`cluster-hetzner/k8s`, module `hcloud-nodes`):
 - Outputs to SSM as plain String:
   `/${project}/cluster-hetzner/k8s/control_plane_ip`,
   `/…/control_plane_private_ip`, `/…/worker_ips` (comma-separated list),
-  `/…/server_ids` (comma-separated list), `/…/node_cloud_init_b64` (the
-  rendered package-install cloud-init, base64-encoded, for HETZ-165's
-  autoscaler join cloud-init — Standard tier's 4096-byte cap may not hold
-  once the real render is measured, in which case the parameter needs the
-  Advanced tier; see HETZ-165 §12). No kubeconfig, no token, no
+  `/…/server_ids` (comma-separated list). No kubeconfig, no token, no
   private key material is ever an output or ever enters state.
 - Terraform returns when every server reaches `running`, not when
   Kubernetes is up. HETZ-035 waits for the cluster.
@@ -284,4 +280,6 @@ and HETZ-040's sweep removes any that Terraform lost.
   real create in every EU location; `cx33` succeeded in all three.
 - 2026-09-19 — rewritten for kubeadm: cloud-init installs packages only,
   the cluster is created by HETZ-035; folder renamed.
-- 2026-09-19 — `node_cloud_init_b64` output added for HETZ-165.
+- 2026-09-19 — `templates/node.yaml.tftpl` is also rendered by HETZ-165
+  for autoscaled nodes; keep it substitution-friendly (only
+  `${kubernetes_version}`, `${containerd_version}` placeholders).
