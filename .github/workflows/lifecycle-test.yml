@@ -201,6 +201,9 @@ jobs:
         with:
           working_directory: terraform/
           soft_fail: true
+          version: v1.28.14
+          # soft_fail does not cover the install: unauthenticated, it hits a shared API rate limit.
+          github_token: ${{ secrets.GITHUB_TOKEN }}
 
   validate-gitops:
     needs: changes
