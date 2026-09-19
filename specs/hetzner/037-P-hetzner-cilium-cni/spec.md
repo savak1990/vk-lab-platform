@@ -86,7 +86,8 @@ right after `kubeadm_join_workers()` returns:
 - `install_cilium()`: skips when `helm status cilium -n kube-system`
   already succeeds, printing "already installed" — the same idempotence
   shape HETZ-035 uses for `kubeadm_init` and `kubeadm_join_workers`, and
-  what keeps a re-run of `argo-up` from reinstalling the release.
+  what keeps a second `PROVIDER=hetzner make cluster-up` from
+  reinstalling the release; `argo-up` never touches Cilium.
   Otherwise: `helm repo add cilium https://helm.cilium.io` (itself
   idempotent), then
   `helm upgrade --install cilium cilium/cilium --version
