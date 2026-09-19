@@ -104,8 +104,11 @@ fi
 # verify-no-leaks.sh exempts it: argo-down writes it on purpose so the next
 # bring-up can skip an ACME order.
 KEPT_TLS="/${PROJECT_NAME}/persistent/civo/tls/platform-public"
-PARAMS="$(aws ssm get-parameters-by-path --region "$LAB_REGION" \
-  --path "/${PROJECT_NAME}/" --recursive \
+# describe-parameters rather than a path query, for the reason
+# verify-no-leaks.sh records: lab-role authorizes a path query against the
+# prefix parameter/<project>/, which none of its grants match.
+PARAMS="$(aws ssm describe-parameters --region "$LAB_REGION" \
+  --parameter-filters "Key=Name,Option=BeginsWith,Values=/${PROJECT_NAME}/" \
   --query 'Parameters[].Name' --output text)"
 for p in $PARAMS; do
   if [ "$p" = "None" ] || [ "$p" = "$KEPT_TLS" ]; then

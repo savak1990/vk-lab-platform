@@ -84,10 +84,16 @@ fi
 # an ACME order. A staging one is billed waste and the caller deletes it
 # before this runs; a production one is kept on purpose and is not a leak.
 KEPT_TLS="/${PROJECT_NAME}/persistent/civo/tls/platform-public"
-if ! PARAMS="$(aws ssm get-parameters-by-path --region "$LAB_REGION" \
-  --path "/${PROJECT_NAME}/" --recursive \
+# describe-parameters, not get-parameters-by-path: lab-role grants the latter
+# only on the layer paths a unit writes (parameter/*/bootstrap/*, /persistent/*
+# and so on), while a path query is authorized against the prefix itself -
+# parameter/<project>/ - which matches none of them. DescribeParameters is
+# granted on "*" because AWS requires that for list-type actions, so this asks
+# the same question within the permissions the role already has.
+if ! PARAMS="$(aws ssm describe-parameters --region "$LAB_REGION" \
+  --parameter-filters "Key=Name,Option=BeginsWith,Values=/${PROJECT_NAME}/" \
   --query 'Parameters[].Name' --output text)"; then
-  echo "VERIFY-NO-LEAKS: ERROR - ssm get-parameters-by-path failed." >&2
+  echo "VERIFY-NO-LEAKS: ERROR - ssm describe-parameters failed." >&2
   exit 1
 fi
 for p in $PARAMS; do
