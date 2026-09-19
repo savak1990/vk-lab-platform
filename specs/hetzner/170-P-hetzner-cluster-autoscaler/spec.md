@@ -1,9 +1,9 @@
 ---
 id: "HETZ-170"
-title: "Cluster autoscaler with cloudProvider hetzner: zero to two extra CAX21 workers joined by cloud-init"
+title: "Cluster autoscaler with cloudProvider hetzner: zero to one extra CX33 worker joined by cloud-init"
 status: "READY"
-priority: "P3"
-milestone: "M2"
+priority: "P1"
+milestone: "M1"
 type: "implementation"
 difficulty: "M"
 recommended_model_tier: "strongest"
@@ -14,7 +14,7 @@ depends_on: ["HETZ-030", "HETZ-040", "HETZ-045"]
 blocked_by: []
 supersedes: []
 created: "2026-09-11"
-updated: "2026-09-11"
+updated: "2026-09-19"
 completed: ""
 ---
 
@@ -22,9 +22,9 @@ completed: ""
 
 ## 1. Outcome and rationale
 
-The upstream cluster autoscaler with `cloudProvider: hetzner` adds up to
-two CAX21 workers when pods stay pending and removes them after sustained
-underutilisation. The fixed three-node pool from HETZ-030 stays; the
+The upstream cluster autoscaler with `cloudProvider: hetzner` adds up to one
+CX33 worker when pods stay pending and removes it after sustained
+underutilisation. The fixed two-node pool from HETZ-030 stays; the
 autoscaler only adds. Idle cost is unchanged.
 
 Read `specs/civo/170-P-civo-cluster-autoscaler/spec.md` first. The Civo
@@ -58,8 +58,8 @@ pools, mixed architectures, scaling the fixed pool down.
 
 - Application `platform/hetzner/autoscaler/application.yaml`, chart
   `cluster-autoscaler` pinned, `cloudProvider: hetzner`,
-  `autoscalingGroups: [{name: workers, minSize: 0, maxSize: 2}]`, extra
-  args `--nodes=0:2:CAX21:NBG1:workers`,
+  `autoscalingGroups: [{name: workers, minSize: 0, maxSize: 1}]`, extra
+  args `--nodes=0:1:CX33:NBG1:workers`,
   `--skip-nodes-with-system-pods=false`,
   `--skip-nodes-with-local-storage=false`, `--scale-down-unneeded-time=10m`.
   Sync-wave 0 (after CSI and ESO). Tolerates nothing; runs on the fixed
@@ -135,7 +135,7 @@ if it is removed while nodes exist, the sweep reaps them at `cluster-down`.
 
 ## 12. Risks and unresolved questions
 
-- The default 5-server limit: three fixed plus two autoscaled is exactly
+- The default 5-server limit: two fixed plus one autoscaled leaves two spare; was: three fixed plus two autoscaled is exactly
   the limit. CI and lab cannot coexist (HETZ-140).
 - An agent cloud-init that pins a different k3s version than the control
   plane fails to join silently. Pin from one variable.
@@ -151,3 +151,4 @@ if it is removed while nodes exist, the sweep reaps them at `cluster-down`.
 
 - 2026-09-11 — created as DRAFT at P3/M2, mirroring CIVO-170's placement.
 - 2026-09-11 — reviewed and approved by the user; promoted to READY.
+- 2026-09-19 — moved to P1/M1 and re-shaped to 0–1 `cx33`: the third node of the chosen shape (decisions.md §3) is autoscaled, so M1 needs this spec.
