@@ -68,6 +68,34 @@ absent, and a one-line documentation fix could not merge without spending 55
 minutes on two clouds - which constitution §11's "success or explicit skip"
 wording and spec SHARED-019 Requirement 4 both rule out.
 
+### 2b. Documentation-only pull requests skip the heavy checks
+
+A `changes` job classifies the pull request once, and every later job reads its
+answer. When every changed file ends in `.md`, the four heavy validate jobs -
+Terraform, GitOps, YAML and Actions - skip themselves. Secret scanning and
+`specs-check` still run: both are relevant to Markdown.
+
+This implements SHARED-019 Requirement 4 without splitting out its separate
+`validate.yml`.
+
+Three rules keep the skip from becoming a hole:
+
+- **`pr-gate` judges each job by name.** A `skipped` result is accepted only for
+  one of the four heavy jobs, and only when the change is documentation-only. A
+  looser rule would let a mistyped `if:` silently stop validation on a real
+  infrastructure change while the gate stayed green - the one failure that
+  hollows the gate out without anyone noticing.
+- **It fails closed.** On a manual dispatch, or if the diff cannot be computed,
+  the classifier reports "not documentation-only" and everything runs. The heavy
+  jobs use `!cancelled()` rather than the default `success()`, so a failed
+  classifier does not skip them either.
+- **Markdown is never infrastructure.** `.md` files are excluded from the
+  merge-blocking path match even under `scripts/` or `terraform/`. Without that, a
+  README under `scripts/` would be documentation-only - skipping the validate
+  jobs and therefore the lifecycle jobs that need them - while also being
+  infrastructure, so `pr-gate` would demand a lifecycle result no label could
+  ever produce.
+
 ### 2a. The waiver is a label, and it is loud
 
 `ci:skip-lifecycle` passes the gate without the two-cloud run. It waives only
