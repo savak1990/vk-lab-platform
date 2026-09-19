@@ -206,8 +206,8 @@ signature of a bring-up that died early, a populated one is something in use.
 - ADR 0023 (the SSM path convention the leak check walks, and why the fqdn is
   private)
 - ADR 0029 (the Roles Anywhere consumers the leak check looks up)
-- `specs/shared/035-A-pr-lifecycle-gate/spec.md` (the spec this implements)
-- `specs/shared/017-P-branch-protection/spec.md` (the branch protection this
+- `specs/shared/035-D-pr-lifecycle-gate/spec.md` (the spec this implements)
+- `specs/shared/017-D-branch-protection/spec.md` (the branch protection this
   finally applies)
 - `specs/aws/020-A-ci-full-lifecycle-validation/spec.md` (Requirement 5's
   trigger, amended here; Requirements 3 and 8 still deferred)
