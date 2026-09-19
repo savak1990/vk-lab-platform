@@ -1,6 +1,6 @@
 # Set by the root Application's helm parameters (gitops/bootstrap): target
 # gates AWS-only child Applications, project matches the AWS resource names
-# Terraform created under PROJECT_NAME (default vk-lab-platform).
+# Terraform created under PROJECT_NAME (default: vk-lab-platform).
 target: aws
 project: vk-lab-platform
 # Fixed, not an operator knob - the two AWS controllers below need a literal.
