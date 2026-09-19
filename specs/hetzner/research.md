@@ -84,9 +84,9 @@ Five candidate node shapes. Every shape adds one LB11 (7.49), Primary IPv4 per n
 | C — ARM, 3 medium | 3 × CAX21 | 31.47 | 1.50 | 7.49 | 3.43 | **43.89** | ~21 GiB |
 | D — x86 fallback | 3 × CPX22 (2/4, AMD) | 58.47 | 1.50 | 7.49 | 3.43 | **70.89** | ~9.6 GiB |
 | E — x86 if in stock | 3 × CX33 (4/8, Intel) | 25.47 | 1.50 | 7.49 | 3.43 | **37.89** | ~21 GiB |
-| **F — chosen 2026-09-19** | 2 × CX33 fixed + 0–1 × CX33 autoscaled (API prices 2026-09-19: 9.99 each) | 19.98 fixed / 29.97 at ceiling | 1.00 / 1.50 | 7.49 | 3.43 | **31.90 fixed / 42.39 at ceiling** | ~14 GiB fixed / ~21 GiB at ceiling |
+| **F — chosen 2026-09-19** | 2 × CX33 fixed + 0–2 × CX33 autoscaled (API prices 2026-09-19: 9.99 each) | 19.98 fixed / 39.96 at ceiling | 1.00 / 2.00 | 7.49 | 3.43 | **31.90 fixed / 52.88 at ceiling** | ~14 GiB fixed / ~28 GiB at ceiling |
 
-Shape F is the decision (decisions.md §3, Node shape): CAX is not orderable on 2026-09-19 and CX33 is, in all three EU locations. The LB11 and volume figures in this table are the June list prices; re-read them from the first invoice (experiment 9). **Revised 2026-09-19**: the autoscaler ceiling is 2 extra workers, not 1 — 4 nodes total, 39.96 EUR net for nodes alone at the ceiling.
+Shape F is the decision (decisions.md §3, Node shape): CAX is not orderable on 2026-09-19 and CX33 is, in all three EU locations. The LB11 and volume figures in this table are the June list prices; re-read them from the first invoice (experiment 9).
 
 Compare Civo: 80.67 USD (≈ 74 EUR) for 6.76 GiB allocatable. Shape C gives roughly three times the memory for about 58 % of the price — **if CAX stock holds**. Shape D (CPX) is the only shape guaranteed orderable in every location today and is close to Civo's price with fewer resources. Retained AWS costs are unchanged from the Civo model (≈1.80 USD). USD at Hetzner's own table: CAX21 = 12.49 USD, so shape C ≈ 50 USD/month.
 
@@ -101,5 +101,5 @@ Kubernetes overhead on a kubeadm control-plane node is **unmeasured on this stac
 5. Delete the cluster's servers while an LB exists: is the LB orphaned (expected yes — it is a separate resource, unlike Civo's cluster-scoped reaping)? This decides the `argo-down` ordering guard.
 6. Prove the bootstrap ordering end to end on a fresh control plane: `kubeadm init` with `nodeRegistration.kubeletExtraArgs: [{name: cloud-provider, value: external}]`; install Cilium; confirm CoreDNS stays Pending on the tainted node; helm-install the hcloud CCM with `networking.enabled=true`; confirm the taint clears, CoreDNS reaches Running, then Argo CD reaches Healthy. Record the private NIC name and the x86 `ubuntu-24.04` image id. Also confirm `curl 169.254.169.254/hetzner/v1/userdata` from a `hostNetwork` pod returns the cloud-init (documents the join-token exposure honestly).
 7. From a pod with a cert-manager-issued certificate: `aws_signing_helper serve`, `aws sts get-caller-identity`, `aws ssm get-parameter` — proves IPv4 egress and Roles Anywhere on ARM.
-8. Cluster autoscaler with `--nodes=0:1:CX33:NBG1:workers`: does it scale from zero, does the new node's cloud-init run `kubeadm join --token … --discovery-token-ca-cert-hash …` and get the CCM `providerID`? This is on the M1 path (the autoscaler adds 0–2 workers).
+8. Cluster autoscaler with `--nodes=0:2:CX33:NBG1:workers`: does it scale from zero, does the new node's cloud-init run `kubeadm join --token … --discovery-token-ca-cert-hash …` and get the CCM `providerID`? This is on the M1 path (the autoscaler adds 0–2 workers).
 9. Read the invoice after the spike: confirm 0 for network/firewall/ssh-key, the Primary IP line while unassigned, and the actual volume €/GB.

@@ -44,14 +44,13 @@ shortage move the real numbers:
   CX33–CX53 are sold out in every EU location at the baseline date; CAX
   stays available.
 
-Net effect: **only the ARM (CAX) line still beats Civo materially.** Three
-`cax21` servers (4 vCPU / 8 GB each) cost about 44 EUR/month all-in
-(nodes, load balancer, primary IPs, volumes) for roughly 21 GiB of
-allocatable memory. Civo's three-Medium-node plan costs 80.67 USD (Civo
-prices in USD natively) for 6.8 GiB. The x86 fallback (CPX22) costs about
-71 EUR — close to Civo's price in absolute terms, for less memory — it
-exists only as a hedge against CAX stock-outs, not as the target shape.
-Full table and sources: `specs/hetzner/research.md`.
+Net effect: **3 × cx33 (or 2 fixed + 2 autoscaled) at 9.99 EUR net each
+meets the 50–100 USD goal with 8 GB per node; CAX ARM was not orderable in
+any EU location on 2026-09-19 (research.md).** Civo's three-Medium-node
+plan costs 80.67 USD (Civo prices in USD natively) for 6.8 GiB. The x86
+fallback (CPX22) costs about 71 EUR — close to Civo's price in absolute
+terms, for less memory — it exists only as a hedge against CX stock-outs,
+not as the target shape. Full table and sources: `specs/hetzner/research.md`.
 
 | | Civo (3 Medium) | Hetzner x86, 1 cp + 1 worker cx33, +0–2 autoscaled | Hetzner x86 fallback (3 × CPX22) |
 |---|---|---|---|
@@ -67,8 +66,9 @@ USD/node — about 50 USD/month for the three-node total before the load
 balancer, IPs and volumes.
 
 The lab's stated goal — maximize CPU/memory for 50–100 USD/month — is met
-only by the ARM shape, and only while CAX stays in stock. `HETZ-175`
-exists specifically to fail fast and fall back to x86 when it does not.
+by the CX33 shape, which was orderable in all three EU locations on
+2026-09-19. `HETZ-175` exists to fail fast and fall back to CPX if CX
+stock disappears.
 
 ## 3. Why this is materially harder than Civo
 
