@@ -1,16 +1,16 @@
 ---
 id: "HETZ-170"
-title: "Cluster autoscaler with cloudProvider hetzner: zero to one extra CX33 worker joined by cloud-init"
+title: "Cluster autoscaler with cloudProvider hetzner: zero to two extra cx33 workers joined by kubeadm"
 status: "READY"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
 difficulty: "M"
 recommended_model_tier: "strongest"
-model_rationale: "Servers created outside Terraform, a join token in-cluster, and a teardown-ordering dependency need careful reasoning"
+model_rationale: "A Secret-fed cluster config assembled across three scripts, an env-var wiring split between two Secrets, and a teardown-ordering dependency on two other specs need careful reasoning"
 effort_estimate: "One session (4–6 h) plus scaling waits"
 estimate_confidence: "medium"
-depends_on: ["HETZ-030", "HETZ-040", "HETZ-045"]
+depends_on: ["HETZ-165"]
 blocked_by: []
 supersedes: []
 created: "2026-09-11"
@@ -22,133 +22,211 @@ completed: ""
 
 ## 1. Outcome and rationale
 
-The upstream cluster autoscaler with `cloudProvider: hetzner` adds up to one
-CX33 worker when pods stay pending and removes it after sustained
-underutilisation. The fixed two-node pool from HETZ-030 stays; the
-autoscaler only adds. Idle cost is unchanged.
-
-Read `specs/civo/170-P-civo-cluster-autoscaler/spec.md` first. The Civo
-blocker (one account-wide key) does not exist here: Hetzner tokens are
-per project and the token is already in-cluster for CCM and CSI.
+The upstream cluster autoscaler with `cloudProvider: hetzner` adds up to
+two `cx33` workers when pods stay pending and removes each one after 10
+minutes of sustained underutilisation. The fixed pool from HETZ-030 (one
+control plane, one worker) stays; the autoscaler only adds, so the node
+ceiling is four. Idle cost is unchanged, and a new node joins the cluster with `kubeadm
+join` — HETZ-165 already produced that join credential (a bootstrap
+token and CA hash); this spec only consumes it.
 
 ## 2. Scope and non-goals
 
-In scope: the Argo Application, the node-group config, the join-token
-Secret, the sweep interaction, a scale test. Not in scope: multiple
-pools, mixed architectures, scaling the fixed pool down.
+In scope: the Argo Application, the node-group config, the cluster-config
+Secret `argo-up` assembles from HETZ-165's Secret, the sweep and cascade
+teardown interaction, a scale test. Not in scope: multiple node pools,
+mixed CPU architectures, scaling the fixed pool down, an HA control plane
+(decisions.md §3, Control-plane topology — the join line's target
+`10.0.1.10:6443` is fixed), and the cluster-autoscaler 1.37 upgrade
+(HETZ-185), which waits on an upstream tag that does not exist yet.
 
 ## 3. Current state / evidence
 
-- research.md: env `HCLOUD_TOKEN`, `HCLOUD_CLUSTER_CONFIG` (base64 JSON:
-  `imagesForArch`, per-pool `cloudInit`, `labels`, `taints`, `serverLabels`,
-  `firewalls`), `HCLOUD_NETWORK`, `HCLOUD_FIREWALL`, `HCLOUD_SSH_KEY`,
-  `HCLOUD_PUBLIC_IPV4=true`; node groups
-  `--nodes=<min>:<max>:<TYPE>:<LOCATION>:<name>`; rate limit 3600/h per
-  project.
-- HETZ-020 experiment 8 verifies scale-from-zero and that a joined node
-  receives its `providerID` from the CCM.
-- HETZ-030 writes the k3s join token and the control-plane private IP to
-  SSM under `/<project>/cluster-hetzner/k8s/` (join token as
-  `SecureString`). HETZ-040's sweep selects servers by label
-  `project=<project>` regardless of who created them.
-- `enablePDB: false` on CNPG (HETZ-115). Karpenter-style consolidation
-  does not exist; the autoscaler's scale-down window applies.
+- HETZ-165 §4 writes `kube-system/hcloud-autoscaler` with keys `token`,
+  `ca_hash`, `cloud_init` — the rendered `kubeadm join` cloud-init, whose
+  `.data.cloud_init` field is the base64 encoding of that plaintext
+  render, same as any Kubernetes Secret value. `cloud_init` already
+  contains the token and hash inline; the Hetzner API token this spec
+  also needs lives separately in `kube-system/hcloud` (HETZ-045),
+  unchanged blast radius from decisions.md §3, "Autoscaler credential".
+- research.md, "Cluster autoscaler `cloudProvider: hetzner`" row: the
+  binary reads `HCLOUD_CLUSTER_CONFIG` as base64 JSON —
+  `imagesForArch.amd64: ubuntu-24.04`, `nodeConfigs.workers.cloudInit`
+  (itself base64, the joined cloud-init), `serverLabels: {project,
+  scope: platform, lifecycle: disposable, managed-by: autoscaler, role:
+  worker}` — plus the separate scalars `HCLOUD_NETWORK`, `HCLOUD_FIREWALL`,
+  `HCLOUD_SSH_KEY`, `HCLOUD_PUBLIC_IPV4=true`, `HCLOUD_PUBLIC_IPV6=true`,
+  and node-group syntax `--nodes=<min>:<max>:<TYPE>:<LOCATION>:<name>`.
+  https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/hetzner/README.md
+- research.md, "Versions on 2026-09-19" row: cluster-autoscaler must match
+  the running cluster's Kubernetes minor; the newest tag is 1.36.1 and no
+  1.37 tag exists yet, a second reason (with HETZ-030's containerd pin)
+  that the cluster stays on 1.36 for M1.
+  https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/README.md
+- research.md, "Default limits" row: a Hetzner project defaults to 5
+  servers. The fixed pool (1 control plane + 1 worker) plus the
+  autoscaler ceiling (2) is 4, one under the default — CI running its own
+  project-scoped count is HETZ-140's problem, not this spec's.
+  https://docs.hetzner.com/cloud/servers/overview/
+- HETZ-040's teardown sweep (`cluster-down.sh`, per that spec's §4)
+  already deletes, by label, any server "not created by Terraform"
+  before `terragrunt destroy` — the rule that now covers this spec's
+  autoscaled nodes without a change to HETZ-040 itself.
+- `enablePDB: false` on CNPG (HETZ-115); no Karpenter-style
+  consolidation exists on this target, so the autoscaler's own
+  scale-down window is the only downscale path.
 
 ## 4. Design and contracts
 
 - Application `platform/hetzner/autoscaler/application.yaml`, chart
-  `cluster-autoscaler` pinned, `cloudProvider: hetzner`,
-  `autoscalingGroups: [{name: workers, minSize: 0, maxSize: 1}]`, extra
-  args `--nodes=0:1:CX33:NBG1:workers`,
+  `cluster-autoscaler` pinned (`CLUSTER_AUTOSCALER_VERSION=1.36.1` in
+  `scripts/lib/versions.sh`), `cloudProvider: hetzner`,
+  `autoscalingGroups: [{name: workers, minSize: 0, maxSize: 2}]`, extra
+  args `--nodes=0:2:CX33:NBG1:workers`,
   `--skip-nodes-with-system-pods=false`,
   `--skip-nodes-with-local-storage=false`, `--scale-down-unneeded-time=10m`.
-  Sync-wave 0 (after CSI and ESO). Tolerates nothing; runs on the fixed
-  pool.
-- Secret `kube-system/hcloud-autoscaler`, created by `argo-up` like the
-  `hcloud` Secret: keys `token` (the same project token, or a second
-  Read&Write token from `secrets/hcloud-autoscaler-token.enc` if the
-  operator chooses), `cluster-config` (base64 JSON), `network`,
-  `firewall`, `ssh-key`. The `cloudInit` inside `cluster-config` is the
-  HETZ-030 agent template with the join token and the control-plane
-  private IP filled from SSM, the same k3s version pinned, and
-  `serverLabels: {project: <project>, role: worker, managed-by: autoscaler}`.
-- `imagesForArch.arm64` = the `ubuntu-24.04` arm64 image id from HETZ-020.
-- Teardown: `argo-down` cascade deletes the autoscaler Application before
-  the CCM release goes (CCM is outside Argo and dies with the cluster).
-  Autoscaler-created servers are not in Terraform; `cluster-down` runs the
-  label sweep for servers with `managed-by=autoscaler` **before**
-  `terragrunt destroy`, otherwise the firewall and subnet destroy hangs on
-  "resource in use". HETZ-040 must expose that ordering as a pre-destroy
-  hook.
-- Observability: a ServiceMonitor for the autoscaler, gated on hetzner.
-- Credential: the join token lets a reader add a node to the cluster; the
-  Hetzner token lets a reader manage the Hetzner project. Both already
-  hold the same blast radius as the CCM Secret (decisions.md §3).
+  Sync-wave 0; runs on the fixed pool, no toleration needed, because a
+  fixed node carries no taint by the time Argo CD renders this
+  Application (HETZ-045).
+- Two Secrets feed the pod's env, never a ConfigMap: `HCLOUD_TOKEN` maps
+  from the existing `kube-system/hcloud` Secret via
+  `valueFrom.secretKeyRef {name: hcloud, key: token}` (that Secret's keys
+  are `token`/`network`, not `HCLOUD_TOKEN`, so `envFrom` would produce
+  the wrong env-var names); `HCLOUD_NETWORK` maps the same Secret's
+  `network` key the same way, reusing the id already in-cluster for the
+  CCM. `HCLOUD_CLUSTER_CONFIG` comes from a second Secret,
+  `kube-system/hcloud-autoscaler-config`, via `envFrom` (this spec
+  controls that key's name). `HCLOUD_FIREWALL` and `HCLOUD_SSH_KEY` are
+  plain `extraEnv` values relayed through the root Application's Helm
+  values from SSM (`cluster-hetzner/firewall/firewall_id`,
+  `persistent-hetzner/ssh-key/ssh_key_id`) — ids, not secrets, so a
+  literal value suffices; `HCLOUD_PUBLIC_IPV4=true` and
+  `HCLOUD_PUBLIC_IPV6=true` are static `extraEnv` values matching
+  HETZ-030's `public_net` config on the fixed nodes.
+- Exact mechanism for `kube-system/hcloud-autoscaler-config`: a new
+  `ensure_autoscaler_config()` in `scripts/argo-up.sh`, hetzner-only,
+  called immediately after HETZ-165's `ensure_autoscaler_secret()`,
+  before the fast-path return. It reads `kube-system/hcloud-autoscaler`'s
+  `cloud_init` key with `kubectl get secret ... -o
+  jsonpath='{.data.cloud_init}'` and copies that value verbatim into
+  `nodeConfigs.workers.cloudInit` — no decode/re-encode round trip,
+  because both fields hold the same base64 encoding of the same
+  plaintext render, which also avoids a trailing-newline hazard. It
+  builds the rest of the JSON (`imagesForArch`, `serverLabels`) with
+  `jq`, base64-encodes the whole object, and writes it with `kubectl
+  create secret generic hcloud-autoscaler-config -n kube-system
+  --from-literal=HCLOUD_CLUSTER_CONFIG="$CONFIG" --dry-run=client -o yaml
+  | kubectl apply -f -` — piped, never through a temp file, never
+  echoed, same convention as every other Hetzner credential write.
+- Teardown. `argo-down`'s cascade (HETZ-047) deletes the autoscaler
+  Application and waits until it is actually gone — polled, not assumed
+  from the delete call returning — before the cascade proceeds to the
+  CCM and LB teardown, so an in-flight scale-down event never races the
+  LB removal. Independently, `cluster-down`'s pre-destroy sweep
+  (HETZ-040, unchanged by this spec) deletes any `managed-by=autoscaler`
+  server still present — one that never had time to scale down, or one
+  the autoscaler crashed before removing — before `terragrunt destroy`,
+  because the firewall and subnet destroy hangs on an attached server
+  otherwise.
+- Observability: a ServiceMonitor for the autoscaler pod, gated on
+  `hetzner`, added to the same Application (HETZ-160 wires the
+  Prometheus/Grafana side).
 
 ## 5. Files/components affected
 
 `gitops/templates/platform/hetzner/autoscaler/*.yaml` (new),
-`gitops/values.yaml`, `scripts/argo-up.sh` (Secret creation),
-`scripts/cluster-down.sh` (pre-destroy sweep), `scripts/lib/provider.sh`.
+`gitops/values.yaml`, `scripts/argo-up.sh` (`ensure_autoscaler_config`),
+`scripts/lib/versions.sh` (`CLUSTER_AUTOSCALER_VERSION`). No change to
+`scripts/cluster-down.sh` or HETZ-040's spec — the existing label sweep
+already covers autoscaler-created servers.
 
 ## 6. Implementation steps
 
-1. Add the Application and the Secret creation. Golden diffs empty.
-2. `PROVIDER=hetzner make up`. Autoscaler pod Ready; log shows the node
-   group with 0 nodes.
-3. Burst test: a Deployment requesting 6 GiB × 3 replicas. Observe two
-   servers created within 5 min, joined, `providerID` set, pods Running.
-   `hcloud server list -l managed-by=autoscaler` shows two.
-4. Delete the Deployment. Observe scale-down to zero inside 15 min and
-   the servers deleted by the autoscaler.
-5. Repeat step 3, then run `make down` while the two servers exist.
-   Confirm `cluster-down` deletes them before the destroy and the destroy
-   does not hang.
-6. `terragrunt plan` in `cluster-hetzner` shows no drift at any point.
+1. Pin `CLUSTER_AUTOSCALER_VERSION=1.36.1`; add `ensure_autoscaler_config()`
+   right after `ensure_autoscaler_secret()`; add the Argo Application and
+   its Secret env wiring. `make gitops-check` golden diff empty.
+2. `PROVIDER=hetzner make up` on the HETZ-165 baseline. Confirm
+   `hcloud-autoscaler-config` exists with the `HCLOUD_CLUSTER_CONFIG` key
+   and the autoscaler pod is Ready, logging a `workers` node group with 0
+   nodes.
+3. Burst test: a Deployment sized to overflow the one fixed worker.
+   Observe 0→2 scale-up within 5 minutes (timed); both new nodes Ready
+   with `providerID` set; `hcloud server list -l managed-by=autoscaler`
+   shows two.
+4. Delete the Deployment. Observe both nodes deleted within 10 minutes of
+   the pods clearing (timed), matching `--scale-down-unneeded-time=10m`.
+5. Repeat step 3, then run `make down` with both autoscaled nodes present.
+   Confirm `argo-down` waits for the autoscaler Application to be gone,
+   `cluster-down`'s sweep reports zero leaks, `terragrunt destroy` does
+   not hang, and a following `terragrunt plan` shows no drift.
 
 ## 7. Dependencies and blockers
 
-HETZ-030 (join token, agent cloud-init template), HETZ-040 (sweep
-ordering), HETZ-045 (Secret creation path).
+HETZ-165 (the join token, CA hash and rendered cloud-init this spec's
+Secret copies from). Transitively, through HETZ-165: HETZ-045 (`argo-up`
+placement, `wait_for_nodes_initialized`, the `hcloud` Secret) and
+HETZ-037/HETZ-035/HETZ-030 (the Ready, Cilium-networked fixed pool and
+its node-shape decision).
 
 ## 8. Acceptance criteria
 
-- Scale 0→2 and 2→0 observed and timed.
-- Teardown with autoscaler nodes present completes without a hung destroy.
-- Rate-limit headers never reach zero during the test (log
-  `RateLimit-Remaining` samples).
-- No Terraform drift.
+- A burst of pending pods scales the pool 0→2 within 5 minutes, timed;
+  both new nodes reach `Ready` with `spec.providerID` set.
+- 10 minutes after the pending pods are removed, both nodes are gone,
+  timed.
+- `make down` with two autoscaled nodes present completes; the sweep
+  reports zero leaks.
+- No Terraform drift on `cluster-hetzner` at any point in the test.
 
 ## 9. Validation
 
-Real cloud: the burst test, about 0.20 EUR.
+Offline: `make gitops-check`, `shellcheck` on `argo-up.sh`. Real cloud:
+the burst-and-teardown test in §6, about 0.20 EUR (up to four `cx33` for
+under an hour).
 
 ## 10. AWS regression protection
 
-Not applicable: hetzner-only files. Civo: golden diff empty; no shared
-file changes.
+Not applicable: every changed file is hetzner-only. Civo: `make
+gitops-check` golden diff empty; no shared file changes.
 
 ## 11. Rollout and rollback/recovery
 
-Remove the Application; the autoscaler deletes its nodes on scale-down;
-if it is removed while nodes exist, the sweep reaps them at `cluster-down`.
+Remove the Application; the autoscaler deletes its own nodes on
+scale-down first. If it is removed while nodes still exist, HETZ-040's
+sweep reaps them at the next `cluster-down`.
 
 ## 12. Risks and unresolved questions
 
-- The default 5-server limit: two fixed plus one autoscaled leaves two spare; was: three fixed plus two autoscaled is exactly
-  the limit. CI and lab cannot coexist (HETZ-140).
-- An agent cloud-init that pins a different k3s version than the control
-  plane fails to join silently. Pin from one variable.
-- The autoscaler has a history of consuming the whole API budget
-  (research.md). Keep `--scan-interval` at the default and watch the
-  headers.
+- A scale-up burst can consume a large share of the 3600/h Hetzner API
+  rate limit; watch `RateLimit-Remaining` in the autoscaler's own request
+  log during the burst test.
+- The 5-server default limit: 1 fixed control plane + 1 fixed worker + 2
+  autoscaled is exactly 4, one under the default — leaving no room for a
+  second concurrent cluster (CI's own count is HETZ-140's problem, not
+  this spec's).
+- Kubelet version drift: if `scripts/lib/versions.sh`'s
+  `KUBERNETES_VERSION` changes without a matching `make down`/`make up`
+  on the fixed pool, an autoscaled node (built from the same
+  `node_cloud_init_b64` render, HETZ-165 §4) joins at a different minor
+  than the control plane.
+- A node that joins but never gets `providerID` — most likely a
+  `KUBELET_EXTRA_ARGS` render missing `--cloud-provider=external` — never
+  clears the CCM's `uninitialized` taint or becomes schedulable; the
+  autoscaler deletes it itself once `--max-node-provision-time` elapses,
+  so no manual sweep is needed for that case.
+- No cluster-autoscaler 1.37 tag exists yet (§3); the 1.37 upgrade
+  (HETZ-185) is blocked on that release, not on this spec.
 
 ## 13. Definition of done
 
-- [ ] Evidence; sweep ordering in HETZ-040 confirmed; index updated; status `DONE`
+- [ ] Scale 0→2 and 2→0 evidence recorded with timings
+- [ ] Teardown-with-nodes-present evidence recorded; HETZ-040's sweep and
+      HETZ-047's Application-gone wait both confirmed
+- [ ] Index updated; status `DONE`
 
 ## 14. Execution evidence and status history
 
 - 2026-09-11 — created as DRAFT at P3/M2, mirroring CIVO-170's placement.
 - 2026-09-11 — reviewed and approved by the user; promoted to READY.
 - 2026-09-19 — moved to P1/M1 and re-shaped to 0–1 `cx33`: the third node of the chosen shape (decisions.md §3) is autoscaled, so M1 needs this spec.
+- 2026-09-19 — rewritten for kubeadm join via HETZ-165; 0–2 workers, ceiling 4 nodes.
