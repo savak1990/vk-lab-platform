@@ -140,9 +140,13 @@ run in this order:
   otherwise `JOIN=$(hetzner_ssh <cp> kubeadm token create
   --print-join-command)` and write `/root/kubeadm-join.yaml` on the worker
   with the `discovery.bootstrapToken` fields parsed out of `$JOIN`, plus
-  `nodeRegistration.name=<worker server name>` and
+  `nodeRegistration.name=<worker server name>`,
   `nodeRegistration.kubeletExtraArgs` `cloud-provider=external` and
-  `node-ip=<worker private ip>`; run `kubeadm join --config
+  `node-ip=<worker private ip>`, and a `KubeletConfiguration` carrying the
+  same `systemReserved: {cpu: 500m, memory: 1Gi}`, `kubeReserved: {cpu:
+  250m, memory: 512Mi}` and `evictionHard: {memory.available: 300Mi}` the
+  control plane sets (HETZ-030), so every node schedules against the same
+  allocatable figure; run `kubeadm join --config
   /root/kubeadm-join.yaml` on the worker over SSH. Never prints `$JOIN` or
   any other `kubeadm token` output to the script's own stdout; under
   `GITHUB_ACTIONS` that output is masked like every other secret.

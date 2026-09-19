@@ -196,8 +196,13 @@ Servers (`cluster-hetzner/k8s`, module `hcloud-nodes`):
     `controllerManager.extraArgs` and `scheduler.extraArgs`
     `bind-address=10.0.1.10`, `etcd.local.extraArgs
     listen-metrics-urls=http://10.0.1.10:2381`; `KubeletConfiguration`
-    with `cgroupDriver: systemd`; `KubeProxyConfiguration` with
-    `metricsBindAddress: 10.0.1.10:10249`.
+    with `cgroupDriver: systemd`, `systemReserved: {cpu: 500m, memory:
+    1Gi}`, `kubeReserved: {cpu: 250m, memory: 512Mi}` and `evictionHard:
+    {memory.available: 300Mi}` — the control plane is schedulable by
+    decision (`nodeRegistration.taints: []`), so these reservations keep
+    etcd and the API server out of memory pressure when workloads fill
+    the node; `KubeProxyConfiguration` with `metricsBindAddress:
+    10.0.1.10:10249`.
   - `runcmd`, after the package steps: wait for `enp7s0`; read the node's
     own public IPv4 from `169.254.169.254/hetzner/v1/metadata` and write
     it into `apiServer.certSANs`, so no `apply`-time value pins the
