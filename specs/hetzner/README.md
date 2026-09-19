@@ -101,6 +101,7 @@ two additions:
 | HETZ-140 | [140-P-ci-workflow-hetzner](140-P-ci-workflow-hetzner/spec.md) | `lab.yml` third provider value, `hcloud` CLI, token mask, label sweep in cleanup | READY | P1 | M | standard | 015, 045, CIVO-140, 047 | M1 |
 | HETZ-150 | [150-P-teardown-recreate-validation](150-P-teardown-recreate-validation/spec.md) | Full lifecycle validation on Hetzner with the Hetzner resource classification | READY | P1 | M | strongest | 070, 120, 130, 047 | M1 |
 | HETZ-160 | [160-P-observability-on-hetzner](160-P-observability-on-hetzner/spec.md) | Observability on Hetzner: control-plane scrapes on, x86 images, 10 GiB volume floor | READY | P1 | M | standard | 037, 050, 085, CIVO-160 | M1 |
+| HETZ-165 | [165-P-kubeadm-join-credential](165-P-kubeadm-join-credential/spec.md) | `argo-up` creates the long-lived bootstrap token, CA hash and rendered join cloud-init in `kube-system/hcloud-autoscaler` | READY | P1 | S | standard | 037, 045 | M1 |
 | HETZ-170 | [170-P-hetzner-cluster-autoscaler](170-P-hetzner-cluster-autoscaler/spec.md) | Cluster autoscaler `cloudProvider: hetzner`, 0–2 CX33 workers via `kubeadm join` | READY | P1 | M | strongest | 165 | M1 |
 | HETZ-175 | [175-P-sku-fallback-and-right-size](175-P-sku-fallback-and-right-size/spec.md) | Stock-aware SKU fallback (CX → CPX) and right-sizing on measured data | READY | P2 | S | standard | 160, CIVO-175 | M2 |
 | HETZ-182 | [182-P-multi-arch-images](182-P-multi-arch-images/spec.md) | Repo-built images published for `linux/arm64` as well as `linux/amd64` | DRAFT | P0 | S | fast | CIVO-180 | M1 |
