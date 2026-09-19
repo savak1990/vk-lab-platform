@@ -92,6 +92,12 @@ The Civo leg uses the Let's Encrypt staging issuer. A labeled run happens per
 pull request, and production orders would burn the duplicate-certificate quota
 this account shares with the personal lab.
 
+Both CI project names are fixed, so every labeled pull request shares the same
+two concurrency locks and parallel pull requests queue rather than run side by
+side. Per-pull-request names would remove the queue but hit provider quotas
+first; `specs/shared/036-P-parallel-ci-projects/` records that trade-off and
+the conditions for revisiting it.
+
 Each job keys its concurrency as `lab-<provider>-<project>`, matching
 `lab.yml`. This also repairs a drift: CIVO-140 added the provider segment to
 `lab.yml`'s group but not to `lifecycle-test.yml`'s, so since then the two
