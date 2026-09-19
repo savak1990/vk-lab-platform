@@ -152,7 +152,7 @@ broken spec link or a status letter that no longer matches. One non-Markdown fil
 anywhere in the pull request runs everything.
 
 `validate-terraform` also skips when the pull request changes nothing under
-`terraform/`, `secrets/` or `.github/`. A `gitops/`-only change, for example,
+`terraform/`, `secrets/` or `lifecycle-test.yml`. A `gitops/`-only change, for example,
 saves those ~9 minutes. The lifecycle check still runs when labeled.
 
 Adding the label starts the run immediately against the pull request's current

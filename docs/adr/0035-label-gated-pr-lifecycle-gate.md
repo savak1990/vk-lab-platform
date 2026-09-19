@@ -98,8 +98,9 @@ Three rules keep the skip from becoming a hole:
 
 `validate-terraform` has a second, narrower skip. It is the slowest check, about
 8 minutes, and it reads only `terraform/`, `secrets/` (at Terragrunt parse time)
-and the workflows. A pull request that changes none of these - `gitops/` or
-`scripts/` only, for example - skips it. The same three rules apply: the
+and `lifecycle-test.yml`, which defines the job. A pull request that changes
+none of these - `gitops/`, `scripts/` or another workflow only, for example -
+skips it. The same three rules apply: the
 classifier's `terraform` output fails closed to `true`, and `pr-gate` accepts
 this skip for `validate-terraform` only. The lifecycle jobs use `!cancelled()`
 plus an explicit "no validate job failed" test, so a skipped `validate-terraform`

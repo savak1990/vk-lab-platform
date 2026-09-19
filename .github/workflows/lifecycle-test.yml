@@ -82,10 +82,10 @@ jobs:
               DOCS_ONLY=true
             fi
 
-            # secrets/ is read by terragrunt at parse time; the workflows are
-            # here so that a change to this job always runs it.
+            # secrets/ is read by terragrunt at parse time; this workflow is
+            # here so that a change to the job itself always runs it.
             if ! printf '%s\n' "$CHANGED" | grep -vE '\.md$' \
-              | grep -qE '^(terraform/|secrets/|\.github/(workflows|actions)/)'; then
+              | grep -qE '^(terraform/|secrets/|\.github/workflows/lifecycle-test\.yml$)'; then
               TERRAFORM=false
             fi
 
