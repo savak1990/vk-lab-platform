@@ -61,13 +61,22 @@ commit the new ciphertext.** No in-repo rotation automation — this
 mirrors how every other KMS-encrypted secret in this repository is
 rotated.
 
-**The cluster autoscaler (spec CIVO-170) needs its own in-cluster API
-key, held as a separate ciphertext file (`secrets/civo-autoscaler-token.enc`),
-not the operator's token reused.** An in-cluster credential and an
-operator-workstation/CI credential are different trust boundaries; giving
-the autoscaler its own dedicated key keeps a cluster-side Secret read
-from also compromising the operator's ability to manage the whole Civo
-account from outside the cluster.
+**The cluster autoscaler (spec CIVO-170) puts no token in the cluster at
+all.** This decision originally called for a dedicated in-cluster key in
+its own ciphertext file, on the grounds that an in-cluster credential and
+an operator-workstation/CI credential are different trust boundaries.
+That separation is not available: a Civo API key is account-wide and
+unscoped, an account holds exactly one, and multiple keys appear only
+across Organization sub-accounts.
+
+It is also unnecessary. Civo's k3s already ships a Secret named
+`civo-api-access` in `kube-system`, owned by a k3s Addon and consumed by
+Civo's own CCM and CSI drivers. It carries exactly the four keys the
+cluster-autoscaler chart reads, so the autoscaler points at it and this
+repository delivers no Civo credential into the cluster. Nothing here
+writes to that Secret: it is Addon-owned, and the CSI driver needs a
+fifth key the autoscaler chart does not know about, so an apply that
+omits that key would break volume provisioning.
 
 **Constitution §5's "no long-lived AWS credential" rule is not
 violated** — `CIVO_TOKEN` is not an AWS credential, and every AWS-facing
@@ -89,6 +98,10 @@ b. **Storing the token only as a GitHub Actions secret, uncommitted.**
    Rejected — inconsistent with every other secret in this repository
    (ADR 0023's pattern), and loses the workstation-operator path (the
    token must also be usable from a local `make up`, not only from CI).
+c. **A dedicated in-cluster key for the autoscaler, in its own ciphertext
+   file.** This decision originally required it. Not available — see the
+   Decision above: a Civo account holds exactly one account-wide,
+   unscoped API key.
 
 ## Consequences
 
@@ -99,9 +112,10 @@ b. **Storing the token only as a GitHub Actions secret, uncommitted.**
   per ADR 0029, transitively reaches every AWS role's permissions through
   the CA-key path. This ADR does not reduce that blast radius; ADR 0029
   is where the mitigations for it live.
-- The autoscaler's separate key means rotating or revoking the operator's
-  token does not require also rotating the in-cluster autoscaler
-  credential, and vice versa.
+- The autoscaler depends on a Secret this repository does not own. If Civo
+  renames or stops shipping `civo-api-access`, the autoscaler stops
+  scaling. That is a visible failure, not a silent one, and it is a better
+  trade than holding a second copy of an account-wide key in the cluster.
 - The `civo` CLI defeats this decision if used carelessly. It loads
   `CIVO_TOKEN` into its in-memory config under the name `tempKey`, and any
   command that saves the config then writes that plaintext token to

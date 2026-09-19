@@ -23,14 +23,15 @@ resource "civo_kubernetes_cluster" "this" {
   pools {
     label      = "workers"
     size       = "g4s.kube.medium"
-    node_count = 3
+    node_count = 2
   }
 
-  # Civo's create API accepts tags but its update API rejects them
+  # tags: Civo's create API accepts tags but its update API rejects them
   # (400 invalid_parameter_name) - without this, every apply after the
   # first tries to "fix" the resulting drift and fails.
+  # node_count: the cluster autoscaler owns it after creation.
   lifecycle {
-    ignore_changes = [tags]
+    ignore_changes = [tags, pools[0].node_count]
   }
 }
 

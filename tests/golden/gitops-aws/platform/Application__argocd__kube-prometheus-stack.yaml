@@ -101,12 +101,15 @@ spec:
             enabled: true
             storageClassName: ebs-delete
             size: 1Gi
+          # Measured 589Mi working set on a live cluster - the old 512Mi limit
+          # was below that, and the 400Mi request hid the real footprint from
+          # the scheduler and so from the autoscaler.
           resources:
             requests:
               cpu: 50m
-              memory: 400Mi
+              memory: 640Mi
             limits:
-              memory: 512Mi
+              memory: 768Mi
           # Covers both dashboard/datasource sidecar containers (shared key) -
           # sized for the ConfigMap sync, not the one-time startup burst.
           sidecar:

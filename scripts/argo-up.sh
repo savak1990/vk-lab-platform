@@ -327,6 +327,8 @@ install_argocd() {
   # dex.enabled=false below: dex is unused (local bcrypt admin password, no
   # SSO) and its bundled image segfaults on some clusters. Kept outside the
   # backslash-continued command below - a `#` comment mid-continuation ends it early.
+  # controller.resources was raised from 512Mi/768Mi: the controller was
+  # OOMKilled twice at the old limit on a live cluster.
   helm upgrade --install argocd argo-cd \
     --repo https://argoproj.github.io/argo-helm \
     --version "$ARGOCD_CHART_VERSION" \
@@ -342,7 +344,7 @@ install_argocd() {
     --set repoServer.metrics.enabled=true \
     --set applicationSet.metrics.enabled=true \
     --set notifications.metrics.enabled=true \
-    --set-json 'controller.resources={"requests":{"cpu":"20m","memory":"512Mi"},"limits":{"memory":"768Mi"}}' \
+    --set-json 'controller.resources={"requests":{"cpu":"20m","memory":"768Mi"},"limits":{"memory":"1152Mi"}}' \
     --set-json 'repoServer.resources={"requests":{"cpu":"10m","memory":"192Mi"},"limits":{"memory":"320Mi"}}' \
     --set-json 'server.resources={"requests":{"cpu":"10m","memory":"64Mi"},"limits":{"memory":"128Mi"}}' \
     --set-json 'applicationSet.resources={"requests":{"cpu":"5m","memory":"48Mi"},"limits":{"memory":"96Mi"}}' \
