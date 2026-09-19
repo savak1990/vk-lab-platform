@@ -91,7 +91,7 @@ and 020, 025, 030, 040 do not.
 
 ## First three PRs
 
-1. **PR 1 — HETZ-010 + this package.** `PROVIDER=hetzner` value, defaults, `hcloud_token()`, `secrets/hcloud-token.enc`, third arm in every guard and enum; adds `specs/hetzner/`. Regression: `make -n up` identical for `aws` and `civo`.
+1. **PR 1 — HETZ-010 + this package.** `PROVIDER=hetzner` value, defaults, `hcloud_token()`, `secrets/hetzner-token.enc`, third arm in every guard and enum; adds `specs/hetzner/`. Regression: `make -n up` identical for `aws` and `civo`.
 2. **PR 2 — HETZ-015.** The Hetzner ADR (number assigned on landing; 0032–0035 are taken), amendments to 0029/0030/0024/0002/0022, constitution §20 per-provider table, architecture §10a. No code.
 3. **PR 3 — HETZ-016 + HETZ-018.** The two generalisation refactors with golden renders for `aws` and `civo` proving zero change, plus the Civo lifecycle test run once. These are the riskiest PRs in the package because they touch DONE Civo code; they go in before any Hetzner resource exists.
 

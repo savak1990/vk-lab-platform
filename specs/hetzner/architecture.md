@@ -49,7 +49,7 @@ equivalent; **n/a** = not applicable on Hetzner.
 
 | Component | Civo implementation | Hetzner difference | Classification | Owning spec |
 |---|---|---|---|---|
-| Make surface, `provider.sh`, token helper | `PROVIDER=aws\|civo`, `civo_token()` | third value; `hcloud_token()` exporting `HCLOUD_TOKEN`; `secrets/hcloud-token.enc` | mirror | 010 |
+| Make surface, `provider.sh`, token helper | `PROVIDER=aws\|civo`, `civo_token()` | third value; `hcloud_token()` exporting `HCLOUD_TOKEN`; `secrets/hetzner-token.enc` (account-global, `SECRET_SCOPE=global`) | mirror | 010 |
 | Governance | ADRs 0027–0031, constitution §20 (Civo) | ADR 0032 (kubeadm-bootstrapped control plane); §20 becomes per-provider; ADR 0030 amended (token lives in-cluster); ADR 0029 note (federation possible, rejected) | mirror | 015 |
 | Script branches `[ "$PROVIDER" = civo ]` | CA Secret, TLS export/import, no EBS snapshot, kinds filter, PVC wait, teardown dump gate | semantics are "non-EKS"; become `!= aws` | generalise | 016 |
 | GitOps gates `eq .Values.target "civo"` (11 sites), `validateTarget`, render-check sets | literal `civo` | `platform.selfManaged` helper (civo, hetzner); `hetzner` in the allowed list; per-target required/forbidden sets | generalise | 016 |
@@ -92,7 +92,7 @@ Adds to `docs/civo-high-level-design.md` §5.
 | `PROVIDER` | enum aws\|civo\|hetzner | operator/CI input | `aws` | no | `--set target` |
 | `PROJECT_NAME` | string | operator input | `vk-hetzner-lab` | no | `--set project` |
 | `SUBDOMAIN` | string | operator input | `hetzner` | no | via SSM `fqdn` |
-| `HCLOUD_TOKEN` | string | `secrets/hcloud-token.enc` | — | yes | Terraform/CLI env; **and** `kube-system/hcloud` Secret created by `argo-up` |
+| `HCLOUD_TOKEN` | string | `secrets/hetzner-token.enc` | — | yes | Terraform/CLI env; **and** `kube-system/hcloud` Secret created by `argo-up` |
 | Hetzner location | constant | `root.hcl` (`hcloud_location`), `scripts/lib/region.sh` (`HCLOUD_LOCATION`) | `nbg1` | no | `envoyGateway.location` |
 | SSH private key | file | `secrets/<project>/hetzner-ssh-key.enc` | — | yes | never; scripts only |
 | kubeadm bootstrap token | string | created by `argo-up` (165) with `--ttl 0` | — | yes (disposable) | `kube-system/hcloud-autoscaler` Secret; node join only |

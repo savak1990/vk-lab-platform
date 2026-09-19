@@ -12,7 +12,7 @@
 | Location | `nbg1`, network zone `eu-central`; declared once per layer, never derived |
 | AWS access from workloads | IAM Roles Anywhere, same chain as Civo, names parametrized by provider (HETZ-018) |
 | Kubeconfig | `/etc/kubernetes/admin.conf` fetched over SSH with the KMS-encrypted key; server address rewritten to the public IP |
-| Hetzner token | KMS-encrypted in repo (`secrets/hcloud-token.enc`), decrypted at run time, masked in CI; **also** placed in `kube-system/hcloud` by `argo-up` because CCM and CSI need it |
+| Hetzner token | KMS-encrypted in repo (`secrets/hetzner-token.enc`, account-global, read with `SECRET_SCOPE=global`), decrypted at run time, masked in CI; **also** placed in `kube-system/hcloud` by `argo-up` because CCM and CSI need it |
 | Persistence | CNPG barman-cloud plugin to S3 (ADR 0032, which reversed ADR 0031) — Hetzner CSI has no snapshot or clone either. The Civo design carries over whole, including the sidecar image, which is amd64 on cx33 |
 | TLS | cert-manager at Envoy, wildcard through DNS-01 (Civo end state); HTTP-01 never used on Hetzner |
 | AWS and Civo regression | both stay byte-identical; golden renders for `aws` and `civo`, `make -n` identity for both |

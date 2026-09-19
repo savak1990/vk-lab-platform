@@ -14,7 +14,7 @@ depends_on: ["HETZ-015", "HETZ-045", "CIVO-140", "HETZ-047"]
 blocked_by: []
 supersedes: []
 created: "2026-09-11"
-updated: "2026-09-19"
+updated: "2026-09-20"
 completed: ""
 ---
 
@@ -23,7 +23,7 @@ completed: ""
 ## 1. Outcome and rationale
 
 The manual `lab` workflow runs any lifecycle target with
-`provider=hetzner`. It decrypts `secrets/hcloud-token.enc` and the SSH key
+`provider=hetzner`. It decrypts `secrets/hetzner-token.enc` and the SSH key
 with the OIDC-assumed role it already uses, never prints either, queues
 runs per project-provider, and cleans up on failure by sweeping every
 labelled Hetzner resource, not only by destroying servers.
@@ -156,3 +156,4 @@ Revert the workflow.
 - 2026-09-11 — created as DRAFT.
 - 2026-09-11 — reviewed and approved by the user; promoted to READY.
 - 2026-09-19 — depends on HETZ-047 (argo-down LB ordering).
+- 2026-09-20 — the token ciphertext is `secrets/hetzner-token.enc`.
