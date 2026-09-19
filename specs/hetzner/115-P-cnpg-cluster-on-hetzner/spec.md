@@ -14,7 +14,7 @@ depends_on: ["HETZ-050", "HETZ-085", "CIVO-115"]
 blocked_by: []
 supersedes: []
 created: "2026-09-11"
-updated: "2026-09-11"
+updated: "2026-09-19"
 completed: ""
 ---
 
@@ -156,3 +156,4 @@ values entry; the render check then fails until the set is reverted too.
 
 - 2026-09-11 — created as DRAFT.
 - 2026-09-11 — reviewed and approved by the user; promoted to READY.
+- 2026-09-19 — cost line re-based on the fixed `cx33` pair; CAX is gone.
