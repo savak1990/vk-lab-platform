@@ -44,7 +44,7 @@ spec:
         nodeSelector:
           node-type: system
 {{- end }}
-{{- if eq .Values.target "civo" }}
+{{- if (eq (include "platform.selfManaged" .) "true") }}
         extraContainers:
           {{- include "platform.rolesAnywhereSidecar" (dict "consumer" "external-dns" "root" $) | nindent 10 }}
         extraVolumes:

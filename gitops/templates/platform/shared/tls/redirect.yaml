@@ -1,4 +1,4 @@
-{{- if eq .Values.target "civo" }}
+{{- if (eq (include "platform.selfManaged" .) "true") }}
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:

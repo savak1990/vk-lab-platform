@@ -44,8 +44,8 @@ if ! kubectl cluster-info --request-timeout=5s >/dev/null 2>&1; then
   exit 1
 fi
 
-if [ "$PROVIDER" = civo ]; then
-  civo_export_tls_secret
+if [ "$PROVIDER" != aws ]; then
+  export_tls_secret
 fi
 
 # Disarming automated sync is the first thing done to a reachable cluster:
@@ -70,8 +70,8 @@ done
 # operator who stops here on a cascade or DNS failure would otherwise have no way
 # to know the cluster's reconciliation is off.
 if [ "$DISARMED" -gt 0 ]; then
-  if [ "$PROVIDER" = civo ]; then
-    echo "ARGO-DOWN: automated sync disarmed on $DISARMED Application(s) - re-arm with 'PROVIDER=civo make argo-up' if you stop here."
+  if [ "$PROVIDER" != aws ]; then
+    echo "ARGO-DOWN: automated sync disarmed on $DISARMED Application(s) - re-arm with 'PROVIDER=$PROVIDER make argo-up' if you stop here."
   else
     echo "ARGO-DOWN: automated sync disarmed on $DISARMED Application(s) - re-arm with 'make argo-up' if you stop here."
   fi
@@ -94,7 +94,7 @@ storageclass.storage.k8s.io \
 clustersecretstore.external-secrets.io externalsecret.external-secrets.io \
 volumeattachment.storage.k8s.io persistentvolume"
 
-if [ "$PROVIDER" = civo ]; then
+if [ "$PROVIDER" != aws ]; then
   filtered_kinds=""
   for kind in $TERMINATING_KINDS; do
     kubectl get "$kind" -A >/dev/null 2>&1 && filtered_kinds="$filtered_kinds $kind"
@@ -219,10 +219,10 @@ kubectl get jobs -A -o json 2>/dev/null \
     done
 
 # Recorded before the cascade starts: once the PVC is gone the CSI driver
-# still needs time to delete the backing Civo volume, and the PV itself is
+# still needs time to delete the backing volume, and the PV itself is
 # the only object left to poll for that during the wait below.
 PRE_CASCADE_PVS=""
-if [ "$PROVIDER" = civo ]; then
+if [ "$PROVIDER" != aws ]; then
   PRE_CASCADE_PVS="$(kubectl get pv -o json 2>/dev/null \
     | jq -r '.items[]? | select((.spec.claimRef // {}).namespace == "cnpg-system" or (.spec.claimRef // {}).namespace == "observability") | .metadata.name' 2>/dev/null || true)"
 fi
@@ -244,14 +244,14 @@ else
 fi
 
 # The PVC/PV teardown is async relative to the Cluster object going away,
-# and a Civo volume that outlives the cluster keeps billing - cluster-down
+# and a volume that outlives the cluster keeps billing - cluster-down
 # treats one as a cascade bug and fails, so confirm it here instead.
-if [ "$PROVIDER" = civo ]; then
+if [ "$PROVIDER" != aws ]; then
   for pvc_ns in cnpg-system observability; do
     if [ -n "$(kubectl get pvc -n "$pvc_ns" -o name 2>/dev/null)" ]; then
       echo "ARGO-DOWN: waiting for $pvc_ns PVCs to finish deleting..."
       if ! kubectl wait --for=delete pvc -n "$pvc_ns" --all --timeout="$PVC_WAIT_TIMEOUT"; then
-        echo "ARGO-DOWN: WARNING - $pvc_ns PVCs still present after ${PVC_WAIT_TIMEOUT}; the Civo volume may" >&2
+        echo "ARGO-DOWN: WARNING - $pvc_ns PVCs still present after ${PVC_WAIT_TIMEOUT}; the backing volume may" >&2
         echo "ARGO-DOWN: outlive the cluster. cluster-down's dangling-volume sweep will catch and delete it, and" >&2
         echo "ARGO-DOWN: will fail the run so this surfaces rather than being absorbed." >&2
       fi
@@ -261,13 +261,13 @@ if [ "$PROVIDER" = civo ]; then
   done
 
   # The PVC is only the Kubernetes-side handle; the CSI driver deletes the
-  # backing Civo volume afterward. Wait on each recorded PV directly so a
+  # backing volume afterward. Wait on each recorded PV directly so a
   # slow delete surfaces here instead of as a false leak in cluster-down.
   for pv in $PRE_CASCADE_PVS; do
     if kubectl get pv "$pv" >/dev/null 2>&1; then
-      echo "ARGO-DOWN: waiting for PV $pv (civo volume) to finish deleting..."
+      echo "ARGO-DOWN: waiting for PV $pv (backing volume) to finish deleting..."
       if ! kubectl wait --for=delete "pv/$pv" --timeout="$PVC_WAIT_TIMEOUT"; then
-        echo "ARGO-DOWN: WARNING - PV $pv still present after ${PVC_WAIT_TIMEOUT}; the Civo volume may" >&2
+        echo "ARGO-DOWN: WARNING - PV $pv still present after ${PVC_WAIT_TIMEOUT}; the backing volume may" >&2
         echo "ARGO-DOWN: outlive the cluster. cluster-down's dangling-volume sweep will catch and delete it, and" >&2
         echo "ARGO-DOWN: will fail the run so this surfaces rather than being absorbed." >&2
       fi

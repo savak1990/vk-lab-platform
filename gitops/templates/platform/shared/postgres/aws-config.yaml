@@ -1,4 +1,4 @@
-{{- if and (eq .Values.target "civo") .Values.postgres.backup.enabled }}
+{{- if and (eq (include "platform.selfManaged" .) "true") .Values.postgres.backup.enabled }}
 apiVersion: v1
 kind: ConfigMap
 metadata:

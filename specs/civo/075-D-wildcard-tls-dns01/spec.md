@@ -300,3 +300,4 @@ DNS-01, no manual action needed.
     directly (the same command the script itself would run) to re-point
     the already-up cluster at a new git revision and, later, the prod
     issuer, without a full cluster teardown/recreate each time.
+- 2026-09-20 — HETZ-016: the cert-manager, identity and tls templates this spec names moved from `platform/civo/` to `platform/shared/`, gated by `platform.selfManaged`.

@@ -1,7 +1,7 @@
 ---
 id: "HETZ-016"
 title: "Non-AWS generalisation: civo-only script branches and Helm gates become non-AWS, with Civo and AWS byte-identical"
-status: "READY"
+status: "IN_PROGRESS"
 priority: "P0"
 milestone: "M0"
 type: "implementation"
@@ -14,7 +14,7 @@ depends_on: ["HETZ-010"]
 blocked_by: []
 supersedes: []
 created: "2026-09-11"
-updated: "2026-09-11"
+updated: "2026-09-20"
 completed: ""
 ---
 
@@ -94,6 +94,55 @@ GitOps:
 
 Regression contract: golden renders for `aws` and `civo` (`helm template` of the root chart with the same `--set` values `argo-up` uses) are byte-identical before and after. The `git mv` changes file paths, not rendered output.
 
+## 4a. Deviations from §3 and §4
+
+The spec was written on 2026-09-11 against a tree that has since moved. Each
+deviation below was measured on the branch, not assumed.
+
+- **D1 — two renames dropped.** `civo_backup` and `civo_recovery_handle` no
+  longer exist; `backup_teardown` and `backup_recovery_handle` are already
+  provider-neutral. Nothing to rename.
+- **D2 — fourteen gate sites, not eleven.** `eq .Values.target "civo"` appears
+  at fourteen template sites plus four in `_helpers.tpl`. The extra sites are
+  `shared/rbac/e2e-test-readonly.yaml`, `shared/postgres/cluster.yaml` (two
+  blocks) and `platform.e2eTestSubject`.
+- **D3 — a fourth directory moves.** `platform/civo/postgres/aws-config.yaml`
+  arrived with CIVO-120/185. It is non-AWS class and moves to
+  `platform/shared/postgres/`. `platform/civo/` is then empty and removed.
+- **D4 — two helpers stay literal `civo`.** `platform.kubeletInsecureTls` and
+  `platform.metricsServerEnabled` carry values measured on a live Civo
+  cluster, not derived from the target class. Hetzner falls through to
+  `.Values.observability.*`; HETZ-160 measures and sets them.
+- **D5 — one `= aws` site is created, against §10.** `install_argocd`'s
+  anti-affinity block tested `!= civo` but selects on
+  `karpenter.sh/capacity-type`, which exists on aws alone. Left as it was, a
+  Hetzner bring-up would give Argo CD a node affinity nothing can satisfy. It
+  now tests `= aws`. The aws proof is the `lifecycle-aws` CI job, since no
+  offline gate covers script bodies.
+- **D6 — two sites split rather than flipped.** `cluster_exists` and
+  `argo_state` mix a generic kubeconfig path with `civo_token`. A bare
+  `!= aws` would send Hetzner into the Civo API. Both became a `case` with an
+  explicit hetzner arm that fails pointing at HETZ-040.
+- **D7 — two more files carry the TLS SSM path.** `verify-no-leaks.sh` and
+  `force-clean-ci.sh` hardcode it as `KEPT_TLS`. Both take `PROVIDER` as a
+  required positional argument and export it, so `${PROVIDER}` is safe there;
+  the exact path was kept rather than a glob.
+- **D8 — §8's two grep criteria are amended.**
+  `grep -rn 'eq .Values.target "civo"' gitops/templates` returns four sites,
+  not one: the gateway LB block plus the three helpers of D4 and
+  `platform.storageClassName`. `gitops-render-check.sh` takes `check|update`
+  as `$1`, never a target, so `gitops-render-check.sh hetzner` is not a
+  command; the hetzner object sets are defined and selected by
+  `verify_object_set`, and HETZ-050 adds `hetzner` to the render loop.
+- **D9 — a rejected simplification.** `verify-no-leaks.sh` defines its own
+  `civo_names` beside `provider.sh`'s `civo_list_names`. They differ: the
+  local one also reads `.label`, which `civo_network` uses. Merging them would
+  change Civo behaviour, so both stay.
+- **D10 — four provider `if`/`else` chains became `case`.** In `argo-up.sh`
+  (input resolution, both DNS waits, the root Application install) an
+  unhandled provider now fails loudly instead of silently taking the AWS arm.
+  The rendered `helm` command lines for aws and civo are unchanged.
+
 ## 5. Files/components affected
 
 - `scripts/argo-up.sh`, `scripts/argo-down.sh`, `scripts/lib/provider.sh`, `scripts/generate-secrets.sh`, `scripts/lib/argo-state.sh` (edit).
@@ -150,3 +199,21 @@ One PR (PR 3 in `roadmap.md`, together with HETZ-018). Revert restores the branc
 
 - 2026-09-11 — created as DRAFT.
 - 2026-09-11 — reviewed and approved by the user; promoted to READY.
+- 2026-09-20 — implementation started on branch `hetzner-016-non-aws-generalisation`; promoted to IN_PROGRESS.
+- 2026-09-20 — implemented on branch `hetzner-016-non-aws-generalisation`,
+  off `main` at `0520256`. Deviations D1 to D10 in §4a. Offline evidence:
+
+  | Gate | Result |
+  |---|---|
+  | `helm template` of `gitops/` and `gitops/bootstrap/` for aws and for civo, with the full `--set` list `argo-up` uses, normalized one file per object | `diff -ru` before/after empty (49 aws objects, 45 civo objects) |
+  | `make gitops-check` | aws render matches the golden baseline; civo and local object sets unchanged |
+  | `make -n`, 25 targets x {unset, aws, civo, hetzner} | `diff -ru` before/after empty |
+  | `helm lint gitops/`, `helm lint gitops/bootstrap` | 0 charts failed |
+  | `bash -n` on all seven edited scripts | clean |
+  | `helm template --set target=hetzner` | renders 39 objects: cert-manager, the identity Certificates, the TLS issuers, `storageClass: hcloud-volumes`; no Karpenter or `ebs-delete` object |
+  | `make specs-check` | valid |
+
+  `shellcheck`, `yamllint` and `actionlint` are not installed locally; CI runs
+  them. The workflow YAML was parsed with `python3 -c 'yaml.safe_load(...)'`
+  as a stand-in.
+

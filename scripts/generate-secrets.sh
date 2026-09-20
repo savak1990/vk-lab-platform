@@ -71,11 +71,12 @@ fi
 generate_password_if_missing postgres-app-password
 generate_password_if_missing grafana-admin-password
 
-# The CA is civo-only (Roles Anywhere); aws never touches these files.
+# Every non-EKS target reaches AWS through Roles Anywhere and so needs the
+# CA; aws uses Pod Identity and never touches these files.
 generate_ca_if_missing() {
   local file="$SECRETS_DIR/civo-ca-cert.pem"
-  if [ "$PROVIDER" != "civo" ]; then
-    echo "Skipping civo-ca-cert - PROVIDER is not civo"
+  if [ "$PROVIDER" = "aws" ]; then
+    echo "Skipping civo-ca-cert - PROVIDER is aws"
     return
   fi
   if [ -f "$file" ]; then
