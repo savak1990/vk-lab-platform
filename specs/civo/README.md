@@ -108,6 +108,7 @@ verified in this environment.
 | CIVO-150 | [150-P-teardown-recreate-validation](150-P-teardown-recreate-validation/spec.md) | Full lifecycle validation on Civo | READY | P1 | M | strongest | 120, 110, 070, 130 | M1 |
 | CIVO-160 | [160-D-observability-on-civo](160-D-observability-on-civo/spec.md) | Observability stack on Civo | DONE | P1 | M | standard | 050, 100 | M1 |
 | CIVO-170 | [170-A-civo-cluster-autoscaler](170-A-civo-cluster-autoscaler/spec.md) | Cluster autoscaler 2–3 on the Medium pool | IN_PROGRESS | P2 | S | standard | 030 | M2 |
+| CIVO-172 | [172-A-argo-stuck-operation-resilience](172-A-argo-stuck-operation-resilience/spec.md) | Argo operations that never end, and the teardown they deadlock | IN_PROGRESS | P1 | S | standard | 170 | M2 |
 | CIVO-175 | [175-P-right-size-requests-and-sku](175-P-right-size-requests-and-sku/spec.md) | Right-size requests/limits, re-evaluate SKU | READY | P2 | M | standard | 160, 170 | M2 |
 | CIVO-180 | [180-D-cnpg-backups-object-store](180-D-cnpg-backups-object-store/spec.md) | CNPG barman-cloud plugin backups to a per-project S3 bucket | DONE | P1 | L | strongest | 082, 085, 100 | M1 |
 | CIVO-185 | [185-D-aws-logical-backup-migration](185-D-aws-logical-backup-migration/spec.md) | Move the AWS target to the CNPG barman-cloud plugin | DONE | P2 | L | strongest | 120, 180 | M2 |

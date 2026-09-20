@@ -79,6 +79,14 @@ parity, full right-sizing of the platform (CIVO-175), proof of scale-down
   extended to `ignore_changes = [tags, pools[0].node_count]`. Extended, not
   replaced — dropping `tags` reintroduces the Civo update-API 400 that the
   surrounding comment documents.
+  Because `ignore_changes` covers it, `node_count` sets only the node count the
+  cluster is born with; the autoscaler owns it from then on. Creating at the
+  floor rather than at the ceiling is deliberate: the platform does not fit on
+  two nodes, so every bring-up — including every CI lifecycle run — exercises a
+  real scale-up. That the autoscaler still works is then checked continuously
+  against each change, instead of being assumed between rare manual tests. The
+  cost is that the scale event lands during `argo-up`; CIVO-172 removes the
+  failure mode that made that dangerous.
 - Values: `capacity.autoscaler: {min: 2, max: 3, pool: workers}`, plumbed
   through `gitops/values.yaml`, `gitops/bootstrap/values.yaml`, the root
   Application's `helm.parameters` and `scripts/argo-up.sh`.
