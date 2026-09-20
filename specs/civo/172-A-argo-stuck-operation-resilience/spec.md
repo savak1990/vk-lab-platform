@@ -190,8 +190,11 @@ line carries `[+Ns]` elapsed time, and a heartbeat (default 60s,
 only mean the script itself is gone. State changes also print root's
 `status.conditions` (where Argo puts `SyncError` and `ComparisonError`), and
 every exit path — success, failed sync, ceiling — prints the node inventory
-and, on Civo, the `cluster-autoscaler-status` ConfigMap, so each CI run
-records whether the pool scaled. A failed sync or the ceiling additionally
+and, on Civo, the `cluster-autoscaler-status` ConfigMap plus the
+`TriggeredScaleUp` and `ScaledUpGroup` events and the autoscaler's own
+scale-up log lines, so each CI run records whether the pool scaled and when
+the autoscaler decided to. Events expire after about an hour, so they are read
+during the run rather than afterwards. A failed sync or the ceiling additionally
 dumps Pending pods, the last `FailedScheduling` events, root's `SyncFailed`
 resources with their messages, and the autoscaler log tail. All of it is
 covered by `tests/scripts/argo-watch-test.sh` against a fake `kubectl`

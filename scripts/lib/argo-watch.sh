@@ -49,6 +49,22 @@ argo_autoscaler_summary() {
     -o jsonpath='{.data.status}' 2>/dev/null | head -25 | sed 's/^/  /' || echo "  (unavailable)"
 }
 
+# When the autoscaler decided to add a node: its events (kept only about an
+# hour, so they must be read during the run) and the matching log lines.
+argo_autoscaler_events() {
+  [ "${PROVIDER:-}" = civo ] || return 0
+  local reason
+  echo "ARGO-UP: scale-up events:"
+  for reason in TriggeredScaleUp ScaledUpGroup; do
+    kubectl get events -A --field-selector "reason=$reason" --sort-by=.lastTimestamp \
+      -o custom-columns='TIME:.lastTimestamp,OBJECT:.involvedObject.name,MESSAGE:.message' --no-headers 2>/dev/null \
+      | sed 's/^/  /' || true
+  done
+  echo "ARGO-UP: autoscaler scale-up log lines:"
+  kubectl -n kube-system logs -l app.kubernetes.io/instance=cluster-autoscaler --tail=500 2>/dev/null \
+    | grep -Ei 'scale-up|adding node pool|max size reached' | tail -10 | sed 's/^/  /' || true
+}
+
 argo_dump_diagnostics() {
   local failed
   argo_print_nodes
@@ -64,6 +80,7 @@ argo_dump_diagnostics() {
     echo "$failed"
   fi
   argo_autoscaler_summary
+  argo_autoscaler_events
   if [ "${PROVIDER:-}" = civo ]; then
     echo "ARGO-UP: cluster-autoscaler log tail:"
     kubectl -n kube-system logs -l app.kubernetes.io/instance=cluster-autoscaler --tail=20 2>/dev/null \
@@ -108,6 +125,7 @@ argo_watch_root() {
       if [ "$overall" = "Synced/Healthy" ]; then
         argo_print_nodes
         argo_autoscaler_summary
+        argo_autoscaler_events
         return 0
       fi
 

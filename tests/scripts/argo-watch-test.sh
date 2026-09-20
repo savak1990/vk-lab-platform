@@ -40,6 +40,12 @@ case "$args" in
   *"get applications"*"-o json"*)
     echo '{"items":[{"metadata":{"name":"root"},"status":{"sync":{"status":"Synced"},"health":{"status":"Healthy"}}}]}' ;;
   *"get nodes"*) echo "node-a   Ready   <none>   10m   v1.35.0"; echo "node-b   Ready   <none>   10m   v1.35.0" ;;
+  *"get events"*"reason=TriggeredScaleUp"*) echo "2026-01-01T00:05:00Z  prometheus-0  pod triggered scale-up: [{workers 2->3 (max: 3)}]" ;;
+  *"get events"*"reason=ScaledUpGroup"*) echo "2026-01-01T00:05:02Z  cluster-autoscaler-status  Scale-up: setting group workers size to 3" ;;
+  *"logs"*)
+    echo "I0101 00:04:59 noise: unrelated line"
+    echo "I0101 00:05:00 scale_up.go:600] Final scale-up plan: [{workers 2->3 (max: 3)}]"
+    echo "I0101 00:05:00 civo_node_group.go:99] adding node pool: \"workers\"" ;;
   *) exit 0 ;;
 esac
 EOF
@@ -76,6 +82,18 @@ grep -q "reachable again" <<< "$OUT" || err "transient failure: no 'reachable ag
 # Success reports the node inventory, so a CI log shows whether the pool scaled.
 grep -q "node-b" <<< "$OUT" || err "success: node inventory not printed"
 
+# Success also names the moment the autoscaler triggered, from events and its log.
+grep -q "ARGO-UP: scale-up events:" <<< "$OUT" || err "success: no scale-up events header"
+grep -q "pod triggered scale-up: \[{workers 2->3" <<< "$OUT" || err "success: TriggeredScaleUp event missing"
+grep -q "Scale-up: setting group workers size to 3" <<< "$OUT" || err "success: ScaledUpGroup event missing"
+grep -q "adding node pool" <<< "$OUT" || err "success: autoscaler log line missing"
+grep -q "unrelated line" <<< "$OUT" && err "success: unrelated autoscaler log line leaked through"
+
+# A non-Civo run has no autoscaler, so it prints none of this.
+PROVIDER=aws run "Synced/Healthy"
+grep -q "scale-up" <<< "$OUT" && err "aws: scale-up section printed on a target with no autoscaler"
+export PROVIDER=civo
+
 # A sync that ends Failed exits 1 with Argo's message and the failed resources.
 run "Failed"
 [ "$RC" -eq 1 ] || err "failed sync: expected exit 1, got $RC"
@@ -100,6 +118,7 @@ ARGO_UP_WATCH_SECONDS=2 run "OutOfSync/Progressing"
 grep -q "timed out after 2s" <<< "$ERR" || err "timeout: no timeout line"
 grep -q "Gateway/platform=Synced(Progressing)" <<< "$ERR" || err "timeout: pending resource missing"
 grep -q "ARGO-UP: nodes:" <<< "$ERR" || err "timeout: diagnostics dump missing"
+grep -q "ARGO-UP: scale-up events:" <<< "$ERR" || err "timeout: scale-up events missing from the dump"
 
 [ "$fail" -eq 0 ] && echo "ARGO-WATCH-TEST: all checks passed."
 exit "$fail"
