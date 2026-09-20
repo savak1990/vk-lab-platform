@@ -12,7 +12,7 @@ effort_estimate: "One session (4–6 h), documents only"
 estimate_confidence: "medium"
 depends_on: ["HETZ-015"]
 blocked_by: []
-supersedes: []
+supersedes: ["HETZ-035", "HETZ-037", "HETZ-165", "HETZ-185"]
 created: "2026-09-20"
 updated: "2026-09-20"
 completed: ""

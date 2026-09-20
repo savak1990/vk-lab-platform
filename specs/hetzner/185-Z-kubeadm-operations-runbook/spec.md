@@ -1,7 +1,7 @@
 ---
 id: "HETZ-185"
 title: "CKA practice runbook: kubeadm upgrade 1.36 → 1.37, stacked etcd snapshot/restore, certificate checks"
-status: "READY"
+status: "SUPERSEDED"
 priority: "P2"
 milestone: "M1"
 type: "implementation"
@@ -232,3 +232,11 @@ file.
 - 2026-09-19 — created as READY (kubeadm replan); CKA practice.
 - 2026-09-20 — records why `kubectl drain` is unblocked in M1 (no PDB;
   decisions.md §3, "Schedulable control plane").
+- 2026-09-20 — `SUPERSEDED` by HETZ-017 and ADR 0037. This runbook was
+  certification practice, and the operator withdrew that goal. Its subject no
+  longer exists either: there is no `kubeadm upgrade` path, no stacked etcd
+  static pod and no kubeadm certificate renewal on a k3s cluster. The cluster is
+  Disposable, so a version change is one variable and a `make down` then
+  `make up`. Embedded etcd through `--cluster-init` keeps snapshot and restore
+  available if a real operations runbook is wanted later; that would be a new
+  spec, not a revival of this one. Nothing here was implemented.

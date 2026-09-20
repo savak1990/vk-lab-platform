@@ -1,5 +1,22 @@
 # ADR 0036: Hetzner as a third execution target with a kubeadm-bootstrapped control plane
 
+> **Note (2026-09-20):** the bootstrap mechanism in this record is replaced by
+> [ADR 0037](0037-k3s-bootstrap-on-hetzner.md). Cloud-init installs k3s from
+> `get.k3s.io` instead of running `kubeadm init`, the datastore is embedded
+> etcd, the CNI is flannel, and workers join at first boot with a
+> Terraform-generated token rather than through `kubeadm join` over SSH. The
+> rejection of k3s below rested on certification practice, a goal the operator
+> withdrew on 2026-09-20; nothing had been implemented, so the change costs a
+> specification rewrite only. Everything else in this record stands as written:
+> Hetzner as a third execution target, the cost case and node shape, the
+> Terraform/Argo CD ownership boundary and why it survives a self-bootstrapped
+> cluster, the two-token handling, Roles Anywhere as the identity chain, the
+> `hz.<root-domain>` delegation, the lifecycle classification that makes the
+> control plane Disposable, and the cloud-controller-manager-before-Argo-CD
+> ordering and the reason for it. One consequence below is withdrawn with the
+> goal that justified it: the platform no longer specifies a separate
+> kubeadm operations runbook. Spec HETZ-017 carries the rewrite.
+
 ## Status
 
 Accepted
