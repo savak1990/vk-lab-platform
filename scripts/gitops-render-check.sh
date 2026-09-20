@@ -159,7 +159,8 @@ ConfigMap__observability__dashboard-karpenter-capacity"
 # The hetzner sets are the contract HETZ-050 renders against; hetzner is not
 # in the render loop below until that spec adds its Applications. StorageClass
 # is allowed here, unlike civo: the hcloud CSI chart ships its own.
-REQUIRED_OBJECTS_HETZNER="Application__argocd__hcloud-csi"
+REQUIRED_OBJECTS_HETZNER="Application__argocd__hcloud-csi \
+ClusterIssuer__cluster__hetzner-workload-ca"
 FORBIDDEN_KINDS_HETZNER="VolumeSnapshotClass VolumeSnapshotContent VolumeSnapshot \
 NodePool EC2NodeClass"
 FORBIDDEN_APPLICATIONS_HETZNER="aws-load-balancer-controller ebs-csi-driver karpenter \

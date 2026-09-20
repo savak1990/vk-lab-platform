@@ -19,6 +19,15 @@ Emits "true"/"false" as a string, so compare it - a bare if takes "false".
 {{- end -}}
 
 {{/*
+Name of the Roles Anywhere CA ClusterIssuer and of the Secret it reads. The
+provider segment must match the trust anchor Terraform builds from the CA
+certificate committed for this project, so both derive from the target.
+*/}}
+{{- define "platform.workloadIssuerName" -}}
+{{- default (printf "%s-workload-ca" .Values.target) .Values.workloadIdentity.issuerName -}}
+{{- end -}}
+
+{{/*
 The CSI StorageClass name for the current target. civo uses civo-volume,
 preinstalled and owned by a k3s Addon (a patch to it gets reverted), so
 it must only be referenced here, never defined by a template we own.

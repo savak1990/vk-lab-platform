@@ -1,5 +1,5 @@
 {{- if (eq (include "platform.selfManaged" .) "true") }}
-{{- range .Values.civoIdentity.consumers }}
+{{- range .Values.workloadIdentity.consumers }}
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
@@ -9,7 +9,7 @@ metadata:
     argocd.argoproj.io/sync-wave: "1"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
-  commonName: {{ printf "%s-civo-%s" $.Values.project .name | quote }}
+  commonName: {{ printf "%s-%s-%s" $.Values.project $.Values.target .name | quote }}
   subject:
     organizations: [{{ $.Values.project | quote }}]
   usages: ["digital signature"]
@@ -22,7 +22,7 @@ spec:
     rotationPolicy: Always
   secretName: {{ printf "%s-ra-cert" .name | quote }}
   issuerRef:
-    name: civo-workload-ca
+    name: {{ include "platform.workloadIssuerName" $ }}
     kind: ClusterIssuer
 ---
 {{- end }}

@@ -136,3 +136,4 @@ The unit is guarded. The AWS plan is unchanged. The `lab-role` additions are add
   approved/clean (see git history on branch
   `civo-082-rolesanywhere-terraform` for the full record); no findings
   were parked open.
+- 2026-09-20 — HETZ-018: `modules/rolesanywhere` gained `provider_name`, and the trust anchor, profile, x509Subject/CN condition and issuer-CN default are now `<project>-${provider_name}-...`. `live/bootstrap/rolesanywhere/terragrunt.hcl` derives that value from whichever `<provider>-ca-cert.pem` exists in the project's secrets directory, not from an environment variable, so the chain name can never disagree with the loaded certificate. For `vk-civo-lab` every rendered string is unchanged.

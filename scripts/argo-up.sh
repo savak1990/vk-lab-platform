@@ -247,12 +247,12 @@ civo_wait_for_dns() {
 }
 
 ensure_ca_secret() {
-  local ca_cert_path="${REPO_ROOT}/secrets/${PROJECT_NAME}/civo-ca-cert.pem"
-  [ -f "$ca_cert_path" ] || { echo "ARGO-UP: no CA cert at $ca_cert_path - run 'PROVIDER=$PROVIDER make civo-ca-init' first." >&2; exit 1; }
+  local ca_cert_path="${REPO_ROOT}/secrets/${PROJECT_NAME}/${PROVIDER}-ca-cert.pem"
+  [ -f "$ca_cert_path" ] || { echo "ARGO-UP: no CA cert at $ca_cert_path - run 'PROVIDER=$PROVIDER make ca-init' first." >&2; exit 1; }
   kubectl create namespace cert-manager \
     --dry-run=client -o yaml | kubectl apply -f -
-  "$REPO_ROOT/scripts/secret-decrypt.sh" civo-ca-key | \
-    kubectl create secret tls civo-workload-ca \
+  "$REPO_ROOT/scripts/secret-decrypt.sh" "${PROVIDER}-ca-key" | \
+    kubectl create secret tls "${PROVIDER}-workload-ca" \
       --cert="$ca_cert_path" \
       --key=/dev/stdin \
       --namespace cert-manager \
