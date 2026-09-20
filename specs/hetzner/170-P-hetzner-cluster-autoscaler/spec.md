@@ -1,6 +1,6 @@
 ---
 id: "HETZ-170"
-title: "Cluster autoscaler with cloudProvider hetzner: zero to two extra cx33 workers joined by kubeadm"
+title: "Cluster autoscaler with cloudProvider hetzner: zero to two extra cx33 workers booting the fixed workers' cloud-init"
 status: "READY"
 priority: "P1"
 milestone: "M1"
@@ -10,7 +10,7 @@ recommended_model_tier: "strongest"
 model_rationale: "A Secret-fed cluster config assembled across three scripts, an env-var wiring split between two Secrets, and a teardown-ordering dependency on two other specs need careful reasoning"
 effort_estimate: "One session (4–6 h) plus scaling waits"
 estimate_confidence: "medium"
-depends_on: ["HETZ-165"]
+depends_on: ["HETZ-030", "HETZ-045"]
 blocked_by: []
 supersedes: []
 created: "2026-09-11"
@@ -26,29 +26,33 @@ The upstream cluster autoscaler with `cloudProvider: hetzner` adds up to
 two `cx33` workers when pods stay pending and removes each one after 10
 minutes of sustained underutilisation. The fixed pool from HETZ-030 (one
 control plane, one worker) stays; the autoscaler only adds, so the node
-ceiling is four. Idle cost is unchanged, and a new node joins the cluster with `kubeadm
-join` — HETZ-165 already produced that join credential (a bootstrap
-token and CA hash); this spec only consumes it.
+ceiling is four. Idle cost is unchanged.
+
+A new node needs no join credential of its own. It boots the same worker
+cloud-init that HETZ-030 renders for the fixed worker, which already
+carries the join token and reads its own private address from instance
+metadata, so it becomes a `k3s agent` against `https://10.0.1.10:6443`
+exactly as the fixed worker did. This spec hands the autoscaler that
+render; it produces nothing.
 
 ## 2. Scope and non-goals
 
 In scope: the Argo Application, the node-group config, the cluster-config
-Secret `argo-up` assembles from HETZ-165's Secret, the sweep and cascade
-teardown interaction, a scale test. Not in scope: multiple node pools,
-mixed CPU architectures, scaling the fixed pool down, an HA control plane
-(decisions.md §3, Control-plane topology — the join line's target
-`10.0.1.10:6443` is fixed), and the cluster-autoscaler 1.37 upgrade
-(HETZ-185), which waits on an upstream tag that does not exist yet.
+Secret `argo-up` assembles from HETZ-030's `worker_user_data` SSM
+parameter, the sweep and cascade teardown interaction, a scale test. Not
+in scope: multiple node pools, mixed CPU architectures, scaling the fixed
+pool down, and an HA control plane (decisions.md §3, Control-plane
+topology — the agents' `K3S_URL` target `10.0.1.10:6443` is fixed).
 
 ## 3. Current state / evidence
 
-- HETZ-165 §4 writes `kube-system/hcloud-autoscaler` with keys `token`,
-  `ca_hash`, `cloud_init` — the rendered `kubeadm join` cloud-init, whose
-  `.data.cloud_init` field is the base64 encoding of that plaintext
-  render, same as any Kubernetes Secret value. `cloud_init` already
-  contains the token and hash inline; the Hetzner API token this spec
-  also needs lives separately in `kube-system/hcloud` (HETZ-045),
-  unchanged blast radius from decisions.md §3, "Autoscaler credential".
+- HETZ-030 §4 writes the rendered worker cloud-init to SSM
+  `/<project>/cluster-hetzner/k8s/worker_user_data` as a `SecureString`,
+  because it carries the k3s join token. It is the same render the fixed
+  worker booted, with no substituted private address, so it is directly
+  usable as a node template. The Hetzner API token this spec also needs
+  lives separately in-cluster (HETZ-045), unchanged blast radius from
+  decisions.md §3, "Autoscaler credential".
 - research.md, "Cluster autoscaler `cloudProvider: hetzner`" row: the
   binary reads `HCLOUD_CLUSTER_CONFIG` as base64 JSON —
   `imagesForArch.amd64: ubuntu-24.04`, `nodeConfigs.workers.cloudInit`
@@ -59,9 +63,8 @@ mixed CPU architectures, scaling the fixed pool down, an HA control plane
   and node-group syntax `--nodes=<min>:<max>:<TYPE>:<LOCATION>:<name>`.
   https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/hetzner/README.md
 - research.md, "Versions on 2026-09-19" row: cluster-autoscaler must match
-  the running cluster's Kubernetes minor; the newest tag is 1.36.1 and no
-  1.37 tag exists yet, a second reason (with HETZ-030's containerd pin)
-  that the cluster stays on 1.36 for M1.
+  the running cluster's Kubernetes minor, so the chart pin and
+  HETZ-030's `K3S_VERSION` move together and neither is bumped alone.
   https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/README.md
 - research.md, "Default limits" row: a Hetzner project defaults to 5
   servers. The fixed pool (1 control plane + 1 worker) plus the
@@ -110,19 +113,25 @@ mixed CPU architectures, scaling the fixed pool down, an HA control plane
   HETZ-030's `public_net` config on the fixed nodes.
 - Exact mechanism for `kube-system/hcloud-autoscaler-config`: a new
   `ensure_autoscaler_config()` in `scripts/argo-up.sh`, hetzner-only,
-  called immediately after HETZ-165's `ensure_autoscaler_secret()`,
-  before the fast-path return. It reads `kube-system/hcloud-autoscaler`'s
-  `cloud_init` key with `kubectl get secret ... -o
-  jsonpath='{.data.cloud_init}'` and copies that value verbatim into
-  `nodeConfigs.workers.cloudInit` — no decode/re-encode round trip,
-  because both fields hold the same base64 encoding of the same
-  plaintext render, which also avoids a trailing-newline hazard. It
-  builds the rest of the JSON (`imagesForArch`, `serverLabels`) with
-  `jq`, base64-encodes the whole object, and writes it with `kubectl
-  create secret generic hcloud-autoscaler-config -n kube-system
+  called immediately after `wait_for_nodes_initialized()` (HETZ-045),
+  before the fast-path return. It reads SSM
+  `/<project>/cluster-hetzner/k8s/worker_user_data` with
+  `--with-decryption`, base64-encodes the plaintext once into
+  `nodeConfigs.workers.cloudInit`, builds the rest of the JSON
+  (`imagesForArch.amd64`, `serverLabels`) with `jq`, base64-encodes the
+  whole object, and writes it with `kubectl create secret generic
+  hcloud-autoscaler-config -n kube-system
   --from-literal=HCLOUD_CLUSTER_CONFIG="$CONFIG" --dry-run=client -o yaml
   | kubectl apply -f -` — piped, never through a temp file, never
-  echoed, same convention as every other Hetzner credential write.
+  echoed, masked under `GITHUB_ACTIONS`, same convention as every other
+  Hetzner credential write. The decrypted value holds the join token and
+  is never logged, and the one encode is what keeps the render
+  byte-identical to the fixed worker's.
+- Because the node template is the Terraform render rather than something
+  this spec composes, an autoscaled node cannot drift from the fixed
+  worker: same k3s version, same flags, same reservations, same token. A
+  `make up` that re-renders the worker template re-runs `argo-up`, which
+  refreshes this Secret, so the two never diverge across a cycle.
 - Teardown. `argo-down`'s cascade (HETZ-047, unchanged by this spec)
   deletes the autoscaler Application like every other child; no bespoke
   wait is added for it. What guarantees no autoscaled server survives
@@ -146,10 +155,11 @@ already covers autoscaler-created servers.
 
 ## 6. Implementation steps
 
-1. Pin `CLUSTER_AUTOSCALER_VERSION=1.36.1`; add `ensure_autoscaler_config()`
-   right after `ensure_autoscaler_secret()`; add the Argo Application and
-   its Secret env wiring. `make gitops-check` golden diff empty.
-2. `PROVIDER=hetzner make up` on the HETZ-165 baseline. Confirm
+1. Pin `CLUSTER_AUTOSCALER_VERSION` to the cluster's Kubernetes minor; add
+   `ensure_autoscaler_config()` right after `wait_for_nodes_initialized()`;
+   add the Argo Application and its Secret env wiring. `make gitops-check`
+   golden diff empty.
+2. `PROVIDER=hetzner make up` on the HETZ-045 baseline. Confirm
    `hcloud-autoscaler-config` exists with the `HCLOUD_CLUSTER_CONFIG` key
    and the autoscaler pod is Ready, logging a `workers` node group with 0
    nodes.
@@ -166,11 +176,11 @@ already covers autoscaler-created servers.
 
 ## 7. Dependencies and blockers
 
-HETZ-165 (the join token, CA hash and rendered cloud-init this spec's
-Secret copies from). Transitively, through HETZ-165: HETZ-045 (`argo-up`
-placement, `wait_for_nodes_initialized`, the `hcloud` Secret) and
-HETZ-037/HETZ-035/HETZ-030 (the Ready, Cilium-networked fixed pool and
-its node-shape decision).
+HETZ-030 (the `worker_user_data` SSM `SecureString` this spec's Secret
+copies, and the node-shape decision) and HETZ-045 (`argo-up` placement,
+`wait_for_nodes_initialized`, the in-cluster Hetzner token Secret).
+Transitively: HETZ-040 (the Ready, flannel-networked fixed pool and the
+label sweep that reaps autoscaled servers at teardown).
 
 ## 8. Acceptance criteria
 
@@ -208,18 +218,26 @@ sweep reaps them at the next `cluster-down`.
   autoscaled is exactly 4, one under the default — leaving no room for a
   second concurrent cluster (CI's own count is HETZ-140's problem, not
   this spec's).
-- Kubelet version drift: if `scripts/lib/versions.sh`'s
-  `KUBERNETES_VERSION` changes without a matching `make down`/`make up`
-  on the fixed pool, an autoscaled node (built from the same
-  `templates/node.yaml.tftpl` render that HETZ-165 §4 performs from the
-  checkout) joins at a different minor than the control plane.
-- A node that joins but never gets `providerID` — most likely a
-  `KUBELET_EXTRA_ARGS` render missing `--cloud-provider=external` — never
+- Version drift: the node template comes from the SSM parameter Terraform
+  wrote at the last `apply`, not from the checkout, so an autoscaled node
+  always matches the fixed pool that is actually running. A `K3S_VERSION`
+  change in `scripts/lib/versions.sh` reaches neither until a `make down`
+  then `make up` re-renders and re-publishes it, which is the intended
+  behaviour for a disposable cluster rather than a drift hazard.
+- A node that joins but never gets `providerID` — most likely a render
+  missing `--kubelet-arg=cloud-provider=external` — never
   clears the CCM's `uninitialized` taint or becomes schedulable; the
   autoscaler deletes it itself once `--max-node-provision-time` elapses,
   so no manual sweep is needed for that case.
-- No cluster-autoscaler 1.37 tag exists yet (§3); the 1.37 upgrade
-  (HETZ-185) is blocked on that release, not on this spec.
+- The cluster-autoscaler chart pin and `K3S_VERSION` must move together
+  (§3). A bump of one alone leaves the autoscaler on a different minor than
+  the cluster.
+- `HCLOUD_CLUSTER_CONFIG` carries the join token inside the node template,
+  so the Secret has the same blast radius as the node's own instance
+  metadata — the exposure ADR 0037 already records, not a new one.
+- The `worker_user_data` SSM read is the only place `argo-up` decrypts a
+  `SecureString` on this target; a missing `kms:Decrypt` on the lab role
+  fails here and nowhere else.
 
 ## 13. Definition of done
 
@@ -235,3 +253,12 @@ sweep reaps them at the next `cluster-down`.
 - 2026-09-11 — reviewed and approved by the user; promoted to READY.
 - 2026-09-19 — moved to P1/M1 and re-shaped to 0–1 `cx33`: the third node of the chosen shape (decisions.md §3) is autoscaled, so M1 needs this spec.
 - 2026-09-19 — rewritten for kubeadm join via HETZ-165; 0–2 workers, ceiling 4 nodes.
+- 2026-09-20 — k3s (HETZ-017, ADR 0037). HETZ-165 is retired, so the node
+  template is no longer composed in-cluster from a minted token and a CA
+  hash: `ensure_autoscaler_config()` reads HETZ-030's `worker_user_data`
+  SSM `SecureString` and uses that render as it stands, which makes an
+  autoscaled node identical to the fixed worker by construction.
+  `depends_on` moves from HETZ-165 to HETZ-030 and HETZ-045. The
+  Application, the `--nodes=0:2:CX33:NBG1:workers` group, the two-Secret env
+  wiring, the ceiling of four and the teardown ordering are unchanged. The
+  1.37-tag note goes with HETZ-185.

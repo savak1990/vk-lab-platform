@@ -28,10 +28,10 @@ or `civo` behaves exactly as it does today. The `hcloud_token()` helper is
 the single place that decrypts the Hetzner API token. This spec lands first
 and alone, as CIVO-010 did, because every later Hetzner spec uses the seam.
 
-The kubeadm bootstrap runs inside `cluster-up` through
-`scripts/hetzner-bootstrap.sh` (HETZ-035); no target of its own. The one
-Hetzner-only helper, `make node-ssh`, lands in HETZ-040 and prints a
-message on the other providers.
+The bootstrap needs no target of its own: every node installs k3s from its
+own cloud-init (HETZ-030), and `cluster-up` only fetches the kubeconfig and
+waits for the nodes (HETZ-040). The one Hetzner-only helper, `make
+node-ssh`, lands in HETZ-040 and prints a message on the other providers.
 
 ## 2. Scope and non-goals
 
@@ -195,3 +195,10 @@ One PR together with `specs/hetzner/`. A revert restores the previous Makefile a
   `ci:skip-lifecycle` because aws and civo `make -n` are byte-identical and
   no Hetzner resource exists yet); set DONE in the same pull request at the
   operator's request. HETZ-016 and HETZ-025 are unblocked.
+- 2026-09-20 — k3s (HETZ-017, ADR 0037). The seam this spec shipped is
+  unchanged; §1's description of what runs inside `cluster-up` is not, because
+  there is no `scripts/hetzner-bootstrap.sh` any more. One shipped line
+  changed with it: `configure_kubeconfig`'s hetzner stub named HETZ-035, which
+  is now `SUPERSEDED`, and names HETZ-040. The evidence above is left as the
+  record of what was run on 2026-09-20; the stub's wording is the only part of
+  it that no longer matches the tree. Status stays `DONE`.

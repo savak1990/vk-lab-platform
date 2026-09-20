@@ -1,7 +1,7 @@
 ---
 id: "HETZ-037"
 title: "Cilium from the control plane's cloud-init; cluster-up ends when every node is Ready"
-status: "READY"
+status: "SUPERSEDED"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -267,3 +267,11 @@ plane, which the operator reaches with `make node-ssh`, or
   `TF_VAR_*` while this spec keeps the values' rationale; the
   `operator.replicas=1` rationale moves from research.md to §12; the §8
   readiness bound is stated in the two `HETZNER_*` budgets.
+- 2026-09-20 — `SUPERSEDED` by HETZ-017 and ADR 0037. kubeadm ships no CNI, so
+  this spec installed one. k3s ships flannel and starts it itself, so there is
+  no CNI install step, no helm release at boot and no `CILIUM_CHART_VERSION`.
+  Flannel runs VXLAN on the private NIC, which keeps the cloud controller
+  manager's `HCLOUD_NETWORK_ROUTES_ENABLED=false` for the same reason Cilium
+  VXLAN did. The node-Ready wait moves to HETZ-040 and the allocatable-memory
+  measurement to HETZ-030. `--flannel-backend=none` remains the documented route
+  to Cilium if network policy is wanted later. Nothing here was implemented.

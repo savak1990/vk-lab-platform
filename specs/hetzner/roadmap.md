@@ -4,8 +4,8 @@
 
 | Milestone | Goal | Specs | Exit criterion |
 |---|---|---|---|
-| M0 Foundations | Operator surface, governance, the two generalisation refactors, feasibility facts | 010, 015, 016, 018, 020 | AWS and Civo unchanged (golden renders, `make -n`); ADRs merged; spike report answers the CCM-ordering, kubeconfig, volume-survival and LB-deletion questions |
-| M1 Viable Hetzner platform | `PROVIDER=hetzner make full-up` brings up a kubeadm cluster (1 cp + 1 worker `cx33`, Cilium), the hcloud CCM, Argo, CSI, Envoy with wildcard TLS, DNS, ESO, CNPG with barman-cloud backups, observability, and the cluster autoscaler for 0–2 extra workers; `make down`/`up` preserves data; CI can run it | 025–170, 185 | HETZ-150 passes; idle cost recorded against the 32 EUR fixed / 53 EUR ceiling model (research.md shape F) |
+| M0 Foundations | Operator surface, governance, the bootstrap decision, the two generalisation refactors, feasibility facts | 010, 015, 016, 017, 018, 020 | AWS and Civo unchanged (golden renders, `make -n`); ADRs merged; spike report answers the CCM-ordering, kubeconfig, volume-survival and LB-deletion questions |
+| M1 Viable Hetzner platform | `PROVIDER=hetzner make full-up` brings up a k3s cluster (1 cp + 1 worker `cx33`, embedded etcd, flannel), the hcloud CCM, Argo, CSI, Envoy with wildcard TLS, DNS, ESO, CNPG with barman-cloud backups, observability, and the cluster autoscaler for 0–2 extra workers; `make down`/`up` preserves data; CI can run it | 025–170 | HETZ-150 passes; idle cost recorded against the 32 EUR fixed / 53 EUR ceiling model (research.md shape F) |
 | M2 Scale and harden | Stock-aware SKU fallback (CX → CPX), right-sizing, arm64 images if CAX returns, client IP | 175, 182, 190 | each spec's DoD |
 
 ## Dependency graph
@@ -17,17 +17,15 @@ flowchart TD
   010 --> 018
   010 --> 025[025 persistent-hetzner]
   015[015 governance] --> 025
+  015 --> 017[017 k3s bootstrap decision]
+  017 --> 030
+  017 --> 020
   015 --> 140[140 CI]
-  020[020 spike] --> 035[035 kubeadm bootstrap]
-  025 --> 030[030 kubeadm nodes TF]
+  025 --> 030[030 k3s nodes TF]
   010 --> 030
   015 --> 030
   030 --> 040[040 cluster scripts]
-  030 --> 035
-  040 --> 035
-  030 --> 037[037 Cilium CNI]
-  035 --> 037
-  037 --> 045[045 argo scripts]
+  040 --> 045[045 argo scripts]
   016 --> 045
   050[050 gitops baseline] --> 045
   016 --> 050
@@ -56,7 +54,7 @@ flowchart TD
   C130[CIVO-130] --> 130
   045 --> 140
   C140[CIVO-140] --> 140
-  037 --> 160[160 observability]
+  045 --> 160[160 observability]
   050 --> 160
   085 --> 160
   C160[CIVO-160] --> 160
@@ -65,18 +63,15 @@ flowchart TD
   130 --> 150
   047 --> 150
   047 --> 140
-  037 --> 165[165 join credential]
-  045 --> 165
-  165 --> 170[170 autoscaler]
-  037 --> 185[185 kubeadm runbook]
-  040 --> 185
+  030 --> 170[170 autoscaler]
+  045 --> 170
   160 --> 175[175 SKU fallback]
   060 --> 190[190 proxy protocol]
 ```
 
 ## Critical path
 
-015 → 010 → 016 → 018 → 080 → 025 → 030 → 040 → 035 → 037 → 045 (with 050) → 085 → 060 → 070 → 115 → 120 → 150. 047, 160, 165/170 and 185 hang off 045/037 in parallel.
+015 → 017 → 010 → 016 → 018 → 080 → 025 → 030 → 040 → 045 (with 050) → 085 → 060 → 070 → 115 → 120 → 150. 047, 160 and 170 hang off 045 in parallel.
 
 Parallel tracks once 045/050 land: ingress (060 → 070), identity (085),
 observability (160), tests (130), CI (140). 020 can run any time after the
@@ -96,6 +91,10 @@ and 020, 025, 030, 040 do not.
 2. **PR 2 — HETZ-015.** ADR 0036, amendments to 0029/0030/0024/0002/0022, constitution §20 per-provider table, architecture §10a converted to a table, and the Hetzner columns in the shared non-EKS high-level design. No code.
 3. **PR 3 — HETZ-016 + HETZ-018.** The two generalisation refactors with golden renders for `aws` and `civo` proving zero change, plus the Civo lifecycle test run once. These are the riskiest PRs in the package because they touch DONE Civo code; they go in before any Hetzner resource exists.
 
+PRs 1 and 2 are merged. **HETZ-017** landed after them, on 2026-09-20: ADR 0037
+replaces ADR 0036's bootstrap with k3s, four specs become `SUPERSEDED`, and
+HETZ-030, 160 and 170 are rewritten. No code.
+
 Then HETZ-020 (spike, manual session, no PR needed beyond the report), and
 the M1 chain.
 
@@ -112,7 +111,7 @@ unrelated records, so the Hetzner ADR took 0036.
 | Brief requirement | Covered by |
 |---|---|
 | `PROVIDER=hetzner` in Make and GitHub Actions | 010, 140 |
-| Hetzner-only make target that is a no-op elsewhere | none needed for the bootstrap (`cluster-up` runs `scripts/hetzner-bootstrap.sh`, decisions.md §1); `make node-ssh` in 040 |
+| Hetzner-only make target that is a no-op elsewhere | none needed for the bootstrap (every node installs k3s from its own cloud-init, decisions.md §1); `make node-ssh` in 040 |
 | Terraform authentication to Hetzner | research.md (per-project token, `HCLOUD_TOKEN`), 010, 025 |
 | Same setup as Civo where applicable | 016, 018, architecture.md §3 |
 | Civo tasks that do not apply | architecture.md §3 rows marked n/a (reserved IP, bundled StorageClass) and decisions.md §4 |

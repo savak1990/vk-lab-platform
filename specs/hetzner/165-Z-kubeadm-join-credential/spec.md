@@ -1,7 +1,7 @@
 ---
 id: "HETZ-165"
 title: "argo-up creates the long-lived kubeadm join credential for autoscaled nodes: token, CA hash, rendered cloud-init in kube-system/hcloud-autoscaler"
-status: "READY"
+status: "SUPERSEDED"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -175,7 +175,7 @@ beyond the manual steps this spec documents.
 
 `scripts/argo-up.sh` (`ensure_autoscaler_secret`, which reads
 `terraform/modules/hcloud-nodes/templates/node.yaml.tftpl` as a plain
-file, not a Terraform output); `specs/hetzner/030-P-hetzner-terraform-kubeadm-nodes/spec.md`
+file, not a Terraform output); `specs/hetzner/030-P-hetzner-terraform-k3s-nodes/spec.md`
 (§14 history — the cross-spec edit recording that the template is also
 rendered by this spec and must stay substitution-friendly).
 
@@ -297,3 +297,13 @@ cluster-side token before the Secret.
 - 2026-09-20 — review fix: the autoscaled node's kubelet reservations are
   recorded as inherited from the cluster's `kubelet-config` ConfigMap on
   join, not set in this spec's rendered cloud-init.
+- 2026-09-20 — `SUPERSEDED` by HETZ-017 and ADR 0037. This spec exists only
+  because a `kubeadm join` credential cannot exist at Terraform time: the CA is
+  generated on the control plane at first boot, so `argo-up` had to mint a
+  long-lived token, read the CA hash and re-render a cloud-init template into a
+  Secret. Under k3s the join token is a Terraform `random_password` that already
+  sits in the worker `user_data`, so an autoscaled node boots the same rendered
+  template as a fixed worker and there is nothing to mint. `ensure_autoscaler_`
+  `secret()` is not written. The 32 KiB `user_data` guard moves to HETZ-030 and
+  the way the autoscaler receives that template moves to HETZ-170. Nothing here
+  was implemented.

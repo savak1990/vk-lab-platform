@@ -42,7 +42,7 @@ generalised it; this spec verifies it). Not in scope: TLS (HETZ-070), DNS
 - `gateway.yaml:18-99` is the aws block (NLB annotations, HTTP:443 listener, ClientTrafficPolicy). `:100-118` is the civo block with `kubernetes.civo.com/{firewall-id,ipv4-address,loadbalancer-algorithm}`. The listener and TLS parts of the civo block carry CIVO-070/075's HTTPS:443 listener.
 - The hcloud CCM annotations live under `load-balancer.hetzner.cloud/` (research.md). `location` or `network-zone` is required unless the CCM env `HCLOUD_LOAD_BALANCERS_LOCATION` is set; it is immutable. `use-private-ip` needs `networking.enabled` on the CCM and nodes attached to the network; both hold after HETZ-030/045.
 - Hetzner firewalls attach to servers only and filter the public interface; LB-to-node traffic over the private network needs no rule. Hetzner LBs expose only their configured services.
-- kubeadm ships no LoadBalancer controller; the hcloud CCM creates the LB from the Service.
+- k3s ships ServiceLB (klipper), which HETZ-030 disables with `--disable=servicelb`, so the hcloud CCM is the only LoadBalancer controller and creates the LB from the Service. Leaving both enabled would give the Service two controllers.
 - LB11: 7.49 EUR/month, own IPv4 and IPv6, up to 25 targets and 5 services.
 
 ## 4. Design and contracts
@@ -126,3 +126,6 @@ Service. No data risk.
 - 2026-09-11 — created as DRAFT.
 - 2026-09-11 — reviewed and approved by the user; promoted to READY.
 - 2026-09-19 — kubeadm wording.
+- 2026-09-20 — k3s (HETZ-017): the reason the hcloud CCM is the only
+  LoadBalancer controller changes from "the bootstrap ships none" to "the
+  bundled one is disabled by flag". The LB design is unaffected.

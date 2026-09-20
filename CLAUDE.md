@@ -11,8 +11,10 @@ Never reference specific documents (specs, ADRs, tickets) in code comments, e.g.
 This repository defines and validates a disposable learning platform,
 with AWS/EKS as the primary execution target, Civo managed Kubernetes
 as a second target (ADR 0027), and Hetzner Cloud as a third target
-(ADR 0036). Hetzner sells no managed Kubernetes, so on that target the
-platform bootstraps its own control plane with kubeadm.
+(ADR 0036). Hetzner sells no managed Kubernetes, so on that target every
+node installs k3s from its own cloud-init: the control plane with embedded
+etcd, workers joining over the private network with a Terraform-generated
+token (ADR 0037, which replaced ADR 0036's kubeadm bootstrap).
 
 It is PLATFORM-ONLY.
 
@@ -43,10 +45,10 @@ controller manager, before Argo CD, and that release joins Argo CD in the same
 untracked bootstrap class. The kubelet taints a newly registered node
 `node.cloudprovider.kubernetes.io/uninitialized`, and the cloud controller
 manager removes that taint once it has matched the node to a server. The
-cluster DNS deployment kubeadm generates does not tolerate that taint, and
+cluster DNS deployment k3s ships does not tolerate that taint, and
 Argo CD needs cluster DNS to reach its own repository server — so Argo CD
 cannot be what installs the controller that makes its own DNS possible. See
-ADR 0036.
+ADR 0036 and ADR 0037.
 
 Terraform and Argo CD MUST NOT manage the same Kubernetes resource.
 
@@ -380,8 +382,8 @@ Disposable personal-lab lifecycle.
 Disposable lifecycle, Civo target only (firewall, k3s cluster). See ADR 0027.
 
 `terraform/live/cluster-hetzner/`
-Disposable lifecycle, Hetzner target only (firewall, kubeadm-bootstrapped
-servers). See ADR 0036.
+Disposable lifecycle, Hetzner target only (firewall, k3s servers that
+install themselves from cloud-init). See ADR 0036 and ADR 0037.
 
 `gitops/`
 Argo-managed Kubernetes desired state.

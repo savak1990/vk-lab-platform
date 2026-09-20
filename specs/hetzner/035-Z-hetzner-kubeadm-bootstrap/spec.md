@@ -1,7 +1,7 @@
 ---
 id: "HETZ-035"
 title: "kubeadm join over SSH from cluster-up, admin.conf kubeconfig, idempotent re-run"
-status: "READY"
+status: "SUPERSEDED"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -293,3 +293,11 @@ and runs its cloud-init again.
   `KubeletConfiguration` in favour of the cluster's `kubelet-config`
   ConfigMap; the timeout dump gains the cloud-init output log and the
   `cloud-final` journal.
+- 2026-09-20 — `SUPERSEDED` by HETZ-017 and ADR 0037. This spec exists only
+  because kubeadm needs an out-of-band worker join. Under k3s a worker joins at
+  first boot from `K3S_URL` and the Terraform-generated token, so there is no
+  join step, no SSH in the create path and no `scripts/hetzner-bootstrap.sh`.
+  Two pieces survive and move to HETZ-040: the Hetzner arm of
+  `configure_kubeconfig`, now reading `/etc/rancher/k3s/k3s.yaml` and rewriting
+  `127.0.0.1` to the public address, and the wait for every node to report
+  Ready. Nothing here was implemented.

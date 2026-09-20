@@ -56,7 +56,7 @@ not as the target shape. Full table and sources: `specs/hetzner/research.md`.
 |---|---|---|---|
 | Monthly cost, all-in (native currency) | 80.67 USD | ~32 EUR fixed / ~53 EUR at the 4-node ceiling | ~71 EUR |
 | Allocatable memory | 6.8 GiB | ~14 GiB fixed / ~28 GiB at the ceiling | ~9.6 GiB |
-| Kubernetes | managed | kubeadm-bootstrapped | kubeadm-bootstrapped |
+| Kubernetes | managed | k3s from cloud-init | k3s from cloud-init |
 | Reserved/stable LB IP | yes | no (new IP each `make up`) | no |
 
 Civo and Hetzner price in different currencies (USD vs. EUR); the table
@@ -85,10 +85,11 @@ annotations and CLI. Hetzner adds two:
 
 Three consequences follow directly, and none has a Civo precedent:
 
-- **Bootstrap ordering.** A kubeadm node started with
-  `cloud-provider: external` carries the `uninitialized` taint; kubeadm's
-  CoreDNS does not tolerate it. Cilium and the CCM do, so the order is
-  init → Cilium → CCM → CoreDNS. Argo CD therefore cannot be the thing
+- **Bootstrap ordering.** A node started with
+  `--kubelet-arg=cloud-provider=external` carries the `uninitialized`
+  taint; k3s's bundled CoreDNS does not tolerate it. flannel runs inside
+  the k3s process and the CCM tolerates the taint, so the order is
+  k3s → CCM → CoreDNS. Argo CD therefore cannot be the thing
   that installs the CCM — it would need DNS to reach its own repo server
   and GitHub, and it has none until the CCM runs. The `argo-up` script
   must helm-install the CCM itself, before Argo CD, in the same
@@ -97,9 +98,10 @@ Three consequences follow directly, and none has a Civo precedent:
 - **No kubeconfig API.** Civo's CLI hands back a kubeconfig with one
   command. No Hetzner API does this for a self-managed cluster; the only
   paths are SSH to the control-plane node or minting a client certificate
-  locally from a pre-generated kubeadm CA. The platform fetches
-  `/etc/kubernetes/admin.conf` over SSH with a KMS-encrypted key, matching
-  the pattern already used for the CA ceremony.
+  locally from a pre-generated cluster CA. The platform fetches
+  `/etc/rancher/k3s/k3s.yaml` over SSH with a KMS-encrypted key and
+  rewrites its server address, matching the pattern already used for the
+  CA ceremony.
 - **Teardown does not cascade.** Civo deletes a cluster's load balancer
   and reaps its resources as part of `civo kubernetes remove`. Hetzner's
   load balancer, volumes and primary IPs are independent resources that
@@ -122,7 +124,7 @@ had hidden.
 
 | Civo behavior | Hetzner reality |
 |---|---|
-| Managed Kubernetes, CCM/CSI preinstalled | kubeadm-bootstrapped; CCM and CSI both absent until `argo-up` and Argo install them |
+| Managed Kubernetes, CCM/CSI preinstalled | k3s installed by each node's own cloud-init; CCM and CSI both absent until `argo-up` and Argo install them. k3s's own ServiceLB, Traefik and local-path are disabled, because the platform supplies those itself |
 | `civo kubernetes config` returns a kubeconfig | No equivalent API; SSH with a KMS-encrypted key |
 | Reserved IP keeps the load balancer's address stable | Primary IPs attach to servers only, not load balancers; the LB gets a new address every `make up`; DNS-01 wildcard TLS is used instead of HTTP-01 to avoid depending on a fixed address |
 | Cluster deletion reaps its load balancer | The LB, volumes, and primary IPs are independent resources; teardown must sweep them by label |
