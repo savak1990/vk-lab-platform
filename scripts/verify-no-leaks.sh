@@ -83,7 +83,7 @@ fi
 # /<project>/persistent/civo/tls/platform-public so the next bring-up can skip
 # an ACME order. A staging one is billed waste and the caller deletes it
 # before this runs; a production one is kept on purpose and is not a leak.
-KEPT_TLS="/${PROJECT_NAME}/persistent/civo/tls/platform-public"
+KEPT_TLS="/${PROJECT_NAME}/persistent/${PROVIDER}/tls/platform-public"
 # describe-parameters, not get-parameters-by-path: lab-role grants the latter
 # only on the layer paths a unit writes (parameter/*/bootstrap/*, /persistent/*
 # and so on), while a path query is authorized against the prefix itself -

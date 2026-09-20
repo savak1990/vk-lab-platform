@@ -155,17 +155,42 @@ ExternalSecret__observability__grafana-admin-credentials \
 Namespace__cluster__e2e ServiceAccount__e2e__e2e-test"
 FORBIDDEN_OBJECTS_CIVO="ServiceMonitor__kube-system__karpenter \
 ConfigMap__observability__dashboard-karpenter-capacity"
+# The hetzner sets are the contract HETZ-050 renders against; hetzner is not
+# in the render loop below until that spec adds its Applications. StorageClass
+# is allowed here, unlike civo: the hcloud CSI chart ships its own.
+REQUIRED_OBJECTS_HETZNER="Application__argocd__hcloud-csi"
+FORBIDDEN_KINDS_HETZNER="VolumeSnapshotClass VolumeSnapshotContent VolumeSnapshot \
+NodePool EC2NodeClass"
+FORBIDDEN_APPLICATIONS_HETZNER="aws-load-balancer-controller ebs-csi-driver karpenter \
+external-snapshotter external-snapshotter-crds"
+FORBIDDEN_OBJECTS_HETZNER="ServiceMonitor__kube-system__karpenter \
+ConfigMap__observability__dashboard-karpenter-capacity"
 
 verify_object_set() {
   local dir="$1" target="$2" obj name kind
-  local required="$REQUIRED_OBJECTS" forbidden_kinds="$FORBIDDEN_KINDS_LOCAL" forbidden_apps="$FORBIDDEN_APPLICATIONS_LOCAL"
-  local forbidden_objects="$FORBIDDEN_OBJECTS_LOCAL"
+  local required forbidden_kinds forbidden_apps forbidden_objects
   case "$target" in
     civo)
       required="$REQUIRED_OBJECTS $REQUIRED_OBJECTS_CIVO"
       forbidden_kinds="$FORBIDDEN_KINDS_CIVO"
       forbidden_apps="$FORBIDDEN_APPLICATIONS_CIVO"
       forbidden_objects="$FORBIDDEN_OBJECTS_CIVO"
+      ;;
+    hetzner)
+      required="$REQUIRED_OBJECTS $REQUIRED_OBJECTS_HETZNER"
+      forbidden_kinds="$FORBIDDEN_KINDS_HETZNER"
+      forbidden_apps="$FORBIDDEN_APPLICATIONS_HETZNER"
+      forbidden_objects="$FORBIDDEN_OBJECTS_HETZNER"
+      ;;
+    local)
+      required="$REQUIRED_OBJECTS"
+      forbidden_kinds="$FORBIDDEN_KINDS_LOCAL"
+      forbidden_apps="$FORBIDDEN_APPLICATIONS_LOCAL"
+      forbidden_objects="$FORBIDDEN_OBJECTS_LOCAL"
+      ;;
+    *)
+      echo "GITOPS-RENDER-CHECK: no object set defined for target=$target" >&2
+      return 1
       ;;
   esac
   for obj in $required; do

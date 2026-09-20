@@ -255,3 +255,4 @@ unchanged in substance.
   branch changes no CRD, no envoy-gateway and no cert-manager; a rebuilt
   cluster established all 43 CRDs with none stuck, so the fault did not
   reproduce. CIVO-055 was opened to make that failure loud instead of silent.
+- 2026-09-20 — HETZ-016: the `enablePDB: false` and projected-certificate blocks in `shared/postgres/cluster.yaml` are gated by `platform.selfManaged`.

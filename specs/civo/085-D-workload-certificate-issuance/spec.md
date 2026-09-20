@@ -142,3 +142,4 @@ Delete the CA Secret — that's the actual rollback lever, since issuance fails 
   in-place path, which this test didn't exercise. AWS unaffected: the `target: aws` render
   showed zero new resources in Task 2's offline check (the two new
   templates are unconditionally gated on `target: civo`).
+- 2026-09-20 — HETZ-016: `identity/{issuer,certificates}.yaml` moved to `gitops/templates/platform/shared/identity/`, gated by `platform.selfManaged`. The object names are unchanged; HETZ-018 parametrizes them by provider.

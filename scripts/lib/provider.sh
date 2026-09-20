@@ -106,12 +106,19 @@ hcloud_list_names() {
 }
 
 cluster_exists() {
-  if [ "$PROVIDER" = "civo" ]; then
-    civo_token
-    civo_cli kubernetes show "$CLUSTER_NAME" --region "$CIVO_REGION" >/dev/null 2>&1
-  else
-    aws eks describe-cluster --name "$CLUSTER_NAME" --region "$LAB_REGION" >/dev/null 2>&1
-  fi
+  case "$PROVIDER" in
+    civo)
+      civo_token
+      civo_cli kubernetes show "$CLUSTER_NAME" --region "$CIVO_REGION" >/dev/null 2>&1
+      ;;
+    hetzner)
+      echo "cluster_exists: PROVIDER=hetzner is implemented in HETZ-040" >&2
+      return 1
+      ;;
+    *)
+      aws eks describe-cluster --name "$CLUSTER_NAME" --region "$LAB_REGION" >/dev/null 2>&1
+      ;;
+  esac
 }
 
 # Points this process's kubectl and helm at a repo-local kubeconfig instead of
@@ -337,7 +344,7 @@ backup_teardown_warn() {
 # Exports the whole Secret, not just cert/key fields, to preserve its
 # cert-manager.io/* annotations and avoid a spurious reissue on next import.
 # A missing Secret is not an error - first-ever run, argo-up bootstraps fresh.
-civo_export_tls_secret() {
+export_tls_secret() {
   require_isolated_kubeconfig || return 1
   if ! kubectl get secret platform-public-tls -n envoy >/dev/null 2>&1; then
     echo "ARGO-DOWN: no platform-public-tls Secret found - nothing to export."
@@ -351,7 +358,7 @@ civo_export_tls_secret() {
   # while aborting here would leave the whole cluster running.
   if aws ssm put-parameter \
     --region "$LAB_REGION" \
-    --name "/${PROJECT_NAME}/persistent/civo/tls/platform-public" \
+    --name "/${PROJECT_NAME}/persistent/${PROVIDER}/tls/platform-public" \
     --type SecureString \
     --tier Advanced \
     --key-id alias/lab-secrets \
@@ -366,7 +373,7 @@ civo_export_tls_secret() {
 # Restoring before the root Application creates the Certificate avoids a
 # redundant ACME order. A cert already past its renewal time is skipped -
 # importing it would just trigger an immediate reissue anyway.
-civo_import_tls_secret() {
+import_tls_secret() {
   require_isolated_kubeconfig || return 1
   if kubectl get secret platform-public-tls -n envoy >/dev/null 2>&1; then
     echo "ARGO-UP: platform-public-tls Secret already present - leaving the live one alone."
@@ -376,7 +383,7 @@ civo_import_tls_secret() {
   local manifest
   manifest="$(aws ssm get-parameter \
     --region "$LAB_REGION" \
-    --name "/${PROJECT_NAME}/persistent/civo/tls/platform-public" \
+    --name "/${PROJECT_NAME}/persistent/${PROVIDER}/tls/platform-public" \
     --with-decryption \
     --query 'Parameter.Value' --output text 2>/dev/null || true)"
   if [ -z "$manifest" ] || [ "$manifest" = "None" ]; then

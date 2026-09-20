@@ -154,14 +154,14 @@ civo_resolve_inputs() {
   configure_kubeconfig "$KUBECONFIG"
 }
 
-if [ "$PROVIDER" = civo ]; then
-  civo_resolve_inputs
-else
-  aws_resolve_inputs
-fi
+case "$PROVIDER" in
+  civo) civo_resolve_inputs ;;
+  aws) aws_resolve_inputs ;;
+  *) echo "ARGO-UP: no input resolver for PROVIDER=$PROVIDER." >&2; exit 1 ;;
+esac
 
-if [ "$PROVIDER" = civo ]; then
-  civo_import_tls_secret
+if [ "$PROVIDER" != aws ]; then
+  import_tls_secret
 fi
 
 # Parallel arrays, not an associative array: DNS_HOST_LABELS[i]/DNS_HOST_FQDNS[i],
@@ -246,7 +246,7 @@ civo_wait_for_dns() {
 
 ensure_ca_secret() {
   local ca_cert_path="${REPO_ROOT}/secrets/${PROJECT_NAME}/civo-ca-cert.pem"
-  [ -f "$ca_cert_path" ] || { echo "ARGO-UP: no CA cert at $ca_cert_path - run 'PROVIDER=civo make civo-ca-init' first." >&2; exit 1; }
+  [ -f "$ca_cert_path" ] || { echo "ARGO-UP: no CA cert at $ca_cert_path - run 'PROVIDER=$PROVIDER make civo-ca-init' first." >&2; exit 1; }
   kubectl create namespace cert-manager \
     --dry-run=client -o yaml | kubectl apply -f -
   "$REPO_ROOT/scripts/secret-decrypt.sh" civo-ca-key | \
@@ -289,7 +289,7 @@ aws_wait_for_dns() {
 # Runs above the fast-path guard below so repeated argo-up runs still repair
 # the Secret even on the fast path, and creates the cert-manager namespace
 # itself, since it runs before cert-manager's own Application can CreateNamespace=true it.
-if [ "$PROVIDER" = civo ]; then
+if [ "$PROVIDER" != aws ]; then
   ensure_ca_secret
 fi
 
@@ -306,19 +306,26 @@ EXISTING_STATUS="$(kubectl get application root -n argocd \
   -o jsonpath='{.status.sync.status}/{.status.health.status}' 2>/dev/null || true)"
 if [ "$EXISTING_STATUS" = "Synced/Healthy" ]; then
   echo "ARGO-UP: root Application already Synced/Healthy - checking DNS."
-  if [ "$PROVIDER" = civo ]; then
-    civo_wait_for_lb_ip || exit 1
-    civo_wait_for_dns
-  else
-    aws_wait_for_dns
-    echo "ARGO-UP: root Synced/Healthy and DNS resolved - platform ready."
-  fi
+  case "$PROVIDER" in
+    civo)
+      civo_wait_for_lb_ip || exit 1
+      civo_wait_for_dns
+      ;;
+    aws)
+      aws_wait_for_dns
+      echo "ARGO-UP: root Synced/Healthy and DNS resolved - platform ready."
+      ;;
+    *)
+      echo "ARGO-UP: no DNS wait for PROVIDER=$PROVIDER." >&2
+      exit 1
+      ;;
+  esac
   exit 0
 fi
 
 install_argocd() {
   local antiaffinity_args=()
-  if [ "$PROVIDER" != civo ]; then
+  if [ "$PROVIDER" = aws ]; then
     antiaffinity_args=(
       --set global.affinity.nodeAffinity.type=hard
       --set-json 'global.affinity.nodeAffinity.matchExpressions=[{"key":"karpenter.sh/capacity-type","operator":"NotIn","values":["spot"]}]'
@@ -471,11 +478,11 @@ civo_install_root_application() {
     --set tls.hostedZoneId="$ROUTE53_ZONE_ID"
 }
 
-if [ "$PROVIDER" = civo ]; then
-  civo_install_root_application
-else
-  aws_install_root_application
-fi
+case "$PROVIDER" in
+  civo) civo_install_root_application ;;
+  aws) aws_install_root_application ;;
+  *) echo "ARGO-UP: no root Application installer for PROVIDER=$PROVIDER." >&2; exit 1 ;;
+esac
 
 # Every child Application (cnpg-operator, karpenter, ...) with its own
 # sync/health, so a single stuck one is visible by name instead of only
@@ -555,12 +562,18 @@ if [ "$overall" != "Synced/Healthy" ]; then
   exit 1
 fi
 echo "ARGO-UP: root Synced/Healthy - waiting for external-dns to publish records."
-if [ "$PROVIDER" = civo ]; then
-  civo_wait_for_lb_ip || exit 1
-  civo_wait_for_dns
-  backup_publish_server_name
-else
-  aws_wait_for_dns
-  echo "ARGO-UP: root Synced/Healthy and DNS resolved - platform ready."
-  backup_publish_server_name
-fi
+case "$PROVIDER" in
+  civo)
+    civo_wait_for_lb_ip || exit 1
+    civo_wait_for_dns
+    ;;
+  aws)
+    aws_wait_for_dns
+    echo "ARGO-UP: root Synced/Healthy and DNS resolved - platform ready."
+    ;;
+  *)
+    echo "ARGO-UP: no DNS wait for PROVIDER=$PROVIDER." >&2
+    exit 1
+    ;;
+esac
+backup_publish_server_name

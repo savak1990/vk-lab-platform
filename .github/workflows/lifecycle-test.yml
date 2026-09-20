@@ -250,7 +250,7 @@ jobs:
       # and per-component values-aws.yaml/values-local.yaml (spec 022
       # Requirement 17) are deferred until spec 022's umbrella-chart split
       # lands - this validates the chart as it actually exists today.
-      - name: helm template (target=aws, target=civo)
+      - name: helm template (target=aws, target=civo, target=hetzner)
         run: |
           set -euo pipefail
           helm template gitops/ \
@@ -265,6 +265,10 @@ jobs:
             --set envoyGateway.reservedIp=1.2.3.4 \
             --set envoyGateway.firewallId=fw-dummy \
             > rendered-civo.yaml
+          helm template gitops/ \
+            --set target=hetzner \
+            --set envoyGateway.fqdn=lab.example.com \
+            > rendered-hetzner.yaml
 
       - name: Install kubeconform
         run: |
@@ -283,7 +287,7 @@ jobs:
           kubeconform -summary -strict -ignore-missing-schemas \
             -schema-location default \
             -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
-            rendered-aws.yaml rendered-civo.yaml
+            rendered-aws.yaml rendered-civo.yaml rendered-hetzner.yaml
 
   validate-yaml:
     concurrency:

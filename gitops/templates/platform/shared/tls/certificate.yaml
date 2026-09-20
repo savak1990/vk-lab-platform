@@ -1,4 +1,4 @@
-{{- if eq .Values.target "civo" }}
+{{- if (eq (include "platform.selfManaged" .) "true") }}
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
