@@ -62,8 +62,6 @@
       "Bash(aws iam attach-*)",
       "Bash(aws iam put-*)",
       "Bash(aws configure*)",
-      "Bash(git push --force*)",
-      "Bash(git push -f*)"
     ],
     "ask": [
       "Bash(make bootstrap-down*)",
