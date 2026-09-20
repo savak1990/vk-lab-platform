@@ -293,13 +293,18 @@ then `kubectl patch application <app> -n argocd --type=merge -p
 
 ## 12. Risks and unresolved questions
 
-- **The cause of the API outages is unknown.** Two occurrences on 2026-09-20,
-  no earlier baseline in this project. The first coincided with a node-pool
-  resize; the second (CI, §3 failure three) happened with the pool untouched at
-  2 nodes, which weakens the resize hypothesis to correlation. Civo's own
-  documentation claims a replicated control plane and says nothing about
-  disruption during scaling. None of the fixes here depend on the answer,
-  which is the point of them.
+- **The API outages are Civo control-plane restarts, and the autoscaler is not
+  the cause.** Measured on 2026-09-20 (§14): the API server's
+  `process_start_time_seconds` changed across two of three outages in one run,
+  and `kube-controller-manager`, `cloud-controller-manager` and
+  `cert-manager-cainjector` all re-acquired their leases at that same moment.
+  Every outage in all three CI runs happened *before* the third node existed,
+  so a node-pool resize cannot explain them. What remains unknown is what
+  restarts the Civo control plane; in-flight requests peaked at 15 mutating and
+  23 read-only, far below k3s defaults, so the API server was not shedding
+  load — it was dying and coming back. Memory pressure from Argo's parallel
+  applies is the leading suspect and only Civo can confirm it. None of the
+  fixes here depend on the answer, which is the point of them.
 - **Follow-up: the sync timeout.** `controller.sync.timeout.seconds` (§1) is
   the structural fix for failure one — a timed-out operation ends `Failed`, so
   `syncPolicy.retry` fires and the `SyncFailed` resources get a fresh apply.
@@ -377,3 +382,41 @@ then `kubectl patch application <app> -n argocd --type=merge -p
   resize; still unproven. Teardown saw no outage; the stale-operation hatch
   fired once on root (a sync had restarted after bring-up), the cascade
   finished in 41s and the leak sweep found nothing.
+- 2026-09-20 — **the outage is a control-plane restart, and the autoscaler is
+  ruled out** (runs 35509187271 and 35509916494, both fully green on both
+  targets). The second of those carried the new diagnostics and recorded three
+  outages, each with the same shape: `net/http: TLS handshake timeout` with no
+  answer to a 5s `curl`, then HTTP 503 `the server is currently unable to
+  handle the request` in about 0.3s, then healthy. One variant went
+  `i/o timeout` then `connection refused` in 0.08s, a closed port. Across those
+  three, `process_start_time_seconds` was unchanged once and changed twice, and
+  on both changes the `kube-controller-manager`, `cloud-controller-manager` and
+  `cert-manager-cainjector` lease holders re-acquired together. So one outage
+  was a stall and two were restarts. **All three finished before the third node
+  was created at 13:28:41**, and the same ordering holds in the two earlier
+  runs, which settles the resize hypothesis: the autoscaler is not involved.
+  In-flight requests peaked at 15 mutating and 23 read-only, so this is a crash
+  and not load shedding.
+
+  | Outage | Window (UTC) | Duration | Control plane |
+  |---|---|---|---|
+  | 1 | 13:14:54–13:17:00 | 126s | did not restart |
+  | 2 | 13:22:27–13:24:42 | 135s | restarted |
+  | 3 | 13:26:50–13:27:30 | 40s | restarted |
+
+  Both runs' teardowns were clean: no outage, no escape hatch, no leaks.
+- 2026-09-20 — **a capture gap this run exposed: the autoscaler erases its own
+  evidence.** The scale-up trigger was still not recorded, because the
+  `cluster-autoscaler` container restarts shortly after each scale-up and
+  recreates its status ConfigMap with `status: NoActivity` and a fresh
+  `lastTransitionTime` — 13:31:54 for a node created at 13:28:41, and 12:42:23
+  for one created at about 12:39:40 in the previous run. Polling the ConfigMap
+  every 5s therefore never observes `InProgress`. The restart is proven
+  independently: the autoscaler logs `lastScaleUpTime` with Go's monotonic
+  offset, and upstream sets it to `time.Now().Add(-time.Hour)` at construction
+  (`core/static_autoscaler.go:206` in 1.35.0), which puts one process start at
+  12:42:12. Argo never marked the Application `OutOfSync`, so a re-apply is
+  ruled out; a container restart in place leaves the Deployment Available, so
+  Argo sees nothing. Capturing the pod's restart count, last termination reason
+  and previous container log is the outstanding work, and it probably shares a
+  cause with the control-plane restarts above.
