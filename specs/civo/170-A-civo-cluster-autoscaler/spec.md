@@ -76,7 +76,7 @@ parity, full right-sizing of the platform (CIVO-175), proof of scale-down
   pending pods it must serve. It needs no Karpenter-style low wave on teardown:
   it resizes a pool Terraform owns rather than creating standalone servers, so
   reverse-wave removal ahead of the workloads leaks nothing.
-- Terraform: `pools[0].node_count = 2`, and the existing `lifecycle` block
+- Terraform: `pools[0].node_count = 3`, and the existing `lifecycle` block
   extended to `ignore_changes = [tags, pools[0].node_count]`. Extended, not
   replaced — dropping `tags` reintroduces the Civo update-API 400 that the
   surrounding comment documents.
@@ -84,7 +84,7 @@ parity, full right-sizing of the platform (CIVO-175), proof of scale-down
   cluster is born with; the autoscaler owns it from then on. Creating at the
   ceiling is the measured choice. Creating at the floor was tried first, so
   that every bring-up would exercise a real scale-up and check the autoscaler
-  continuously. Three CI runs (§14) showed the cost: the platform does not fit
+  continuously. Four CI runs (§14) showed the cost: the platform does not fit
   on two nodes, Postgres is what pushes it over, and the scale-up therefore
   lands late in the sync — after observability is already Healthy — and depends
   on the autoscaler being able to reach a Civo API that is restarting at that
@@ -336,3 +336,34 @@ Remove the Application and restore `node_count` to an explicit value in
   expected saving from starting at 3 is the autoscaler's reaction plus the node
   boot and join, not the whole 17 minutes before the node, because most of that
   was outages and Argo retries which are unaffected.
+- 2026-09-20 — **measured: creating at 3 nearly halves the Civo bring-up, and
+  the estimate above was wrong.** Run 35524065183 (`node_count = 3`) took
+  22m29s for `lifecycle-civo / up` against 34m45s–46m56s across four 2-node
+  runs, and its Argo watch took 11m43s against 24m28s–36m55s. It also hit
+  **zero API outages**, where every 2-node run hit three or four.
+
+  | Run | Start nodes | `up` | Argo watch | Outages | Root retries |
+  |---|---|---|---|---|---|
+  | 35504051183 | 2 | 34m45s | 24m28s | 3 | 6 |
+  | 35509916494 | 2 | 35m06s | 25m02s | 3 | 6 |
+  | 35514548075 | 2 | 39m06s | 28m55s | 3 | — |
+  | 35509187271 | 2 | 46m56s | 36m55s | 4 | 4 |
+  | 35524065183 | 3 | 22m29s | 11m43s | 0 | 3 |
+
+  The estimate of "3 to 6 minutes, because outages are unaffected" assumed the
+  outages were independent of the node count. The runs suggest they are not. A
+  2-node cluster leaves pods pending, Argo retries the whole root sync — in the
+  39-minute run the third node did not arrive until 21 minutes into the watch —
+  and each retry re-applies everything, which is the apply burst the outages
+  correlate with (CIVO-172 §12). Starting at 3 removes the pending pods, cuts
+  the retries, and finishes before that pressure builds.
+
+  **Treat the zero-outage result as promising, not proven:** four of four
+  2-node runs saw outages and the single 3-node run saw none, which is a strong
+  signal with a coherent mechanism, but it is one sample and Civo's control
+  plane may simply have been healthy. A second 3-node run would settle it.
+
+  The cost landed as expected. The log records
+  `scale-up timeline: no scale-up observed during the watch`, and all three
+  nodes were the same age. The replacement burst test in the CI `test` job
+  (§12) is outstanding.
