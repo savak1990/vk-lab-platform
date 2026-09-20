@@ -46,23 +46,26 @@ argo_autoscaler_summary() {
   [ "${PROVIDER:-}" = civo ] || return 0
   echo "ARGO-UP: cluster-autoscaler status:"
   kubectl -n kube-system get configmap cluster-autoscaler-status \
-    -o jsonpath='{.data.status}' 2>/dev/null | head -25 | sed 's/^/  /' || echo "  (unavailable)"
+    -o jsonpath='{.data.status}' 2>/dev/null | head -80 | sed 's/^/  /' || echo "  (unavailable)"
 }
 
 # When the autoscaler decided to add a node: its events (kept only about an
 # hour, so they must be read during the run) and the matching log lines.
 argo_autoscaler_events() {
   [ "${PROVIDER:-}" = civo ] || return 0
-  local reason
   echo "ARGO-UP: scale-up events:"
-  for reason in TriggeredScaleUp ScaledUpGroup; do
-    kubectl get events -A --field-selector "reason=$reason" --sort-by=.lastTimestamp \
-      -o custom-columns='TIME:.lastTimestamp,OBJECT:.involvedObject.name,MESSAGE:.message' --no-headers 2>/dev/null \
-      | sed 's/^/  /' || true
-  done
+  kubectl get events -A --field-selector reason=TriggeredScaleUp --sort-by=.lastTimestamp \
+    -o custom-columns='TIME:.lastTimestamp,OBJECT:.involvedObject.name,MESSAGE:.message' --no-headers 2>/dev/null \
+    | sed 's/^/  /' || true
+  # Every event on the status ConfigMap, not one reason: ScaledUpGroup,
+  # ScaleDown and any failure the autoscaler reports all land there.
+  kubectl -n kube-system get events --field-selector involvedObject.name=cluster-autoscaler-status --sort-by=.lastTimestamp \
+    -o custom-columns='TIME:.lastTimestamp,REASON:.reason,MESSAGE:.message' --no-headers 2>/dev/null \
+    | sed 's/^/  /' || true
+  # "adding node pool" is the provider's 10s cache refresh, not a scale-up.
   echo "ARGO-UP: autoscaler scale-up log lines:"
-  kubectl -n kube-system logs -l app.kubernetes.io/instance=cluster-autoscaler --tail=500 2>/dev/null \
-    | grep -Ei 'scale-up|adding node pool|max size reached' | tail -10 | sed 's/^/  /' || true
+  kubectl -n kube-system logs -l app.kubernetes.io/instance=cluster-autoscaler --tail=2000 2>/dev/null \
+    | grep -Ei 'scale-up|scale_up|scaleup|setting group|max size reached' | tail -15 | sed 's/^/  /' || true
 }
 
 argo_dump_diagnostics() {

@@ -41,11 +41,15 @@ case "$args" in
     echo '{"items":[{"metadata":{"name":"root"},"status":{"sync":{"status":"Synced"},"health":{"status":"Healthy"}}}]}' ;;
   *"get nodes"*) echo "node-a   Ready   <none>   10m   v1.35.0"; echo "node-b   Ready   <none>   10m   v1.35.0" ;;
   *"get events"*"reason=TriggeredScaleUp"*) echo "2026-01-01T00:05:00Z  prometheus-0  pod triggered scale-up: [{workers 2->3 (max: 3)}]" ;;
-  *"get events"*"reason=ScaledUpGroup"*) echo "2026-01-01T00:05:02Z  cluster-autoscaler-status  Scale-up: setting group workers size to 3" ;;
+  *"get events"*"involvedObject.name=cluster-autoscaler-status"*) echo "2026-01-01T00:05:02Z  ScaledUpGroup  Scale-up: setting group workers size to 3" ;;
+  *"get configmap cluster-autoscaler-status"*)
+    printf 'autoscalerStatus: Running\nclusterWide:\n'; for _ in $(seq 1 30); do echo "  filler: line"; done
+    printf 'nodeGroups:\n- name: workers\n  scaleUp:\n    status: NoActivity\n' ;;
   *"logs"*)
     echo "I0101 00:04:59 noise: unrelated line"
+    echo "I0101 00:04:59 civo_manager.go:166] adding node pool: \"workers\""
     echo "I0101 00:05:00 scale_up.go:600] Final scale-up plan: [{workers 2->3 (max: 3)}]"
-    echo "I0101 00:05:00 civo_node_group.go:99] adding node pool: \"workers\"" ;;
+    echo "I0101 00:05:01 clusterstate.go:400] Scale-up: setting group workers size to 3" ;;
   *) exit 0 ;;
 esac
 EOF
@@ -86,8 +90,11 @@ grep -q "node-b" <<< "$OUT" || err "success: node inventory not printed"
 grep -q "ARGO-UP: scale-up events:" <<< "$OUT" || err "success: no scale-up events header"
 grep -q "pod triggered scale-up: \[{workers 2->3" <<< "$OUT" || err "success: TriggeredScaleUp event missing"
 grep -q "Scale-up: setting group workers size to 3" <<< "$OUT" || err "success: ScaledUpGroup event missing"
-grep -q "adding node pool" <<< "$OUT" || err "success: autoscaler log line missing"
+grep -q "Final scale-up plan" <<< "$OUT" || err "success: scale-up plan log line missing"
+grep -q "setting group workers size to 3" <<< "$OUT" || err "success: group-size log line missing"
 grep -q "unrelated line" <<< "$OUT" && err "success: unrelated autoscaler log line leaked through"
+grep -q "adding node pool" <<< "$OUT" && err "success: the 10s refresh line 'adding node pool' leaked through"
+grep -q "name: workers" <<< "$OUT" || err "success: status ConfigMap cut before its nodeGroups section"
 
 # A non-Civo run has no autoscaler, so it prints none of this.
 PROVIDER=aws run "Synced/Healthy"

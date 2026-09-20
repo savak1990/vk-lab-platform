@@ -340,3 +340,18 @@ then `kubectl patch application <app> -n argocd --type=merge -p
   `tests/scripts/argo-watch-test.sh` (the blip scenario failed before the
   library existed and passes after). The same pass corrected this spec's claim
   that Argo CD has no sync timeout (§1) and recorded the two follow-ups in §12.
+- 2026-09-20 — **second CI run (35504051183): the watch survived three API
+  outages and the whole run was green on both targets.** `lifecycle-civo / up`
+  logged `API unreachable` at +165s, +485s and +615s, recovering after 50s,
+  55s and 20s; root needed 6 retries and reached Synced/Healthy at +1045s.
+  The first run's identical outage had killed the script in 2 minutes. What
+  the timeline says about cause: the third node joined at about 10:41, so the
+  first two outages (10:27, 10:35) happened with the pool untouched at 2
+  nodes — the autoscaler cannot have caused them. Only the third (10:39, 20s)
+  overlaps the scale-up request, and it also follows a root retry by 75s. Every
+  outage across all three runs sits inside Argo apply activity: the wave-1
+  kube-prometheus-stack apply, or a root retry re-applying it. Control-plane
+  load from the sync burst is therefore the leading hypothesis, not the node
+  resize; still unproven. Teardown saw no outage; the stale-operation hatch
+  fired once on root (a sync had restarted after bring-up), the cascade
+  finished in 41s and the leak sweep found nothing.

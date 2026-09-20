@@ -299,3 +299,17 @@ Remove the Application and restore `node_count` to an explicit value in
   scale-up happened on that run. The watch now prints the node inventory and
   autoscaler status on every exit, so the next run records the answer either
   way.
+- 2026-09-20 — **second CI lifecycle run (PR #35, run 35504051183): scale-up
+  proven in CI, whole run green on both targets.** `lifecycle-civo / up`
+  finished Synced/Healthy at 10:47:33 with **3 nodes**; the third joined at
+  about 10:41 (age 6m39s at the final inventory), and the autoscaler's status
+  ConfigMap showed `scaleUp: NoActivity` with a transition at 10:44:21, i.e. a
+  scale-up that had completed. So the platform's committed requests do not fit
+  on two nodes after all, and the floor-of-2 contract does exercise the
+  autoscaler on every bring-up. Not captured this time: the `TriggeredScaleUp`
+  events came back empty and the log grep matched only the provider's 10s
+  `adding node pool` cache refresh, so the exact trigger time is inferred from
+  the node age. Both capture defects are fixed for the next run (events read by
+  the status ConfigMap's involvedObject, refresh line excluded). The earlier
+  local evidence quoting `adding node pool` as the scale-up marker was that
+  same refresh line; `max size reached` was the real signal there.
