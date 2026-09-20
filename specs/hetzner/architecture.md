@@ -57,7 +57,7 @@ equivalent; **n/a** = not applicable on Hetzner.
 | State backend | own bucket per project | `vk-hetzner-lab-tf-state` via unchanged `state-up` | reuse | 010 |
 | Provider generation, lifecycle lookup | `provider "civo"` when `path_parts[0]` ∈ civo stacks; `civo_region = "LON1"` | `provider "hcloud" {}` (token from env) for `persistent-hetzner`, `cluster-hetzner`; `hcloud_location = "nbg1"` | mirror | 025 |
 | Region constant | `LON1` in `root.hcl`, `scripts/lib/region.sh` | `nbg1` (`HCLOUD_LOCATION`), network zone `eu-central`; AWS region unchanged | mirror | 025 |
-| Bootstrap route53 / acm | zone `civo.<root>`; ACM excluded | zone `hetzner.<root>`; ACM excluded | reuse | 025 |
+| Bootstrap route53 / acm | zone `civo.<root>`; ACM excluded | zone `hz.<root>`; ACM excluded | reuse | 025 |
 | Roles Anywhere unit | per project, guarded by `fileexists` on the CA cert | same unit under the Hetzner project; names from 018 | reuse | 080 |
 | Persistent network | `civo_network`, free | `hcloud_network` + `hcloud_network_subnet` (`eu-central`, `10.0.0.0/16`), free | mirror | 025 |
 | Reserved IP | `civo_reserved_ip` for the LB | **none**: primary IPs attach to servers only; the LB owns its address and gets a new one per `make up` | n/a | 025, 060 |

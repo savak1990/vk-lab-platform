@@ -1,7 +1,7 @@
 ---
 id: "HETZ-010"
 title: "PROVIDER=hetzner operator input with Hetzner project defaults, token helper, and Make dispatch"
-status: "READY"
+status: "IN_PROGRESS"
 priority: "P1"
 milestone: "M0"
 type: "implementation"
@@ -56,7 +56,7 @@ refactor (HETZ-016).
 ## 4. Design and contracts
 
 - `Makefile:10` guard becomes `filter aws civo hetzner`; the error text becomes "PROVIDER must be aws, civo or hetzner". Every other `ifeq ($(PROVIDER),civo)` block gains an `else ifeq ($(PROVIDER),hetzner)` arm. The aws and civo recipe text does not change by one byte.
-- Defaults when `PROVIDER=hetzner`: `PROJECT_NAME ?= vk-hetzner-lab`, `SUBDOMAIN ?= hetzner`, `CLUSTER_DIR = cluster-hetzner`, `CLUSTER_NAME = $(PROJECT_NAME)`, `PERSISTENT_EXTRA_DIR = persistent-hetzner`, `BOOTSTRAP_EXCLUDE = acm`, `PERSISTENT_EXCLUDE = vpc`. `scripts/lib/provider.sh` exports the same values in a third branch. An explicit operator override always wins, as for civo.
+- Defaults when `PROVIDER=hetzner`: `PROJECT_NAME ?= vk-hetzner-lab`, `SUBDOMAIN ?= hz`, `CLUSTER_DIR = cluster-hetzner`, `CLUSTER_NAME = $(PROJECT_NAME)`, `PERSISTENT_EXTRA_DIR = persistent-hetzner`, `BOOTSTRAP_EXCLUDE = acm`, `PERSISTENT_EXCLUDE = vpc`. `scripts/lib/provider.sh` exports the same values in a third branch. An explicit operator override always wins, as for civo.
 - `hcloud_token()` in `provider.sh`: runs `SECRET_SCOPE=global scripts/secret-decrypt.sh hetzner-token`, prints `::add-mask::<value>` when `GITHUB_ACTIONS` is set, exports `HCLOUD_TOKEN`, and never echoes the token otherwise. The Terraform provider and the CLI read `HCLOUD_TOKEN`; the token never appears in tfvars, state, or arguments.
 - `hcloud_cli()`: runs `hcloud "$@"` with `HCLOUD_TOKEN` exported. No config redirect is needed. Add `HCLOUD_CONFIG=/dev/null` anyway so that a stray `hcloud context` on an operator machine can never leak into a run.
 - `hcloud_list_names()`: `hcloud <resource> list -o json -l project=<project>` piped through `jq -r '.[].name'`. Unlike the civo CLI, an empty result is `[]`, so no shape check is needed. HETZ-040 uses it.
@@ -91,7 +91,7 @@ None. HETZ-015 and HETZ-020 run in parallel. HETZ-016 starts after this spec is 
 
 - `make -n <t>` for all 16 lifecycle targets is byte-identical to the baseline for `PROVIDER` unset, `aws`, and `civo`.
 - `make up PROVIDER=gcp` fails at parse time with the new message. Nothing else runs.
-- `PROVIDER=hetzner make -n cluster-up` shows `terraform/live/cluster-hetzner`. `PROJECT_NAME` resolves to `vk-hetzner-lab`, `SUBDOMAIN` to `hetzner`, `CLUSTER_NAME` to `vk-hetzner-lab`. `PROVIDER=hetzner PROJECT_NAME=other make -n cluster-up` keeps `other`. Both `PROVIDER=hetzner make` and `make PROVIDER=hetzner` forms agree.
+- `PROVIDER=hetzner make -n cluster-up` shows `terraform/live/cluster-hetzner`. `PROJECT_NAME` resolves to `vk-hetzner-lab`, `SUBDOMAIN` to `hz`, `CLUSTER_NAME` to `vk-hetzner-lab`. `PROVIDER=hetzner PROJECT_NAME=other make -n cluster-up` keeps `other`. Both `PROVIDER=hetzner make` and `make PROVIDER=hetzner` forms agree.
 - `shellcheck scripts/lib/provider.sh scripts/secret-*.sh` is clean. `hcloud_token` prints the mask line only under `GITHUB_ACTIONS`.
 - `SECRET_SCOPE=global scripts/secret-decrypt.sh hetzner-token >/dev/null` exits 0 on a workstation with KMS access. Never capture or display its stdout.
 - `hcloud_cli server list` with `HCLOUD_TOKEN` set writes nothing under `~/.config/hcloud/`.
@@ -131,3 +131,8 @@ One PR together with `specs/hetzner/`. A revert restores the previous Makefile a
   `SECRET_SCOPE=global` covers `hetzner-token` with no path-rule or
   `.gitignore` edit.
 - 2026-09-20 — the committed ciphertext is `secrets/hetzner-token.enc`, account-global like `civo-token.enc`, read with `SECRET_SCOPE=global`; no path-rule or `.gitignore` edit is needed. The helper name `hcloud_token()` and the env var `HCLOUD_TOKEN` are unchanged.
+- 2026-09-20 — no unmet dependencies (depends_on empty); promoted to IN_PROGRESS.
+  Decision: `SUBDOMAIN` defaults to `hz` (zone `hz.<root-domain>`), not
+  `hetzner`; every spec in this package that named the zone is updated in
+  the same change. Decision: a pull request is the default delivery for
+  every spec from now on (`specs/civo/README.md` step 6 updated).

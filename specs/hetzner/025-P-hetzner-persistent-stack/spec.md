@@ -26,7 +26,7 @@ completed: ""
 subnet, and the SSH key for the `vk-hetzner-lab` project. It also applies the
 AWS `persistent/secrets` unit and the backup bucket, and skips the VPC.
 `PROVIDER=hetzner make bootstrap-up` creates the state bucket, the
-`hetzner.<root-domain>` zone, and the Roles Anywhere unit, and skips ACM.
+`hz.<root-domain>` zone, and the Roles Anywhere unit, and skips ACM.
 These resources are Persistent. The disposable servers attach to them.
 
 There is no reserved IP unit. Hetzner primary IPs attach to servers only,
@@ -85,7 +85,7 @@ HETZ-010 supplies the dispatch and token helper. HETZ-015 declares the stack. HE
 
 ## 8. Acceptance criteria
 
-- `bootstrap-up` creates `vk-hetzner-lab-tf-state`, zone `hetzner.<root-domain>` with the NS delegation, and the Roles Anywhere resources; no ACM certificate.
+- `bootstrap-up` creates `vk-hetzner-lab-tf-state`, zone `hz.<root-domain>` with the NS delegation, and the Roles Anywhere resources; no ACM certificate.
 - `persistent-up` creates the network, subnet, and SSH key with the four labels; the three SSM parameters exist; no VPC in the project.
 - `hcloud ssh-key describe vk-hetzner-lab` shows the committed public key fingerprint.
 - `persistent-down` refuses while `cluster-hetzner/` state has resources (seed a fake object). After destroy, the two units are empty.

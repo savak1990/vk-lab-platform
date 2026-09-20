@@ -5,7 +5,7 @@
 | Constraint | Value |
 |---|---|
 | Operator surface | `PROVIDER=aws\|civo\|hetzner` on the existing `make` targets; default `aws`; no new lifecycle commands. The kubeadm bootstrap needs no target of its own: `cluster-up` runs `scripts/hetzner-bootstrap.sh`, and the readiness wait is part of that script. The one Hetzner-only helper is `make node-ssh NODE=<name>` (HETZ-040), which prints a message and exits 0 on the other providers |
-| Project identity | `PROVIDER=hetzner` defaults `PROJECT_NAME=vk-hetzner-lab`, `SUBDOMAIN=hetzner`: own state bucket, own zone `hetzner.<root-domain>`, own SSM prefix, own Roles Anywhere unit. Account layer shared |
+| Project identity | `PROVIDER=hetzner` defaults `PROJECT_NAME=vk-hetzner-lab`, `SUBDOMAIN=hz`: own state bucket, own zone `hz.<root-domain>`, own SSM prefix, own Roles Anywhere unit. Account layer shared |
 | Goal | Maximise CPU and memory for 50–100 USD per month; Hetzner replaces only the compute path, AWS keeps Route 53, SSM, KMS, S3, GitHub OIDC |
 | Kubernetes | kubeadm (Kubernetes 1.36, the newest minor minus one, pinned in `scripts/lib/versions.sh`) + containerd.io 2.3 + Cilium 1.20 (kube-proxy kept, VXLAN); Terraform owns the servers; cloud-init on the control plane renders the kubeadm config from metadata (public IPv4 for `certSANs`) and runs `kubeadm init` and the Cilium install at first boot; cloud-init on workers installs packages only; `cluster-up` runs `kubeadm join` on each worker over SSH, fetches `admin.conf` and waits for every node Ready; `argo-up` helm-installs the hcloud CCM before Argo CD; Argo CD owns everything else in-cluster, including the CSI driver and metrics-server |
 | Node plan (M1) | **Revised 2026-09-19.** 1 control plane (`nodeRegistration.taints: []`, schedulable; kubelet reserves 1.5 GiB for system and kube components) + 1 worker, both `cx33`, in `nbg1`; the cluster autoscaler adds 0–2 `cx33` workers; ceiling 4 nodes / 32 GB. Was: three `cax21` ARM, autoscaler in M2 — every CAX type fails a real create in every EU location on 2026-09-19 (research.md) |
@@ -27,7 +27,7 @@
 | 0024 note | Hetzner location constant | single-region rule | `nbg1` declared in `root.hcl` and `scripts/lib/region.sh`; AWS region unchanged | high |
 | Constitution §20 | Per-provider variant table | §20 is written for Civo only | one row per section per provider; Hetzner adds: control plane is platform-owned; LB has no firewall; §16 tagging fully satisfied through hcloud labels | high |
 | architecture §10a | four execution targets | text says three | add Hetzner column | high |
-| ADR 0002 note | ExternalDNS ownership | per project | zone `hetzner.<root-domain>`, `txtOwnerId=vk-hetzner-lab` | high |
+| ADR 0002 note | ExternalDNS ownership | per project | zone `hz.<root-domain>`, `txtOwnerId=vk-hetzner-lab` | high |
 | ADR 0022 note | Kubernetes access on Hetzner | EKS access entries / Civo API | admin kubeconfig fetched over SSH; test identity via ServiceAccount token | medium |
 
 ## 3. Open decisions

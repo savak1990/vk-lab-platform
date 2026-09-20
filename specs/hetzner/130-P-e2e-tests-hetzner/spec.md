@@ -65,7 +65,7 @@ Not in scope: new test cases. The Postgres test runs after HETZ-120.
   context name from `provider.sh`.
 - RBAC subject values: `rbac.e2eSubject.kind: ServiceAccount` for
   hetzner, identical to civo.
-- The `ServiceURL` helper resolves `argo.hetzner.<root-domain>`; the LB IP
+- The `ServiceURL` helper resolves `argo.hz.<root-domain>`; the LB IP
   changes per `make up`, so the suite must resolve DNS at run time, which
   it already does.
 

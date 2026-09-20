@@ -23,9 +23,9 @@ completed: ""
 ## 1. Outcome and rationale
 
 Envoy on Hetzner serves one Let's Encrypt certificate for
-`hetzner.<root-domain>` and `*.hetzner.<root-domain>`, issued through the
+`hz.<root-domain>` and `*.hz.<root-domain>`, issued through the
 DNS-01 solver with the cert-manager Roles Anywhere consumer. ExternalDNS
-writes the A records for the hostnames into the `hetzner.<root-domain>`
+writes the A records for the hostnames into the `hz.<root-domain>`
 zone with owner `vk-hetzner-lab`. The TLS Secret survives `make down` and
 `make up` through SSM, so a rebuilt cluster orders no new certificate.
 Hetzner starts at the Civo end state (CIVO-075): HTTP-01 is never used,
@@ -50,9 +50,9 @@ targets.
 
 ## 4. Design and contracts
 
-- No new template. The hetzner render must contain `ClusterIssuer letsencrypt-staging`, `letsencrypt-prod`, `Certificate envoy/platform-public` with `dnsNames: [hetzner.<root>, *.hetzner.<root>]`, the redirect `HTTPRoute`, and `Certificate cert-manager/cert-manager`. `gitops-render-check.sh` requires them for hetzner (HETZ-050 set).
+- No new template. The hetzner render must contain `ClusterIssuer letsencrypt-staging`, `letsencrypt-prod`, `Certificate envoy/platform-public` with `dnsNames: [hz.<root>, *.hz.<root>]`, the redirect `HTTPRoute`, and `Certificate cert-manager/cert-manager`. `gitops-render-check.sh` requires them for hetzner (HETZ-050 set).
 - Gateway HTTPS:443 listener (added here to the hetzner block of `gateway.yaml`): `hostname: "*.{{ .Values.envoyGateway.fqdn }}"`, `tls.mode: Terminate`, `certificateRefs: [platform-public-tls]`; `cert-manager.io/issue-temporary-certificate: "true"` on the Certificate stays, so the listener programs before the first order completes.
-- ExternalDNS: `domainFilters: [hetzner.<root>]`, `txtOwnerId: vk-hetzner-lab`, `policy: sync`, `--interval 1m`. Route 53 record TTL is ExternalDNS's default 300 s. After `make up` the A record moves to the new LB IP within one interval plus the TTL, so the first `wait_for_dns` window (60 s, non-fatal) usually reports "not yet resolved"; this spec measures the real time and sets `HETZNER_ARGO_UP_DNS_WATCH_SECONDS` to the measured value plus margin if it is under 5 min.
+- ExternalDNS: `domainFilters: [hz.<root>]`, `txtOwnerId: vk-hetzner-lab`, `policy: sync`, `--interval 1m`. Route 53 record TTL is ExternalDNS's default 300 s. After `make up` the A record moves to the new LB IP within one interval plus the TTL, so the first `wait_for_dns` window (60 s, non-fatal) usually reports "not yet resolved"; this spec measures the real time and sets `HETZNER_ARGO_UP_DNS_WATCH_SECONDS` to the measured value plus margin if it is under 5 min.
 - Because DNS-01 needs no application record, issuance and DNS are independent: a fresh cluster obtains the certificate from SSM (round-trip) or orders one through TXT records while the A records are still stale. HTTP-01 is not configured on hetzner and never will be.
 - Lab uses `letsencrypt-prod`; CI uses `letsencrypt-staging` with `E2E_INSECURE_TLS=1` (HETZ-140), identical to Civo.
 - `argo-down` exports the Secret before the cascade; `argo-up` imports it before the root install; the Secret name `platform-public-tls` in namespace `envoy` is unchanged, so cert-manager adopts it and reissues only when `dnsNames` differ.
@@ -68,10 +68,10 @@ Everything else is consumed as-is.
 
 1. Add the HTTPS listener to the hetzner block. Run `make gitops-check`.
 2. Run `PROVIDER=hetzner TLS_ISSUER=letsencrypt-staging make up`. Watch `kubectl get challenge -A`: `type: DNS-01`, `state: valid`. `Certificate platform-public` Ready. Record the time from Service IP to Ready.
-3. Watch Route 53: `aws route53 list-resource-record-sets --hosted-zone-id <id>` shows `argo.hetzner.<root>` A = LB IP and the `TXT` owner record with `vk-hetzner-lab`. Record the time from LB IP to record update.
-4. Run `make down` then `make up`. `kubectl get order -A` is empty; the serial is unchanged; the A record moves to the new IP; measure the delay and confirm `curl https://argo.hetzner.<root>/` succeeds once it moves.
+3. Watch Route 53: `aws route53 list-resource-record-sets --hosted-zone-id <id>` shows `argo.hz.<root>` A = LB IP and the `TXT` owner record with `vk-hetzner-lab`. Record the time from LB IP to record update.
+4. Run `make down` then `make up`. `kubectl get order -A` is empty; the serial is unchanged; the A record moves to the new IP; measure the delay and confirm `curl https://argo.hz.<root>/` succeeds once it moves.
 5. Negative tests with the cert-manager sidecar credentials: an A-record change on the hetzner zone is denied; any change on the civo zone is denied.
-6. Switch to `letsencrypt-prod`. `curl -sv https://argo.hetzner.<root>/` verifies without `--insecure`.
+6. Switch to `letsencrypt-prod`. `curl -sv https://argo.hz.<root>/` verifies without `--insecure`.
 
 ## 7. Dependencies and blockers
 
@@ -80,7 +80,7 @@ and sidecar on hetzner), CIVO-075 and CIVO-110 for the components.
 
 ## 8. Acceptance criteria
 
-- `openssl s_client -servername argo.hetzner.<root-domain>` shows SANs exactly `hetzner.<root-domain>` and `*.hetzner.<root-domain>`.
+- `openssl s_client -servername argo.hz.<root-domain>` shows SANs exactly `hz.<root-domain>` and `*.hz.<root-domain>`.
 - The challenge is DNS-01; no solver `HTTPRoute` exists.
 - ExternalDNS rewrites the A record to the new LB IP after `make up`; the measured delay is recorded and is under 10 min.
 - `make down`/`make up` creates no new `Order`; the serial is unchanged.

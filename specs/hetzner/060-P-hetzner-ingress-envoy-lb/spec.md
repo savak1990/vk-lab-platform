@@ -72,7 +72,7 @@ unchanged.
 
 1. Add the block. Run `make gitops-check`. Both golden diffs empty. Render hetzner and run `kubeconform`.
 2. Run `PROVIDER=hetzner make up`. Read the IP: `kubectl get svc -n envoy -l gateway.envoyproxy.io/owning-gateway-name=platform-gateway -o jsonpath='{.items[0].status.loadBalancer.ingress[0].ip}'`.
-3. `curl -sS -o /dev/null -w '%{http_code}' -H 'Host: argo.hetzner.<root-domain>' http://<ip>/` returns 200 or the Argo CD redirect.
+3. `curl -sS -o /dev/null -w '%{http_code}' -H 'Host: argo.hz.<root-domain>' http://<ip>/` returns 200 or the Argo CD redirect.
 4. `hcloud load-balancer describe <project>-ingress` shows three targets, each with `use_private_ip: true`, all healthy; the public IPv6 is absent.
 5. `nmap -p 22,80,443,6443,30000-32767 <ip>` shows only 80 open (443 after HETZ-070). Scan a node's public IP: only 22 and 6443.
 6. Run `argo-down`. `hcloud load-balancer list -l project=<project>` is empty before the cascade starts.
