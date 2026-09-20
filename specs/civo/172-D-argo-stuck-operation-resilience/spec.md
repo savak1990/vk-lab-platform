@@ -398,7 +398,10 @@ then `kubectl patch application <app> -n argocd --type=merge -p
   was created at 13:28:41**, and the same ordering holds in the two earlier
   runs, which settles the resize hypothesis: the autoscaler is not involved.
   In-flight requests peaked at 15 mutating and 23 read-only, so this is a crash
-  and not load shedding.
+  and not load shedding. Three later runs created the pool at three nodes and
+  saw **no outage at all**, against four of four two-node runs that saw three
+  or four each — see CIVO-170 §14. The trigger is therefore the thrashing a
+  two-node cluster causes, not the autoscaler and not the sync as such.
 
   | Outage | Window (UTC) | Duration | Control plane |
   |---|---|---|---|

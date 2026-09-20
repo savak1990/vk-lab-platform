@@ -360,6 +360,8 @@ Remove the Application and restore `node_count` to an explicit value in
   | 35514548075 | 2 | 39m06s | 28m55s | 3 | — |
   | 35509187271 | 2 | 46m56s | 36m55s | 4 | 4 |
   | 35524065183 | 3 | 22m29s | 11m43s | 0 | 3 |
+  | 35534211495 | 3 | 21m35s | 12m04s | 0 | 3 |
+  | 35536907243 | 3 | 21m34s | 11m29s | 0 | 3 |
 
   The estimate of "3 to 6 minutes, because outages are unaffected" assumed the
   outages were independent of the node count. The runs suggest they are not. A
@@ -369,10 +371,11 @@ Remove the Application and restore `node_count` to an explicit value in
   correlate with (CIVO-172 §12). Starting at 3 removes the pending pods, cuts
   the retries, and finishes before that pressure builds.
 
-  **Treat the zero-outage result as promising, not proven:** four of four
-  2-node runs saw outages and the single 3-node run saw none, which is a strong
-  signal with a coherent mechanism, but it is one sample and Civo's control
-  plane may simply have been healthy. A second 3-node run would settle it.
+  **The zero-outage result held across three runs**, the last two at the 3..4
+  bounds, against four of four 2-node runs that saw three or four outages each.
+  Seven runs with a clean split and a coherent mechanism is strong evidence,
+  though still correlation: nothing here observes the Civo control plane
+  directly, and only Civo can say what killed it.
 
   The cost landed as expected. The log records
   `scale-up timeline: no scale-up observed during the watch`, and all three
