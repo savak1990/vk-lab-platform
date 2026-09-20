@@ -1,7 +1,7 @@
 ---
 id: "HETZ-020"
 title: "Feasibility spike: k3s and the hcloud CCM, CSI and load balancer on throwaway cx33 servers, with a written report"
-status: "IN_REVIEW"
+status: "DONE"
 priority: "P0"
 milestone: "M0"
 type: "research"
@@ -15,7 +15,7 @@ blocked_by: []
 supersedes: []
 created: "2026-09-11"
 updated: "2026-09-20"
-completed: ""
+completed: "2026-09-21"
 ---
 
 # HETZ-020 — Feasibility spike
@@ -268,9 +268,11 @@ Console and record why.
 
 ## 13. Definition of done
 
-- [ ] Report written and research rows corrected in `research.md`
-- [ ] `decisions.md` rows confirmed or amended
-- [ ] Leak check empty; invoice read; index updated; status `DONE`
+- [x] Report written and research rows corrected in `research.md`
+- [x] `decisions.md` rows confirmed or amended
+- [x] Leak check empty; index updated; status `DONE`
+- [ ] **Invoice read** — carried to HETZ-025, see §14
+- [ ] **Account limits read from the Console** — carried to HETZ-025, see §14
 
 ## 14. Execution evidence and status history
 
@@ -318,3 +320,22 @@ Console and record why.
   primary-ip, ssh-key, placement-group, floating-ip and certificate all zero,
   unfiltered, matching the pre-spike baseline. Measured spend about 0.03 EUR
   against the 1 EUR ceiling; the invoice confirms it next billing day.
+- 2026-09-21 — closed `DONE` by operator decision with two acceptance
+  criteria still open. Both are waits, not work, and neither blocks any
+  dependent spec:
+
+  - **The invoice.** §4 item 6 wants the network, firewall, SSH-key and
+    unassigned-primary-IP lines, the hourly rounding, and the real volume and
+    LB rates. Hetzner does not publish them until the next billing day, so
+    they cannot be read while this spec is open. Measured spend was about
+    0.03 EUR; the list prices in the cost model stand unverified.
+  - **Account limits.** No API endpoint exposes them — `/v1/locations` and the
+    rest carry no limit fields. This needs Console → Limits by hand.
+
+  **Both are carried to HETZ-025**, which is the next spec to touch this
+  Hetzner project and whose §9 already expects a cost reading. If the default
+  5-server limit applies, the increase must be requested at once: it is
+  granted only after one month as a customer and a paid first invoice, then
+  1–3 business days (`research.md:34`), which makes it the longest lead time
+  in the Hetzner track and the only thing that can delay M1 on calendar time
+  rather than on work.
