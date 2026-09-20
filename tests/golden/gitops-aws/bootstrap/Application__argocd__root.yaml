@@ -31,6 +31,12 @@ spec:
           value: "4"
         - name: karpenter.onDemand.cpuLimit
           value: "4"
+        - name: capacity.autoscaler.min
+          value: "3"
+        - name: capacity.autoscaler.max
+          value: "4"
+        - name: capacity.autoscaler.pool
+          value: workers
         - name: envoyGateway.acmCertificateArn
           value: ""
         - name: envoyGateway.nlbSubnetIds

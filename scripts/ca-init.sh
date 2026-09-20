@@ -9,15 +9,20 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$REPO_ROOT/scripts/lib/provider.sh"
 ROTATE="${ROTATE:-}"
 
+if [ "$PROVIDER" = aws ]; then
+  echo "PROVIDER is aws. That target reaches AWS through EKS Pod Identity and has no Roles Anywhere trust chain." >&2
+  exit 1
+fi
+
 SECRETS_DIR="$REPO_ROOT/secrets/$PROJECT_NAME"
 mkdir -p "$SECRETS_DIR"
 
 if [ "$ROTATE" = "1" ]; then
-  CERT_FILE="$SECRETS_DIR/civo-ca-cert-next.pem"
-  KEY_NAME="civo-ca-key-next"
+  CERT_FILE="$SECRETS_DIR/${PROVIDER}-ca-cert-next.pem"
+  KEY_NAME="${PROVIDER}-ca-key-next"
 else
-  CERT_FILE="$SECRETS_DIR/civo-ca-cert.pem"
-  KEY_NAME="civo-ca-key"
+  CERT_FILE="$SECRETS_DIR/${PROVIDER}-ca-cert.pem"
+  KEY_NAME="${PROVIDER}-ca-key"
 fi
 
 if [ -f "$CERT_FILE" ]; then
@@ -55,7 +60,7 @@ subjectKeyIdentifier=hash
 EOF
 
 openssl req -new -key "$KEY_FILE" -sha256 \
-  -subj "/O=${PROJECT_NAME}/CN=${PROJECT_NAME}-civo-workload-ca" \
+  -subj "/O=${PROJECT_NAME}/CN=${PROJECT_NAME}-${PROVIDER}-workload-ca" \
   -out "$CSR_FILE"
 
 # The one-step "req -x509 -extfile" form does not apply extensions on

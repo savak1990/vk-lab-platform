@@ -31,6 +31,12 @@ spec:
           value: {{ .Values.karpenter.spot.cpuLimit | quote }}
         - name: karpenter.onDemand.cpuLimit
           value: {{ .Values.karpenter.onDemand.cpuLimit | quote }}
+        - name: capacity.autoscaler.min
+          value: {{ .Values.capacity.autoscaler.min | quote }}
+        - name: capacity.autoscaler.max
+          value: {{ .Values.capacity.autoscaler.max | quote }}
+        - name: capacity.autoscaler.pool
+          value: {{ .Values.capacity.autoscaler.pool | quote }}
         - name: envoyGateway.acmCertificateArn
           value: {{ .Values.envoyGateway.acmCertificateArn | quote }}
         - name: envoyGateway.nlbSubnetIds

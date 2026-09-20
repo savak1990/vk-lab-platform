@@ -32,7 +32,7 @@ secrets/*
 secrets/*/*
 !secrets/*/*.enc
 !secrets/*/*.bcrypt
-!secrets/*/civo-ca-cert*.pem
+!secrets/*/*-ca-cert*.pem
 !secrets/*.enc
 !secrets/README.md
 

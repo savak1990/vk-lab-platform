@@ -31,7 +31,7 @@ use_isolated_kubeconfig
 if cluster_exists; then
   configure_kubeconfig "$KUBECONFIG"
 
-  if ! kubectl cluster-info --request-timeout=5s >/dev/null 2>&1; then
+  if ! api_reachable; then
     echo "CLUSTER-DOWN: ERROR - cluster $CLUSTER_NAME exists but is unreachable via kubectl (cluster-info failed)." >&2
     echo "CLUSTER-DOWN: refusing to run 'terragrunt destroy' blind - argo-down's graceful cascade could not be" >&2
     echo "CLUSTER-DOWN: confirmed, so any Karpenter node or load balancer still alive right now will be orphaned" >&2

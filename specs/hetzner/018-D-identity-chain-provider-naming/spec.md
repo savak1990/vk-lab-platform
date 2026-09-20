@@ -1,7 +1,7 @@
 ---
 id: "HETZ-018"
 title: "Roles Anywhere chain names parametrized by provider, with Civo names byte-identical"
-status: "READY"
+status: "IN_REVIEW"
 priority: "P0"
 milestone: "M0"
 type: "implementation"
@@ -14,7 +14,7 @@ depends_on: ["HETZ-010", "HETZ-016"]
 blocked_by: []
 supersedes: []
 created: "2026-09-11"
-updated: "2026-09-11"
+updated: "2026-09-20"
 completed: ""
 ---
 
@@ -55,6 +55,60 @@ template (unchanged), CIVO-200's intermediate CA (it inherits the variable).
 - GitOps: values key `civoIdentity` → `workloadIdentity` with the same shape plus `issuerName` defaulting to `{{ .Values.target }}-workload-ca`. `certificates.yaml` CN `{{ .Values.project }}-{{ .Values.target }}-{{ $consumer }}`. `issuer.yaml` uses `workloadIdentity.issuerName` for both the ClusterIssuer and the Secret. For `target=civo` every string renders as today.
 - Scripts: `scripts/ca-init.sh` (git mv from `civo-ca-init.sh`) reads `PROVIDER` through `provider.sh`, refuses `PROVIDER=aws`, and uses `${PROVIDER}-ca-cert[-next].pem`, `${PROVIDER}-ca-key[-next]`, CN `<project>-${PROVIDER}-workload-ca`. `make ca-init` replaces `civo-ca-init`; the old target is removed, not aliased, and the README and CIVO-080 §14 note the rename. `secret-decrypt.sh` needs no change: the name is passed by the caller. `.gitignore`: `!secrets/*/*-ca-cert*.pem`. `generate-secrets.sh` and `ensure_ca_secret` use the same `${PROVIDER}` names.
 - Cross-cutting rule, recorded in `secrets/README.md`: the provider string in these names identifies the trust chain, not the cloud API; a project has exactly one chain.
+
+## 4a. Deviations from §4 and §5
+
+Each deviation below was measured on the branch, not assumed.
+
+- **D1 — Terraform learns the provider from disk, not from `PROVIDER`.** §4
+  passes `provider_name` from `get_env("PROVIDER", "aws")`. Rejected. The CA
+  bytes come from a `PROJECT_NAME`-derived path and the name would come from a
+  separate variable, so the two can drift. A bare
+  `terragrunt run --all plan` against the Civo project without `PROVIDER` set —
+  which is exactly what §9 asks an operator to run — would resolve the path to
+  `aws-ca-cert.pem`, find nothing, set `ca_cert_pem = ""`, drop every resource
+  to `count = 0`, and plan **a destroy of the whole live chain** with state
+  pointed at the correct bucket. Today that is unreachable, because the path is
+  a literal. `bootstrap/rolesanywhere/terragrunt.hcl` now resolves the provider
+  by an ordered `fileexists` lookup over `civo` then `hetzner`, falling through
+  to `aws`, and derives both the path and the name from the file it finds. One
+  source for the name and the bytes; no new environment dependency.
+- **D2 — `root.hcl` is not changed.** §5 names it for a `local.provider`.
+  Included locals are not visible to a child unit's own `locals` block — which
+  is why all 18 units re-read `get_env("PROJECT_NAME", ...)` themselves — so a
+  local there could not be consumed by the unit that needs it. D1 makes it
+  unnecessary in any case.
+- **D3 — five Terraform sites, not the four §3 lists.** The profile at
+  `modules/rolesanywhere/main.tf:173` is `"${var.project}-civo"`, with no
+  trailing hyphen, so §8's `grep -- '-civo-'` does not match it. The
+  acceptance criterion is amended to a bare
+  `grep -rn civo terraform/modules/rolesanywhere`.
+- **D4 — the issuer name resolves through a helper, not through the values key
+  alone.** §4 gives `workloadIdentity.issuerName` a default of
+  `{{ .Values.target }}-workload-ca`. Helm cannot default a value in
+  `values.yaml` against another value, so the default lives in a new
+  `platform.workloadIssuerName` helper beside `platform.selfManaged`, and
+  `issuerName: ""` in `values.yaml` selects it. Both the ClusterIssuer and the
+  Certificates include the helper, so the two can never disagree.
+- **D5 — one PR, not shared with HETZ-016.** §11 says "one PR with HETZ-016".
+  Stale: PR #39 was already open and in review when this spec started. HETZ-018
+  is its own PR, branched from the HETZ-016 branch and rebased onto it.
+- **D6 — the no-change Civo plan of §8 could not be run.** The `vk-civo-lab`
+  project is torn down to zero: `vk-civo-lab-tf-state` does not exist, so
+  `terragrunt` fails at `init` before it can plan. The live trust anchor in the
+  account is `vk-civo-ci-civo-workload-ca`, created by the CI lifecycle run for
+  PR #39 against the disposable CI project. The plan gate is therefore replaced
+  by the three-project expression probe in §14, which proves the resolution
+  directly, plus the `lifecycle-civo` CI job, which builds the whole chain from
+  nothing and is the real end-to-end gate.
+- **D7 — `tests/manifests/civo-090/wrong-ca-issuer.yaml` is left alone.** Its
+  `commonName: "vk-civo-lab-civo-eso"` is a deliberate wrong-CN negative-test
+  fixture, not a chain name.
+- **D8 — the hetzner issuer is added to the render check's object set.**
+  `REQUIRED_OBJECTS_HETZNER` gains
+  `ClusterIssuer__cluster__hetzner-workload-ca`. Inert until HETZ-050 puts
+  `hetzner` in the render loop, but it is the durable form of the correctness
+  check.
 
 ## 5. Files/components affected
 
@@ -112,3 +166,34 @@ One PR with HETZ-016. A revert restores the literals; because the Civo names nev
 
 - 2026-09-11 — created as DRAFT.
 - 2026-09-11 — reviewed and approved by the user; promoted to READY.
+- 2026-09-20 — implemented on branch `hetzner-018-identity-chain-provider-naming`,
+  branched from `hetzner-016-non-aws-generalisation` and rebased onto it after
+  that branch was rebased on `main` at `9925d36`. Deviations D1 to D8 in §4a.
+
+  Civo byte-identity is a regression gate only: it passes equally if the
+  parametrization is correct or if `civo` was accidentally hardcoded again. The
+  correctness gate is the hetzner render.
+
+  | Gate | Result |
+  |---|---|
+  | `helm template` of `gitops/` and `gitops/bootstrap/` for aws and for civo, full `--set` list, normalized one file per object | `diff -ru` before/after empty (49 aws objects, 45 civo objects) |
+  | `helm template --set target=hetzner`, same normalization | exactly 6 objects change, and only as intended: `ClusterIssuer/civo-workload-ca` becomes `ClusterIssuer/hetzner-workload-ca` with `spec.ca.secretName` tracking it, and four Certificates move from CN `<project>-civo-<consumer>` to `<project>-hetzner-<consumer>` |
+  | `make gitops-check` | aws matches the golden baseline; civo and local object sets unchanged. The golden holds no identity object at all, so it could not move |
+  | Provider resolution, the D1 expression run against real directories | `vk-civo-lab` to `civo` and `vk-civo-lab-civo-workload-ca` with the module creating; `vk-lab-platform` to `aws` and the module creating nothing; a `hetzner-ca-cert.pem` fixture to `hetzner` and `vk-hetzner-lab-hetzner-workload-ca`. The civo case was run with `PROVIDER` unset, which is the case D1 exists for |
+  | `terraform init -backend=false && terraform validate` on `modules/rolesanywhere` | valid |
+  | `terraform fmt -check`, `terragrunt hcl fmt --check` | clean |
+  | `make -n`, 25 targets x {unset, aws, civo, hetzner} | `diff -ru` against the HETZ-016 baseline empty, over all 100 combinations |
+  | `helm lint gitops/`, `helm lint gitops/bootstrap` | 0 charts failed |
+  | `bash -n` on the four edited scripts | clean |
+  | `PROVIDER=aws make ca-init` | exits 1, naming Pod Identity |
+  | `PROVIDER=civo make ca-init` | still refuses to overwrite `secrets/vk-civo-lab/civo-ca-cert.pem` |
+  | `PROVIDER=hetzner PROJECT_NAME=hz-ca-probe make ca-init` | wrote `hetzner-ca-cert.pem` and `hetzner-ca-key.enc`, subject `CN=hz-ca-probe-hetzner-workload-ca`. Output deleted after the check |
+  | `.gitignore` | `hetzner-ca-cert.pem` is tracked by `!secrets/*/*-ca-cert*.pem`; a `hetzner-ca-key-next.pem` stays ignored, preserving the CIVO-080 §8 property |
+  | `grep -rn civo terraform/modules/rolesanywhere` | one hit, the `provider_name` description naming the valid values |
+  | `make specs-check` | valid |
+
+  `shellcheck`, `yamllint` and `actionlint` are not installed locally; CI runs
+  them. The Civo `argo-up` proof of `ensure_ca_secret` is deferred to the
+  `lifecycle-civo` CI job, which mints a CA, applies the chain and brings up
+  the cluster from nothing — a stronger gate than the read-only plan §9 asked
+  for, and the only one available (D6).
