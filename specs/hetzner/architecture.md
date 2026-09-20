@@ -25,7 +25,7 @@ reused through the generalisation specs HETZ-016 and HETZ-018.
 ## 2. Target flow (condensed)
 
 ```
-make bootstrap-up  → state bucket, Route 53 hetzner zone, Roles Anywhere unit   (bootstrap, ACM excluded)
+make bootstrap-up  → state bucket, Route 53 hz.<root-domain> zone, Roles Anywhere   (bootstrap, ACM excluded)
 make persistent-up → SSM secrets, S3 backup bucket                               (persistent, VPC excluded)
                    + hcloud network/subnet, hcloud SSH key                        (terraform/live/persistent-hetzner)
 make cluster-up    → hcloud firewall, 1 cp + 1 worker CX33 servers, cloud-init
@@ -50,7 +50,7 @@ equivalent; **n/a** = not applicable on Hetzner.
 | Component | Civo implementation | Hetzner difference | Classification | Owning spec |
 |---|---|---|---|---|
 | Make surface, `provider.sh`, token helper | `PROVIDER=aws\|civo`, `civo_token()` | third value; `hcloud_token()` exporting `HCLOUD_TOKEN`; `secrets/hetzner-token.enc` (account-global, `SECRET_SCOPE=global`) | mirror | 010 |
-| Governance | ADRs 0027–0031, constitution §20 (Civo) | ADR 0032 (kubeadm-bootstrapped control plane); §20 becomes per-provider; ADR 0030 amended (token lives in-cluster); ADR 0029 note (federation possible, rejected) | mirror | 015 |
+| Governance | ADRs 0027–0031, constitution §20 (Civo) | ADR 0036 (kubeadm-bootstrapped control plane); §20 becomes per-provider; ADR 0030 amended (a dedicated in-cluster token, not the operator's); ADR 0029 note (federation possible, rejected) | mirror | 015 |
 | Script branches `[ "$PROVIDER" = civo ]` | CA Secret, TLS export/import, no EBS snapshot, kinds filter, PVC wait, teardown dump gate | semantics are "non-EKS"; become `!= aws` | generalise | 016 |
 | GitOps gates `eq .Values.target "civo"` (11 sites), `validateTarget`, render-check sets | literal `civo` | `platform.selfManaged` helper (civo, hetzner); `hetzner` in the allowed list; per-target required/forbidden sets | generalise | 016 |
 | Identity chain names | `${project}-civo-workload-ca`, CN `${project}-civo-${consumer}`, `civo-workload-ca` Secret/ClusterIssuer, `secrets/<project>/civo-ca-*`, `make civo-ca-init`, `civoIdentity.consumers` | `${project}-${provider}-…`; Civo strings byte-identical; `make ca-init` with `PROVIDER` | generalise | 018 |
@@ -67,7 +67,7 @@ equivalent; **n/a** = not applicable on Hetzner.
 | Kubeconfig | `civo kubernetes config` | `/etc/kubernetes/admin.conf` over SSH, server rewritten to the public IP | new | 035 |
 | Readiness | `kubectl get nodes` (provider `ready` unreliable) | Terraform returns when servers exist; the control plane initializes itself at boot, and the bootstrap script joins the workers and then waits for every node Ready | mirror | 037 |
 | Leak sweep | `civo` CLI by name/network | `hcloud` CLI by label `project=<project>` over servers, load balancers, volumes, primary IPs, firewalls | mirror | 040 |
-| CCM | pre-installed by Civo | helm release installed by `argo-up` before Argo CD (untracked bootstrap class, like Argo CD itself); `kube-system/hcloud` Secret (keys `token`, `network`) created by `argo-up` | new | 045 |
+| CCM | pre-installed by Civo | helm release installed by `argo-up` before Argo CD (untracked bootstrap class, like Argo CD itself); `kube-system/cloud-operator-secret` (keys `token`, `network`) created by `argo-up`, overriding the chart's hardcoded default Secret name | new | 045 |
 | CSI | pre-installed by Civo | Argo Application at wave −3 under `platform/hetzner/`; reads the same `hcloud` Secret | new | 050 |
 | Storage | `civo-volume` (a managed addon, not editable) | `hcloud-volumes` from the CSI chart (Argo-owned; reclaim `Delete`; 10 GB minimum; no snapshot/clone) | mirror | 050 |
 | Snapshot controller | aws-only | aws-only | n/a | 050 |
@@ -91,8 +91,9 @@ Adds to `docs/civo-high-level-design.md` §5.
 |---|---|---|---|---|---|
 | `PROVIDER` | enum aws\|civo\|hetzner | operator/CI input | `aws` | no | `--set target` |
 | `PROJECT_NAME` | string | operator input | `vk-hetzner-lab` | no | `--set project` |
-| `SUBDOMAIN` | string | operator input | `hetzner` | no | via SSM `fqdn` |
-| `HCLOUD_TOKEN` | string | `secrets/hetzner-token.enc` | — | yes | Terraform/CLI env; **and** `kube-system/hcloud` Secret created by `argo-up` |
+| `SUBDOMAIN` | string | operator input | `hz` | no | via SSM `fqdn` |
+| `HCLOUD_TOKEN` | string | `secrets/hetzner-token.enc` | — | yes | Terraform/CLI env only (the operator's token) |
+| in-cluster Hetzner token | string | its own ciphertext file, a second token in the same project | — | yes | `kube-system/cloud-operator-secret` created by `argo-up`; never the operator's token |
 | Hetzner location | constant | `root.hcl` (`hcloud_location`), `scripts/lib/region.sh` (`HCLOUD_LOCATION`) | `nbg1` | no | `envoyGateway.location` |
 | SSH private key | file | `secrets/<project>/hetzner-ssh-key.enc` | — | yes | never; scripts only |
 | kubeadm bootstrap token | string | created by `argo-up` (165) with `--ttl 0` | — | yes (disposable) | `kube-system/hcloud-autoscaler` Secret; node join only |
@@ -116,8 +117,8 @@ CCM/CSI charts) never leaves `terraform/live/*-hetzner`,
   Terraform and are swept the same way.
 - `argo-up` creates exactly three untracked Secrets on Hetzner: the CA key
   (as on Civo), the optional re-imported TLS Secret (as on Civo), and
-  `kube-system/hcloud` (new), plus one untracked helm release, the hcloud
-  CCM, in the same class as the Argo CD release. Nothing else in-cluster is
+  `kube-system/cloud-operator-secret` (new), plus one untracked helm
+  release, the hcloud CCM, in the same class as the Argo CD release. Nothing else in-cluster is
   outside Argo. The `lab-role` SSM ARNs gain `*/persistent-hetzner/*` and
   `*/cluster-hetzner/*`, applied by `account-up` outside the composites.
 - The fixed nodes' `user_data` holds no secret; the autoscaler cloud-init

@@ -93,7 +93,7 @@ and 020, 025, 030, 040 do not.
 ## First three PRs
 
 1. **PR 1 — HETZ-010 + this package.** `PROVIDER=hetzner` value, defaults, `hcloud_token()`, `secrets/hetzner-token.enc`, third arm in every guard and enum; adds `specs/hetzner/`. Regression: `make -n up` identical for `aws` and `civo`.
-2. **PR 2 — HETZ-015.** The Hetzner ADR (number assigned on landing; 0032–0035 are taken), amendments to 0029/0030/0024/0002/0022, constitution §20 per-provider table, architecture §10a. No code.
+2. **PR 2 — HETZ-015.** ADR 0036, amendments to 0029/0030/0024/0002/0022, constitution §20 per-provider table, architecture §10a converted to a table, and the Hetzner columns in the shared non-EKS high-level design. No code.
 3. **PR 3 — HETZ-016 + HETZ-018.** The two generalisation refactors with golden renders for `aws` and `civo` proving zero change, plus the Civo lifecycle test run once. These are the riskiest PRs in the package because they touch DONE Civo code; they go in before any Hetzner resource exists.
 
 Then HETZ-020 (spike, manual session, no PR needed beyond the report), and
@@ -101,11 +101,11 @@ the M1 chain.
 
 **Sequencing against `specs/local/`.** A parallel package adds `PROVIDER=local`
 and edits the same sites: `Makefile:10`, `validateTarget`, `provider.sh`,
-constitution §17/§20, architecture §10a, and it also claims the Hetzner
-ADR (number assigned on landing; 0032–0035 are taken). Land
-PR 1 and PR 2 after the local package's 010/015 equivalents (or land the
-shared guard and helper edits once for both), and renumber the Hetzner ADR
-to the next free number at that time.
+constitution §17/§20 and architecture §10a. Land PR 1 and PR 2 after the local
+package's 010/015 equivalents, or land the shared guard and helper edits once
+for both. **Updated 2026-09-20:** the ADR-number race recorded here does not
+exist. `specs/local/` claims no ADR number at all, and 0032 to 0035 landed as
+unrelated records, so the Hetzner ADR took 0036.
 
 ## Requirement coverage
 

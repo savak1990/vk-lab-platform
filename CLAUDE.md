@@ -9,8 +9,10 @@ Never reference specific documents (specs, ADRs, tickets) in code comments, e.g.
 ## Project purpose
 
 This repository defines and validates a disposable learning platform,
-with AWS/EKS as the primary execution target and Civo managed Kubernetes
-as a second target (ADR 0027).
+with AWS/EKS as the primary execution target, Civo managed Kubernetes
+as a second target (ADR 0027), and Hetzner Cloud as a third target
+(ADR 0036). Hetzner sells no managed Kubernetes, so on that target the
+platform bootstraps its own control plane with kubeadm.
 
 It is PLATFORM-ONLY.
 
@@ -34,7 +36,17 @@ Terraform/Terragrunt owns AWS infrastructure.
 
 Argo CD owns Kubernetes resources.
 
-Argo CD is bootstrapped by `make argo-up` (a script), run after the disposable EKS cluster exists — not by Terraform. See ADR 0012 for why Terraform, once used for this, was moved off it.
+Argo CD is bootstrapped by `make argo-up` (a script), run after the disposable cluster exists — not by Terraform. See ADR 0012 for why Terraform, once used for this, was moved off it.
+
+On the Hetzner target the same script also helm-installs the hcloud cloud
+controller manager, before Argo CD, and that release joins Argo CD in the same
+untracked bootstrap class. The kubelet taints a newly registered node
+`node.cloudprovider.kubernetes.io/uninitialized`, and the cloud controller
+manager removes that taint once it has matched the node to a server. The
+cluster DNS deployment kubeadm generates does not tolerate that taint, and
+Argo CD needs cluster DNS to reach its own repository server — so Argo CD
+cannot be what installs the controller that makes its own DNS possible. See
+ADR 0036.
 
 Terraform and Argo CD MUST NOT manage the same Kubernetes resource.
 
@@ -282,8 +294,8 @@ No long-lived AWS credentials may be required by GitHub Actions.
 GitHub Actions → AWS authentication MUST use OIDC and temporary credentials.
 
 Kubernetes workloads should use EKS Pod Identity (AWS target) or IAM
-Roles Anywhere (Civo target, ADR 0029) — never a static AWS credential
-at rest in the cluster.
+Roles Anywhere (Civo and Hetzner targets, ADR 0029) — never a static AWS
+credential at rest in the cluster.
 
 Runtime secrets live in AWS Secrets Manager.
 
@@ -357,11 +369,19 @@ Persistent lifecycle.
 `terraform/live/persistent-civo/`
 Persistent lifecycle, Civo target only (network, reserved IP). See ADR 0027.
 
+`terraform/live/persistent-hetzner/`
+Persistent lifecycle, Hetzner target only (network, subnet, SSH key). See
+ADR 0036.
+
 `terraform/live/cluster/`
 Disposable personal-lab lifecycle.
 
 `terraform/live/cluster-civo/`
 Disposable lifecycle, Civo target only (firewall, k3s cluster). See ADR 0027.
+
+`terraform/live/cluster-hetzner/`
+Disposable lifecycle, Hetzner target only (firewall, kubeadm-bootstrapped
+servers). See ADR 0036.
 
 `gitops/`
 Argo-managed Kubernetes desired state.

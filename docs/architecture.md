@@ -501,18 +501,28 @@ default (constitution §9).
 
 ---
 
-# 10a. Execution Targets: `aws`, `local`, and `civo`
+# 10a. Execution Targets: `aws`, `local`, `civo`, and `hetzner`
 
-The platform supports three execution targets: **`aws`** (real EKS, the
+The platform supports four execution targets: **`aws`** (real EKS, the
 target described throughout the rest of this document unless stated
 otherwise), **`local`** (minikube or kind, AWS-free except where noted),
-and **`civo`** (real Civo managed Kubernetes, a second real cloud target,
-ADR 0027). See ADR 0006 and spec 022 for the `local` design and ADR 0027
-plus `specs/civo/` for the Civo design; this section summarizes the shape
-of all three so later sections can refer to "the `aws` target", "the
-`local` target", and "the `civo` target" unambiguously.
+**`civo`** (real Civo managed Kubernetes, a second real cloud target,
+ADR 0027), and **`hetzner`** (real Hetzner Cloud servers carrying a
+platform-owned kubeadm control plane, a third real cloud target,
+ADR 0036). See ADR 0006 and spec 022 for the `local` design, ADR 0027
+plus `specs/civo/` for the Civo design, and ADR 0036 plus
+`specs/hetzner/` for the Hetzner design; this section summarizes the
+shape of all four so later sections can refer to "the `aws` target", "the
+`local` target", "the `civo` target", and "the `hetzner` target"
+unambiguously.
 
-All three targets share a single `gitops/` tree, rendered from one
+Hetzner is the only target where the platform creates the Kubernetes
+control plane itself. Terraform creates servers; the control plane's
+cloud-init runs `kubeadm init` and the CNI install at first boot, and
+`cluster-up` joins the workers over SSH. Terraform manages no Kubernetes
+object at any point (ADR 0036).
+
+All four targets share a single `gitops/` tree, rendered from one
 umbrella Helm chart (`gitops/`, with `gitops/bootstrap/` as the root
 Argo Application chart) and a `target` value (`aws` or `local`) selected
 at install time. There is no per-target `values-aws.yaml`/`values-local.yaml`
@@ -523,9 +533,12 @@ templates out of the app list entirely. **The Civo target renders with
 `target=aws` gitops values** — Civo hosts the same AWS-integrated
 components (ESO reading SSM, ExternalDNS writing Route 53, Roles
 Anywhere-backed backup jobs) as the AWS target, just reached through a
-different identity mechanism (ADR 0029) instead of EKS Pod Identity.
-`PROVIDER` (aws/civo) and `target` (aws/local) are orthogonal values,
-not the same selector.
+different identity mechanism (ADR 0029) instead of EKS Pod Identity. The
+Hetzner target renders with `target=hetzner`, which selects its own
+provider-specific subtree (the CSI driver and its storage class) while
+sharing every AWS-integrated component with the other two real targets.
+`PROVIDER` (aws/civo/hetzner) and `target` (aws/local/hetzner) are
+orthogonal values, not the same selector.
 
 The `local` target's `make minikube-up`/`make kind-up` entry points and
 its per-file `local`-only rendering are specified (spec 022) but not yet
@@ -533,71 +546,28 @@ implemented — no `values-local.yaml`, no `local`-mode gating, no local
 StorageClass override exist on disk today. The divergences below
 describe the target design, not current behavior, for `local`.
 
-The three targets diverge in kind, not just in values, on several points:
+The four targets diverge in kind, not just in values, on seven points:
 
-- **Install path.** `aws`/`civo`: `make argo-up`/`make argo-down`
-  (scripts) install/remove Argo CD and the root Application — no
-  Terraform involved (ADR 0012, spec 004 Requirement 1). `aws`
-  additionally requires the disposable EKS cluster to exist first
-  (`make cluster-up`); `civo` requires the disposable Civo k3s cluster
-  to exist first (`PROVIDER=civo make cluster-up`, spec CIVO-030,
-  ADR 0027). `local` entry points are `make minikube-up` and
-  `make kind-up` (spec 022, not yet implemented); there is no unified
-  `make local-up` wrapper.
-- **Persistence.** `aws` and `civo`: Postgres data is
-  Persistent-lifecycle, surviving `make down` (§6, spec 005), through
-  continuous physical backups to a per-project S3 bucket written by the
-  CloudNativePG barman-cloud plugin (ADR 0032 for Civo, ADR 0033 for AWS,
-  which supersedes ADR 0013's `VolumeSnapshot` mechanism). Only the
-  identity differs: EKS Pod Identity on `aws`, IAM Roles Anywhere on
-  `civo`. Each bring-up recovers from the previous generation named in
-  SSM. Point-in-time recovery is available on both targets. Teardown never blocks on a backup result and
-  never asks for a confirmation: WAL archiving has already made every
-  committed row durable, so the pre-teardown base backup is best-effort —
-  it warns loudly on failure and the teardown proceeds. The Civo
-  network and reserved IP are Persistent-lifecycle (ADR 0027). `local`: fully throwaway — no
-  persistent-lifecycle class, default local StorageClass with `Delete`
-  reclaim semantics, no destroy/recreate persistence proof.
-- **Public edge.** `aws`: Route53 → NLB → Envoy (§11–12); ExternalDNS
-  (spec 012) publishes the Route 53 records, AWS Load Balancer Controller
-  (spec 011) provisions the NLB. `civo`: Route 53 (a separate
-  `civo.<root-domain>` delegation, ADR 0027) → Civo load balancer (a
-  plain TCP forwarder, no TLS) → Envoy (spec CIVO-060). `local`: no
-  NLB/Route53/ACM/ExternalDNS; access is via `kubectl port-forward`
-  directly to Envoy Gateway's Service.
-- **Routing.** `aws`/`civo`: Gateway API `HTTPRoute`s match by hostname
-  (`api.lab.<root-domain>` / `api.civo.<root-domain>`) — unchanged
-  between the two. `local`: routes match by path (`/api`, `/grafana`,
-  `/argo`), since `kubectl port-forward` to `localhost` can't present a
-  matching Host header. This is a permanent, accepted divergence.
-- **TLS.** `aws`: ACM certificate, terminated at the NLB's TLS listener
-  (§12) — Envoy never holds a certificate. `civo`: no ACM/NLB equivalent;
-  TLS terminates at Envoy Gateway itself via cert-manager and Let's
-  Encrypt DNS-01, with the Secret persisted across down/up as an SSM
-  `SecureString` (ADR 0028). `local`: plain HTTP, no TLS anywhere in the
-  request path.
-- **Secrets.** `aws`: SSM Parameter Store (ADR 0023) reached via EKS Pod
-  Identity (spec 013). `civo`: the same SSM Parameter Store, reached
-  instead via IAM Roles Anywhere and a per-pod credential-helper sidecar
-  (ADR 0029, spec CIVO-090) — no EKS Pod Identity on Civo. `local`:
-  placeholder credentials loaded directly into Kubernetes `Secret`
-  objects by default, with an opt-in path to decrypt real values from
-  `secrets/*.enc` via AWS KMS instead (spec 022) — the local path
-  touches neither SSM nor Pod Identity nor Roles Anywhere.
-- **Sync source.** `aws`/`civo`: the root Application syncs from the
-  GitHub repo — unchanged between the two. `local`: the root Application
-  syncs from the local working directory on disk, so `gitops/` edits
-  reconcile without a commit/push.
+| Divergence | `aws` | `local` | `civo` | `hetzner` |
+|---|---|---|---|---|
+| **Install path** | `make argo-up`/`make argo-down` (scripts) install and remove Argo CD and the root Application — no Terraform involved (ADR 0012, spec 004 Requirement 1). Requires the disposable EKS cluster to exist first (`make cluster-up`). | `make minikube-up` and `make kind-up` (spec 022, not yet implemented); there is no unified `make local-up` wrapper. | Same scripts as `aws`. Requires the disposable Civo k3s cluster to exist first (`PROVIDER=civo make cluster-up`, spec CIVO-030, ADR 0027). | Same scripts as `aws`, with one addition: `argo-up` helm-installs the hcloud cloud controller manager *before* Argo CD and waits for the uninitialized taint to clear, because cluster DNS is unavailable until it runs. That release joins Argo CD in the untracked bootstrap class. Requires the disposable cluster to exist first, which `cluster-up` creates with kubeadm rather than asking a provider API (ADR 0036, specs HETZ-030/035/045). |
+| **Persistence** | Postgres data is Persistent-lifecycle, surviving `make down` (§6, spec 005), through continuous physical backups to a per-project S3 bucket written by the CloudNativePG barman-cloud plugin (ADR 0033, superseding ADR 0013's `VolumeSnapshot` mechanism). Identity is EKS Pod Identity. Each bring-up recovers from the previous generation named in SSM; point-in-time recovery is available. Teardown never blocks on a backup result and never asks for confirmation: WAL archiving has already made every committed row durable, so the pre-teardown base backup is best-effort — it warns loudly on failure and the teardown proceeds. | Fully throwaway — no persistent-lifecycle class, default local StorageClass with `Delete` reclaim semantics, no destroy/recreate persistence proof. | The same barman-cloud mechanism and the same best-effort teardown (ADR 0032). Only the identity differs: IAM Roles Anywhere rather than EKS Pod Identity. The Civo network and reserved IP are Persistent-lifecycle (ADR 0027). | The same barman-cloud mechanism and the same Roles Anywhere identity as `civo`. Hetzner volumes support neither snapshots nor cloning and Hetzner takes no backups of them, so the object store is the only persistence mechanism. The Hetzner network, its subnet and the SSH key are Persistent-lifecycle; there is no reserved IP (ADR 0036). |
+| **Public edge** | Route 53 → NLB → Envoy (§11–12); ExternalDNS (spec 012) publishes the Route 53 records, AWS Load Balancer Controller (spec 011) provisions the NLB. | No NLB/Route 53/ACM/ExternalDNS; access is via `kubectl port-forward` directly to Envoy Gateway's Service. | Route 53 (a separate `civo.<root-domain>` delegation, ADR 0027) → Civo load balancer (a plain TCP forwarder, no TLS) → Envoy (spec CIVO-060). | Route 53 (a third delegation, `hz.<root-domain>`) → hcloud load balancer (plain TCP, no TLS, and no firewall can be attached to it) → Envoy (spec HETZ-060). The load balancer is created and deleted by the cloud controller manager with the Service, and takes a new address each time. |
+| **Routing** | Gateway API `HTTPRoute`s match by hostname (`api.lab.<root-domain>`). | Routes match by path (`/api`, `/grafana`, `/argo`), since `kubectl port-forward` to `localhost` can't present a matching Host header. This is a permanent, accepted divergence. | Hostname matching, unchanged from `aws` (`api.civo.<root-domain>`). | Hostname matching, unchanged from `aws` (`api.hz.<root-domain>`). |
+| **TLS** | ACM certificate, terminated at the NLB's TLS listener (§12) — Envoy never holds a certificate. | Plain HTTP, no TLS anywhere in the request path. | No ACM/NLB equivalent; TLS terminates at Envoy Gateway itself via cert-manager and Let's Encrypt DNS-01, with the Secret persisted across down/up as an SSM `SecureString` (ADR 0028). | No ACM/NLB equivalent; the same cert-manager wildcard DNS-01 design as `civo`, with the same Secret persistence. HTTP-01 is never used on this target (spec HETZ-070). |
+| **Secrets** | SSM Parameter Store (ADR 0023) reached via EKS Pod Identity (spec 013). | Placeholder credentials loaded directly into Kubernetes `Secret` objects by default, with an opt-in path to decrypt real values from `secrets/*.enc` via AWS KMS instead (spec 022) — the local path touches neither SSM nor Pod Identity nor Roles Anywhere. | The same SSM Parameter Store, reached instead via IAM Roles Anywhere and a per-pod credential-helper sidecar (ADR 0029, spec CIVO-090) — no EKS Pod Identity on Civo. | The same SSM Parameter Store and the same Roles Anywhere sidecar chain as `civo` (spec HETZ-085). One addition with no equivalent on the other targets: a dedicated in-cluster Hetzner API token, distinct from the operator's, in `kube-system/cloud-operator-secret`, because the cloud controller manager and the CSI driver read it (ADR 0030 as amended, ADR 0036). |
+| **Sync source** | The root Application syncs from the GitHub repo. | The root Application syncs from the local working directory on disk, so `gitops/` edits reconcile without a commit/push. | GitHub repo, unchanged from `aws`. | GitHub repo, unchanged from `aws`. |
 
 The `local` target sits outside the State/Bootstrap/Persistent/Disposable
 lifecycle model (§6) entirely — it is not a fifth class, it simply isn't
-governed by that taxonomy (constitution §18). The `civo` target's
-resources are classified exactly like AWS's, under the same taxonomy
-(constitution §20, ADR 0027) — Civo is not exempt from §6. A successful
-`local` or `civo` run is never a substitute for the `aws`-target full
-lifecycle acceptance test (§38) or constitution §12's Definition of Done;
-each is its own inner dev loop or second-provider validation, not a
-smaller version of the real thing.
+governed by that taxonomy (constitution §18). The `civo` and `hetzner`
+targets' resources are classified exactly like AWS's, under the same
+taxonomy (constitution §20, ADR 0027, ADR 0036) — neither is exempt from
+§6, and that includes Hetzner's platform-owned control plane, which is
+Disposable. A successful `local`, `civo` or `hetzner` run is never a
+substitute for the `aws`-target full lifecycle acceptance test (§38) or
+constitution §12's Definition of Done; each is its own inner dev loop or
+additional-provider validation, not a smaller version of the real thing.
 
 ---
 

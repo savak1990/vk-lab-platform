@@ -15,6 +15,16 @@
 > here — the shared role, `eks-access-identity`, and the destroy guards —
 > stands.
 
+> **Note (2026-09-20):** `eks-access-identity` exists because EKS grants
+> Kubernetes access through an AWS identity. No non-EKS target works that
+> way, and the Hetzner target has no cluster API to ask at all. There the
+> administrative kubeconfig is the control plane's own `admin.conf`, fetched
+> over SSH with a KMS-encrypted key and rewritten to the node's public
+> address (see
+> [ADR 0036](0036-hetzner-kubeadm-third-execution-target.md)). The identity
+> and the destroy guards this decision establishes are unchanged and still
+> binding for the AWS target.
+
 ## Status
 
 Accepted

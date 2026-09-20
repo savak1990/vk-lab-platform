@@ -15,6 +15,10 @@ only the expensive compute path: EKS control plane, NLB, EC2 nodes, EBS.
 
 Civo is a Kubernetes target, not a migration off AWS services.
 
+Hetzner Cloud extends the same model as a third target (`PROVIDER=hetzner`),
+differing in one respect: it sells no managed Kubernetes, so the platform
+bootstraps the control plane itself with kubeadm (ADR 0036).
+
 ## 2. Fixed constraints
 
 | Constraint | Value | Decided |
@@ -36,13 +40,13 @@ Civo is a Kubernetes target, not a migration off AWS services.
 
 ## 3. Stage model per provider
 
-| Stage | `make` targets | AWS (`PROVIDER=aws`, default) | Civo (`PROVIDER=civo`) |
-|---|---|---|---|
-| Account (shared, once per AWS account, free) | `account-up/down` | KMS key, GitHub OIDC, `lab-role`, `eks-access-identity`, `root-domain` | Unchanged. `lab-role` gains scoped Roles Anywhere and IAM permissions. Civo has no account-level Terraform object; the API key is a manual one-time step |
-| Bootstrap (per project, cheap, rarely destroyed) | `bootstrap-up/down` | Route 53 `lab.<root-domain>` zone, ACM certificate | Route 53 `civo.<root-domain>` zone (ACM unit excluded), plus `bootstrap/rolesanywhere`: trust anchor from the committed CA cert, profile, one IAM role per consumer |
-| Persistent (data layer, survives `down`) | VPC, SSM secrets, S3 backup bucket | SSM secrets and the S3 backup bucket (VPC unit excluded), plus `persistent-civo`: Civo network (free) and reserved IP (stable LB address). See §4.3 |
-| Cluster (disposable) | `cluster-up/down` | EKS, system node group, Pod Identity roles, Karpenter IAM | `cluster-civo`: cluster firewall (6443) and LB firewall (80/443), k3s cluster with one pool of three Medium nodes, default Traefik removed (Civo shipped no metrics-server on 2026-09-17, so the platform installs its own), kubeconfig never stored in state |
-| Argo (reconcile) | `argo-up/down` | Argo CD via script, root Application with `target=aws` | Same script, Civo branch: kubeconfig from the Civo CLI, CA key decrypted into the cert-manager issuer Secret, `target=civo` |
+| Stage | `make` targets | AWS (`PROVIDER=aws`, default) | Civo (`PROVIDER=civo`) | Hetzner (`PROVIDER=hetzner`) |
+|---|---|---|---|---|
+| Account (shared, once per AWS account, free) | `account-up/down` | KMS key, GitHub OIDC, `lab-role`, `eks-access-identity`, `root-domain` | Unchanged. `lab-role` gains scoped Roles Anywhere and IAM permissions. Civo has no account-level Terraform object; the API key is a manual one-time step | Unchanged — the account layer is shared with both other targets |
+| Bootstrap (per project, cheap, rarely destroyed) | `bootstrap-up/down` | Route 53 `lab.<root-domain>` zone, ACM certificate | Route 53 `civo.<root-domain>` zone (ACM unit excluded), plus `bootstrap/rolesanywhere`: trust anchor from the committed CA cert, profile, one IAM role per consumer | State bucket `vk-hetzner-lab-tf-state`, Route 53 `hz.<root-domain>` zone (ACM unit excluded), plus `bootstrap/rolesanywhere` for the Hetzner project |
+| Persistent (data layer, survives `down`) | VPC, SSM secrets, S3 backup bucket | SSM secrets and the S3 backup bucket (VPC unit excluded), plus `persistent-civo`: Civo network (free) and reserved IP (stable LB address). See §4.3 |  | SSM secrets and the S3 backup bucket (VPC unit excluded), plus `persistent-hetzner`: hcloud network and subnet (`eu-central`, free) and the hcloud SSH key |
+| Cluster (disposable) | `cluster-up/down` | EKS, system node group, Pod Identity roles, Karpenter IAM | `cluster-civo`: cluster firewall (6443) and LB firewall (80/443), k3s cluster with one pool of three Medium nodes, default Traefik removed (Civo shipped no metrics-server on 2026-09-17, so the platform installs its own), kubeconfig never stored in state | `cluster-hetzner`: hcloud firewall and `cx33` servers. The control plane's cloud-init renders the kubeadm config and runs `kubeadm init` and the Cilium install at first boot; the workers then join over SSH and the admin kubeconfig is fetched, with a wait for every node Ready |
+| Argo (reconcile) | `argo-up/down` | Argo CD via script, root Application with `target=aws` | Same script, Civo branch: kubeconfig from the Civo CLI, CA key decrypted into the cert-manager issuer Secret, `target=civo` | Same script, Hetzner branch: the `kube-system/cloud-operator-secret` Secret first, then the hcloud cloud controller manager by Helm (waiting for the uninitialized taint to clear), then Argo CD and the root Application with `target=hetzner` |
 
 Composite targets are unchanged: `up`, `down`, `platform-up/down`,
 `full-up/down`. `PROVIDER` is an operator input like `PROJECT_NAME`. Because
@@ -154,25 +158,25 @@ state. No existing state key moves.
 
 What the shared GitOps tree needs from any provider, and where it comes from.
 
-| Capability | Mandatory | AWS source | Civo source | Reaches Argo/Helm as |
-|---|---|---|---|---|
-| Kubernetes API access | yes | `aws eks update-kubeconfig` via `eks-access-identity` | `civo kubernetes config --save` using the decrypted token | kubeconfig context in scripts only |
-| Environment/domain | yes | SSM `/<project>/bootstrap/route53/fqdn` | same | `envoyGateway.fqdn` |
-| Dynamic RWO storage | yes | `ebs-delete` StorageClass | `civo-volume` (or `civo-retain`) | `storage.className` |
-| Ingress endpoint | yes | NLB via ALB controller annotations | Civo LB via CCM annotations, reserved IP | `envoyGateway.reservedIp`, `envoyGateway.firewallId` |
-| DNS/TLS | yes | ExternalDNS + ACM at NLB | ExternalDNS + cert-manager at Envoy | `externalDns.txtOwnerId` (cert-manager is gated by `target`, not a values flag) |
-| AWS identity for controllers | yes | EKS Pod Identity | Roles Anywhere sidecar | `awsIdentity.mode = podIdentity \| rolesAnywhere` |
-| Secrets | yes | ESO → SSM | same, via sidecar | unchanged manifests |
-| Schedulable capacity | yes | Karpenter NodePools | fixed pool + autoscaler | `capacity.spotAvoidance`, `postgres.nodeSelector` |
-| GitOps | yes | Argo CD by script | same | `target` |
-| PostgreSQL | yes | CNPG + EBS snapshots today, barman-cloud plugin after CIVO-185 | CNPG + barman-cloud plugin to S3 | `postgres.*` |
-| Observability | optional | full stack | full stack, k3s scrape targets | `observability.*` |
-| Policies | optional | none | none | — |
+| Capability | Mandatory | AWS source | Civo source | Hetzner source | Reaches Argo/Helm as |
+|---|---|---|---|---|---|
+| Kubernetes API access | yes | `aws eks update-kubeconfig` via `eks-access-identity` | `civo kubernetes config --save` using the decrypted token | `/etc/kubernetes/admin.conf` fetched over SSH with the KMS-encrypted key, server rewritten to the public IP; no provider API | kubeconfig context in scripts only |
+| Environment/domain | yes | SSM `/<project>/bootstrap/route53/fqdn` | same | same, from the `hz.<root-domain>` zone | `envoyGateway.fqdn` |
+| Dynamic RWO storage | yes | `ebs-delete` StorageClass | `civo-volume` (or `civo-retain`) | hcloud CSI driver, Argo-installed; StorageClass `hcloud-volumes` (reclaim `Delete`, 10 GB minimum, no snapshot or clone) | `storage.className` |
+| Ingress endpoint | yes | NLB via ALB controller annotations | Civo LB via CCM annotations, reserved IP | hcloud load balancer created by the CCM from `load-balancer.hetzner.cloud/*` annotations on the Envoy Service; the address is dynamic, new on every `make up`, and no firewall attaches to it | `envoyGateway.reservedIp`, `envoyGateway.firewallId` |
+| DNS/TLS | yes | ExternalDNS + ACM at NLB | ExternalDNS + cert-manager at Envoy | same, wildcard through DNS-01 from the start; HTTP-01 never used, and the DNS wait keys off the discovered LB address | `externalDns.txtOwnerId` (cert-manager is gated by `target`, not a values flag) |
+| AWS identity for controllers | yes | EKS Pod Identity | Roles Anywhere sidecar | IAM Roles Anywhere, the same chain and sidecar, with the trust anchor and certificate names parametrized per provider | `awsIdentity.mode = podIdentity \| rolesAnywhere` |
+| Secrets | yes | ESO → SSM | same, via sidecar | same, via sidecar; the in-cluster Hetzner token is separate, in `kube-system/cloud-operator-secret` | unchanged manifests |
+| Schedulable capacity | yes | Karpenter NodePools | fixed pool + autoscaler | fixed 1 control plane + 1 worker `cx33` (control plane schedulable, 1.5 GiB reserved by the kubelet) plus the cluster autoscaler adding 0–2 `cx33` workers, ceiling 4 nodes | `capacity.spotAvoidance`, `postgres.nodeSelector` |
+| GitOps | yes | Argo CD by script | same | same script, after the helm-installed CCM | `target` |
+| PostgreSQL | yes | CNPG + EBS snapshots today, barman-cloud plugin after CIVO-185 | CNPG + barman-cloud plugin to S3 | CNPG on `hcloud-volumes` + the same barman-cloud plugin to S3 | `postgres.*` |
+| Observability | optional | full stack | full stack, k3s scrape targets | full stack, plus control-plane scrapes (kubeadm `extraArgs` bind scheduler, controller-manager and etcd metrics to the private IP) and an Argo-installed metrics-server | `observability.*` |
+| Policies | optional | none | none | none | — |
 
 Values are set by `scripts/argo-up.sh` through the root Application's Helm
 parameters, exactly as today. Provider-specific objects (EC2NodeClass,
-EBS settings, LB annotations) stay inside the `aws` or `civo` template
-subtrees; shared components read only the contract values.
+EBS settings, LB annotations) stay inside the `aws`, `civo` or `hetzner`
+template subtrees; shared components read only the contract values.
 
 ## 6. Decision log
 
@@ -194,6 +198,14 @@ subtrees; shared components read only the contract values.
 | 2026-09-06 | cert-manager installed on both targets behind a toggle, off on AWS | Shared chart, AWS unchanged | Civo-only install |
 | 2026-09-06 | Civo is its own project: `vk-civo-lab`, subdomain `civo` | Separate state bucket, zone, SSM prefix, secrets; both clusters can run at once; account layer shared; no cross-provider guard logic | one project with provider-suffixed state keys |
 | 2026-09-17 | Observability shared by both targets; civo installs its own metrics-server with kubelet TLS verification on | Civo ships no metrics-server; k3s kubelet serving certs verify against the cluster CA (0 x509 errors, CIVO-160) | `--kubelet-insecure-tls` on civo; relying on a provider metrics-server |
+| 2026-09-11 | Hetzner location decided: `nbg1`, network zone `eu-central`, declared once per layer and never derived | Nothing material separates the candidates; all three sit in `eu-central` | `fsn1`; `hel1` |
+| 2026-09-11 | Hetzner kubeconfig retrieval decided: fetch `/etc/kubernetes/admin.conf` over SSH with the KMS-encrypted key | The same key gives node access for debugging a control plane the platform owns | minting the kubeconfig locally from a pre-generated kubeadm CA — it puts the CA bundle in `user_data`, which any `hostNetwork` pod reads from the metadata service, and needs a per-cluster key stored somewhere |
+| 2026-09-11 | Hetzner identity chain naming decided: parametrize the Roles Anywhere names by provider, Civo strings byte-identical | The trust anchor is a per-project bootstrap unit, so one anchor per provider is already the shape | reusing the `civo` names verbatim; a provider-neutral rename now, which would touch the live Civo trust anchor and the committed Civo secrets |
+| 2026-09-11 | CCM before Argo decided: `argo-up` helm-installs the hcloud cloud controller manager before Argo CD, the CSI driver stays an Argo Application | kubeadm's CoreDNS tolerates only `CriticalAddonsOnly` and the control-plane taint, so it stays Pending while nodes carry `node.cloudprovider.kubernetes.io/uninitialized`; Cilium tolerates every taint and the CCM chart tolerates `uninitialized` and `not-ready` on `hostNetwork`, so `kubeadm init` → Cilium → CCM → CoreDNS resolves with no hook. Cost: one more helm release outside Argo, upgraded through `argo-up` like Argo CD's own | Argo CD installing CCM and CSI as wave −3 Applications (Argo CD itself needs cluster DNS); cloud-init applying the CCM as a static manifest, which would make Terraform own a Kubernetes object |
+| 2026-09-19 | Hetzner node shape decided: 1 control plane + 1 worker `cx33` fixed, plus 0–2 autoscaled `cx33`, ceiling 4 nodes | Same 4 vCPU / 8 GB per node as CAX21 at 9.99 EUR net each — 19.98 EUR fixed, 39.96 EUR at the ceiling; real `cx33` creates succeeded in nbg1, fsn1 and hel1 on 2026-09-19 while every CAX type failed everywhere with `unsupported location for server type`. x86 drops the arm64 work out of M1 and pulls the autoscaler (HETZ-170) into it; CX is stock-limited, so the fallback is CX → CPX | 3 × CAX21 ARM (the 2026-09-11 choice, superseded); CAX11 + 2 × CAX21; 3 × CX33; 3 × CPX22, kept as the stock fallback only |
+| 2026-09-19 | Hetzner control-plane topology decided: one control plane with stacked etcd plus one worker | `controlPlaneEndpoint` is the Terraform-assigned private address `10.0.1.10:6443`; it is immutable after init, but the cluster is disposable, so a later HA spec changes it on the next `make up`. `control_plane_count > 1` is rejected until that spec exists | three stacked-etcd control planes: they need a stable endpoint (DNS or LB) and 3 × `cx33` before any worker, and the CKA HA topic is practised later |
+| 2026-09-20 | Hetzner bootstrap driver decided: the control plane's cloud-init runs `kubeadm init` and the Cilium install at first boot; the script joins the workers, fetches the kubeconfig and waits for Ready | No secret ever enters `user_data` — kubeadm generates the CA and the join token on the control plane and they stay there; no relay service; Terraform still returns at "server is running", and an init failure is read with `cloud-init status --long` and `journalctl -u kubelet`, which HETZ-035 prints on timeout | a script driving init, Cilium and join over SSH (five round trips, init output in the operator's terminal); a Terraform-generated CA and token in `user_data` (private key in state and in instance metadata); the control plane serving the join command on the private network (a moving part that fails silently) |
+| 2026-09-20 | Schedulable control plane decided: keep it schedulable with kubelet reservations, a PriorityClass and soft placement | `systemReserved`/`kubeReserved`/`evictionHard` hold 1.5 GiB for etcd and the API server, set once in the `KubeletConfiguration` passed to `kubeadm init` and inherited by every joined node; a `platform-critical` PriorityClass makes the scheduler preempt and the kubelet evict lower-priority pods first; preferred affinity to `role=worker` on CNPG, Prometheus, Loki and Tempo keeps control-plane memory for control-plane and edge pods; no PodDisruptionBudget in M1, because a one-replica PDB blocks the drain HETZ-185 needs | tainting the control plane and adding a worker for platform pods, which doubles the fixed pool for no gain on a single-tenant lab; Guaranteed QoS on platform pods, whose limits OOM-kill Prometheus and Postgres on spikes; PodDisruptionBudgets, right only once something runs two replicas on two nodes |
 
 ## 7. Open questions
 
