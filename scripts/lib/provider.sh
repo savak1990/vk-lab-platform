@@ -405,8 +405,10 @@ civo_import_tls_secret() {
   # so read the leaf's own expiry. Inside the default renewal window (last 30
   # days) an import only triggers an immediate renewal order anyway.
   local not_after not_after_epoch now_epoch
+  # Guarded: an unreadable stored cert must fall through to a fresh order,
+  # not end the whole bring-up silently under pipefail.
   not_after="$(echo "$manifest" | yq '.data["tls.crt"] // ""' | base64 -d 2>/dev/null \
-    | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2)"
+    | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2 || true)"
   if [ -n "$not_after" ]; then
     not_after_epoch="$(date -u -d "$not_after" +%s 2>/dev/null \
       || date -u -jf "%b %e %H:%M:%S %Y %Z" "$not_after" +%s 2>/dev/null || echo 0)"

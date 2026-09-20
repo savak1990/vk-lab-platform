@@ -81,7 +81,7 @@ release_orphaned_hooks() {
           echo "ARGO-DOWN: releasing orphaned Argo hook finalizer on ${hook_kind}/$hook_name (namespace $hook_ns)..."
           kubectl patch "$hook_kind" "$hook_name" -n "$hook_ns" --type=merge \
             -p '{"metadata":{"finalizers":[]}}' >/dev/null 2>&1 || true
-        done
+        done || true
   done
 }
 release_orphaned_hooks

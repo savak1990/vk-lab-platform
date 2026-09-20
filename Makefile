@@ -285,6 +285,12 @@ secret-decrypt:
 secrets-check:
 	@./tests/scripts/secret-scope-test.sh
 
+## Runs the cluster-free test of argo-up's root watch loop (API blips,
+## failed syncs, heartbeat, timeout) against a fake kubectl.
+## Usage: make argo-watch-check
+argo-watch-check:
+	@./tests/scripts/argo-watch-test.sh
+
 ## Generates throwaway secrets/$(PROJECT_NAME)/ files for a CI/test
 ## environment: root-domain from ROOT_DOMAIN and fixed, publicly-known
 ## passwords ("test"). Never use this for the personal lab - persistent-up

@@ -26,12 +26,17 @@ A transient API-server outage must not be able to wedge the platform
 permanently, and a teardown must not be able to deadlock on a hook that no
 longer exists. Both happened on one live run on 2026-09-20.
 
-The root property behind both: **Argo CD has no sync-operation timeout.**
-`terminate` is absent from the Application CRD in v3.5.1 (chart 10.4.0, what
-`argo-up.sh` pins), and upstream issue argo-cd#6055 closed without shipping
-one. An operation that waits on something which can never resolve waits
-forever, and `syncPolicy.retry` never fires, because retry only applies once an
-operation ends.
+The root property behind both: **this platform runs Argo CD with no
+sync-operation timeout.** Argo CD does ship one — the controller-wide
+`controller.sync.timeout.seconds` in `argocd-cmd-params-cm`, added in v2.14 by
+PR argo-cd#20816 (which closed argo-cd#6055) and present in v3.5.1
+(`controller/appcontroller.go`, "Terminating in-progress operation due to
+timeout") — but it defaults to `0`, off, and `argo-up.sh` does not set it. The
+per-Application `syncPolicy.terminate` is still only a proposal and is absent
+from the CRD. So, as deployed, an operation that waits on something which can
+never resolve waits forever, and `syncPolicy.retry` never fires, because retry
+only applies once an operation ends. An earlier revision of this spec said no
+timeout exists at all; that was wrong, and §12 records the follow-up.
 
 This matters now because CIVO-170 made node-pool resizes routine. The cluster
 is created at the autoscaler's floor and the platform does not fit there, so
@@ -46,11 +51,16 @@ In scope:
 - `argo-down.sh`: hook release before operation termination, clearing stale
   operation state, and a guarded release of a stuck Application finalizer.
 - Retrying the API-reachability probe that both teardown scripts refuse on.
+- `argo-up.sh`'s root watch: surviving an API blip instead of dying silently,
+  and logging enough on every exit path to diagnose the next failure from the
+  CI log alone.
 - A decision on the unread `api_endpoint` SSM parameter.
 
-Not in scope: an Argo CD upgrade to obtain a sync timeout (none exists);
-a `PersistentVolumeClaim` health-check override (see §4); fixing Civo's control
-plane.
+Not in scope: enabling `controller.sync.timeout.seconds` — it exists, but a
+timed-out operation ends `Failed`, and a child Application with no
+`syncPolicy.retry` is then wedged for that revision, so every child needs a
+retry budget first (§12); a `PersistentVolumeClaim` health-check override (see
+§4); fixing Civo's control plane.
 
 ## 3. Current state / evidence
 
@@ -89,6 +99,25 @@ The hook policy comes from upstream: kube-prometheus-stack's admission-webhook
 patch hooks carry `hook-delete-policy: before-hook-creation,hook-succeeded` —
 the policy `CLAUDE.md` says never to use, in a chart this repository does not
 control.
+
+**Failure three — CI bring-up died silently.** PR #35's first lifecycle run
+(35499187606, `lifecycle-civo / up`, 2026-09-20) printed its last status at
+08:39:11, nothing for 2m28s, then `make: *** [Makefile:208: argo-up] Error 1`
+at 08:41:39 — about 6 minutes into a 45-minute watch, with neither of the
+script's two failure messages. The teardown job that followed started at
+08:42:03 and its first API probe only succeeded at 08:44:04, so the Civo API
+server was unreachable across the moment `up` died. The only exit path that
+prints nothing is `set -e` on an unguarded command substitution:
+`pending="$(pending_resources)"` piped `kubectl ... 2>/dev/null` into `jq`
+under `pipefail`, so a kubectl failure became a silent exit 1. The line
+directly above it was guarded with `|| true`; this one was not. It predates
+CIVO-170 (2026-08-24) and was reached because this branch made an API blip
+during the watch likely for the first time. The same unguarded shape existed
+at three other points: `print_app_status` in the same loop, the stored-TLS
+expiry pipeline in `civo_import_tls_secret` (Civo-only, runs before Argo CD is
+installed), and the new hook sweep in `argo-down.sh`. The CI cluster held
+exactly 2 nodes at teardown: the autoscaler never resized the pool on that
+run, so the outage happened with no resize in flight.
 
 **No prior occurrence.** A sweep of every Civo spec's execution evidence found
 no earlier instance of the Kubernetes API server being unreachable in this
@@ -150,6 +179,27 @@ precedent — and note that core resources take no `<group>_` prefix in that key
    `status.resources`. The empty-resources test is the safety — never drop that
    finalizer while Argo still believes it owns live objects.
 
+**The root watch survives a blip and says so.** The watch loop moves out of
+`argo-up.sh` into `scripts/lib/argo-watch.sh` as `argo_watch_root`, which
+reads root once per poll and treats a failed read as an API blip: it prints
+`API unreachable ... keeping the watch alive` once, keeps the last known state
+so a blip cannot flip the change detector, and prints `API reachable again
+after Ns` on recovery. The 2700s ceiling is the only limit on an outage. Every
+line carries `[+Ns]` elapsed time, and a heartbeat (default 60s,
+`ARGO_UP_HEARTBEAT_SECONDS`) prints while nothing changes, so a silent log can
+only mean the script itself is gone. State changes also print root's
+`status.conditions` (where Argo puts `SyncError` and `ComparisonError`), and
+every exit path — success, failed sync, ceiling — prints the node inventory
+and, on Civo, the `cluster-autoscaler-status` ConfigMap, so each CI run
+records whether the pool scaled. A failed sync or the ceiling additionally
+dumps Pending pods, the last `FailedScheduling` events, root's `SyncFailed`
+resources with their messages, and the autoscaler log tail. All of it is
+covered by `tests/scripts/argo-watch-test.sh` against a fake `kubectl`
+(`make argo-watch-check`, run by CI's validation job), including the blip case
+that CI hit. The three other unguarded pipelines are guarded with `|| true`,
+which in each case falls through to the behaviour already written for
+"nothing found".
+
 **The reachability probe retries.** `argo-down.sh` and `cluster-down.sh` both
 refuse to proceed when `kubectl cluster-info` fails, to avoid orphaning nodes
 and load balancers. Each ran that probe once with a 5s timeout. A blip there
@@ -161,7 +211,10 @@ transient error, not die on one.
 
 ## 5. Files/components affected
 
-`scripts/argo-down.sh`, `scripts/cluster-down.sh`, `scripts/lib/provider.sh`,
+`scripts/argo-up.sh`, `scripts/lib/argo-watch.sh` (new),
+`tests/scripts/argo-watch-test.sh` (new), `Makefile`,
+`.github/workflows/lifecycle-test.yml`, `scripts/argo-down.sh`,
+`scripts/cluster-down.sh`, `scripts/lib/provider.sh`,
 `gitops/templates/platform/shared/observability/kube-prometheus-stack.yaml`,
 `tests/golden/gitops-aws/`.
 
@@ -172,6 +225,8 @@ transient error, not die on one.
 3. Reorder `argo-down.sh` per §4 and add the two escape hatches.
 4. Verify on a live cluster: a full `up`, then a `down` started while a sync is
    still in flight — the case CI reaches whenever `up` fails.
+5. Move the root watch into `scripts/lib/argo-watch.sh`, test-first against a
+   fake `kubectl`; guard the three other unguarded pipelines.
 
 ## 7. Dependencies and blockers
 
@@ -187,6 +242,10 @@ CIVO-170 (the autoscaler is what makes resizes routine).
 - No Application needs a hand-edited finalizer.
 - `make down` still refuses when the API is genuinely gone, rather than
   proceeding blind — the retry must not turn the guard off.
+- An API blip during the root watch is logged and survived, never a silent
+  exit; `make argo-watch-check` proves it without a cluster.
+- Every `argo-up` exit path prints the node inventory and the autoscaler
+  status, so a CI log alone shows whether the pool scaled.
 
 ## 9. Validation
 
@@ -209,11 +268,28 @@ then `kubectl patch application <app> -n argocd --type=merge -p
 
 ## 12. Risks and unresolved questions
 
-- **The cause of the API outage is unknown.** One occurrence, no baseline in
-  this project, and a node-pool resize is the leading suspect purely on timing.
-  Civo's own documentation claims a replicated control plane and says nothing
-  about disruption during scaling. None of the fixes here depend on the answer,
+- **The cause of the API outages is unknown.** Two occurrences on 2026-09-20,
+  no earlier baseline in this project. The first coincided with a node-pool
+  resize; the second (CI, §3 failure three) happened with the pool untouched at
+  2 nodes, which weakens the resize hypothesis to correlation. Civo's own
+  documentation claims a replicated control plane and says nothing about
+  disruption during scaling. None of the fixes here depend on the answer,
   which is the point of them.
+- **Follow-up: the sync timeout.** `controller.sync.timeout.seconds` (§1) is
+  the structural fix for failure one — a timed-out operation ends `Failed`, so
+  `syncPolicy.retry` fires and the `SyncFailed` resources get a fresh apply.
+  Enabling it is a separate change because it is controller-wide: every child
+  Application then needs its own `syncPolicy.retry` (today only `root` has one),
+  the value must exceed the slowest legitimate sync, and `retry.refresh: true`
+  should come with it so a retry follows a newer commit. The upstream note that
+  the timer fires on the next operation-queue pass, not at the deadline, is
+  fine for a bring-up ceiling of 45 minutes.
+- **Follow-up: Argo CD's own controller is evictable by the autoscaler.** Only
+  the autoscaler pod carries `safe-to-evict: "false"`; a scale-down can move
+  `argocd-application-controller` mid-operation, which is exactly the
+  stale-`Running` state this spec cleans up. The autoscaler only removes a node
+  whose pods fit elsewhere, so this is disruption, not a livelock. A
+  `controller.podAnnotations` entry in `argo-up.sh` closes it.
 - The escape hatches are written but not yet proven against a live wedged
   teardown; the jq selection logic is unit-tested against fixtures only.
 - The SSM parameter `/<project>/cluster-civo/k8s/api_endpoint` has no readers
@@ -252,3 +328,12 @@ then `kubectl patch application <app> -n argocd --type=merge -p
   this, not to the escape hatches. The lesson worth keeping: a clean
   `helm template` plus `kubeconform` proved the object graph was valid and
   said nothing about its deletion behaviour.
+- 2026-09-20 — **the `up` leg of the same run, diagnosed** (§3, failure
+  three): a pre-existing silent exit in the root watch, triggered by an API
+  outage that the following `down` job independently recorded. Not a deadlock,
+  not caused by the CIVO-170 or CIVO-172 changes, but made reachable by them.
+  Fixed by moving the watch into `scripts/lib/argo-watch.sh` with a blip
+  tolerance, heartbeat and diagnostics dump, proven by
+  `tests/scripts/argo-watch-test.sh` (the blip scenario failed before the
+  library existed and passes after). The same pass corrected this spec's claim
+  that Argo CD has no sync timeout (§1) and recorded the two follow-ups in §12.

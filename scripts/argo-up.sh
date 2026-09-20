@@ -9,6 +9,8 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$REPO_ROOT/scripts/lib/region.sh"
 source "$REPO_ROOT/scripts/lib/provider.sh"
+# shellcheck source=lib/argo-watch.sh
+source "$REPO_ROOT/scripts/lib/argo-watch.sh"
 
 # Keeps kubectl and helm on a repo-local kubeconfig: a lifecycle run must never
 # change the context the operator is working in.
@@ -479,83 +481,10 @@ else
   aws_install_root_application
 fi
 
-# Every child Application (cnpg-operator, karpenter, ...) with its own
-# sync/health, so a single stuck one is visible by name instead of only
-# root's aggregate rollup.
-print_app_status() {
-  kubectl get applications -n argocd -o json 2>/dev/null \
-    | jq -r '.items[] | "  \(.metadata.name): sync=\(.status.sync.status // "Unknown") health=\(.status.health.status // "Unknown")"'
-}
-
-# root's own directly-templated resources (Cluster, NodePools, ...)
-# not yet Healthy. Excludes kinds with no health concept at all (ServiceAccount,
-# Role, RoleBinding, ...) unless they're also not Synced - jsonpath's
-# @.health.status!="Healthy" matches a null health equally, which made every
-# such resource show as permanently "pending" regardless of actual state.
-pending_resources() {
-  kubectl get application root -n argocd -o json 2>/dev/null | jq -r '
-    [.status.resources[]?
-      | select((.health.status // "") != "Healthy")
-      | select((.health.status // "") != "" or .status != "Synced")
-      | "\(.kind)/\(.name)=\(.status)(\(.health.status // "n/a"))"]
-    | join(" ")'
-}
-
-# phase/startedAt/retryCount/message as one tab-separated line. Argo keeps
-# phase at "Running" for the whole syncPolicy.retry sequence, so a terminal
-# "Failed" here really means the retry budget is spent.
-operation_state() {
-  kubectl get application root -n argocd -o json 2>/dev/null | jq -r '
-    (.status.operationState // {})
-    | [.phase // "", .startedAt // "", .retryCount // 0,
-       (.message // "" | gsub("\n"; " "))]
-    | @tsv'
-}
-
 # Blocks until root is Synced/Healthy, so a 0 exit means the whole platform
-# (including Postgres) is really ready. Only prints when something changes,
-# to stay readable over a long recovery-from-backup bootstrap.
-# Same ceiling on both targets: root's retry budget alone is ~16 min worst
-# case (ADR 0025), so a shorter civo watch only reports false failures.
-WATCH_SECONDS="${ARGO_UP_WATCH_SECONDS:-2700}"
-POLL_INTERVAL="${ARGO_UP_POLL_INTERVAL:-5}"
-elapsed=0
-last_state=""
-overall=""
-while [ "$elapsed" -lt "$WATCH_SECONDS" ]; do
-  overall="$(kubectl get application root -n argocd \
-    -o jsonpath='{.status.sync.status}/{.status.health.status}' 2>/dev/null || true)"
-  pending="$(pending_resources)"
-  state="$overall|$pending"
-  if [ "$state" != "$last_state" ]; then
-    echo "ARGO-UP: root ${overall:-pending} - still reconciling: ${pending:-none}"
-    echo "ARGO-UP: applications:"
-    print_app_status
-    last_state="$state"
-  fi
-  [ "$overall" = "Synced/Healthy" ] && break
-
-  IFS=$'\t' read -r op_phase op_started op_retries op_message < <(operation_state) || true
-  if { [ "$op_phase" = "Failed" ] || [ "$op_phase" = "Error" ]; } \
-    && [ "$op_started" != "$PRIOR_OPERATION_STARTED_AT" ]; then
-    echo "ARGO-UP: root sync $op_phase after $op_retries retries - Argo will not re-run it for this revision." >&2
-    echo "ARGO-UP: $op_message" >&2
-    echo "ARGO-UP: still reconciling: ${pending:-none}" >&2
-    echo "ARGO-UP: applications:" >&2
-    print_app_status >&2
-    exit 1
-  fi
-
-  sleep "$POLL_INTERVAL"
-  elapsed=$((elapsed + POLL_INTERVAL))
-done
-
-if [ "$overall" != "Synced/Healthy" ]; then
-  echo "ARGO-UP: timed out after ${WATCH_SECONDS}s waiting for root to become Synced/Healthy - still reconciling: ${pending:-none}" >&2
-  echo "ARGO-UP: applications:" >&2
-  print_app_status >&2
-  exit 1
-fi
+# (including Postgres) is really ready. ARGO_UP_WATCH_SECONDS defaults to
+# 2700 on both targets: root's retry budget alone is ~16 min worst case.
+argo_watch_root || exit 1
 echo "ARGO-UP: root Synced/Healthy - waiting for external-dns to publish records."
 if [ "$PROVIDER" = civo ]; then
   civo_wait_for_lb_ip || exit 1

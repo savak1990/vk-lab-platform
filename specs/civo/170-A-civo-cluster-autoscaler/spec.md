@@ -81,12 +81,16 @@ parity, full right-sizing of the platform (CIVO-175), proof of scale-down
   surrounding comment documents.
   Because `ignore_changes` covers it, `node_count` sets only the node count the
   cluster is born with; the autoscaler owns it from then on. Creating at the
-  floor rather than at the ceiling is deliberate: the platform does not fit on
-  two nodes, so every bring-up — including every CI lifecycle run — exercises a
-  real scale-up. That the autoscaler still works is then checked continuously
-  against each change, instead of being assumed between rare manual tests. The
-  cost is that the scale event lands during `argo-up`; CIVO-172 removes the
-  failure mode that made that dangerous.
+  floor rather than at the ceiling is deliberate: if the platform's requests do
+  not fit on two nodes, every bring-up — including every CI lifecycle run —
+  exercises a real scale-up, so the autoscaler is checked continuously against
+  each change instead of being assumed between rare manual tests. Whether a
+  given run did scale is recorded, not assumed: `argo-up` prints the node
+  inventory and the `cluster-autoscaler-status` ConfigMap on every exit path.
+  The first CI run (§14) held at 2 nodes, so the committed requests are not yet
+  proven to force the third node — §6 step 4 remains open. The cost is that a
+  scale event lands during `argo-up`; CIVO-172 removes the failure mode that
+  made that dangerous.
 - Values: `capacity.autoscaler: {min: 2, max: 3, pool: workers}`, plumbed
   through `gitops/values.yaml`, `gitops/bootstrap/values.yaml`, the root
   Application's `helm.parameters` and `scripts/argo-up.sh`.
@@ -265,9 +269,10 @@ Remove the Application and restore `node_count` to an explicit value in
   Pending PVC as Progressing, so the operation stayed `Running` forever and
   never retried. `WaitForFirstConsumer` is not the cause — it is the latch that
   turns a transient blip into a permanent stall. CIVO-160 passed on identical
-  configuration three days earlier because no blip occurred. **The link to this
-  spec: a Civo pool resize restarts the managed control plane, so every scale
-  event can drop the API server mid-sync.** Upstream issue: argo-cd#12840, open
+  configuration three days earlier because no blip occurred. **The suspected
+  link to this spec: the outage coincided with a pool resize.** The CI run
+  below then saw an outage with no resize at all, so this is correlation, not a
+  demonstrated mechanism. Upstream issue: argo-cd#12840, open
   since 2023. Fix deferred to a separate piece of work; candidates are dropping
   Grafana's PVC (dashboards already come from ConfigMaps) or a
   `resource.customizations.health.PersistentVolumeClaim` Lua override — noting
@@ -286,3 +291,11 @@ Remove the Application and restore `node_count` to an explicit value in
   has written yet. Moving the claim to a `volumeClaimTemplate` was tried first
   and reverted because it leaked the volume on teardown — see CIVO-172 §4 and
   §14.
+- 2026-09-20 — **first CI lifecycle run (PR #35, run 35499187606):
+  inconclusive on scale-up.** `cluster-autoscaler` reached `Synced/Healthy` at
+  wave 0, but `argo-up` died 6 minutes into the watch on a pre-existing silent
+  exit during an API outage (CIVO-172 §3, failure three), before the
+  observability wave had settled. Terraform destroyed exactly 2 nodes, so no
+  scale-up happened on that run. The watch now prints the node inventory and
+  autoscaler status on every exit, so the next run records the answer either
+  way.
