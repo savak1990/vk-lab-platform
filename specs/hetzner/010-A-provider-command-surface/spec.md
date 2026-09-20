@@ -1,7 +1,7 @@
 ---
 id: "HETZ-010"
 title: "PROVIDER=hetzner operator input with Hetzner project defaults, token helper, and Make dispatch"
-status: "IN_PROGRESS"
+status: "IN_REVIEW"
 priority: "P1"
 milestone: "M0"
 type: "implementation"
@@ -116,9 +116,9 @@ One PR together with `specs/hetzner/`. A revert restores the previous Makefile a
 
 ## 13. Definition of done
 
-- [ ] Acceptance criteria met with recorded diffs
-- [ ] `shellcheck` clean
-- [ ] `secrets/README.md` updated with the manual project and token step
+- [x] Acceptance criteria met with recorded diffs
+- [ ] `shellcheck` clean — not run: not installed on the workstation and never run for the aws or civo arms; `bash -n` is clean (see §14)
+- [x] `secrets/README.md` updated with the manual project and token step
 - [ ] Change on `main`; index row updated; status `DONE` with date
 
 ## 14. Execution evidence and status history
@@ -136,3 +136,58 @@ One PR together with `specs/hetzner/`. A revert restores the previous Makefile a
   `hetzner`; every spec in this package that named the zone is updated in
   the same change. Decision: a pull request is the default delivery for
   every spec from now on (`specs/civo/README.md` step 6 updated).
+- 2026-09-20 — implemented and validated. Execution evidence (commands run,
+  no secrets):
+  - Byte-identity gate: `make -n` for the 16 lifecycle targets captured
+    before the first code edit in five forms (`PROVIDER` unset, `PROVIDER=aws`
+    env, `make PROVIDER=aws`, `PROVIDER=civo` env, `make PROVIDER=civo`; 80
+    files, no absolute path in any) and `diff -r`'d after the Makefile
+    change and again after the `provider.sh` change — empty both times.
+  - `make -n up PROVIDER=gcp` → `Makefile:11: *** PROVIDER must be aws,
+    civo or hetzner, got 'gcp'.  Stop.` (exit 2), nothing else runs.
+  - `make -n cluster-up PROVIDER=hetzner` → `./scripts/require-persistent.sh`
+    then `bash -c '...; hcloud_token; cd terraform/live/cluster-hetzner &&
+    terragrunt run --all --non-interactive -- apply -auto-approve'`;
+    identical in the `PROVIDER=hetzner make` form. `make -n persistent-up`
+    → `./scripts/persistent-up-hetzner.sh` (HETZ-025 creates it; until then
+    the target fails loudly with "No such file", nothing applied).
+  - `make -pn` resolution with `PROVIDER=hetzner`: `PROJECT_NAME
+    vk-hetzner-lab`, `SUBDOMAIN hz`, `CLUSTER_DIR cluster-hetzner`,
+    `PERSISTENT_EXTRA_DIR persistent-hetzner`, `BOOTSTRAP_EXCLUDE acm`,
+    `PERSISTENT_EXCLUDE vpc`. `PROJECT_NAME=other` wins in all four
+    {env, command line} × {PROVIDER, PROJECT_NAME} combinations.
+  - `provider.sh` sourced with `PROVIDER=hetzner` exports
+    `vk-hetzner-lab|hz|cluster-hetzner|vk-hetzner-lab|persistent-hetzner|acm|vpc|persistent`
+    (the last is `BACKUP_SSM_LAYER`); civo and aws exports unchanged.
+  - Offline probe with a fake `aws` (base64 round-trip) and a fake `hcloud`
+    on PATH: `hcloud_token` exports `HCLOUD_TOKEN` and prints
+    `::add-mask::` only with `GITHUB_ACTIONS` set; `hcloud_cli` runs with
+    `HCLOUD_CONFIG=/dev/null` and passes the exit status through (3 → 3);
+    `hcloud_list_names server` sends `-o json -l project=vk-hetzner-lab`,
+    prints nothing for `[]` and for `null`, and prints both names for a
+    two-item list; extra terms append as
+    `project=other,role=control-plane,managed_by=terraform`.
+  - `make kubeconfig PROVIDER=hetzner` → `configure_kubeconfig:
+    PROVIDER=hetzner is implemented in HETZ-035`, exit 1 (make exit 2);
+    `make test-kubeconfig PROVIDER=hetzner` → `... implemented in
+    HETZ-130`, exit 1. A fake `kubectl` on PATH was never reached.
+  - `bash -n scripts/lib/provider.sh` clean. `make secrets-check`,
+    `make specs-check`, `make gitops-check` pass.
+  - Real cloud (`AWS_PROFILE=viacheslav-dev`, cost 0): `SECRET_SCOPE=global
+    scripts/secret-decrypt.sh hetzner-token >/dev/null` exit 0 (stdout
+    never captured); `hcloud_token; hcloud_cli server list` → empty table,
+    exit 0; `hcloud_list_names server` → empty, exit 0; `~/.config/hcloud`
+    absent before and after.
+  - Deviations from §4: the `kubeconfig` stub names HETZ-035, which owns
+    `configure_kubeconfig` (HETZ-035 §2), not HETZ-040. The README uses
+    `make secret-encrypt NAME=hetzner-token VALUE=<token> SCOPE=global`
+    because the Make target overrides `SECRET_NAME`/`SECRET_SCOPE` from
+    `NAME=`/`SCOPE=`. `BACKUP_SSM_LAYER=persistent` is exported for hetzner
+    (§4 omits it; hetzner keeps the AWS `persistent/backups` unit, whose
+    `ssm_layer` is `persistent`). `hcloud_list_names <resource> [k=v ...]`
+    always prefixes `project=$PROJECT_NAME`; HETZ-040 adopts this helper
+    instead of its draft `hcloud_list`, and `HCLOUD_CONFIG=/dev/null`
+    supersedes HETZ-040's `mktemp` wording. `kubeconfig`/`test-kubeconfig`
+    are not `ifeq` blocks in the Makefile; the stubs live in `provider.sh`.
+    `.gitignore`, `secret-*.sh`: no edit, as §5 already states.
+- 2026-09-20 — pull request opened; IN_REVIEW.
