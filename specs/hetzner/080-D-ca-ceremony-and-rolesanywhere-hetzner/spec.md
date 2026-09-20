@@ -1,7 +1,7 @@
 ---
 id: "HETZ-080"
 title: "CA ceremony and bootstrap/rolesanywhere for the Hetzner project, before its first bootstrap-up"
-status: "IN_PROGRESS"
+status: "DONE"
 priority: "P0"
 milestone: "M1"
 type: "implementation"
@@ -15,7 +15,7 @@ blocked_by: []
 supersedes: []
 created: "2026-09-11"
 updated: "2026-09-11"
-completed: ""
+completed: "2026-09-21"
 ---
 
 # HETZ-080 — CA ceremony and Roles Anywhere unit for the Hetzner project
@@ -57,6 +57,36 @@ in-cluster issuer Secret, Certificates and sidecars (HETZ-085); the
 - AWS resources, region `eu-west-1`, account layer unchanged: trust anchor `vk-hetzner-lab-hetzner-workload-ca` (external CA), profile `vk-hetzner-lab-hetzner` (session 3600 s), roles `vk-hetzner-lab-ra-eso`, `-external-dns`, `-cert-manager`, `-pgbackup`. Trust policies condition on `aws:SourceArn` = the new anchor and on the per-consumer CN.
 - SSM outputs under `/vk-hetzner-lab/bootstrap/rolesanywhere/`: `trust_anchor_arn`, `profile_arn`, `role_arn_eso`, `role_arn_external_dns`, `role_arn_cert_manager`, `role_arn_pgbackup`. Plain `String`, as on Civo.
 - Ordering contract: `make ca-init` precedes the first `bootstrap-up`. HETZ-025 §6 step 1 states the same rule from the other side.
+
+## 4a. Deviations from §4 and §8
+
+- **D1 — the role ARN parameter names.** §4 lists the SSM outputs as
+  `role_arn_eso`, `role_arn_external_dns`, `role_arn_cert_manager` and
+  `role_arn_pgbackup`. The unit writes them one level deeper, as
+  `role_arn/<consumer>`, so a plain `get-parameters-by-path` returns only two
+  parameters and `--recursive` is needed to see all six. This is CIVO-082's
+  existing layout, unchanged by HETZ-018; the spec text was wrong, not the
+  code. Every consumer reads its own parameter by full name, so nothing
+  downstream is affected.
+- **D2 — §8's Civo comparison could not be run.** It asks that the Civo unit's
+  plan show no changes and that `list-trust-anchors` still list the Civo anchor
+  unchanged. **There is no Civo anchor.** The personal Civo project is torn
+  down to zero: `vk-civo-lab-tf-state` returns 404 and
+  `aws iam list-roles` matches no `vk-civo-lab*` role. This is the same
+  condition HETZ-018 recorded as its deviation D6. What the listing does prove
+  is the property the check exists for — after this apply the account holds
+  **exactly one** trust anchor, the Hetzner one, so nothing pre-existing was
+  renamed, retargeted or destroyed.
+- **D3 — `make state-up` was run as its own step.** §6 step 4 makes it
+  conditional, and `bootstrap-up.sh` calls `state-up.sh` itself in any case.
+  The bucket did not exist, so it was created first and deliberately, before
+  anything read the backend.
+- **D4 — `generate-secrets.sh` also minted two project passwords.**
+  `bootstrap-up` calls it, and `vk-hetzner-lab` had no
+  `postgres-app-password`, `grafana-admin-password` or
+  `argocd-admin-password.bcrypt`. They are real random values, not the fixed
+  test ones: `FIXED_TEST_PASSWORDS` was unset. §5 does not name these files;
+  they are committed with the ceremony.
 
 ## 5. Files/components affected
 
@@ -118,11 +148,58 @@ until expiry (at most one hour).
 
 ## 13. Definition of done
 
-- [ ] Acceptance criteria met and recorded
-- [ ] Civo and AWS plans unchanged
-- [ ] Index updated; status `DONE`
+- [x] Acceptance criteria met and recorded
+- [ ] **Civo plan unchanged** — could not be run; see D2
+- [x] Index updated; status `DONE`
 
 ## 14. Execution evidence and status history
 
 - 2026-09-11 — created as DRAFT.
 - 2026-09-11 — reviewed and approved by the user; promoted to READY.
+- 2026-09-21 — executed on branch `hetzner-080-ca-ceremony`, off `main` at
+  `c3ac8bb`. Deviations D1 to D4 in §4a.
+
+  **The ceremony.** `PROVIDER=hetzner make ca-init` wrote
+  `secrets/vk-hetzner-lab/hetzner-ca-cert.pem` and `hetzner-ca-key.enc`:
+
+  | Property | Value |
+  |---|---|
+  | subject | `O=vk-hetzner-lab, CN=vk-hetzner-lab-hetzner-workload-ca` |
+  | key | EC P-256 (`id-ecPublicKey`, 256 bit) |
+  | basic constraints | `CA:TRUE, pathlen:1`, critical |
+  | key usage | `Certificate Sign, CRL Sign`, critical |
+  | validity | 2026-09-20 to 2031-09-20 (1826 days) |
+  | sha256 | `F0:96:DD:A6:0C:E7:72:50:07:DD:24:58:3C:F9:5A:C3:92:FA:AD:EC:B8:95:66:D0:3C:E6:85:7D:D1:D8:CF:05` |
+
+  The decrypted private key's public half was compared against the
+  certificate's and matched; the decrypted copy was then removed. The staged
+  diff contains no `BEGIN * PRIVATE KEY` line.
+
+  **The ordering trap of §3 was observed working.** `generate-secrets.sh`, run
+  inside `bootstrap-up` after the ceremony, printed *"Skipping
+  hetzner-ca-cert — … already exists"*. Had the order been reversed it would
+  have minted a throwaway CA under the real project name and the trust anchor
+  would now anchor to a key nobody keeps.
+
+  **The apply.** Planned before applying: `route53` 6 to add, `rolesanywhere`
+  16 to add, **0 to change and 0 to destroy in both**, and no `vk-civo-lab`
+  string anywhere in the plan. Applied clean at those same counts.
+
+  | Object | Evidence |
+  |---|---|
+  | Trust anchor | `vk-hetzner-lab-hetzner-workload-ca`, enabled, `CERTIFICATE_BUNDLE`, id `2e40796f` — and the **only** anchor in the account |
+  | Profile | `vk-hetzner-lab-hetzner`, enabled, 3600 s, four role ARNs |
+  | Roles | `vk-hetzner-lab-ra-{eso,external-dns,cert-manager,pgbackup}` |
+  | Trust policies | all four condition on `x509Issuer/CN = vk-hetzner-lab-hetzner-workload-ca`, on `x509Subject/CN = vk-hetzner-lab-hetzner-<consumer>`, and on `aws:SourceArn` = the new anchor |
+  | SSM | all six parameters present, plain `String` (see D1 for their real path) |
+  | Zone | `hz.<root-domain>` created; exactly one new NS record set in the parent zone, TTL 172800, four name servers |
+  | ACM | none created — the account still lists only the external root-domain certificate |
+
+  **This is the first end-to-end proof of HETZ-018.** Every name in the chain
+  came out `hetzner`, from a `terragrunt.hcl` that derives the provider from
+  which certificate is on disk rather than from an environment variable. The
+  probe HETZ-018 ran was a scratch expression; this is the real chain.
+
+  **Cost.** The Route 53 zone is 0.50 USD/month and is Persistent by design.
+  The trust anchor, profile, IAM roles, `String` parameters and state bucket
+  are free.
