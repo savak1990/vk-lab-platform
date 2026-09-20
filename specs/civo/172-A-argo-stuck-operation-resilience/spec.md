@@ -101,9 +101,27 @@ Civo's separate provisioning API.
 **Remove what cannot settle, rather than override its health.** Grafana was the
 only PersistentVolumeClaim that Argo itself creates — Prometheus and
 Alertmanager use `volumeClaimTemplate`, Loki is a StatefulSet, CNPG's volumes
-are operator-created. `grafana.persistence.type: statefulset` moves Grafana's
-volume to a `volumeClaimTemplate` too, so the StatefulSet controller creates the
-claim and Argo never waits on it. Persistence behavior is unchanged.
+are operator-created. `grafana.persistence.enabled: false` removes it.
+
+Nothing of value is lost: dashboards and datasources are provisioned from
+ConfigMaps, the admin password comes from a Secret, and alert rules are
+`PrometheusRule` objects. Only ad-hoc UI state lived on that volume, and it
+never survived `make down` in any case — `civo-volume` reclaims `Delete`, so
+the claim dies with the cluster.
+
+**`persistence.type: statefulset` was tried first and reverted.** It looked
+strictly better — same persistence, claim created by the StatefulSet
+controller, so Argo never tracks it — and it rendered cleanly. It failed in CI
+on both targets. A `volumeClaimTemplate` claim outlives its StatefulSet unless
+a `persistentVolumeClaimRetentionPolicy` says otherwise, and the Grafana chart
+exposes no such setting and renders none. Loki avoids this only because its
+chart does expose one, pinned deliberately at
+`gitops/templates/platform/shared/observability/loki.yaml`
+(`enableStatefulSetAutoDeletePVC: true`, `whenDeleted: Delete`, with a comment
+saying it is pinned so an upstream default change cannot silently orphan the
+volume). Evidence: `CLUSTER-DOWN: leaked volumes, deleting:
+vol-01e4c54a8de0fa525` on the AWS leg, and on Civo the orphaned volume held the
+network open — `DatabaseNetworkInUseByVolumes`. A latch was traded for a leak.
 
 This follows ADR 0025 §6 ("a wave must never contain a resource whose health
 depends on a later wave") and ADR 0016's preference for removing the trigger
@@ -211,5 +229,26 @@ then `kubectl patch application <app> -n argocd --type=merge -p
 
 - 2026-09-20 — created from CIVO-170's live run, which exposed both failures.
   The fixes ship in the same change as CIVO-170 rather than waiting, because
-  that spec is what makes resizes routine. Live verification of the teardown
-  escape hatches is still outstanding.
+  that spec is what makes resizes routine.
+- 2026-09-20 — **teardown fixes verified in CI** (PR #35, run 35499187606,
+  `lifecycle-civo / down`). All three fired and named themselves:
+  `API reachable again after 3 attempts` — twice, so the API really was
+  unreachable during teardown and the old single 5s probe would have refused to
+  run at all and aborted the whole teardown; and
+  `operation on application/{cert-manager,kube-prometheus-stack,root} did not
+  wind down in 60s - dropping its stale operation state`, so reordering the
+  hook sweep alone was not sufficient and the operation-state clearing was
+  needed. The cascade then completed in 38s with no manual intervention, where
+  the same situation locally deadlocked until a finalizer was hand-edited. The
+  guarded last-resort finalizer release did not need to fire.
+- 2026-09-20 — **a regression this spec introduced, found by the same run.**
+  `persistence.type: statefulset` leaked Grafana's volume on teardown, on both
+  targets: the AWS sweep reported `leaked volumes, deleting:
+  vol-01e4c54a8de0fa525`, and the Civo network delete failed with
+  `DatabaseNetworkInUseByVolumes`. Root cause: a `volumeClaimTemplate` claim
+  outlives its StatefulSet without a `persistentVolumeClaimRetentionPolicy`,
+  which the Grafana chart cannot set. Corrected to
+  `persistence.enabled: false`. Both teardown failures in that run trace to
+  this, not to the escape hatches. The lesson worth keeping: a clean
+  `helm template` plus `kubeconform` proved the object graph was valid and
+  said nothing about its deletion behaviour.
