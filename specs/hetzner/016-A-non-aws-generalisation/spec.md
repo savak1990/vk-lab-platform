@@ -1,7 +1,7 @@
 ---
 id: "HETZ-016"
-title: "Non-AWS generalisation: civo-only script branches and Helm gates become non-AWS, with Civo and AWS byte-identical"
-status: "IN_PROGRESS"
+title: "Non-AWS generalisation: civo-only script branches and Helm gates become non-AWS, with Civo and AWS behaviour unchanged"
+status: "IN_REVIEW"
 priority: "P0"
 milestone: "M0"
 type: "implementation"
@@ -216,4 +216,10 @@ One PR (PR 3 in `roadmap.md`, together with HETZ-018). Revert restores the branc
   `shellcheck`, `yamllint` and `actionlint` are not installed locally; CI runs
   them. The workflow YAML was parsed with `python3 -c 'yaml.safe_load(...)'`
   as a stand-in.
+- 2026-09-20 — live proof routed through CI rather than a local cycle. The
+  Civo project was torn down to zero (no state bucket), so a local `full-up`
+  would have rebuilt every layer. The pull request carries `ci:lifecycle`,
+  which runs both `lifecycle-aws` and `lifecycle-civo` against the CI
+  projects; that also covers the aws script path, which no offline gate
+  reaches (deviation D5).
 
