@@ -1,7 +1,7 @@
 ---
 id: "HETZ-017"
 title: "k3s replaces kubeadm as the Hetzner bootstrap: ADR 0037, a note on ADR 0036, and the package rewrite"
-status: "IN_REVIEW"
+status: "DONE"
 priority: "P0"
 milestone: "M0"
 type: "governance"
@@ -15,7 +15,7 @@ blocked_by: []
 supersedes: ["HETZ-035", "HETZ-037", "HETZ-165", "HETZ-185"]
 created: "2026-09-20"
 updated: "2026-09-20"
-completed: ""
+completed: "2026-09-20"
 ---
 
 # HETZ-017 — k3s replaces kubeadm as the Hetzner bootstrap
@@ -323,10 +323,10 @@ and no cloud resource at risk.
 
 ## 13. Definition of done
 
-- [ ] Acceptance criteria met; `make specs-check`, `gitops-check`, `secrets-check` green
-- [ ] ADR 0037 written; ADR 0036 noted; constitution §20 and architecture §10a updated
-- [ ] Four specs retired, three rewritten, nine edited; package documents rewritten
-- [ ] Index updated; status `DONE`
+- [x] Acceptance criteria met; `make specs-check`, `gitops-check`, `secrets-check` green
+- [x] ADR 0037 written; ADR 0036 noted; constitution §20 and architecture §10a updated
+- [x] Four specs retired, three rewritten, nine edited; package documents rewritten
+- [x] Index updated; status `DONE`
 
 ## 14. Execution evidence and status history
 
@@ -345,3 +345,4 @@ and no cloud resource at risk.
   follow. One deviation from §2: HETZ-015 is `DONE` but its §1 and §4
   forward references named the kubeadm design, so they were corrected and a
   dated §14 line added; its status is unchanged.
+- 2026-09-20 — merged as pull request #38, `9925d36`. Closed `DONE`.

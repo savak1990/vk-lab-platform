@@ -1,7 +1,7 @@
 ---
 id: "HETZ-018"
 title: "Roles Anywhere chain names parametrized by provider, with Civo names byte-identical"
-status: "IN_REVIEW"
+status: "DONE"
 priority: "P0"
 milestone: "M0"
 type: "implementation"
@@ -15,7 +15,7 @@ blocked_by: []
 supersedes: []
 created: "2026-09-11"
 updated: "2026-09-20"
-completed: ""
+completed: "2026-09-20"
 ---
 
 # HETZ-018 — Identity chain names per provider
@@ -158,9 +158,10 @@ One PR with HETZ-016. A revert restores the literals; because the Civo names nev
 
 ## 13. Definition of done
 
-- [ ] No-change Civo plan and identical renders attached
-- [ ] Old script name and Make target removed; README updated
-- [ ] Civo spec notes added; index updated; status `DONE`
+- [ ] **No-change Civo plan** — could not be run; see the substitution below
+- [x] Identical `aws` and `civo` renders attached
+- [x] Old script name and Make target removed; README updated
+- [x] Civo spec notes added; index updated; status `DONE`
 
 ## 14. Execution evidence and status history
 
@@ -197,3 +198,12 @@ One PR with HETZ-016. A revert restores the literals; because the Civo names nev
   `lifecycle-civo` CI job, which mints a CA, applies the chain and brings up
   the cluster from nothing — a stronger gate than the read-only plan §9 asked
   for, and the only one available (D6).
+- 2026-09-20 — merged as pull request #42, `5a18776`, and closed `DONE`.
+  §13's no-change Civo plan stays unticked: deviation D6 records that it
+  could not be run, because the `vk-civo-lab` state bucket does not exist
+  — the personal Civo project is torn down to zero. What satisfied it
+  instead is the `lifecycle-civo / up` job, green in 22m12s on that pull
+  request, which minted a CA, applied the whole trust chain and brought a
+  cluster up from nothing. `lifecycle-aws / up` passed in 26m56s. That is
+  a stronger gate than the read-only plan, not a weaker one, but it is a
+  substitution and is recorded as one rather than ticked.
