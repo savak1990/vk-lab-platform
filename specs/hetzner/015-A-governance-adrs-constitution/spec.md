@@ -1,7 +1,7 @@
 ---
 id: "HETZ-015"
 title: "Governance for a third target: ADR 0036, amendments to ADR 0029/0030/0024/0002/0022, per-provider constitution §20, architecture §10a, HLD Hetzner column"
-status: "IN_PROGRESS"
+status: "IN_REVIEW"
 priority: "P0"
 milestone: "M0"
 type: "documentation"
@@ -255,3 +255,29 @@ One PR. A revert removes the documents. Nothing depends on them at run time.
   and the pre-existing shift is preserved rather than hidden. It renders with
   a visibly empty Civo cell. Fixing it is one cell and belongs to whoever
   next owns that document.
+
+- 2026-09-20 — **validation run, `IN_REVIEW`.** All three repository checks
+  pass on the change:
+
+  ```
+  make specs-check     → SPECS-CHECK: specs/ layout is valid.
+  make gitops-check    → aws render matches the golden baseline;
+                         civo and local renders have the expected M1 object set
+  make secrets-check   → secret-scope-test: ok
+  ```
+
+  The §20 Civo column is proven unchanged mechanically. A script captured the
+  pre-image with `git show HEAD:specs/shared/000-D-constitution/spec.md`
+  before any edit, then extracted each old bullet and each new Civo cell and
+  compared them: all seven report byte-identical, at 281, 510, 252, 212, 267,
+  333 and 282 characters. No reviewer has to compare from memory.
+
+  The corrected drift grep returns only historical record text plus the two
+  documented expected hits: ADR 0034's "the only two targets", which means
+  Make targets, and the Hetzner high-level design's "the other two targets",
+  which is accurate prose. `docs/architecture.md` returns nothing, as it
+  should now that §10a names four targets.
+
+  No lifecycle run was performed and none is warranted. This change alters no
+  runtime behaviour, and a documentation-only PR skips every heavy gate by
+  design.
