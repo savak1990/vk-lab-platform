@@ -110,7 +110,7 @@ CN mismatch against the role trust policy (compare with HETZ-080 §4).
 
 - The amd64 pin holds only while the nodes are x86; a move back to CAX makes every pin in the chain a manifest-list question again, which is HETZ-182's scope, not this spec's.
 - If a future `amazon/aws-cli` pin stops publishing amd64, the test pod falls back to `alpine/k8s` with the AWS CLI installed at start.
-- The `hop-limit 1` rule holds on Cilium VXLAN (verify once), but the sidecar's localhost endpoint is unreachable from a `hostNetwork` pod on the same node; the test pods must not use `hostNetwork`.
+- The `hop-limit 1` rule holds on flannel VXLAN (verify once), but the sidecar's localhost endpoint is unreachable from a `hostNetwork` pod on the same node; the test pods must not use `hostNetwork`.
 - ESO's ClusterRole can still read the CA Secret (CIVO-205 open); Hetzner inherits that until CIVO-205 lands.
 
 ## 13. Definition of done
@@ -124,4 +124,7 @@ CN mismatch against the role trust policy (compare with HETZ-080 §4).
 - 2026-09-11 — created as DRAFT.
 - 2026-09-11 — reviewed and approved by the user; promoted to READY.
 - 2026-09-19 — kubeadm wording.
+- 2026-09-20 — k3s (HETZ-017): the CNI is flannel, so the `hop-limit 1` check
+  is against flannel's VXLAN rather than Cilium's. The identity chain is
+  unaffected.
 - 2026-09-19 — x86 pass: amd64 digests on cx33; multi-arch only if CAX returns (HETZ-182).

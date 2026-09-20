@@ -52,8 +52,12 @@ ADR 0036; the Hetzner cells of constitution §20; `docs/architecture.md` §10a a
 HETZ-165 and HETZ-185; the rewrite of HETZ-030, HETZ-160 and HETZ-170; wording
 and call-site edits across ten further specs; and the four package documents.
 
-Not in scope: any Terraform, shell, GitOps or workflow file. No implementation
-spec changes status to `IN_PROGRESS` because of this spec. The AWS and Civo
+Not in scope: any Terraform, GitOps or workflow file, and any shell file beyond
+one string — `configure_kubeconfig`'s hetzner stub in
+`scripts/lib/provider.sh:162` names HETZ-035, which this spec retires, and must
+name HETZ-040 instead so the message does not send a reader to a superseded
+spec. No implementation spec changes status to `IN_PROGRESS` because of this
+spec. The AWS and Civo
 targets are untouched; no file outside `specs/hetzner/`, `docs/adr/`,
 `docs/architecture.md`, `docs/hetzner-high-level-design.md`,
 `specs/shared/000-D-constitution/spec.md` and `CLAUDE.md` is modified.
@@ -163,7 +167,8 @@ identical; the one template that renders them is the single source.
 `HCLOUD_NETWORK_ROUTES_ENABLED=false`, exactly as the kubeadm design set it for
 Cilium VXLAN. `--flannel-backend=none` remains the documented route to another
 CNI. Pod and service CIDRs become the k3s defaults `10.42.0.0/16` and
-`10.43.0.0/16`; four call sites carry `10.244.0.0/16` today.
+`10.43.0.0/16`, replacing `10.244.0.0/16` and `10.96.0.0/12` at every call
+site (HETZ-025 §12, HETZ-030 §4, HETZ-045 §4's `clusterCIDR`).
 
 **What k3s brings that must be switched off.** `--disable=servicelb,traefik,`
 `local-storage` leaves the hcloud CCM as the only LoadBalancer controller and
@@ -264,14 +269,14 @@ sense that both describe the superseded bootstrap until it lands.
 - `make specs-check` exits 0.
 - `grep -rIn --exclude-dir=.git -e kubeadm -e 'pkgs\.k8s\.io' -e apt-mark -e cp-bootstrap-done specs/hetzner docs/ CLAUDE.md` returns hits only inside the four `NNN-Z-` folders, inside ADR 0036's original text below its note, and in dated §14 history lines.
 - `grep -rn '10\.244\.0\.0/16' specs/ docs/` returns nothing outside the retired folders.
-- `grep -rn 'Cilium' specs/hetzner docs/` returns hits only in the retired HETZ-037, in ADR 0036's original text, and in dated history lines.
+- `grep -rn 'Cilium' specs/hetzner docs/` names no live component: every hit is the retired HETZ-037, ADR 0036's original text, a dated history line, or a rejected alternative that says so.
 - `docs/adr/0037-k3s-bootstrap-on-hetzner.md` exists, is `Accepted`, names the token-in-metadata exposure with its bounds, and lists at least kubeadm, kOps, Talos, Cluster API Provider Hetzner and OKD under alternatives considered.
 - ADR 0036 carries a dated blockquote naming ADR 0037 above `## Status`, and its `## Status` still reads `Accepted` — the target decision is not superseded, only the bootstrap mechanism.
 - The four retired specs read `status: "SUPERSEDED"`, sit in `NNN-Z-` folders, and each names HETZ-017 in §14.
 - `specs/hetzner/README.md`'s index agrees with every spec's front matter on status, title and `depends_on`.
 - `roadmap.md`'s dependency graph has no edge into a retired spec and its critical path routes through neither 035 nor 037.
 - `make gitops-check` and `make secrets-check` exit 0, unchanged from before the commit.
-- No file under `terraform/`, `scripts/`, `gitops/`, `tests/` or `.github/` is modified.
+- The only change outside `specs/`, `docs/` and `CLAUDE.md` is one string in `scripts/lib/provider.sh`: `configure_kubeconfig`'s hetzner stub named HETZ-035, which is now `SUPERSEDED`, and names HETZ-040 instead. No file under `terraform/`, `gitops/`, `tests/` or `.github/` is modified, and `grep -rn 'HETZ-035\|HETZ-037\|HETZ-165\|HETZ-185' scripts/ Makefile gitops/ terraform/ .github/` returns nothing.
 
 ## 9. Validation
 

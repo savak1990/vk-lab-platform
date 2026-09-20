@@ -508,19 +508,21 @@ target described throughout the rest of this document unless stated
 otherwise), **`local`** (minikube or kind, AWS-free except where noted),
 **`civo`** (real Civo managed Kubernetes, a second real cloud target,
 ADR 0027), and **`hetzner`** (real Hetzner Cloud servers carrying a
-platform-owned kubeadm control plane, a third real cloud target,
-ADR 0036). See ADR 0006 and spec 022 for the `local` design, ADR 0027
-plus `specs/civo/` for the Civo design, and ADR 0036 plus
-`specs/hetzner/` for the Hetzner design; this section summarizes the
+platform-owned k3s control plane, a third real cloud target,
+ADR 0036 and ADR 0037). See ADR 0006 and spec 022 for the `local` design,
+ADR 0027 plus `specs/civo/` for the Civo design, and ADR 0036, ADR 0037
+plus `specs/hetzner/` for the Hetzner design; this section summarizes the
 shape of all four so later sections can refer to "the `aws` target", "the
 `local` target", "the `civo` target", and "the `hetzner` target"
 unambiguously.
 
 Hetzner is the only target where the platform creates the Kubernetes
-control plane itself. Terraform creates servers; the control plane's
-cloud-init runs `kubeadm init` and the CNI install at first boot, and
-`cluster-up` joins the workers over SSH. Terraform manages no Kubernetes
-object at any point (ADR 0036).
+control plane itself. Terraform creates servers; every node installs k3s
+from its own cloud-init at first boot — the control plane with embedded
+etcd, workers joining over the private network with a Terraform-generated
+token — and `cluster-up` only fetches the kubeconfig and waits for the
+nodes. Terraform manages no Kubernetes object at any point (ADR 0036,
+ADR 0037).
 
 All four targets share a single `gitops/` tree, rendered from one
 umbrella Helm chart (`gitops/`, with `gitops/bootstrap/` as the root

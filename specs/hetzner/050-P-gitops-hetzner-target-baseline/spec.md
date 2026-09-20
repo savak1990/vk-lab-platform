@@ -44,7 +44,7 @@ observability values (HETZ-160).
 - `_helpers.tpl:18-22` maps civo to `civo-volume` and everything else to `.Values.storage.className`.
 - `scripts/gitops-render-check.sh:63-79` holds `REQUIRED_OBJECTS_CIVO`, `FORBIDDEN_KINDS_CIVO` (includes `StorageClass`), `FORBIDDEN_APPLICATIONS_CIVO`; `:122` loops over `civo local`.
 - The hcloud CSI chart `hcloud/hcloud-csi` v2.23.0 ships StorageClass `hcloud-volumes` with `defaultStorageClass: true`, `reclaimPolicy: Delete`, `WaitForFirstConsumer`, expansion on, and reads `kube-system/hcloud` key `token` (research.md).
-- kubeadm ships no StorageClass; `hcloud-volumes` from the CSI chart is the only default class.
+- k3s ships the `local-path` StorageClass as the cluster default, which would compete with the CSI chart's. HETZ-030 removes it with `--disable=local-storage`, so `hcloud-volumes` from the CSI chart is the only class and the only default. k3s also ships metrics-server, so unlike the kubeadm design this target installs none of its own (HETZ-160).
 - Sync waves in use: ESO `-2`, Envoy Gateway `-1`, cert-manager `0`, identity and TLS issuers `1`, wildcard certificate `2`. Waves are uniform across targets.
 
 ## 4. Design and contracts
@@ -121,6 +121,11 @@ data risk.
 - 2026-09-11 — created as DRAFT.
 - 2026-09-11 — reviewed and approved by the user; promoted to READY.
 - 2026-09-19 — kubeadm wording.
+- 2026-09-20 — k3s (HETZ-017): the reason `hcloud-volumes` is the only class
+  changes from "the bootstrap ships none" to "the bundled `local-path` class
+  is disabled by flag", and the render check must assert that no `local-path`
+  StorageClass survives on hetzner. metrics-server is no longer an Application
+  on this target, because k3s ships one (HETZ-160).
 - 2026-09-20 — adds the `platform-critical` PriorityClass, the soft
   `role=worker` affinity and CNPG `enablePDB: false` (decisions.md §3,
   "Schedulable control plane").

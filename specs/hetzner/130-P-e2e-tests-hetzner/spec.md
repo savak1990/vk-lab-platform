@@ -24,7 +24,7 @@ completed: ""
 
 `PROVIDER=hetzner make test` runs the existing Ginkgo suite against the
 Hetzner cluster with a read-only ServiceAccount token. A self-managed
-kubeadm cluster has no cloud IAM mapping, so the SA-token path from
+k3s cluster has no cloud IAM mapping, so the SA-token path from
 CIVO-130 is the only option. No Go changes.
 
 Read `specs/civo/130-D-e2e-tests-civo/spec.md` first.
@@ -126,3 +126,5 @@ Revert. No data risk.
 - 2026-09-11 — created as DRAFT.
 - 2026-09-11 — reviewed and approved by the user; promoted to READY.
 - 2026-09-19 — kubeadm wording.
+- 2026-09-20 — k3s (HETZ-017): wording only. A self-managed k3s cluster has no
+  cloud IAM mapping either, so the ServiceAccount-token path is unchanged.

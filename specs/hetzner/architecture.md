@@ -10,11 +10,12 @@ branch `civo-115-cnpg-cluster-on-civo`, 2026-09-11. Paths marked
 Hetzner Cloud sells servers, private networks, firewalls, load balancers
 and volumes over one API, priced far below EKS and, on ARM, below Civo.
 It sells no Kubernetes. The platform therefore owns the control plane:
-cloud-init prepares every node (containerd, kubeadm, kubelet, kubectl);
-on the control plane it also renders the kubeadm config and runs `kubeadm
-init` and the Cilium install at first boot, so no token, CA or kubeconfig
-ever enters `user_data`; `cluster-up` then joins the workers over SSH and
-fetches the kubeconfig. `argo-up` helm-installs the Hetzner cloud
+cloud-init installs k3s on every node from `get.k3s.io` — the control
+plane as a server with embedded etcd, workers as agents pointed at its
+private address with a Terraform-generated join token — so the cluster
+exists a minute or two after create with no operator step; `cluster-up`
+then only fetches the kubeconfig over SSH and waits for the nodes to
+report Ready. `argo-up` helm-installs the Hetzner cloud
 controller manager (CCM) before Argo CD, because no node schedules
 anything until the CCM runs, and Argo CD then installs the CSI driver as
 an ordinary Application. Civo pre-installs both. Everything above that
@@ -29,9 +30,8 @@ make bootstrap-up  → state bucket, Route 53 hz.<root-domain> zone, Roles Anywh
 make persistent-up → SSM secrets, S3 backup bucket                               (persistent, VPC excluded)
                    + hcloud network/subnet, hcloud SSH key                        (terraform/live/persistent-hetzner)
 make cluster-up    → hcloud firewall, 1 cp + 1 worker CX33 servers, cloud-init
-                     (cp: kubeadm init + Cilium; workers: packages)               (terraform/live/cluster-hetzner)
-                   → kubeadm join on each worker over SSH, admin.conf kubeconfig,
-                     wait Ready                                                    (scripts/hetzner-bootstrap.sh, HETZ-035/037)
+                     (cp: k3s server --cluster-init; workers: k3s agent)          (terraform/live/cluster-hetzner)
+                   → k3s.yaml kubeconfig over SSH, wait every node Ready           (scripts/lib/provider.sh, HETZ-040)
 make argo-up       → SSM read → kubeconfig → hcloud Secret → helm hcloud CCM
                    → wait for the uninitialized taint to clear → CA Secret
                    → helm argocd → helm root-application(target=hetzner)         (scripts/argo-up.sh)
@@ -50,7 +50,7 @@ equivalent; **n/a** = not applicable on Hetzner.
 | Component | Civo implementation | Hetzner difference | Classification | Owning spec |
 |---|---|---|---|---|
 | Make surface, `provider.sh`, token helper | `PROVIDER=aws\|civo`, `civo_token()` | third value; `hcloud_token()` exporting `HCLOUD_TOKEN`; `secrets/hetzner-token.enc` (account-global, `SECRET_SCOPE=global`) | mirror | 010 |
-| Governance | ADRs 0027–0031, constitution §20 (Civo) | ADR 0036 (kubeadm-bootstrapped control plane); §20 becomes per-provider; ADR 0030 amended (a dedicated in-cluster token, not the operator's); ADR 0029 note (federation possible, rejected) | mirror | 015 |
+| Governance | ADRs 0027–0031, constitution §20 (Civo) | ADR 0036 (Hetzner as a target), ADR 0037 (k3s bootstraps the control plane, replacing 0036's kubeadm); §20 becomes per-provider; ADR 0030 amended (a dedicated in-cluster token, not the operator's); ADR 0029 note (federation possible, rejected) | mirror | 015, 017 |
 | Script branches `[ "$PROVIDER" = civo ]` | CA Secret, TLS export/import, no EBS snapshot, kinds filter, PVC wait, teardown dump gate | semantics are "non-EKS"; become `!= aws` | generalise | 016 |
 | GitOps gates `eq .Values.target "civo"` (11 sites), `validateTarget`, render-check sets | literal `civo` | `platform.selfManaged` helper (civo, hetzner); `hetzner` in the allowed list; per-target required/forbidden sets | generalise | 016 |
 | Identity chain names | `${project}-civo-workload-ca`, CN `${project}-civo-${consumer}`, `civo-workload-ca` Secret/ClusterIssuer, `secrets/<project>/civo-ca-*`, `make civo-ca-init`, `civoIdentity.consumers` | `${project}-${provider}-…`; Civo strings byte-identical; `make ca-init` with `PROVIDER` | generalise | 018 |
@@ -62,7 +62,7 @@ equivalent; **n/a** = not applicable on Hetzner.
 | Persistent network | `civo_network`, free | `hcloud_network` + `hcloud_network_subnet` (`eu-central`, `10.0.0.0/16`), free | mirror | 025 |
 | Reserved IP | `civo_reserved_ip` for the LB | **none**: primary IPs attach to servers only; the LB owns its address and gets a new one per `make up` | n/a | 025, 060 |
 | SSH key | — | `hcloud_ssh_key` from a committed public key; private key `secrets/<project>/hetzner-ssh-key.enc` | new | 025 |
-| Cluster | `civo_kubernetes_cluster` (managed) | `hcloud_firewall` + `control_plane_count` + `worker_count` `hcloud_server` (`cx33`, `ubuntu-24.04` x86, hostname = server name); cloud-init on the control plane renders the kubeadm config and runs `kubeadm init` + Cilium at first boot, workers install containerd.io, kubeadm, kubelet, kubectl only; `scripts/hetzner-bootstrap.sh` runs `kubeadm join` | new | 030, 035 |
+| Cluster | `civo_kubernetes_cluster` (managed) | `hcloud_firewall` + `control_plane_count` + `worker_count` `hcloud_server` (`cx33`, `ubuntu-24.04` x86, hostname = server name); cloud-init installs k3s on every node — the control plane as `k3s server --cluster-init`, workers as `k3s agent` against its private address with the Terraform-generated token, joining at first boot | new | 030, 040 |
 | Capacity | fixed pool of three Medium | 1 cp + 1 worker fixed; autoscaler 0–2 extra `cx33` in M1; ceiling 4 nodes | mirror | 030, 170 |
 | Kubeconfig | `civo kubernetes config` | `/etc/kubernetes/admin.conf` over SSH, server rewritten to the public IP | new | 035 |
 | Readiness | `kubectl get nodes` (provider `ready` unreliable) | Terraform returns when servers exist; the control plane initializes itself at boot, and the bootstrap script joins the workers and then waits for every node Ready | mirror | 037 |
@@ -76,7 +76,7 @@ equivalent; **n/a** = not applicable on Hetzner.
 | DNS | ExternalDNS via sidecar, waits on the reserved IP | same chart; waits use the discovered LB address | reuse + branch | 070 |
 | Workload identity | Roles Anywhere chain, x86 sidecar digest | same chain; CA ceremony and Roles Anywhere unit for the Hetzner project (080); certificates and credential-helper sidecars (085) | reuse | 080, 085 |
 | PostgreSQL | CNPG on `civo-volume`, barman-cloud plugin to S3 | CNPG on `hcloud-volumes`; same plugin; the `cnpg-barman-sidecar` image is amd64 on CX33; arm64 (182) only if CAX returns | mirror | 115, 120, 182 |
-| Observability | control-plane scrapes off (the managed control plane hides it) | control-plane scrapes **on** (kubeadm extraArgs bind scheduler/controller-manager/etcd metrics to the private IP); metrics-server Argo-installed; 10 GB volume floor | mirror | 160 |
+| Observability | control-plane scrapes off (the managed control plane hides it) | control-plane scrapes **on** (k3s server flags bind scheduler and controller-manager metrics to the private IP, `--etcd-expose-metrics` exposes etcd); metrics-server is k3s's own, not an Application; 10 GB volume floor | mirror | 160 |
 | Tests | SA-token context `${PROJECT_NAME}-civo-test` | `${PROJECT_NAME}-hetzner-test` | mirror | 130 |
 | CI | `lab.yml` provider input aws\|civo | three values; `hcloud` CLI; cleanup sweeps volumes/LBs/IPs | mirror | 140 |
 | Backups, AWS migration, promotion | CIVO-180/185/186 | provider-neutral; `FROM/TO` enum gains `hetzner` in 010 | reuse | — |
@@ -96,7 +96,7 @@ Adds to `docs/civo-high-level-design.md` §5.
 | in-cluster Hetzner token | string | its own ciphertext file, a second token in the same project | — | yes | `kube-system/cloud-operator-secret` created by `argo-up`; never the operator's token |
 | Hetzner location | constant | `root.hcl` (`hcloud_location`), `scripts/lib/region.sh` (`HCLOUD_LOCATION`) | `nbg1` | no | `envoyGateway.location` |
 | SSH private key | file | `secrets/<project>/hetzner-ssh-key.enc` | — | yes | never; scripts only |
-| kubeadm bootstrap token | string | created by `argo-up` (165) with `--ttl 0` | — | yes (disposable) | `kube-system/hcloud-autoscaler` Secret; node join only |
+| k3s join token | string | Terraform `random_password` (030), regenerated every `make up` | — | yes (disposable) | both servers' `user_data`; SSM `worker_user_data` (`SecureString`); `kube-system/hcloud-autoscaler-config`. Node join only, on the private network, and readable from instance metadata by any `hostNetwork` pod — the exposure ADR 0037 accepts |
 | `controlPlaneIp` | IPv4 | SSM `/<project>/cluster-hetzner/k8s/control_plane_ip` *(proposed)* | — | no | scripts only |
 | `networkId` | string | SSM `/<project>/persistent-hetzner/network/network_id` *(proposed)* | — | no | `hcloud` Secret key `network` |
 | `storage.className` | string | values per target | `hcloud-volumes` | no | direct |
@@ -134,28 +134,29 @@ CCM/CSI charts) never leaves `terraform/live/*-hetzner`,
 
 Two traps have no Civo precedent and shape 030, 045 and 050:
 
-1. **The uninitialised taint.** A kubeadm node started with
-   `nodeRegistration.kubeletExtraArgs: [{name: cloud-provider, value: external}]`
-   carries `node.cloudprovider.kubernetes.io/uninitialized:NoSchedule` until
-   the CCM sets its `providerID`. kubeadm's bundled CoreDNS tolerates only
+1. **The uninitialised taint.** A node started with
+   `--kubelet-arg=cloud-provider=external` carries
+   `node.cloudprovider.kubernetes.io/uninitialized:NoSchedule` until the CCM
+   sets its `providerID`. k3s's bundled CoreDNS tolerates only
    `CriticalAddonsOnly` and the control-plane taint, not `uninitialized`, so
-   it stays Pending. Cilium's DaemonSet tolerates every taint
-   (`operator: Exists`) and the CCM chart tolerates `uninitialized` and
+   it stays Pending. flannel is part of the k3s process and needs no
+   scheduling at all, and the CCM chart tolerates `uninitialized` and
    `not-ready` and runs `hostNetwork`, so
-   `kubeadm init → Cilium → CCM → CoreDNS` resolves without a hook
+   `k3s → CCM → CoreDNS` resolves without a hook
    (https://kubernetes.io/blog/2025/02/14/cloud-controller-manager-chicken-egg-problem/).
-   The control plane's cloud-init installs Cilium right after its own
-   `kubeadm init`, so the CNI is up before any worker joins, and `argo-up`
-   installs the CCM before Argo CD, in the same untracked-bootstrap class
-   Argo CD's own release uses. The CSI
-   driver has no such constraint and stays an Argo Application.
+   `argo-up` installs the CCM before Argo CD, in the same
+   untracked-bootstrap class Argo CD's own release uses, because Argo CD
+   needs cluster DNS to reach its own repository server. The CSI driver has
+   no such constraint and stays an Argo Application. Choosing k3s does not
+   escape this trap; it only changes whose CoreDNS is Pending.
 2. **Terraform returns before Kubernetes exists.** `hcloud_server` is
-   complete when the server boots, not when cloud-init finishes.
-   Terraform does not wait for the control plane's cloud-init either:
-   `scripts/hetzner-bootstrap.sh` waits for the control plane's
-   bootstrap marker, joins the workers and waits for every node Ready;
-   `argo-up` separately waits for the uninitialized taint to clear once
-   the CCM is installed.
+   complete when the server boots, not when cloud-init finishes, so
+   `terragrunt apply` can return while k3s is still installing.
+   `cluster-up` therefore ends with HETZ-040's wait for every node to
+   report Ready, and `argo-up` separately waits for the uninitialized taint
+   to clear once the CCM is installed. Nothing between those two waits
+   needs an ordering guarantee: a worker's agent retries until the control
+   plane answers, so the two servers may be created at the same time.
 
 ## 7. Decision areas (mapping to specs)
 

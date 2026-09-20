@@ -30,7 +30,7 @@ controller manager (CCM) is a helm release outside Argo's ownership
 termination signal from the cascade; `cluster-down` destroys the servers
 under whatever the CCM manages once `argo-down` returns. An LB whose
 Service disappeared after its backing servers already died is orphaned
-and keeps billing (HETZ-020 §4 item 4). This spec is the teardown half
+and keeps billing (HETZ-020 §4 item 3). This spec is the teardown half
 HETZ-045 explicitly deferred to it.
 
 ## 2. Scope and non-goals
@@ -42,8 +42,8 @@ HETZ-140 and HETZ-150.
 
 Not in scope: `argo-up` (HETZ-045, already written); the CCM install
 itself and its helm release name `hccm` (HETZ-045); uninstalling the
-CCM, Cilium or Argo CD releases — `argo-down` never uninstalls any of
-the three on any provider, and `cluster-down` removes them by destroying
+CCM or Argo CD releases — `argo-down` never uninstalls either on any
+provider, and `cluster-down` removes them by destroying
 the servers they run on; `cluster-down`'s label-based sweep, which stays
 the safety net for whatever this spec's wait times out on (HETZ-040);
 the CSI volume/PVC teardown mechanics beyond relying on the existing
@@ -66,9 +66,9 @@ does not touch that guard.
   the cascade (`kubectl delete application root --cascade=foreground`);
   `:249-273` the civo-only PVC/PV wait for `cnpg-system` and
   `observability`; `:281-288` the final `helm uninstall` of
-  `root-application`/`argocd`, unconditional on provider and naming
-  neither the CCM nor Cilium.
-- HETZ-020 §4 item 4 (spike checklist): a `type: LoadBalancer` Service
+  `root-application`/`argocd`, unconditional on provider and never naming
+  the CCM.
+- HETZ-020 §4 item 3 (spike checklist): a `type: LoadBalancer` Service
   carrying `use-private-ip`/`ipv6-disabled` annotations gets an hcloud LB
   from the CCM; deleting the Service deletes the LB; deleting every
   server while the Service (and its LB) still exist orphans the LB — the
@@ -88,7 +88,7 @@ does not touch that guard.
   input resolution.
 - The steps ahead of the new block are unchanged and already generic:
   the `cluster_exists` existence proof (`:32`) and `configure_kubeconfig`
-  (`:37`) — on hetzner `cluster_exists` true means a kubeadm cluster
+  (`:37`) — on hetzner `cluster_exists` true means a k3s cluster
   exists, which it does from the control plane's own boot (HETZ-030), not
   that `argo-up` ever ran; every step below therefore tolerates a cluster
   that holds no Argo CD, which is why the LB wait treats an already-absent
@@ -124,7 +124,7 @@ does not touch that guard.
   `!= aws` is HETZ-016's generalisation, not new work here; this spec
   relies on that guard existing by the time this branch runs and adds no
   code of its own to it.
-- `argo-down` never runs `helm uninstall hccm` (or `cilium`, or `argocd`
+- `argo-down` never runs `helm uninstall hccm` (or `argocd`
   before the cascade finishes) — the final `helm uninstall` loop at
   `:281-288` names only `root-application` and `argocd`, unchanged by
   this spec. The CCM's helm release and its controller Pod stay running
@@ -232,3 +232,8 @@ path to persistent state.
 - 2026-09-20 — review fix: §4 states what `cluster_exists` true does and
   does not prove on hetzner, and that the Argo guard tolerates a cluster
   with no Argo CD in it.
+- 2026-09-20 — k3s (HETZ-017, ADR 0037): wording only. `cluster_exists`
+  proves a k3s cluster, there is no Cilium release for `argo-down` to leave
+  alone, and the spike's load-balancer item renumbered from 4 to 3. The
+  LB-before-cascade ordering, the `wait_for_lb_gone` contract and the PVC
+  wait are unaffected — they are CCM-level and bootstrap-agnostic.

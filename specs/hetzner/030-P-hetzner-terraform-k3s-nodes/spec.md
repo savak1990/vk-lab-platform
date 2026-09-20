@@ -213,19 +213,20 @@ Servers (`cluster-hetzner/k8s`, module `hcloud-nodes`):
     --kubelet-arg=system-reserved=cpu=500m,memory=1Gi \
     --kubelet-arg=kube-reserved=cpu=250m,memory=512Mi \
     --kubelet-arg=eviction-hard=memory.available<300Mi \
-    --node-ip=$(private ip) --node-external-ip=$PUB \
+    --node-ip=$PRIV --node-external-ip=$PUB \
     --flannel-iface=enp7s0
   ```
 
   An agent has no `kubelet-config` ConfigMap to inherit, unlike a
   `kubeadm join`, so the reservations are repeated here from the same
-  Terraform variables. A worker's `--node-ip` is its own private address:
-  for a Terraform worker the template substitutes it, and for an
-  autoscaled node the render reads it at boot from
-  `169.254.169.254/hetzner/v1/metadata/private-networks`, because the
-  autoscaler does not know the address in advance. The node's hostname is
-  the Hetzner server name by default, which is what the cloud controller
-  manager's fallback lookup needs; no template sets a different one.
+  Terraform variables. `$PRIV` is read at boot from
+  `169.254.169.254/hetzner/v1/metadata/private-networks`, not substituted
+  by Terraform, so **one render fits every worker**: the fixed worker and
+  any node the autoscaler creates, whose address Terraform cannot know.
+  That is what lets HETZ-170 use this render as it stands instead of
+  building a second one. The node's hostname is the Hetzner server name by
+  default, which is what the cloud controller manager's fallback lookup
+  needs; no template sets a different one.
 - Size: the render carries no apt keyring, so both templates land well
   under a kilobyte against the 32 KiB `user_data` cap. §6 step 1 measures
   them and the module asserts the bound, because HETZ-170 feeds the worker
@@ -234,9 +235,17 @@ Servers (`cluster-hetzner/k8s`, module `hcloud-nodes`):
   `/${project}/cluster-hetzner/k8s/control_plane_ip`,
   `/…/control_plane_private_ip`, `/…/worker_ips` (comma-separated list),
   `/…/server_ids` (comma-separated list). No kubeconfig and no private key
-  material is ever an output or ever enters state. The join token is not
-  an SSM output either: HETZ-170 reads the rendered worker `user_data`, not
-  the token on its own.
+  material is ever an output or ever enters state.
+- One further SSM parameter, `/…/worker_user_data`, as a **`SecureString`**:
+  the rendered worker cloud-init, which carries the join token. HETZ-170
+  feeds it to the cluster autoscaler as the node template for the nodes it
+  creates, so the autoscaler does not render one of its own and cannot
+  drift from the fixed workers. `SecureString` because the render holds the
+  token (ADR 0023); it is the only Hetzner cluster parameter that is not a
+  plain `String`. Its `--node-ip` is not substituted: the render reads the
+  node's own private address at boot from
+  `169.254.169.254/hetzner/v1/metadata/private-networks`, which is correct
+  for a Terraform worker and for an autoscaled one alike.
 - Terraform returns when every server reaches `running`, not when k3s is
   up. HETZ-040 waits for `/etc/rancher/k3s/k3s.yaml` and for every node to
   report Ready.
@@ -317,7 +326,11 @@ against the SSM outputs this spec writes.
   material. The join token is present, and is the documented exposure of
   ADR 0037.
 - SSM parameters exist under `/vk-hetzner-lab/cluster-hetzner/`, including
-  `worker_ips`. No SSM parameter holds the join token.
+  `worker_ips`. `worker_user_data` is the only one whose `Type` is
+  `SecureString`; every other is `String`.
+- The `worker_user_data` parameter, decoded, is byte-identical to the
+  `user_data` the fixed worker booted with, and contains no substituted
+  private address.
 - `cluster-down` leaves the network, subnet, and SSH key; `hcloud
   primary-ip list` is empty (server IPs are deleted with the servers).
 - One create/destroy cycle costs under 0.20 EUR (two `cx33` for under an

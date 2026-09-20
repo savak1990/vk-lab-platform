@@ -107,7 +107,7 @@ Revert Make and `root.hcl`; `persistent-down` removes the units. Deleting the SS
 
 - `hcloud_ssh_key` names are unique per project; a leftover key from HETZ-020 in the same project would collide. The spike uses its own project.
 - The `lab-role` policy revert hazard from CIVO-025 §14 applies unchanged.
-- Whether `10.0.0.0/16` collides with anything: pods `10.244.0.0/16` and services `10.96.0.0/12` (kubeadm defaults) must not overlap `10.0.0.0/16`; confirmed no overlap.
+- Whether `10.0.0.0/16` collides with anything: pods `10.42.0.0/16` and services `10.43.0.0/16` (k3s defaults, kept) must not overlap `10.0.0.0/16`; confirmed no overlap.
 
 ## 13. Definition of done
 
@@ -120,3 +120,6 @@ Revert Make and `root.hcl`; `persistent-down` removes the units. Deleting the SS
 - 2026-09-11 — created as DRAFT.
 - 2026-09-11 — reviewed and approved by the user; promoted to READY.
 - 2026-09-19 — kubeadm wording.
+- 2026-09-20 — k3s (HETZ-017): the CIDRs checked for overlap are k3s's
+  defaults, `10.42.0.0/16` and `10.43.0.0/16`. The network, subnet and SSH key
+  design is unaffected.

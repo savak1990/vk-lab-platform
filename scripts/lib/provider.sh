@@ -159,7 +159,7 @@ configure_kubeconfig() {
     kubectl ${kcfg[@]:+"${kcfg[@]}"} config rename-context "$raw_context" "${PROJECT_NAME}-civo" >/dev/null
     kubectl ${kcfg[@]:+"${kcfg[@]}"} config use-context "${PROJECT_NAME}-civo" >/dev/null
   elif [ "$PROVIDER" = "hetzner" ]; then
-    echo "configure_kubeconfig: PROVIDER=hetzner is implemented in HETZ-035" >&2
+    echo "configure_kubeconfig: PROVIDER=hetzner is implemented in HETZ-040" >&2
     return 1
   else
     aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$LAB_REGION" --alias "$CLUSTER_NAME" \

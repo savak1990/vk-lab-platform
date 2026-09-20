@@ -1,6 +1,6 @@
 ---
 id: "HETZ-020"
-title: "Feasibility spike: kubeadm, Cilium and the hcloud CCM on throwaway cx33 servers, with a written report"
+title: "Feasibility spike: k3s and the hcloud CCM, CSI and load balancer on throwaway cx33 servers, with a written report"
 status: "READY"
 priority: "P0"
 milestone: "M0"
@@ -10,7 +10,7 @@ recommended_model_tier: "standard"
 model_rationale: "Procedural verification with a fixed checklist; findings matter more than design reasoning"
 effort_estimate: "Half a session (2–3 h) plus boot waits and one invoice read; cost under 1 EUR"
 estimate_confidence: "medium"
-depends_on: []
+depends_on: ["HETZ-017"]
 blocked_by: []
 supersedes: []
 created: "2026-09-11"
@@ -29,23 +29,31 @@ stock across `nbg1`/`fsn1`/`hel1`, the API price list, and every pinned
 tool version were proven on 2026-09-19 and recorded in `research.md` (rows
 "Cheap lines are stock-limited", server prices, "hcloud CLI", "Versions on
 2026-09-19"). Record those as done, pointing at `research.md`; do not
-re-run them. What no document settles is whether kubeadm's CoreDNS
-tolerations, Cilium's VXLAN datapath and the hcloud CCM actually clear the
-`uninitialized` taint in the order `decisions.md` assumes, whether a CSI
-volume and a load balancer survive the lifecycle events the CCM contract
-implies, and the account limits and invoice lines for the now-smaller
-1 cp + 1 worker + autoscaled-worker shape.
+re-run them.
+
+What no document settles is Hetzner's own behaviour: whether a CSI volume
+survives the deletion of the server holding it and gives its data back,
+whether a load balancer is deleted with its Service and what becomes of it
+when the servers die first, the account limits against the four-node
+shape, and the invoice lines. Those four are the spike.
+
+Two things it no longer has to prove. The bootstrap is `curl -sfL
+https://get.k3s.io | … sh -`, which either returns 0 or does not, so it
+needs no rehearsal; and the cloud-controller-manager ordering argument is
+unchanged from the kubeadm design except that k3s's bundled CoreDNS stands
+where kubeadm's did, so item 1 confirms it while bringing the cluster up
+rather than as a staged experiment of its own.
 
 ## 2. Scope and non-goals
 
 In scope: up to three `cx33` servers in `nbg1`, one private network, one
-firewall, one volume, one load balancer, one throwaway kubeadm install with
-Cilium, the hcloud CCM and CSI, created and destroyed by hand or with
-throwaway Terraform in a scratch directory that never goes under
+firewall, one volume, one load balancer, one throwaway k3s install with the
+hcloud CCM and CSI, created and destroyed by hand or with throwaway
+Terraform in a scratch directory that never goes under
 `terraform/live/`. Not in scope: repository code, Argo CD beyond a Healthy
-check, AWS changes, and the cluster autoscaler component itself — item 5
-performs a manual `kubeadm join` shaped like the autoscaler's join; it does
-not deploy HETZ-170.
+check, AWS changes, and the cluster autoscaler component itself — item 4
+boots one server from the worker cloud-init, which is what the autoscaler
+will do; it does not deploy HETZ-170.
 
 Prerequisites, outside this repository: a Hetzner account past identity
 verification, a project `vk-hetzner-spike` (never the lab project), one
@@ -58,20 +66,22 @@ CLI ≥ 1.68, `helm`, `kubectl`.
 reads on 2026-09-19, what the previous spike plan could not: `cx33`
 create/delete in `nbg1`/`fsn1`/`hel1`, the API price list, and the pinned
 tool versions — `hcloud` CLI 1.68.0, Terraform provider
-`hetznercloud/hcloud` 1.69.0, Kubernetes 1.36.4, `containerd.io` 2.3, Cilium
-1.20.2, hcloud CCM v1.37.0, hcloud-csi v2.23.0 ("Versions on 2026-09-19"
-row). Those facts are done.
+`hetznercloud/hcloud` 1.69.0, hcloud CCM v1.37.0, hcloud-csi v2.23.0
+("Versions on 2026-09-19" row). Those facts are done. The k3s version the
+spike installs is the one HETZ-030 pins as `K3S_VERSION`.
 
 What `research.md` still marks as inferred from manifests or docs, never
 run, or medium/low confidence:
 
-- kubeadm's CoreDNS tolerations exclude `uninitialized`; the CCM chart
-  tolerates it and clears the taint — inferred from `dns/manifests.go` and
-  the CCM chart template, never run end to end ("kubeadm CoreDNS
-  tolerations vs. CCM" row).
-- Cilium's VXLAN datapath over the hcloud private network, with
-  `ipam.mode=kubernetes` avoiding the pod-CIDR collision — documented,
-  unmeasured on a real `cx33` NIC ("Cilium 1.20.2 on Hetzner" row).
+- k3s's bundled CoreDNS tolerations exclude `uninitialized`; the CCM chart
+  tolerates it and clears the taint — inferred from the k3s CoreDNS
+  manifest and the CCM chart template, never run end to end.
+- flannel's VXLAN datapath over the hcloud private network with
+  `--flannel-iface=enp7s0`, and that the MTU 1450 NIC needs no override —
+  documented, unmeasured on a real `cx33`.
+- That `--disable=servicelb,traefik,local-storage` leaves no trace, and
+  that `--cluster-init` gives an etcd datastore `k3s etcd-snapshot save`
+  can write.
 - CSI volume survival after server deletion, and data readback after
   re-attachment to another server — low confidence, "spike must verify"
   (Volumes row).
@@ -80,11 +90,11 @@ run, or medium/low confidence:
   spelled out … spike verifies" (CCM load balancer annotations row).
 - Firewall behaviour for LB → node traffic with `use-private-ip` — medium
   confidence (LB → node traffic row).
-- An autoscaler-style `kubeadm join` from a cloud-init using a `--ttl 0`
-  token — unverified (cluster autoscaler row, open experiment 8).
-- Metadata `userdata` exposure, including the join token, on such a node —
-  the mechanism is documented (metadata service row) but not exercised on
-  this node shape.
+- That a server booted from the worker cloud-init alone joins with no
+  operator step, which is what the autoscaler depends on.
+- Metadata `userdata` exposure, including the k3s join token, on such a
+  node — the mechanism is documented (metadata service row) and ADR 0037
+  accepts it, but it is not exercised on this node shape.
 - The 5-server default limit against 4 lab nodes (1 cp + 1 worker + up to
   2 autoscaled) plus CI's own nodes — medium confidence (Default limits
   row).
@@ -97,62 +107,49 @@ run, or medium/low confidence:
 Checklist. For each item record the command, the result, and the date in
 the report.
 
-1. Create two `cx33` in `nbg1` with a cloud-init that installs
-   `containerd.io` 2.3 from Docker's repo, `kubeadm`/`kubelet`/`kubectl`
-   1.36 from `pkgs.k8s.io`, the `overlay`/`br_netfilter` modules, the
-   sysctls, and turns swap off. Run `kubeadm init --config` on the first
-   server with `nodeRegistration.kubeletExtraArgs` `cloud-provider:
-   external` and `node-ip` set to the private address,
-   `nodeRegistration.taints: []`, `networking.podSubnet: 10.244.0.0/16`,
-   `controlPlaneEndpoint: 10.0.1.10:6443`, `apiServer.certSANs: [<public
-   ip>]`. In the product these steps are the control plane's own
-   cloud-init (HETZ-030); the spike may run them by hand or from a
-   cloud-init copy of `control-plane.yaml.tftpl`. On the cloud-init path,
-   record the time from create to `/var/lib/lab/cp-bootstrap-done`; on the
-   by-hand path, record the time from create to the control plane turning
-   `Ready`. Either figure is what HETZ-035's wait budget is sized
-   against. Fetch `/etc/kubernetes/admin.conf` over
-   SSH. Confirm the node is
-   `NotReady` with the `node.cloudprovider.kubernetes.io/uninitialized`
-   taint and CoreDNS `Pending`. `helm install cilium cilium/cilium
-   --version 1.20.2 -n kube-system --set ipam.mode=kubernetes --set
-   routingMode=tunnel --set tunnelProtocol=vxlan --set
-   kubeProxyReplacement=false --set operator.replicas=1`, the product's
-   own value set (HETZ-037); confirm the node turns `Ready` while
-   CoreDNS stays `Pending`. Create Secret `kube-system/hcloud`. `helm
-   install hccm hcloud/hcloud-cloud-controller-manager -n kube-system --set
-   networking.enabled=true --set networking.clusterCIDR=10.244.0.0/16`.
-   Record the time until the taint clears, `providerID` is set on the
-   node, and CoreDNS reaches `Running`. Helm-install Argo CD with the
-   repository's values and confirm it reaches `Healthy`. Record every
-   timing.
-2. `kubeadm join` the second server using the `--print-join-command`
-   output plus `--cloud-provider=external`/`--node-ip` kubelet args.
-   Record `kubectl get node -o json` allocatable CPU and memory on a
-   `cx33` with Cilium, the CCM and CSI pods present.
-3. Install `hcloud/hcloud-csi` 2.23.0. Create a 10 Gi PVC and write a
+1. Create two `cx33` in `nbg1` at the same time, with the HETZ-030
+   cloud-init templates: the first as `k3s server` with `--cluster-init`
+   and the full flag set, the second as `k3s agent` with `K3S_URL` and the
+   same token. Record the time from create to each node registering, and
+   to both reporting `Ready` — that figure is what HETZ-040's wait budget
+   is sized against. Then confirm, in one pass:
+   - both nodes `Ready`, both carrying
+     `node.cloudprovider.kubernetes.io/uninitialized`, CoreDNS `Pending`;
+   - no `traefik`, `svclb-` or `local-path-provisioner` pod, no
+     `local-path` StorageClass, and metrics-server present;
+   - `k3s etcd-snapshot save` succeeds, proving embedded etcd;
+   - a two-pod cross-node ping over flannel VXLAN succeeds at MTU 1450;
+   - allocatable CPU and memory on a `cx33` with the CCM and CSI running.
+   Fetch `/etc/rancher/k3s/k3s.yaml` over SSH and rewrite its address.
+   Create the in-cluster token Secret, then `helm install hccm
+   hcloud/hcloud-cloud-controller-manager -n kube-system --set
+   networking.enabled=true --set networking.clusterCIDR=10.42.0.0/16 --set
+   env.HCLOUD_NETWORK_ROUTES_ENABLED.value=false`. Record the time until
+   the taint clears, `providerID` is set, and CoreDNS reaches `Running`.
+   Helm-install Argo CD with the repository's values and confirm it
+   reaches `Healthy`. Record every timing.
+2. Install `hcloud/hcloud-csi` 2.23.0. Create a 10 Gi PVC and write a
    marker file. Delete the server holding the volume. `hcloud volume
    list`. Re-attach the volume to the other server and read the marker.
    Note whether the charge line kept running.
-4. Create a `type: LoadBalancer` Service with `load-balancer.hetzner.cloud/
+3. Create a `type: LoadBalancer` Service with `load-balancer.hetzner.cloud/
    location: nbg1`, `use-private-ip: "true"`, `ipv6-disabled: "true"`.
    Time to `status.loadBalancer.ingress`; record whether `.ip` or
    `.hostname` is set. `curl` through it with the server firewall allowing
    only 22 and 6443. Delete the Service and confirm the LB is gone.
    Recreate the Service, then delete every server while the LB exists:
    record whether the LB is orphaned.
-5. `kubeadm token create --ttl 0 --print-join-command` on the control
-   plane. Create a third `cx33` by hand with a cloud-init that installs
-   the same packages and runs that join command with
-   `KUBELET_EXTRA_ARGS=--cloud-provider=external --node-ip=<metadata
-   private ip>`. Confirm it joins, gets a `providerID`, and becomes
-   `Ready`. From a `hostNetwork` pod on it, `curl
-   169.254.169.254/hetzner/v1/userdata` and record that the join token is
-   readable there. Delete the server.
-6. Console → Limits: record the server and primary-IP limits. Decide
+4. Create a third `cx33` by hand with the **same** worker cloud-init the
+   second server used, unchanged — that is exactly what the autoscaler
+   will do (HETZ-170). Confirm it joins with no further step, gets a
+   `providerID`, and becomes `Ready`. From a `hostNetwork` pod on it,
+   `curl 169.254.169.254/hetzner/v1/userdata` and record that the k3s join
+   token is readable there, so ADR 0037's accepted exposure is on record as
+   observed rather than inferred. Delete the server.
+5. Console → Limits: record the server and primary-IP limits. Decide
    whether a limit-increase request is needed before M1 (4 lab nodes plus
    CI's own nodes).
-7. Destroy everything. `hcloud {server,load-balancer,volume,firewall,
+6. Destroy everything. `hcloud {server,load-balancer,volume,firewall,
    network,primary-ip,ssh-key} list` must all be empty. Next day, read the
    invoice: lines for network, firewall, SSH key, unassigned primary IP;
    hourly rounding; the actual volume and LB rates.
@@ -172,10 +169,10 @@ Ceiling: 1 EUR. Stop and destroy if the running total approaches it.
 
 1. Prepare the spike project and token; export `HCLOUD_TOKEN` for the
    session only.
-2. Run checklist items 1–2; keep timestamps.
-3. Run checklist items 3–4.
-4. Run checklist items 5–6.
-5. Run checklist item 7; write the report, correct the research rows, and
+2. Run checklist item 1; keep timestamps.
+3. Run checklist items 2–3.
+4. Run checklist items 4–5.
+5. Run checklist item 6; write the report, correct the research rows, and
    amend `decisions.md`.
 
 ## 7. Dependencies and blockers
@@ -186,14 +183,18 @@ token exported for the session, `hcloud` CLI ≥ 1.68, `helm`, `kubectl`.
 
 ## 8. Acceptance criteria
 
-- Every checklist item (§4, 1–7) has a recorded result, with date and the
+- Every checklist item (§4, 1–6) has a recorded result, with date and the
   command run, or a recorded reason it could not run.
 - Item 1 shows the CoreDNS `Pending` → `Running` transition with timings
-  (init → Cilium → CCM → CoreDNS `Running` → Argo CD `Healthy`).
-- Item 3 answers both halves: volume survival and data readback.
-- Item 4 answers LB deletion with the Service and orphaning when servers
+  (boot → both nodes Ready → CCM → CoreDNS `Running` → Argo CD `Healthy`),
+  and records that the three disabled components left no trace and that
+  `k3s etcd-snapshot save` succeeded.
+- Item 2 answers both halves: volume survival and data readback.
+- Item 3 answers LB deletion with the Service and orphaning when servers
   die first.
-- The final listings in item 7 are empty; the invoice shows the expected
+- Item 4 shows a node joining from the unmodified worker cloud-init with
+  no operator step.
+- The final listings in item 6 are empty; the invoice shows the expected
   lines only.
 - The report is committed to `specs/hetzner/research.md`.
 
@@ -221,8 +222,9 @@ Console and record why.
 - The repository's Argo CD helm values may need `--set` overrides to run
   standalone outside the platform's `argo-up`/Terraform inputs; record any
   override used.
-- Bootstrap tokens default to a 24 h TTL. Item 5 must pass `--ttl 0`
-  explicitly, or the token used for the manual join expires mid-spike.
+- The k3s join token does not expire, so item 4 needs no TTL handling;
+  what it must not do is edit the worker cloud-init, because the point is
+  that the autoscaler's node and the fixed worker boot the same bytes.
 
 ## 13. Definition of done
 
@@ -243,3 +245,13 @@ Console and record why.
 - 2026-09-20 — review fix: item 1's Cilium values match the product's
   (`routingMode=tunnel`, `tunnelProtocol=vxlan`, `operator.replicas=1`),
   and the timing to record is stated per path.
+- 2026-09-20 — k3s (HETZ-017, ADR 0037); seven items become six, and the
+  kubeadm rehearsal goes. The bootstrap is one install command that either
+  returns 0 or does not, so items 1 and 2 collapse into a single
+  bring-up-and-observe pass that also checks the three disabled components,
+  embedded etcd and the flannel datapath. Item 4 no longer mints a token
+  and writes a join line: it boots a third server from the unmodified
+  worker cloud-init, which is what the autoscaler does. The four items that
+  carried the spike's real value — volume survival, load balancer
+  lifecycle and orphaning, account limits, invoice — are unchanged, and
+  they are the reason this spec still exists.
