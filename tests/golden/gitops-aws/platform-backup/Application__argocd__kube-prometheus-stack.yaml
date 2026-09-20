@@ -99,6 +99,14 @@ spec:
         grafana:
           persistence:
             enabled: true
+            # statefulset, not the chart's default bare PVC: a late-binding
+            # PVC that Argo owns stays Pending until a pod consumes it, Argo
+            # reads Pending as Progressing, and an operation that can never
+            # settle has no timeout to end it. A volumeClaimTemplate is
+            # created by the StatefulSet controller instead, so Argo never
+            # tracks it - the same shape Prometheus, Alertmanager and Loki
+            # already use here.
+            type: statefulset
             storageClassName: ebs-delete
             size: 1Gi
           # Measured 589Mi working set on a live cluster - the old 512Mi limit

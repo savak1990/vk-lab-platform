@@ -40,6 +40,8 @@ In scope:
 - Memory requests raised to match measured use, so the scheduler sees the real
   footprint.
 - A ServiceMonitor for the autoscaler's metrics.
+- Grafana's volume moved to a `volumeClaimTemplate`, so no PersistentVolumeClaim
+  is left for Argo to wait on when a scale event disturbs a sync.
 - A scale-up test.
 
 Not in scope: multiple pools, spot-like capacity (Civo has none), Karpenter
@@ -262,3 +264,21 @@ Remove the Application and restore `node_count` to an explicit value in
   Grafana's PVC (dashboards already come from ConfigMaps) or a
   `resource.customizations.health.PersistentVolumeClaim` Lua override — noting
   that core resources take no group prefix in that key.
+- 2026-09-20 — **the latch is removed in this spec**, because the autoscaler is
+  what makes it likely to trip. Grafana was the only PersistentVolumeClaim in
+  the platform that Argo itself creates: Prometheus and Alertmanager use
+  `volumeClaimTemplate`, Loki uses a StatefulSet, and CNPG's volumes are
+  operator-created, so Argo tracks none of them. Setting Grafana's
+  `persistence.type: statefulset` moves its volume to a `volumeClaimTemplate`
+  too, so the StatefulSet controller creates the claim and Argo never waits on
+  it. Verified by rendering the real chart with this repository's own values:
+  zero `PersistentVolumeClaim` objects, one `volumeClaimTemplates`, Grafana a
+  StatefulSet, and the Service name unchanged so the HTTPRoute and
+  ServiceMonitor selectors still match. Persistence behavior is unchanged —
+  nothing is lost. This follows the house pattern of removing what stops a wave
+  settling, rather than overriding a health check. A `PersistentVolumeClaim`
+  health override is therefore not needed and is not added; it would only guard
+  a bare PVC nobody has written yet.
+- 2026-09-20 — note for whoever applies this to a **running** cluster: Grafana
+  changes kind from Deployment to StatefulSet, so Argo replaces the object. On
+  a disposable cluster that is a non-event.
