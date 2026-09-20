@@ -89,7 +89,7 @@ two additions:
 | HETZ-010 | [010-D-provider-command-surface](010-D-provider-command-surface/spec.md) | `PROVIDER=hetzner` operator input, defaults, token helper | DONE | P1 | S | standard | — | M0 |
 | HETZ-015 | [015-D-governance-adrs-constitution](015-D-governance-adrs-constitution/spec.md) | ADR 0036, ADR 0029/0030/0024/0002/0022 amendments, constitution §20 per-provider, architecture §10a | DONE | P0 | M | strongest | — | M0 |
 | HETZ-016 | [016-P-non-aws-generalisation](016-P-non-aws-generalisation/spec.md) | `= civo` script branches and `eq "civo"` gates become non-AWS; Civo byte-identical | READY | P0 | M | strongest | 010 | M0 |
-| HETZ-017 | [017-P-k3s-bootstrap-governance](017-P-k3s-bootstrap-governance/spec.md) | k3s replaces kubeadm: ADR 0037, a note on ADR 0036, four specs retired, the package rewritten | READY | P0 | M | strongest | 015 | M0 |
+| HETZ-017 | [017-A-k3s-bootstrap-governance](017-A-k3s-bootstrap-governance/spec.md) | k3s replaces kubeadm: ADR 0037, a note on ADR 0036, four specs retired, the package rewritten | IN_REVIEW | P0 | M | strongest | 015 | M0 |
 | HETZ-018 | [018-P-identity-chain-provider-naming](018-P-identity-chain-provider-naming/spec.md) | Roles Anywhere chain names parametrized by provider; Civo names unchanged | READY | P0 | M | strongest | 010, 016 | M0 |
 | HETZ-020 | [020-P-hetzner-feasibility-spike](020-P-hetzner-feasibility-spike/spec.md) | Feasibility spike: volume survival, LB lifecycle and orphaning, account limits, invoice | READY | P0 | S | standard | 017 | M0 |
 | HETZ-025 | [025-P-hetzner-persistent-stack](025-P-hetzner-persistent-stack/spec.md) | `persistent-hetzner` network, subnet, SSH key | READY | P1 | S | standard | 010, 015, 080 | M1 |

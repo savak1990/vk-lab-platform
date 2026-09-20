@@ -168,5 +168,5 @@ manager first, and it joins Argo CD in the untracked bootstrap class.
   unchanged by this record.
 - [ADR 0012](0012-argo-cd-script-bootstrap-and-cascade-teardown.md) — why the
   cloud controller manager and Argo CD are installed by a script.
-- `specs/hetzner/017-P-k3s-bootstrap-governance/spec.md` — the package rewrite
+- `specs/hetzner/017-A-k3s-bootstrap-governance/spec.md` — the package rewrite
   this record authorises.

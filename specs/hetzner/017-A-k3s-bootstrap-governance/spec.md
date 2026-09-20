@@ -1,7 +1,7 @@
 ---
 id: "HETZ-017"
 title: "k3s replaces kubeadm as the Hetzner bootstrap: ADR 0037, a note on ADR 0036, and the package rewrite"
-status: "READY"
+status: "IN_REVIEW"
 priority: "P0"
 milestone: "M0"
 type: "governance"
@@ -335,3 +335,13 @@ and no cloud resource at risk.
   code and the least operational work. Datastore, CNI and node shape settled in
   the same session: embedded etcd through `--cluster-init`, flannel, and the
   unchanged 2 × `cx33` fixed pool with a schedulable control plane.
+- 2026-09-20 — implemented in three commits; `make specs-check`,
+  `make gitops-check` and `make secrets-check` all exit 0. Pull request #38
+  opened; `IN_REVIEW`. ADR 0037 written and ADR 0036 noted; HETZ-035, 037,
+  165 and 185 are `SUPERSEDED` in `NNN-Z-` folders; HETZ-030, 160 and 170
+  rewritten; HETZ-010, 020, 025, 040, 045, 047, 050, 060, 085 and 130
+  edited; the four package documents, constitution §20,
+  `docs/architecture.md` §10a, both high-level designs and `CLAUDE.md`
+  follow. One deviation from §2: HETZ-015 is `DONE` but its §1 and §4
+  forward references named the kubeadm design, so they were corrected and a
+  dated §14 line added; its status is unchanged.
