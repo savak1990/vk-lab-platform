@@ -1,7 +1,7 @@
 ---
 id: "HETZ-020"
 title: "Feasibility spike: k3s and the hcloud CCM, CSI and load balancer on throwaway cx33 servers, with a written report"
-status: "READY"
+status: "DONE"
 priority: "P0"
 milestone: "M0"
 type: "research"
@@ -15,7 +15,7 @@ blocked_by: []
 supersedes: []
 created: "2026-09-11"
 updated: "2026-09-20"
-completed: ""
+completed: "2026-09-21"
 ---
 
 # HETZ-020 — Feasibility spike
@@ -156,6 +156,46 @@ the report.
 
 Ceiling: 1 EUR. Stop and destroy if the running total approaches it.
 
+## 4a. Deviations from §2 and §4
+
+- **D1 — one project, not `vk-hetzner-spike`.** §2 requires a separate spike
+  project. Operator decision: the spike ran in the platform's own `vk-lab`
+  project, which was empty. The rule exists because `hcloud_ssh_key` names are
+  unique per project (HETZ-025 §12), so every spike resource was named
+  `hz020-*` and labelled `spike=hetz-020`, and §6's sweep was run
+  **unfiltered** rather than by label. Baseline before and sweep after were
+  both zero across all ten resource kinds.
+- **D2 — the Console project name.** `secrets/README.md` told the operator to
+  name the Hetzner project `vk-hetzner-lab`; the real one is `vk-lab`. Nothing
+  reads the Console name — the token selects the project and labels use
+  `PROJECT_NAME` — so the documentation was corrected to say so rather than
+  the project renamed.
+- **D3 — item 1's templates had to be written, not reused.** §4 says "with the
+  HETZ-030 cloud-init templates". They do not exist: a sweep for
+  `get.k3s.io|INSTALL_K3S|K3S_URL|K3S_TOKEN|flannel-iface|enp7s0|cluster-init|
+  #cloud-config|user_data` across every `.tf`, `.sh`, `.yaml`, `.tpl` and the
+  Makefile returns zero hits, and there is no `terraform/live/cluster-hetzner/`
+  or `terraform/modules/*hcloud*`. The two fenced blocks in HETZ-030
+  `:178-192` and `:209-218` were transcribed into throwaway documents in the
+  session scratchpad. HETZ-017's blocks at `:123-147` are an earlier, less
+  complete draft and must not be used.
+- **D4 — three of the prescribed commands are wrong and were fixed to run.**
+  Recorded in full in `research.md`'s Spike results: the unquoted
+  `eviction-hard` redirect, the `$PRIV` parse, and §4 item 1's own
+  `--set env.HCLOUD_NETWORK_ROUTES_ENABLED.value=false`, which must be
+  `--set-string`. Each is a defect in a spec, not in Hetzner.
+- **D5 — item 5's CAX half could not run.** The plan added a `cax21` create to
+  settle whether the ARM fallback had returned. Hetzner refused it
+  (`unsupported location for server type`), which is itself the answer, so the
+  autoscaler-node test of item 4 was run on `cx33` instead. The refusal also
+  exposed that HETZ-175 §4's pre-flight probe reads a field that does not
+  predict creates.
+- **D6 — the `K3S_VERSION` pin is a deliverable §4 does not name.** Nothing in
+  the repository pinned one. The spike chose and proved `v1.36.4+k3s1`.
+- **D7 — item 5 (limits) and item 6's invoice line remain open.** No API
+  exposes account limits, and the invoice is not available until the next
+  billing day. Both are recorded as operator actions in the Spike results.
+
 ## 5. Files/components affected
 
 - `specs/hetzner/research.md` (new "Spike results" section, answering the
@@ -228,9 +268,11 @@ Console and record why.
 
 ## 13. Definition of done
 
-- [ ] Report written and research rows corrected in `research.md`
-- [ ] `decisions.md` rows confirmed or amended
-- [ ] Leak check empty; invoice read; index updated; status `DONE`
+- [x] Report written and research rows corrected in `research.md`
+- [x] `decisions.md` rows confirmed or amended
+- [x] Leak check empty; index updated; status `DONE`
+- [ ] **Invoice read** — carried to HETZ-025, see §14
+- [ ] **Account limits read from the Console** — carried to HETZ-025, see §14
 
 ## 14. Execution evidence and status history
 
@@ -255,3 +297,45 @@ Console and record why.
   carried the spike's real value — volume survival, load balancer
   lifecycle and orphaning, account limits, invoice — are unchanged, and
   they are the reason this spec still exists.
+- 2026-09-21 — executed on branch `hetzner-020-feasibility-spike`, off `main`
+  at `07f7dcb`. Deviations D1 to D7 in §4a. Full report in
+  `specs/hetzner/research.md` under "Spike results (HETZ-020, 2026-09-21)";
+  four rows amended in `decisions.md`; experiments 2, 3, 4, 5, 6 struck and 8
+  struck in part in `research.md`'s open list.
+
+  Checklist coverage: item 1 done (bring-up, ordering, disabled components,
+  etcd snapshot, flannel datapath, allocatable); item 2 done (volume survives
+  and data reads back, with a ~6-minute force-detach stall); item 3 done
+  (address shape, traffic with no NodePort rule, clean deletion with the
+  Service, **orphaning confirmed**); item 4 done on `cx33` per D5, including
+  the `userdata` token exposure; item 5 open (limits are Console-only); item 6
+  done for the sweep, open for the invoice.
+
+  Five defects found in commands the specs prescribe verbatim — HETZ-030's
+  `eviction-hard` quoting and `$PRIV` parse, HETZ-020 §4's own CCM helm flag,
+  HETZ-175 §4's pre-flight probe field, and the hcloud CLI's inability to pin
+  a private IP at create.
+
+  Leak sweep clean: server, load-balancer, volume, firewall, network,
+  primary-ip, ssh-key, placement-group, floating-ip and certificate all zero,
+  unfiltered, matching the pre-spike baseline. Measured spend about 0.03 EUR
+  against the 1 EUR ceiling; the invoice confirms it next billing day.
+- 2026-09-21 — closed `DONE` by operator decision with two acceptance
+  criteria still open. Both are waits, not work, and neither blocks any
+  dependent spec:
+
+  - **The invoice.** §4 item 6 wants the network, firewall, SSH-key and
+    unassigned-primary-IP lines, the hourly rounding, and the real volume and
+    LB rates. Hetzner does not publish them until the next billing day, so
+    they cannot be read while this spec is open. Measured spend was about
+    0.03 EUR; the list prices in the cost model stand unverified.
+  - **Account limits.** No API endpoint exposes them — `/v1/locations` and the
+    rest carry no limit fields. This needs Console → Limits by hand.
+
+  **Both are carried to HETZ-025**, which is the next spec to touch this
+  Hetzner project and whose §9 already expects a cost reading. If the default
+  5-server limit applies, the increase must be requested at once: it is
+  granted only after one month as a customer and a paid first invoice, then
+  1–3 business days (`research.md:34`), which makes it the longest lead time
+  in the Hetzner track and the only thing that can delay M1 on calendar time
+  rather than on work.

@@ -65,8 +65,10 @@ passed as `VALUE`.
 `PROVIDER=hetzner` reads `secrets/hetzner-token.enc`. No API creates a
 Hetzner Cloud project, so this is done by hand once:
 
-1. In the Hetzner Cloud Console, create a project named `vk-hetzner-lab`
-   (the `PROJECT_NAME` default for `PROVIDER=hetzner`).
+1. In the Hetzner Cloud Console, create a project. The name is free-form and
+   nothing reads it — the token alone selects the project, and resource labels
+   use `PROJECT_NAME`. Naming it after the `PROVIDER=hetzner` default,
+   `vk-hetzner-lab`, keeps the Console and the repository readable together.
 2. In that project, under Security → API tokens, create one token with
    Read & Write permission. Copy it once; the Console never shows it again.
 3. Encrypt and commit it:

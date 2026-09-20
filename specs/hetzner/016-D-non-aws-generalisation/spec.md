@@ -1,7 +1,7 @@
 ---
 id: "HETZ-016"
 title: "Non-AWS generalisation: civo-only script branches and Helm gates become non-AWS, with Civo and AWS behaviour unchanged"
-status: "IN_REVIEW"
+status: "DONE"
 priority: "P0"
 milestone: "M0"
 type: "implementation"
@@ -15,7 +15,7 @@ blocked_by: []
 supersedes: []
 created: "2026-09-11"
 updated: "2026-09-20"
-completed: ""
+completed: "2026-09-20"
 ---
 
 # HETZ-016 — Non-AWS generalisation of scripts and GitOps gates
@@ -191,9 +191,9 @@ One PR (PR 3 in `roadmap.md`, together with HETZ-018). Revert restores the branc
 
 ## 13. Definition of done
 
-- [ ] Goldens empty for `aws` and `civo`; attached to the PR
-- [ ] Real Civo cycle recorded
-- [ ] Civo spec §14 notes added; index updated; status `DONE`
+- [x] Goldens empty for `aws` and `civo`; attached to the PR
+- [x] Real Civo cycle recorded
+- [x] Civo spec §14 notes added; index updated; status `DONE`
 
 ## 14. Execution evidence and status history
 
@@ -222,4 +222,7 @@ One PR (PR 3 in `roadmap.md`, together with HETZ-018). Revert restores the branc
   which runs both `lifecycle-aws` and `lifecycle-civo` against the CI
   projects; that also covers the aws script path, which no offline gate
   reaches (deviation D5).
-
+- 2026-09-20 — merged as pull request #39, `223da37`. Both lifecycle jobs
+  passed against the CI projects, which is the "real Civo cycle" §13 asks
+  for — the local cycle was impossible with the Civo project at zero.
+  Closed `DONE`.

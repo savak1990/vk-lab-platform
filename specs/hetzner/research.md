@@ -41,7 +41,7 @@ and dated third-party readings of the pricing page (medium).
 | `hcloud_load_balancer` and friends | `hcloud_load_balancer { name, load_balancer_type ("lb11"), location | network_zone, algorithm { type }, delete_protection }` → attributes `ipv4`, `ipv6`, `network_ip`; `hcloud_load_balancer_service { protocol tcp|http|https, listen_port, destination_port, proxyprotocol, health_check {…}, http {…} }`; `hcloud_load_balancer_target { type server|label_selector|ip, use_private_ip }`; `hcloud_load_balancer_network`. Not needed when the CCM owns the LB (Argo/Service path), listed for a Terraform-owned alternative | provider docs `load_balancer*.md` | high |
 | `hcloud_primary_ip`, `hcloud_floating_ip`, `hcloud_volume`, `hcloud_ssh_key`, `hcloud_placement_group` | `hcloud_primary_ip { name, type ipv4|ipv6, location, assignee_type "server", assignee_id, auto_delete (keep false), delete_protection }` → `ip_address`; `hcloud_volume { name, size (GB, ≥10), location | server_id, automount, format xfs|ext4 }`; `hcloud_ssh_key { name, public_key }`; `hcloud_placement_group { name, type "spread" }`; `hcloud_floating_ip { type, home_location | server_id }` | provider docs | high |
 | `hcloud` CLI | v1.68.0 installed and exercised on 2026-09-19 (create, describe, delete, every list verb below); v1.67.0 was the 2026-07-24 release the specs pin — bump the pin to 1.68.0. Config file `~/.config/hcloud/cli.toml` (override `HCLOUD_CONFIG`); **stateless with `HCLOUD_TOKEN` set — no file is written unless you run `hcloud context create`**, which stores the token in `cli.toml` in plaintext. Verbs for a leak sweep: `hcloud server list`, `load-balancer list`, `volume list`, `firewall list`, `network list`, `primary-ip list`, `floating-ip list`, `ssh-key list`, `placement-group list`, all with `-o json` and `-l key=value` label selectors. `hcloud server ssh <name>` exists | https://github.com/hetznercloud/cli/blob/main/docs/reference/configuration.md ; https://github.com/hetznercloud/cli/releases | high |
-| Metadata service | `http://169.254.169.254/hetzner/v1/metadata` (hostname, instance-id, public-ipv4, region, availability-zone, `metadata/private-networks`) and **`/hetzner/v1/userdata` — cloud-init user data is readable by any process on the node without authentication**. Never put a long-lived secret (CA key, Hetzner token) in `user_data`; a `hostNetwork` pod can read it. The Roles Anywhere helper's `serve` mode listens on `127.0.0.1:9911`, so there is no conflict | https://github.com/canonical/cloud-init/blob/main/cloudinit/sources/DataSourceHetzner.py | high |
+| Metadata service | `http://169.254.169.254/hetzner/v1/metadata` (hostname, instance-id, public-ipv4, region, availability-zone, `metadata/private-networks`) and **`/hetzner/v1/userdata` — cloud-init user data is readable by any process on the node without authentication**. **Amended 2026-09-21 (HETZ-020, ADR 0037).** Observed directly: a `hostNetwork` pod on a spike node read the whole cloud-config, `K3S_TOKEN` included, from `/hetzner/v1/userdata`. ADR 0037 accepts exactly that for the k3s join token, bounded (join-only, private network, regenerated per `make up`, `k3s token rotate` exists). The prohibition still stands for a CA private key or the Hetzner API token, which grant far more and are never placed there. The Roles Anywhere helper's `serve` mode listens on `127.0.0.1:9911`, so there is no conflict | https://github.com/canonical/cloud-init/blob/main/cloudinit/sources/DataSourceHetzner.py | high |
 | **hcloud-cloud-controller-manager (CCM)** | **Not preinstalled** (unlike Civo). v1.37.0 (2026-09-11). Chart `hcloud/hcloud-cloud-controller-manager` from `https://charts.hetzner.cloud`, namespace `kube-system`. Needs Secret `kube-system/hcloud` with key `token` (**read+write** token) and, for private networking, key `network` (id or name) plus `--set networking.enabled=true --set networking.clusterCIDR=<pod CIDR>`. Kubelet must start with `--cloud-provider=external`; nodes then carry the `node.cloudprovider.kubernetes.io/uninitialized` taint until the CCM initialises them — **the CCM must be the first thing after the kubeadm bootstrap, before Argo CD can schedule** (bootstrap-ordering trap: either tolerate the taint in the CCM chart — it does — and install it from `argo-up`, or run Argo with the toleration). Route controller is on by default with networking; it needs a CNI in native routing mode (Cilium native) — with **Cilium's default VXLAN datapath set `HCLOUD_NETWORK_ROUTES_ENABLED=false`** or do not enable `networking` at all. Private networks are IPv4-only. Images amd64/arm64 | https://github.com/hetznercloud/hcloud-cloud-controller-manager/blob/main/docs/guides/quickstart.md ; .../guides/private-network-setup.md ; .../explanation/private-networks.md ; .../explanation/controllers.md ; chart `values.yaml` | high |
 | CCM load balancer annotations | Prefix `load-balancer.hetzner.cloud/`: `type` (default `lb11`), `location` **or** `network-zone` (mutually exclusive; immutable — a change means delete+recreate = new IP), `name`, `algorithm-type` round_robin|least_connections, `protocol` tcp|http|https (default tcp), `use-private-ip` (targets via private IPs; needs CCM networking), `disable-private-ingress`, `private-subnet-ip-range`, `private-ipv4`, `disable-public-network`, `ipv6-disabled` (recommended with external-dns so only an A record is published), `hostname` (status carries hostname instead of IP), `uses-proxyprotocol`, `node-selector`, `health-check-{protocol,port,interval,timeout,retries,http-domain,http-path,http-validate-certificate}`, `http-status-codes`, sticky/cookie/redirect/managed-certificate options; read-only status annotations `id`, `ipv4`, `ipv6`, `ipv4-rdns`, `ipv6-rdns`. Defaults also settable cluster-wide via `HCLOUD_LOAD_BALANCERS_*` env (`LOCATION`, `NETWORK_ZONE`, `USE_PRIVATE_IP`, `DISABLE_IPV6`, `TYPE`, health-check defaults 10 s/15 s/3). LB is created and deleted by the CCM with the Service (standard cloud-provider contract; deletion path not spelled out in the docs — spike verifies as CIVO-020 did). Adopting a pre-existing LB by `name` is not documented | https://github.com/hetznercloud/hcloud-cloud-controller-manager/blob/main/docs/reference/load_balancer_annotations.md ; .../reference/load_balancer_envs.md ; .../guides/load-balancer/private-networks.md | high (annotations) / medium (deletion, adoption) |
 | LB → node traffic and firewalls | With `use-private-ip: "true"` the LB reaches nodes over the private network, which Hetzner firewalls do not filter (firewalls apply to the public interface); the NodePort range therefore needs **no** public firewall rule. Without it the LB hits the public IPs and the firewall must allow the NodePorts from the LB's IPs. IPVS-mode kube-proxy needs `disable-private-ingress` | https://github.com/hetznercloud/hcloud-cloud-controller-manager/blob/main/docs/guides/load-balancer/private-networks.md ; https://docs.hetzner.com/cloud/firewalls/overview/ | medium |
@@ -96,11 +96,199 @@ Kubernetes overhead on a k3s control-plane node is **unmeasured on this stack** 
 ## Open experiments (bounded, for the spike)
 
 1. ~~`hcloud server-type list` and a real `hcloud server create --type cax11 --location nbg1` at spike time: confirm CAX stock, note the exact `server_type` strings and the arm64 `ubuntu-24.04` image id.~~ **Done 2026-09-19**: CAX fails, `cx33` succeeds in nbg1/fsn1/hel1; server type string `cx33`, image `ubuntu-24.04` (x86); `hcloud` v1.68.0, Terraform 1.15.9 with provider `hetznercloud/hcloud` 1.69.0 create/destroy verified; server `running` 18–19 s after create.
-2. Measure allocatable memory and CPU on one CX33 running k3s with CCM+CSI installed.
-3. Delete a server with an attached CSI volume: confirm the volume stays `available`, its data survives re-attachment to a new server (the half CIVO-020 never ran), and the charge line keeps running.
-4. Create a `type: LoadBalancer` Service with `use-private-ip: "true"` and `ipv6-disabled: "true"`; time to `status.loadBalancer.ingress`; confirm the LB is deleted with the Service and that the public firewall needs no NodePort rule.
-5. Delete the cluster's servers while an LB exists: is the LB orphaned (expected yes — it is a separate resource, unlike Civo's cluster-scoped reaping)? This decides the `argo-down` ordering guard.
-6. Prove the bootstrap ordering end to end on a fresh cluster: boot the control plane with `--cluster-init --disable-cloud-controller --kubelet-arg=cloud-provider=external`; confirm CoreDNS stays Pending on the tainted node; helm-install the hcloud CCM with `networking.enabled=true`; confirm the taint clears, CoreDNS reaches Running, then Argo CD reaches Healthy. Record the private NIC name and the x86 `ubuntu-24.04` image id. Also confirm `curl 169.254.169.254/hetzner/v1/userdata` from a `hostNetwork` pod returns the cloud-init (documents the join-token exposure honestly), and that `k3s etcd-snapshot save` succeeds.
+2. ~~Measure allocatable memory and CPU on one CX33 running k3s with CCM+CSI installed.~~ **Done 2026-09-21 — see Spike results**
+3. ~~Delete a server with an attached CSI volume: confirm the volume stays `available`, its data survives re-attachment to a new server (the half CIVO-020 never ran), and the charge line keeps running.~~ **Done 2026-09-21 — see Spike results**
+4. ~~Create a `type: LoadBalancer` Service with `use-private-ip: "true"` and `ipv6-disabled: "true"`; time to `status.loadBalancer.ingress`; confirm the LB is deleted with the Service and that the public firewall needs no NodePort rule.~~ **Done 2026-09-21 — see Spike results**
+5. ~~Delete the cluster's servers while an LB exists: is the LB orphaned (expected yes — it is a separate resource, unlike Civo's cluster-scoped reaping)? This decides the `argo-down` ordering guard.~~ **Done 2026-09-21 — orphaned, see Spike results**
+6. ~~Prove the bootstrap ordering end to end on a fresh cluster: boot the control plane with `--cluster-init --disable-cloud-controller --kubelet-arg=cloud-provider=external`; confirm CoreDNS stays Pending on the tainted node; helm-install the hcloud CCM with `networking.enabled=true`; confirm the taint clears, CoreDNS reaches Running, then Argo CD reaches Healthy. Record the private NIC name and the x86 `ubuntu-24.04` image id. Also confirm `curl 169.254.169.254/hetzner/v1/userdata` from a `hostNetwork` pod returns the cloud-init (documents the join-token exposure honestly), and that `k3s etcd-snapshot save` succeeds.~~ **Done 2026-09-21 — see Spike results**
 7. From a pod with a cert-manager-issued certificate: `aws_signing_helper serve`, `aws sts get-caller-identity`, `aws ssm get-parameter` — proves IPv4 egress and Roles Anywhere from a pod on `cx33`.
-8. Cluster autoscaler with `--nodes=0:2:CX33:NBG1:workers`: does it scale from zero, does a node booted from the unmodified worker cloud-init join and get the CCM `providerID`? This is on the M1 path (the autoscaler adds 0–2 workers).
+8. ~~Cluster autoscaler with `--nodes=0:2:CX33:NBG1:workers`: does it scale from zero, does a node booted from the unmodified worker cloud-init join and get the CCM `providerID`? This is on the M1 path (the autoscaler adds 0–2 workers).~~ **Partly done 2026-09-21 — the node half is proven; the autoscaler component itself is HETZ-170**
 9. Read the invoice after the spike: confirm 0 for network/firewall/ssh-key, the Primary IP line while unassigned, and the actual volume €/GB.
+
+## Spike results (HETZ-020, 2026-09-21)
+
+Run in the `vk-lab` Hetzner project, `nbg1`, `cx33`, `ubuntu-24.04`,
+k3s `v1.36.4+k3s1`, hcloud CCM chart (app v1.37.0), hcloud-csi 2.23.0,
+`hcloud` CLI 1.68.0. Confidence **high (2026-09-21)** unless stated. Project
+swept back to zero afterwards; cost about 0.03 EUR.
+
+### The k3s version to pin
+
+`v1.36.4+k3s1`, not 1.37. `cluster-autoscaler` publishes no 1.37 tag (newest
+`cluster-autoscaler-1.36.1`) and HETZ-170 needs a matching Kubernetes minor;
+the hcloud CCM supports 1.34–1.36. This is the value `K3S_VERSION` takes.
+
+### Availability: the API field that matters
+
+**`/v1/datacenters`'s `server_types.available` does not predict a create.**
+For `nbg1-dc3` it lists every CAX type, and `available_for_migration` lists
+the same set, yet:
+
+    $ hcloud server create --type cax21 --location nbg1 …
+    hcloud: unsupported location for server type (invalid_input)
+
+The field that does predict it is `server_types[].locations[].available`,
+which is what `hcloud server-type describe <type>` prints as `Available:`.
+
+This invalidates HETZ-175 §4's prescribed pre-flight probe, which reads the
+datacenters endpoint. It must read `hcloud server-type describe "$TYPE" -o
+json` and test `.locations[] | select(.name==$LOC) | .available`.
+
+Measured 2026-09-21 (EUR/month net, nbg1 price):
+
+| Type | arch | cpu/mem | EUR/mo | nbg1 | hel1 | fsn1 |
+|---|---|---|---|---|---|---|
+| cax11 / cax21 / cax31 | arm | 2–8 / 4–16G | 6.99–24.99 | no | no | no |
+| cpx11 / cpx21 / cpx31 / cpx41 | x86 | 2–8 / 2–16G | 5.99–37.99 | no | no | no |
+| cx23 | x86 | 2 / 4G | 6.49 | yes | yes | no |
+| **cx33** | x86 | 4 / 8G | **9.99** | **yes** | **yes** | no |
+| cx43 | x86 | 8 / 16G | 18.49 | yes | no | no |
+| cpx22 / cpx32 / cpx42 | x86 | 2–8 / 4–16G | 22.99 / 41.99 / 81.99 | yes | yes | no |
+| ccx13 / ccx23 / ccx33 | x86 ded. | 2–8 / 8–32G | 50.49 / 101.49 / 162.99 | yes | yes | no |
+
+Consequences: **CAX has not returned** — the 2026-09-19 decision stands
+unchanged. The cheap CPX generation is gone from every EU location, so the
+only same-shape x86 fallback to `cx33` is `cpx32` at 4.2× the price. But
+`cx33` is orderable in **`hel1` as well as `nbg1`**, so a second *location*
+is a better first fallback than a second SKU — relevant to HETZ-175 and to
+HETZ-025, which pins `hcloud_location = "nbg1"` as a constant. `fsn1` is out
+for every type including the dedicated line, i.e. datacenter-level capacity.
+
+### Bootstrap ordering, measured (experiment 6)
+
+From power-on of two servers created stopped and attached at pinned addresses:
+
+| Stage | Time |
+|---|---|
+| power on → `k3s.yaml` on the control plane | +47 s |
+| power on → worker registered **and** `Ready` | +70 s |
+| `helm install` hccm returns | +10 s |
+| → `uninitialized` taint cleared on both nodes | +16 s |
+| → `providerID` set on both | +16 s |
+| → CoreDNS `Running` | +22 s |
+
+Control-plane cloud-init finished at 41.4 s. `HETZNER_CP_BOOTSTRAP_SECONDS`
+at 600 s is ample.
+
+The ordering ADR 0037 predicts is confirmed exactly. Before the CCM both
+nodes carried `node.cloudprovider.kubernetes.io/uninitialized=NoSchedule`,
+`providerID` was empty, CoreDNS and metrics-server were `Pending`, and the
+k3s journal repeated *"Network policy controller waiting for removal of
+node.cloudprovider.kubernetes.io/uninitialized taint"*. After the CCM: taint
+gone, `providerID=hcloud://<id>`, both pods `Running`, EXTERNAL-IP populated.
+
+`--disable=servicelb,traefik,local-storage` leaves no trace: no `traefik`,
+`svclb-` or `local-path-provisioner` pod and **no StorageClass at all** until
+the CSI is installed. metrics-server IS present (k3s ships it), so the
+platform installs none of its own and needs no `--kubelet-insecure-tls`.
+`k3s etcd-snapshot save` succeeds (2.1 MB snapshot), proving embedded etcd.
+
+### Allocatable on cx33 (experiment 2)
+
+    capacity    cpu=4      mem=7937228Ki  (7.57 GiB)
+    allocatable cpu=3250m  mem=6057164Ki  (5.78 GiB)
+
+With the HETZ-030 reservations applied. The two fixed nodes give **11.56 GiB**
+allocatable against Civo's 6.76 GiB for the same platform. The cost-model
+table above is optimistic: shape E's "~21 GiB" is out by about 45 %, shape F's
+"~14 GiB fixed" by about 17 %. Replace those with 2 × 5.78 GiB.
+
+### Pod network MTU
+
+The private NIC `enp7s0` is MTU 1450, but flannel creates `flannel.1` at
+**1400**, subtracting the 50-byte VXLAN header. Probed with `ping -M do`
+between pods on different nodes: 1372-byte payload OK, 1373 too big. So "the
+1450 NIC needs no override" is correct — flannel derives it — but the pod MTU
+to quote downstream (HETZ-060, HETZ-190) is **1400**. Cross-node pod traffic
+works, avg 1.8 ms, pod CIDR `10.42.0.0/16`.
+
+### CSI volume survival (experiment 3)
+
+hcloud-csi 2.23.0 ships one StorageClass, `hcloud-volumes (default)`,
+`RECLAIMPOLICY: Delete`, `WaitForFirstConsumer`, expansion allowed.
+
+**The volume survives, and the data with it.** A 10 GiB PVC was written on the
+worker and that server deleted without detaching first. `hcloud volume list`
+showed the volume immediately with `SERVER: -`, and after re-attachment to the
+surviving node the marker read back byte for byte.
+
+**But re-attachment stalls for about six minutes.** The pod sits in
+`ContainerCreating` with `FailedAttachVolume … Volume is already exclusively
+attached to one node, waiting on detach`, while `kubectl get volumeattachment`
+still claims the volume is attached to a node that no longer exists. Hetzner
+and Kubernetes disagree and Kubernetes wins. It clears by itself once
+Kubernetes force-detaches (6-minute default); no manual step is needed, and
+deleting the VolumeAttachment by hand is a trap, because by then it may
+already have been replaced by a legitimate one. Any budget for "a pod with a
+volume moves between nodes" must exceed 6 minutes — HETZ-170 especially.
+
+### Load balancer lifecycle (experiments 4 and 5)
+
+- `status.loadBalancer.ingress` populated at **+22 s**, carrying **`.ip`**
+  with `ipMode: VIP`, never `.hostname`. ExternalDNS gets an A record.
+- **HTTP 200 through the LB at +23 s with only tcp/22, tcp/6443 and icmp open
+  inbound.** Confirms that `use-private-ip: "true"` routes over the private
+  network, which Hetzner firewalls do not filter, so **no NodePort rule is
+  needed**.
+- `ipv6-disabled: "true"` does **not** stop the LB getting an IPv6; it only
+  suppresses it in the Service ingress status.
+- The LB's Hetzner name is a **hash** (`a25ebc53fa6e547e98c46210f45f138c`),
+  unrelated to the Service or project. A leak sweep cannot match it by name —
+  HETZ-040 must use labels or enumerate.
+- **Deletion with the Service is clean**: the LB was gone within 5 s of
+  `kubectl delete svc`.
+- **Orphaning is confirmed.** With the Service still present, every server was
+  deleted; the LB was still there — and still `healthy` — at +15 s, +75 s and
+  +195 s, and only an explicit `hcloud load-balancer delete` removed it. At
+  7.49 EUR/month it bills indefinitely. **This makes HETZ-047 mandatory**:
+  `argo-down` must remove the Envoy Service while the cluster still answers.
+
+The same trap applies to volumes: at teardown the CSI volume was still present
+with every server gone, because the PV's `Delete` reclaim needs a live CSI
+controller. Primary IPs were the exception — removed with their servers.
+
+### Bugs found in commands the specs prescribe verbatim
+
+1. **HETZ-030 both templates.** `--kubelet-arg=eviction-hard=memory.available<300Mi`
+   unquoted is a shell input redirection from a file named `300Mi`; since the
+   install is `curl … | sh -s - server …` the redirect replaces the piped
+   script and the install dies. Single-quote the whole argument.
+2. **HETZ-030 worker template.** The `$PRIV` parse. The payload's first entry
+   starts with a YAML list dash, so the address is field 3:
+   `awk '$1=="-"&&$2=="ip:"{print $3;exit} $1=="ip:"{print $2;exit}'`. A naive
+   `$1=="ip:"` yields empty and the agent crash-loops on
+   `invalid node-ip: invalid ip format ''`. `/hetzner/v1/metadata`'s own
+   `local-ipv4` is `""` on such a node and is not a shortcut. Add a NIC
+   fallback and a `test -n "$PRIV"`.
+3. **HETZ-020 §4's own CCM command.** `--set env.HCLOUD_NETWORK_ROUTES_ENABLED.value=false`
+   renders a boolean and the apply is rejected with *expected string, got
+   false*. Must be `--set-string`. HETZ-045 inherits this.
+4. **HETZ-175 §4's pre-flight probe** reads the wrong field — see above.
+5. **`hcloud server create` cannot pin a private IP.** Only `--network <name>`,
+   which auto-assigns. The three-call form is create with
+   `--start-after-create=false`, `attach-to-network --ip`, then `poweron`;
+   cloud-init still sees the NIC on first boot. Terraform's
+   `network { ip = … }` does it in one resource, so this only matters to
+   scripts (HETZ-040).
+
+### Autoscaler node path (experiment 8, node half)
+
+A `cx33` created from the **unmodified** worker cloud-init with no pinned
+address joined with no operator step and was `Ready` **+42 s** after create,
+with `providerID` set. Its auto-assigned private IP was `10.0.1.1` — Hetzner's
+gateway is the network's first address (`10.0.0.1`), not the subnet's, so
+`.1`–`.9` stay assignable when the control plane is pinned at `.10`.
+HETZ-170's premise holds: one render serves the fixed worker and any
+autoscaled node.
+
+### Still open
+
+- **Experiment 9, the invoice.** Read the next invoice for the network,
+  firewall, SSH-key, unassigned-primary-IP lines, hourly rounding, and the
+  real volume and LB rates.
+- **Account limits.** Not exposed by any API endpoint. Read Console → Limits.
+  If the default 5-server limit applies, file the increase immediately: it is
+  granted only after one month as a customer and a paid first invoice, then
+  1–3 business days, making it the longest lead time in the Hetzner track.
+- **Experiment 7**, Roles Anywhere from a pod on `cx33`, is untouched; it
+  belongs to HETZ-085.
