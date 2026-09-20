@@ -20,10 +20,13 @@ resource "civo_kubernetes_cluster" "this" {
   write_kubeconfig = false
   tags             = "Project=${var.project} Scope=platform Lifecycle=disposable ManagedBy=terraform"
 
+  # Created at the ceiling, not the autoscaler's floor: the platform does not
+  # fit on two nodes, so starting there makes Postgres wait for a scale-up that
+  # the autoscaler cannot even request while the Civo API is down.
   pools {
     label      = "workers"
     size       = "g4s.kube.medium"
-    node_count = 2
+    node_count = 3
   }
 
   # tags: Civo's create API accepts tags but its update API rejects them

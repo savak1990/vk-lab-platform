@@ -26,8 +26,8 @@ The Civo cluster autoscaler keeps the `workers` pool between 2 and 3
 `g4s.kube.medium` nodes. It adds a node when pods stay pending. It removes a
 node after sustained underutilization.
 
-Terraform creates the pool at 2 nodes and then stops owning the count. The
-autoscaler owns it for the life of the cluster.
+Terraform creates the pool at 3 nodes and then stops owning the count. The
+autoscaler owns it for the life of the cluster, within the 2..3 bounds.
 
 ## 2. Scope and non-goals
 
@@ -40,8 +40,9 @@ In scope:
 - Memory requests raised to match measured use, so the scheduler sees the real
   footprint.
 - A ServiceMonitor for the autoscaler's metrics.
-- Grafana's volume moved to a `volumeClaimTemplate`, so no PersistentVolumeClaim
-  is left for Argo to wait on when a scale event disturbs a sync.
+- Grafana's volume removed, so no PersistentVolumeClaim is left for Argo to
+  wait on when a scale event disturbs a sync. A `volumeClaimTemplate` was tried
+  first and reverted — see CIVO-172 §4.
 - A scale-up test.
 
 Not in scope: multiple pools, spot-like capacity (Civo has none), Karpenter
@@ -81,16 +82,22 @@ parity, full right-sizing of the platform (CIVO-175), proof of scale-down
   surrounding comment documents.
   Because `ignore_changes` covers it, `node_count` sets only the node count the
   cluster is born with; the autoscaler owns it from then on. Creating at the
-  floor rather than at the ceiling is deliberate: if the platform's requests do
-  not fit on two nodes, every bring-up — including every CI lifecycle run —
-  exercises a real scale-up, so the autoscaler is checked continuously against
-  each change instead of being assumed between rare manual tests. Whether a
-  given run did scale is recorded, not assumed: `argo-up` prints the node
-  inventory and the `cluster-autoscaler-status` ConfigMap on every exit path.
-  The first CI run (§14) held at 2 nodes, so the committed requests are not yet
-  proven to force the third node — §6 step 4 remains open. The cost is that a
-  scale event lands during `argo-up`; CIVO-172 removes the failure mode that
-  made that dangerous.
+  ceiling is the measured choice. Creating at the floor was tried first, so
+  that every bring-up would exercise a real scale-up and check the autoscaler
+  continuously. Three CI runs (§14) showed the cost: the platform does not fit
+  on two nodes, Postgres is what pushes it over, and the scale-up therefore
+  lands late in the sync — after observability is already Healthy — and depends
+  on the autoscaler being able to reach a Civo API that is restarting at that
+  moment (CIVO-172). Creating at 3 removes that dependency. The autoscaler
+  still owns the count afterwards and still holds the 2..3 bounds, so an
+  over-provisioned cluster can still shrink; it will not here, because no
+  scale-down candidate exists. Whether a given run scaled is recorded, not
+  assumed: `argo-up` prints the node inventory and the
+  `cluster-autoscaler-status` ConfigMap on every exit path. This does give up
+  coverage: a run that starts at 3 exercises no scale-up. Replacing it with an
+  explicit burst in the CI `test` job — deterministic, and not dependent on the
+  platform's footprint happening to exceed two nodes — is outstanding work,
+  tracked in §12.
 - Values: `capacity.autoscaler: {min: 2, max: 3, pool: workers}`, plumbed
   through `gitops/values.yaml`, `gitops/bootstrap/values.yaml`, the root
   Application's `helm.parameters` and `scripts/argo-up.sh`.
@@ -165,14 +172,11 @@ gap is closed from live measurement, not from estimate — see §6 step 4.
 
 ## 8. Acceptance criteria
 
-- `make up` creates the cluster with 2 nodes.
-- **After §6 step 4's measurement and adjustment**, at least one pod is
-  `Pending` for insufficient memory on the 2-node cluster. The committed
-  request rises do not reach this on their own — see §4's memory budget. A
-  first bring-up that settles on 2 nodes with nothing pending means step 4 is
-  still outstanding, not that the autoscaler is broken.
-- The autoscaler adds the third node within about 10 minutes, and the pending
-  pods schedule. The elapsed time is recorded.
+- `make up` creates the cluster with 3 nodes, and the autoscaler adopts the
+  pool with bounds 2..3 rather than resizing it.
+- On a cluster started at 2, at least one pod is `Pending` for insufficient
+  memory and the autoscaler adds the third node within about 10 minutes. Proven
+  on 2026-09-20 (§14) before the create-time count moved to 3.
 - The autoscaler's log shows a `ScaleUp` naming the `workers` pool.
 - A Terraform re-apply plans clean.
 - `make down` leaves no dangling node or volume.
@@ -197,9 +201,14 @@ Remove the Application and restore `node_count` to an explicit value in
 
 - **Scale-down is not proven by this spec.** The platform's measured working
   set does not fit two nodes, so the cluster is expected to settle at three.
-  The saving this spec's 2-node floor is meant to deliver arrives only once
-  CIVO-175 reduces the real footprint. Until then the deliverable is the
-  mechanism and the scale-up proof.
+  The saving the 2..3 bounds are meant to deliver arrives only once CIVO-175
+  reduces the real footprint. Until then the deliverable is the mechanism and
+  the scale-up proof.
+- **Creating at 3 gives up the per-run scale-up check.** Replace it with an
+  explicit burst in the CI `test` job: schedule a few pods large enough to not
+  fit, assert a third node arrives, delete them. That is deterministic, costs
+  about four minutes, and does not depend on the platform's own footprint. Not
+  written yet.
 - The Civo API key is account-wide and unscoped. Accepted for this
   single-operator lab. ADR 0029 and ADR 0030 already state the blast radius.
 - Civo account quotas override the autoscaler's maximum.
@@ -313,3 +322,17 @@ Remove the Application and restore `node_count` to an explicit value in
   the status ConfigMap's involvedObject, refresh line excluded). The earlier
   local evidence quoting `adding node pool` as the scale-up marker was that
   same refresh line; `max size reached` was the real signal there.
+- 2026-09-20 — **create-time count moved from 2 to 3, and why.** Two further CI
+  runs (35509187271, 35509916494) were green and both scaled to 3, so the
+  floor-of-2 contract worked. They also showed what it costs. Observability
+  fits on two nodes — `kube-prometheus-stack` reached Healthy at 13:25:21 in
+  the second run — and the last resource root waited on was
+  `Cluster/lab-postgres`. So Postgres is what needs the third node, the
+  scale-up lands late in the sync, and it depends on the autoscaler reaching a
+  Civo API that is restarting at that moment (CIVO-172): the node was created
+  at 13:28:41, 71 seconds after the third outage ended. Baseline for the
+  comparison, from that run: `argo-up` started 13:09:57, the watch at 13:11:11,
+  the third node at 13:28:41, platform ready 13:36:13, whole job 35m06s. The
+  expected saving from starting at 3 is the autoscaler's reaction plus the node
+  boot and join, not the whole 17 minutes before the node, because most of that
+  was outages and Argo retries which are unaffected.
