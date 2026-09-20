@@ -7,7 +7,7 @@ data "aws_kms_alias" "secrets" {
 
 locals {
   create           = var.ca_cert_pem != ""
-  x509_issuer_cn   = coalesce(var.x509_issuer_cn, "${var.project}-civo-workload-ca")
+  x509_issuer_cn   = coalesce(var.x509_issuer_cn, "${var.project}-${var.provider_name}-workload-ca")
   trust_anchor_arn = try(aws_rolesanywhere_trust_anchor.this[0].arn, "")
 
   postgres_password_arn = "arn:aws:ssm:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:parameter/${var.project}/persistent/postgres/app_password"
@@ -28,7 +28,7 @@ locals {
 resource "aws_rolesanywhere_trust_anchor" "this" {
   count = local.create ? 1 : 0
 
-  name    = "${var.project}-civo-workload-ca"
+  name    = "${var.project}-${var.provider_name}-workload-ca"
   enabled = true
 
   source {
@@ -59,7 +59,7 @@ data "aws_iam_policy_document" "trust" {
     condition {
       test     = "StringEquals"
       variable = "aws:PrincipalTag/x509Subject/CN"
-      values   = ["${var.project}-civo-${each.key}"]
+      values   = ["${var.project}-${var.provider_name}-${each.key}"]
     }
 
     condition {
@@ -100,7 +100,7 @@ data "aws_iam_policy_document" "external_dns" {
   }
 }
 
-# TXT-only, scoped to the Civo zone. No ListHostedZones needed - zone ID
+# TXT-only, scoped to the lab zone. No ListHostedZones needed - zone ID
 # is provided via SSM parameter, not looked up dynamically.
 data "aws_iam_policy_document" "cert_manager" {
   statement {
@@ -170,7 +170,7 @@ data "aws_iam_policy_document" "pgbackup" {
 resource "aws_rolesanywhere_profile" "this" {
   count = local.create ? 1 : 0
 
-  name             = "${var.project}-civo"
+  name             = "${var.project}-${var.provider_name}"
   enabled          = true
   role_arns        = [for k, r in aws_iam_role.consumer : r.arn]
   duration_seconds = var.session_duration

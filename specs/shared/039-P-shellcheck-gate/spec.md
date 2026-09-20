@@ -39,7 +39,7 @@ directive, written for a linter nothing runs:
 (line 24), `scripts/bootstrap-up.sh` (line 10), `scripts/status.sh` (line
 8), `scripts/require-persistent.sh` (line 6), `scripts/force-clean-ci.sh`
 (lines 33, 35, 37), `scripts/persistent-up-civo.sh` (line 9),
-`scripts/civo-ca-init.sh` (line 8), `scripts/cluster-down.sh` (line 23), and
+`scripts/ca-init.sh` (line 8), `scripts/cluster-down.sh` (line 23), and
 `scripts/lib/provider.sh` (line 1, `shell=bash`).
 
 `.github/workflows/lifecycle-test.yml`'s `validate-repo` job runs `make

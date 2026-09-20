@@ -143,3 +143,4 @@ Delete the CA Secret — that's the actual rollback lever, since issuance fails 
   showed zero new resources in Task 2's offline check (the two new
   templates are unconditionally gated on `target: civo`).
 - 2026-09-20 — HETZ-016: `identity/{issuer,certificates}.yaml` moved to `gitops/templates/platform/shared/identity/`, gated by `platform.selfManaged`. The object names are unchanged; HETZ-018 parametrizes them by provider.
+- 2026-09-20 — HETZ-018: the values key `civoIdentity` became `workloadIdentity` with an added `issuerName`, defaulting through the new `platform.workloadIssuerName` helper to `<target>-workload-ca`. The Certificate CN is now `<project>-<target>-<consumer>`, and `ensure_ca_secret` creates the Secret `${PROVIDER}-workload-ca` from `${PROVIDER}-ca-key`. The civo render is byte-identical.

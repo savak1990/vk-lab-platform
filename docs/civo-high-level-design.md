@@ -92,8 +92,10 @@ barman-cloud plugin's sidecar inherits the Postgres container's volume
 mounts, so the certificate reaches it as a mounted file (ADR 0032).
 
 **The CA is the root of every AWS permission the Civo cluster holds, and it
-belongs to one project.** `secrets/<project>/civo-ca-cert.pem` and
-`civo-ca-key.enc` are committed for `vk-civo-lab` only.
+belongs to one project.** `secrets/<project>/<provider>-ca-cert.pem` and
+`<provider>-ca-key.enc` are committed for `vk-civo-lab` only, as
+`civo-ca-cert.pem` and `civo-ca-key.enc`. The provider segment names every
+object in the chain, so a Hetzner project's files and chain read `hetzner`.
 `scripts/generate-secrets.sh` creates them when absent and never regenerates
 them, and both `persistent-up-civo.sh` and `persistent-down.sh` call it before
 Terraform runs — so a project without committed CA material works inside a

@@ -50,13 +50,13 @@ to the anchor. It accepts intermediates through the helper's
 
 - `argo-up` does not generate the intermediate key in-cluster. It generates the pair in memory on the operator/CI side. It signs the pair with the root. It creates the Secret with the intermediate key and cert. It discards the root key from memory after signing.
 - The helper sidecar args add `--intermediates /ra/ca.crt`. cert-manager writes `ca.crt` for CA issuers.
-- CIVO-082's trust-policy condition `x509Issuer/CN` must change from the root CN to the intermediate CN (`<project>-civo-workload-ica`). This is a Terraform variable. Apply it before the switch.
+- CIVO-082's trust-policy condition `x509Issuer/CN` must change from the root CN to the intermediate CN (`<project>-<provider>-workload-ica`, where `<provider>` is the module's `provider_name` input that HETZ-018 added). This is a Terraform variable. Apply it before the switch.
 - approver-policy: a `CertificateRequestPolicy` allows the CN `<project>-civo-eso` only from the namespace `external-secrets`, with similar rules for the other consumers. The default is deny.
 - Rotation: `argo-up` renews the intermediate on every run if under 7 days are left. Write a runbook.
 
 ## 5. Files/components affected
 
-`scripts/argo-up.sh`, `gitops/templates/platform/civo/identity/*`, `gitops/templates/shared/cert-manager/approver-policy.yaml`, the helper template.
+`scripts/argo-up.sh`, `gitops/templates/platform/shared/identity/*` (moved there by HETZ-016), `gitops/templates/shared/cert-manager/approver-policy.yaml`, the helper template.
 
 ## 6. Implementation steps
 

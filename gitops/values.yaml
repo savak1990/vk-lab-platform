@@ -136,10 +136,12 @@ tls:
   # skip route53:ListHostedZones entirely.
   hostedZoneId: ""
 
-# civo-only: each name/namespace here must match a Roles Anywhere trust-policy
-# key in terraform/modules/rolesanywhere - name also becomes the
-# commonName/secretName suffix.
-civoIdentity:
+# Self-managed targets only: each name/namespace here must match a Roles
+# Anywhere trust-policy key in terraform/modules/rolesanywhere - name also
+# becomes the commonName/secretName suffix.
+workloadIdentity:
+  # Empty derives "<target>-workload-ca", matching the trust anchor name.
+  issuerName: ""
   consumers:
     - name: eso
       namespace: external-secrets

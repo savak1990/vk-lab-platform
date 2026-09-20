@@ -74,16 +74,16 @@ generate_password_if_missing grafana-admin-password
 # Every non-EKS target reaches AWS through Roles Anywhere and so needs the
 # CA; aws uses Pod Identity and never touches these files.
 generate_ca_if_missing() {
-  local file="$SECRETS_DIR/civo-ca-cert.pem"
+  local file="$SECRETS_DIR/${PROVIDER}-ca-cert.pem"
   if [ "$PROVIDER" = "aws" ]; then
-    echo "Skipping civo-ca-cert - PROVIDER is aws"
+    echo "Skipping the workload CA - PROVIDER is aws"
     return
   fi
   if [ -f "$file" ]; then
-    echo "Skipping civo-ca-cert - $file already exists"
+    echo "Skipping ${PROVIDER}-ca-cert - $file already exists"
     return
   fi
-  ROTATE='' PROJECT_NAME="$PROJECT_NAME" "$SCRIPT_DIR/civo-ca-init.sh"
+  ROTATE='' PROJECT_NAME="$PROJECT_NAME" "$SCRIPT_DIR/ca-init.sh"
 }
 
 generate_ca_if_missing
