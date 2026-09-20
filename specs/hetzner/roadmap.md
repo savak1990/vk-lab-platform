@@ -4,7 +4,7 @@
 
 | Milestone | Goal | Specs | Exit criterion |
 |---|---|---|---|
-| M0 Foundations | Operator surface, governance, the two generalisation refactors, feasibility facts | 010, 015, 016, 018, 020 | AWS and Civo unchanged (golden renders, `make -n`); ADRs merged; spike report answers the CCM-ordering, kubeconfig, volume-survival and LB-deletion questions |
+| M0 Foundations | Operator surface, governance, the bootstrap decision, the two generalisation refactors, feasibility facts | 010, 015, 016, 017, 018, 020 | AWS and Civo unchanged (golden renders, `make -n`); ADRs merged; spike report answers the CCM-ordering, kubeconfig, volume-survival and LB-deletion questions |
 | M1 Viable Hetzner platform | `PROVIDER=hetzner make full-up` brings up a kubeadm cluster (1 cp + 1 worker `cx33`, Cilium), the hcloud CCM, Argo, CSI, Envoy with wildcard TLS, DNS, ESO, CNPG with barman-cloud backups, observability, and the cluster autoscaler for 0–2 extra workers; `make down`/`up` preserves data; CI can run it | 025–170, 185 | HETZ-150 passes; idle cost recorded against the 32 EUR fixed / 53 EUR ceiling model (research.md shape F) |
 | M2 Scale and harden | Stock-aware SKU fallback (CX → CPX), right-sizing, arm64 images if CAX returns, client IP | 175, 182, 190 | each spec's DoD |
 
@@ -17,6 +17,9 @@ flowchart TD
   010 --> 018
   010 --> 025[025 persistent-hetzner]
   015[015 governance] --> 025
+  015 --> 017[017 k3s bootstrap decision]
+  017 --> 030
+  017 --> 020
   015 --> 140[140 CI]
   020[020 spike] --> 035[035 kubeadm bootstrap]
   025 --> 030[030 kubeadm nodes TF]
@@ -76,7 +79,7 @@ flowchart TD
 
 ## Critical path
 
-015 → 010 → 016 → 018 → 080 → 025 → 030 → 040 → 035 → 037 → 045 (with 050) → 085 → 060 → 070 → 115 → 120 → 150. 047, 160, 165/170 and 185 hang off 045/037 in parallel.
+015 → 017 → 010 → 016 → 018 → 080 → 025 → 030 → 040 → 035 → 037 → 045 (with 050) → 085 → 060 → 070 → 115 → 120 → 150. 047, 160, 165/170 and 185 hang off 045/037 in parallel.
 
 Parallel tracks once 045/050 land: ingress (060 → 070), identity (085),
 observability (160), tests (130), CI (140). 020 can run any time after the
