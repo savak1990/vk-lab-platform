@@ -1,5 +1,22 @@
 # ADR 0029: IAM Roles Anywhere with an offline CA
 
+> **Note (2026-09-20):** rejected alternative (b) below generalises too far.
+> It is correct that Civo has no OIDC issuer to federate from, but it then
+> concludes that certificates are "the only AWS-native mechanism available to
+> non-EKS compute". On a self-managed kubeadm control plane that is false: the
+> API server accepts `service-account-issuer` pointing at a public HTTPS URL
+> and `service-account-jwks-uri`, publishing an OpenID configuration document
+> at `/.well-known/openid-configuration` and a key set at `/openid/v1/jwks`.
+> Anonymous access to those two endpoints is not enabled by default, so
+> federation needs either an explicit role binding for unauthenticated
+> subjects or, more safely, a copy of the two documents served from object
+> storage, which leaves the API server unexposed. Federation is therefore
+> possible on the Hetzner target (see
+> [ADR 0036](0036-hetzner-kubeadm-third-execution-target.md)) and is recorded
+> there as the rejected-for-now alternative: adopting it would discard six
+> finished Civo specs and split the two non-EKS targets across two identity
+> mechanisms. This decision is unchanged and still binding for both.
+
 ## Status
 
 Accepted

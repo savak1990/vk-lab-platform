@@ -1,5 +1,17 @@
 # ADR 0024: Hardcode `eu-west-1` as the platform's single AWS region
 
+> **Note (2026-09-20):** the Hetzner target adds a third location constant,
+> `nbg1` in network zone `eu-central` (see
+> [ADR 0036](0036-hetzner-kubeadm-third-execution-target.md)). It is declared
+> literally in two places, `terraform/live/root.hcl` as `hcloud_location` and
+> `scripts/lib/region.sh` as `HCLOUD_LOCATION`, for the same reason the Civo
+> region is declared twice: Terraform and shell cannot read each other's
+> constants. Both declarations land with spec HETZ-025; neither exists yet.
+> The AWS region is unchanged. This decision's actual property — no derived
+> declaration, no `get_env` default, no workflow input, no reliance on an
+> ambient region variable or an operator's profile — applies to the new
+> constant exactly as written.
+
 ## Status
 
 Accepted

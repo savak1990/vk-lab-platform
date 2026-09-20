@@ -1,5 +1,16 @@
 # ADR 0002: Delegated `lab.<root-domain>` subdomain for platform DNS/TLS
 
+> **Note (2026-09-20):** the ACM certificate this decision pairs with the
+> delegated zone is AWS-only. Every non-EKS target delegates its own
+> subdomain and terminates TLS at Envoy Gateway with cert-manager instead:
+> `civo.<root-domain>` for the Civo target (ADR 0027, ADR 0028) and
+> `hz.<root-domain>` for the Hetzner target, whose ExternalDNS ownership
+> record is `txtOwnerId=vk-hetzner-lab` (see
+> [ADR 0036](0036-hetzner-kubeadm-third-execution-target.md)). The delegation
+> mechanism itself — one NS record in the parent zone, the parent zone located
+> by name and never managed by this platform, and the root-domain value held
+> as private configuration — is unchanged and still binding for all three.
+
 ## Status
 
 Accepted

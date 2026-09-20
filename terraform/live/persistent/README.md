@@ -8,6 +8,12 @@ On the Civo target (`PROVIDER=civo`), this stack applies only its
 excluded (`PERSISTENT_EXCLUDE`). Civo's own network, reserved IP and backup
 bucket are managed by the sibling `persistent-civo/` stack (ADR 0027).
 
+On the Hetzner target (`PROVIDER=hetzner`), only the `vpc` unit is excluded
+(`PERSISTENT_EXCLUDE=vpc`). The `backups` unit's bucket is AWS-hosted but
+not AWS-target-only: Hetzner's PostgreSQL backups write to it, so that unit
+and `secrets` both apply here. Hetzner's own network, subnet and SSH key are
+managed by the sibling `persistent-hetzner/` stack (ADR 0036).
+
 The delegated `${SUBDOMAIN}.<root-domain>` Route 53 hosted zone (plus its NS
 delegation record in the parent zone) and its ACM certificate moved to
 `terraform/live/bootstrap/` — see that stack's README. They're still

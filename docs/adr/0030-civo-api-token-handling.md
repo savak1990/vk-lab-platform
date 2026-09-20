@@ -1,4 +1,25 @@
-# ADR 0030: Civo API token handling
+# ADR 0030: Provider API token handling
+
+> **Note (2026-09-20):** this decision generalises from the Civo API token to
+> provider API tokens. Hetzner tokens are per project with only two permission
+> levels, Read or Read and Write, and both the cloud controller manager and
+> the CSI driver require Read and Write, so an in-cluster token on that target
+> carries full control of the project. The mitigations are the ones this
+> decision already establishes. The in-cluster token is a *second, dedicated*
+> token, never the operator's — the same trust-boundary separation applied
+> below to the Civo autoscaler's own key — and it lives in its own committed
+> ciphertext file. The project holds nothing but this lab, so a Secret reader
+> gains the lab project and nothing else. Rotation is unchanged in shape:
+> delete the token, re-encrypt, commit the new ciphertext, re-run `argo-up`.
+> The Secret is `kube-system/cloud-operator-secret`, one name across non-EKS
+> targets; `argo-up` creates it untracked, as it already creates the CA key
+> Secret. Note that the Hetzner charts hardcode their own default Secret name
+> inside the container environment block rather than exposing a name
+> parameter, so adopting the shared name means overriding that whole block in
+> the Helm values. Spec HETZ-045 creates the Secret, and HETZ-018 owns naming
+> parametrized by provider, including the Civo rename to the shared name. The
+> Civo mechanism below is otherwise unchanged and still binding. See
+> [ADR 0036](0036-hetzner-kubeadm-third-execution-target.md).
 
 ## Status
 

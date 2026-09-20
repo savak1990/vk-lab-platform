@@ -126,7 +126,7 @@ had hidden.
 | `civo kubernetes config` returns a kubeconfig | No equivalent API; SSH with a KMS-encrypted key |
 | Reserved IP keeps the load balancer's address stable | Primary IPs attach to servers only, not load balancers; the LB gets a new address every `make up`; DNS-01 wildcard TLS is used instead of HTTP-01 to avoid depending on a fixed address |
 | Cluster deletion reaps its load balancer | The LB, volumes, and primary IPs are independent resources; teardown must sweep them by label |
-| One API token, used only outside the cluster | The Hetzner token must also live in-cluster (`kube-system/hcloud`) for the CCM and CSI driver — a materially larger blast radius, mitigated by a dedicated per-project token |
+| One API token, used only outside the cluster | A Hetzner token must also live in-cluster, in `kube-system/cloud-operator-secret`, for the CCM and CSI driver — a materially larger blast radius, mitigated by making it a second token dedicated to in-cluster use rather than the operator's own, inside a project that holds nothing but this lab (ADR 0030 as amended, ADR 0036) |
 | No architecture concern (Civo images are whatever Civo runs) | Every platform image must be proven arm64; only the repository's own `cnpg-barman-sidecar` image needs a multi-arch rebuild (`HETZ-182`) |
 
 ## 5. Where things live
