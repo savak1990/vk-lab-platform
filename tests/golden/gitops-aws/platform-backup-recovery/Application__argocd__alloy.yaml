@@ -27,12 +27,13 @@ spec:
           tolerations:
             - operator: Exists
         alloy:
-          # Requests sized from measured usage (~61Mi over 45m) - DaemonSet,
-          # so every Mi here is multiplied by node count.
+          # Requests sized from measured usage (57-75Mi on a settled cluster,
+          # up from ~61Mi over the first 45m) - DaemonSet, so every Mi here
+          # is multiplied by node count.
           resources:
             requests:
               cpu: 15m
-              memory: 80Mi
+              memory: 96Mi
             limits:
               memory: 128Mi
           configMap:

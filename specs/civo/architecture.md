@@ -40,7 +40,7 @@ values/gating change; **provider** = provider-specific implementation;
 | Civo network / reserved IP | — | — | provider | *(proposed)* `terraform/live/persistent-civo/{network,reserved-ip}` | new stack | 025 |
 | Backup bucket | — | — | shared | *(proposed)* `terraform/live/persistent/backups` (S3, both projects) | new unit | 180 |
 | Cluster | `terraform/live/cluster/eks`, `modules/eks` | EKS, access entries, addons | provider | *(proposed)* `terraform/live/cluster-civo/{network,k8s}`, `modules/civo-network`, `modules/civo-k8s` | new stack | 030 |
-| Capacity | `modules/karpenter-pod-identity`, `gitops/.../karpenter/*` | Karpenter, EC2NodeClass, spot label | provider | fixed pool of three Medium nodes in M1; autoscaler deferred to M2 | new units; values toggles for spot affinity | 030, 050, 170 |
+| Capacity | `modules/karpenter-pod-identity`, `gitops/.../karpenter/*` | Karpenter, EC2NodeClass, spot label | provider | Medium pool created at three nodes; cluster autoscaler holds it between 3 and 4 | new units; values toggles for spot affinity | 030, 050, 170 |
 | Storage | `gitops/.../ebs-csi/*` (driver, `ebs-delete`, `ebs-retain`, VolumeSnapshotClass) | EBS CSI, gp3, tags | provider | `civo-volume` (CSI preinstalled, no snapshot/clone capability); persistence through object-store backups | `storage.className` value at 5 sites; snapshot objects stay aws-only | 050, 120, 180 |
 | Snapshot controller | `ebs-csi/snapshot-controller.yaml` (CRDs v8.6.0 + controller) | none | n/a | no snapshot-capable driver on Civo; stays aws-gated | none | 050 |
 | Load balancing | `gitops/.../aws-load-balancer-controller/*`, `envoy-gateway/webhook-ready-probe.yaml` | ALB controller, NLB annotations | n/a | Civo CCM built in; probe Job deleted for civo | gate out | 050, 060 |
@@ -113,7 +113,7 @@ annotations) never leaves the `aws/` or `civo/` subtree.
 | B lifecycle and Argo | same stage model; script branches; ordering identical; explicit LB/DNS gates | 040, 045, 050 |
 | C cluster/networking/ingress | firewall 6443 + LB ports; Civo LB TCP; Envoy TLS; HTTP-01 | 030, 060, 065, 070 |
 | D storage/CNPG | civo-volume (disposable); barman-cloud plugin, continuous physical backups to a per-project S3 bucket; 1 instance, 20 Gi | 120, 180, 185 |
-| E capacity | Large pool; autoscaler 1:3; right-sizing later | 030, 170, 175 |
+| E capacity | Medium pool; autoscaler 2:3; right-sizing later | 030, 170, 175 |
 | F identity/secrets | Roles Anywhere chain; ESO + ExternalDNS consumers; token in KMS | 080, 082, 085, 090, 100, 110 |
 | G destruction/recovery | classification table in each spec; full-cycle validation | 040, 045, 150 |
 | H tests/CI/cost | Ginkgo reuse; lab.yml; cost model in research.md | 130, 140, 175 |

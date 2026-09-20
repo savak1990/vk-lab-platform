@@ -137,6 +137,7 @@ Application__argocd__alloy HTTPRoute__observability__grafana \
 ExternalSecret__observability__grafana-admin-credentials \
 BackendTrafficPolicy__observability__grafana-traffic-policy \
 RoleBinding__observability__e2e-test-readonly \
+Application__argocd__cluster-autoscaler ServiceMonitor__kube-system__cluster-autoscaler \
 PodMonitor__cnpg-system__cnpg-postgres ServiceMonitor__argocd__argocd \
 Namespace__cluster__e2e ServiceAccount__e2e__e2e-test"
 FORBIDDEN_KINDS_LOCAL="StorageClass VolumeSnapshotClass VolumeSnapshotContent VolumeSnapshot \

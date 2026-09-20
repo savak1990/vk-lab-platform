@@ -176,6 +176,23 @@ configure_kubeconfig() {
   kubectl ${kcfg[@]:+"${kcfg[@]}"} config set-context --current --namespace=default >/dev/null
 }
 
+# True once the API server answers, retrying through a transient outage rather
+# than refusing on one bad probe. Teardown's callers abort when this fails, so
+# a single blip would otherwise orphan load balancers and nodes - and a blip is
+# most likely exactly here, right after a node pool resize.
+api_reachable() {
+  local attempts="${API_REACHABLE_ATTEMPTS:-6}" interval="${API_REACHABLE_INTERVAL:-10}" i=1
+  while [ "$i" -le "$attempts" ]; do
+    if kubectl cluster-info --request-timeout=10s >/dev/null 2>&1; then
+      [ "$i" -gt 1 ] && echo "API reachable again after $i attempts." >&2
+      return 0
+    fi
+    [ "$i" -lt "$attempts" ] && sleep "$interval"
+    i=$((i + 1))
+  done
+  return 1
+}
+
 # On AWS, eks-test-identity maps to the read-only role through its EKS access
 # entry. Civo has no IAM to map a read-only identity, so the E2E suite gets a
 # short-lived token for the e2e-test ServiceAccount, minted as cluster-admin.
@@ -395,8 +412,10 @@ import_tls_secret() {
   # so read the leaf's own expiry. Inside the default renewal window (last 30
   # days) an import only triggers an immediate renewal order anyway.
   local not_after not_after_epoch now_epoch
+  # Guarded: an unreadable stored cert must fall through to a fresh order,
+  # not end the whole bring-up silently under pipefail.
   not_after="$(echo "$manifest" | yq '.data["tls.crt"] // ""' | base64 -d 2>/dev/null \
-    | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2)"
+    | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2 || true)"
   if [ -n "$not_after" ]; then
     not_after_epoch="$(date -u -d "$not_after" +%s 2>/dev/null \
       || date -u -jf "%b %e %H:%M:%S %Y %Z" "$not_after" +%s 2>/dev/null || echo 0)"
