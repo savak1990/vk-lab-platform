@@ -219,3 +219,46 @@ Remove the Application and restore `node_count` to an explicit value in
   damage occurred — all CCM and CSI pods stayed Running with 0 restarts, and
   the written values matched Civo's own. Fixed by deleting the Secret creation
   entirely and consuming Civo's Secret read-only.
+- 2026-09-20 — **scale-up verified on the live cluster.** The autoscaler
+  authenticated to the Civo API with Civo's own Secret and read its bounds:
+  `found configuration for workers node group: min: 2 max: 3`. At the floor it
+  refused to scale down — `node group min size reached (current: 2, min: 2)`.
+  A burst of three pods requesting 1500Mi each was applied at 23:22:22Z; the
+  autoscaler logged `Autoscaler loop triggered by unschedulable pod appearing`
+  in the same second, and the third node reached `Ready` at about 23:24:50Z —
+  roughly 2.5 minutes against the 10-minute criterion. The third burst pod
+  stayed `Pending` and the autoscaler logged `Skipping node group workers - max
+  size reached`, so the ceiling holds. Image `v1.35.0`, matching the cluster.
+  Note: a Civo pool resize restarts the managed control plane, and the
+  autoscaler pod exits when the API server goes away
+  (`Failed to get nodes from apiserver ... connection refused`). It restarts
+  by itself; expect a few restarts on the pod after any scaling event.
+- 2026-09-20 — **scale-down verified**, which §12 had expected to defer. The
+  burst was deleted at about 23:25:30Z and the autoscaler removed the third
+  node at 23:35:45Z — almost exactly the configured `scale-down-unneeded-time:
+  10m` — then stopped at the floor with `no scale down candidates`. Scale-down
+  was observable only because `kube-prometheus-stack` never came up on this run
+  (see below), so the cluster was lighter than a healthy platform. It does not
+  prove the full platform fits two nodes.
+- 2026-09-20 — **Terraform drift check passed.** With the live pool at 3 nodes
+  and the configuration saying 2, `terragrunt plan` on `cluster-civo/k8s`
+  reported `No changes. Your infrastructure matches the configuration.` The
+  `ignore_changes = [tags, pools[0].node_count]` contract holds.
+- 2026-09-20 — **a platform-wide deadlock found, and autoscaling makes it more
+  likely.** `kube-prometheus-stack` wedged permanently. Diagnosis from
+  `status.operationState.syncResult`: 62 resources reported `SyncFailed`, every
+  one a network error against the API server (`net/http: TLS handshake
+  timeout`, `http2: client connection lost`), including
+  `Deployment/kube-prometheus-stack-grafana`. Argo does not re-apply a failed
+  resource inside the same operation, so no Grafana pod existed; its
+  `WaitForFirstConsumer` PVC therefore could never bind; and Argo reads a
+  Pending PVC as Progressing, so the operation stayed `Running` forever and
+  never retried. `WaitForFirstConsumer` is not the cause — it is the latch that
+  turns a transient blip into a permanent stall. CIVO-160 passed on identical
+  configuration three days earlier because no blip occurred. **The link to this
+  spec: a Civo pool resize restarts the managed control plane, so every scale
+  event can drop the API server mid-sync.** Upstream issue: argo-cd#12840, open
+  since 2023. Fix deferred to a separate piece of work; candidates are dropping
+  Grafana's PVC (dashboards already come from ConfigMaps) or a
+  `resource.customizations.health.PersistentVolumeClaim` Lua override — noting
+  that core resources take no group prefix in that key.
