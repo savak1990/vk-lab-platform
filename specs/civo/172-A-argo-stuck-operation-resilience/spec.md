@@ -199,7 +199,29 @@ dumps Pending pods, the last `FailedScheduling` events, root's `SyncFailed`
 resources with their messages, and the autoscaler log tail. All of it is
 covered by `tests/scripts/argo-watch-test.sh` against a fake `kubectl`
 (`make argo-watch-check`, run by CI's validation job), including the blip case
-that CI hit. The three other unguarded pipelines are guarded with `|| true`,
+that CI hit.
+
+**An outage is characterised, not just counted.** On every failed poll the
+watch prints kubectl's own error text (a connect timeout, a refused
+connection, a TLS handshake timeout and an HTTP 5xx each name a different
+failure) and a `curl` probe of `/livez` and `/readyz` with HTTP code and
+timing, which separates a dead host from a live one that cannot answer. At
+the first failure and again on recovery it prints Civo's own view of the
+cluster (`civo kubernetes show`: status, ready flag, target node count and
+per-instance status), so a Civo-side operation on the cluster shows up. On
+recovery it compares the API server's `process_start_time_seconds` and the
+`kube-system` lease holders with a snapshot taken at watch start — either
+changing proves the control plane restarted, both unchanged means it did
+not — and prints any failing `/readyz?verbose` check. Each heartbeat carries
+`apiserver_current_inflight_requests`, so load before an outage is on record.
+
+**Scale-up is timed from the objects, not from the log.** Every poll reads the
+node list and the autoscaler's status ConfigMap. A new node is announced with
+its `creationTimestamp`, its readiness with the Ready condition's transition
+time, and the ConfigMap's cluster-wide `scaleUp` block marks the trigger with
+its `lastTransitionTime` plus the Pending pods at that moment. On exit a
+one-line timeline joins the three: triggered, registered after N seconds,
+Ready after M seconds. The three other unguarded pipelines are guarded with `|| true`,
 which in each case falls through to the behaviour already written for
 "nothing found".
 
