@@ -33,7 +33,7 @@ secret-encrypt`/`secret-decrypt` (`SECRET_SCOPE=` on the scripts):
   by `terraform/live/account/root-domain`), `civo-token.enc` (the Civo API
   token, read by `scripts/lib/provider.sh`'s `civo_token` helper,
   `PROVIDER=civo` only) and `hetzner-token.enc` (the Hetzner Cloud API token,
-  for the planned `PROVIDER=hetzner` target).
+  read by the same file's `hcloud_token` helper, `PROVIDER=hetzner` only).
 
 The scope is never guessed from the name: a `decrypt` in the wrong scope
 fails and names the scope where the file does exist. `.gitignore` tracks
@@ -59,6 +59,28 @@ make secret-encrypt NAME=<name> VALUE=<plaintext-value> [SCOPE=global]
 Writes `secrets/$PROJECT_NAME/<name>.enc`, or `secrets/<name>.enc` with
 `SCOPE=global`. Commit that file; never commit the plaintext value you
 passed as `VALUE`.
+
+## Hetzner Cloud project and API token (manual, once per account)
+
+`PROVIDER=hetzner` reads `secrets/hetzner-token.enc`. No API creates a
+Hetzner Cloud project, so this is done by hand once:
+
+1. In the Hetzner Cloud Console, create a project named `vk-hetzner-lab`
+   (the `PROJECT_NAME` default for `PROVIDER=hetzner`).
+2. In that project, under Security → API tokens, create one token with
+   Read & Write permission. Copy it once; the Console never shows it again.
+3. Encrypt and commit it:
+
+   ```
+   make secret-encrypt NAME=hetzner-token VALUE=<token> SCOPE=global
+   git add secrets/hetzner-token.enc
+   ```
+
+Never create the token in a project that holds anything else. A Hetzner
+token has no scopes and no documented expiry: whoever can decrypt it owns
+the whole project, so the project must contain only what this platform
+creates and destroys. To rotate, delete the token in the Console and repeat
+step 3.
 
 ## Generating throwaway secrets for CI/test environments
 

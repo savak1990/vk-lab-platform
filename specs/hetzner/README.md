@@ -80,7 +80,7 @@ two additions:
 
 | ID | Folder | Title | Status | Pri | Diff | Tier | Depends on | Milestone |
 |---|---|---|---|---|---|---|---|---|
-| HETZ-010 | [010-P-provider-command-surface](010-P-provider-command-surface/spec.md) | `PROVIDER=hetzner` operator input, defaults, token helper | READY | P1 | S | standard | — | M0 |
+| HETZ-010 | [010-D-provider-command-surface](010-D-provider-command-surface/spec.md) | `PROVIDER=hetzner` operator input, defaults, token helper | DONE | P1 | S | standard | — | M0 |
 | HETZ-015 | [015-P-governance-adrs-constitution](015-P-governance-adrs-constitution/spec.md) | ADR 0032, ADR 0029/0030 amendments, constitution §20 per-provider, architecture §10a | READY | P0 | M | strongest | — | M0 |
 | HETZ-016 | [016-P-non-aws-generalisation](016-P-non-aws-generalisation/spec.md) | `= civo` script branches and `eq "civo"` gates become non-AWS; Civo byte-identical | READY | P0 | M | strongest | 010 | M0 |
 | HETZ-018 | [018-P-identity-chain-provider-naming](018-P-identity-chain-provider-naming/spec.md) | Roles Anywhere chain names parametrized by provider; Civo names unchanged | READY | P0 | M | strongest | 010, 016 | M0 |

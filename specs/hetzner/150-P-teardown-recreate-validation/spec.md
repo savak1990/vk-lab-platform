@@ -72,7 +72,7 @@ Steps, each with its command and result recorded:
 1. `PROVIDER=aws make status` and `PROVIDER=civo make status` (before).
 2. `PROVIDER=hetzner make full-up`.
 3. Verify: 2 fixed nodes Ready, 0 autoscaled nodes present, no `uninitialized` taint, Argo `Synced/Healthy`,
-   Envoy LB with an IPv4, `argo.hetzner.<root-domain>` resolves to it,
+   Envoy LB with an IPv4, `argo.hz.<root-domain>` resolves to it,
    wildcard certificate `Ready` from the production issuer, ESO Secrets
    synced, CNPG `Healthy`, Grafana reachable, `hcloud load-balancer list`
    shows one LB, `hcloud volume list` shows the expected volumes.

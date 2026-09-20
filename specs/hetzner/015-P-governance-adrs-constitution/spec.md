@@ -63,7 +63,7 @@ Each ADR has the status Proposed until the PR merges.
 - **0030 amendment "Provider API tokens".** Generalise the title from Civo to provider tokens. Hetzner tokens are per project with Read or Read&Write only. The Hetzner token must live in-cluster as `kube-system/hcloud` because the CCM and CSI read it. Mitigation: a dedicated Hetzner project holds nothing but this lab, so a Secret reader gains the lab project and nothing else; `argo-up` creates the Secret untracked; rotation is delete-token, re-encrypt, commit, `argo-up`. The Civo text stays as written.
 - **0029 note.** On self-managed kubeadm clusters the API server accepts `apiServer.extraArgs` `service-account-issuer=<public URL>` and `service-account-jwks-uri`, so IAM OIDC federation is possible on Hetzner. Roles Anywhere is kept because it reuses CIVO-080 to CIVO-110 unchanged and keeps one identity mechanism across non-EKS targets. The note records federation as the alternative and names the cost of switching (six DONE specs).
 - **0024 note.** Hetzner location `nbg1`, network zone `eu-central`, declared in `root.hcl` (`hcloud_location`) and `scripts/lib/region.sh` (`HCLOUD_LOCATION`). AWS region unchanged.
-- **0002 note.** Zone `hetzner.<root-domain>`, `txtOwnerId=vk-hetzner-lab`.
+- **0002 note.** Zone `hz.<root-domain>`, `txtOwnerId=vk-hetzner-lab`.
 - **0022 note.** Admin kubeconfig fetched over SSH with a KMS-encrypted key; test identity via ServiceAccount token, as on Civo.
 
 Constitution §20 becomes "Non-EKS execution targets" with one table: rows are
@@ -71,7 +71,7 @@ sections §3, §5, §8, §14, §16, §17, §19; columns are Civo and Hetzner. Th
 Civo column reproduces today's text. The Hetzner column states: §3 servers
 and firewall are Disposable, network and SSH key Persistent, Roles Anywhere
 Bootstrap; §5 Roles Anywhere, the provider token also in-cluster; §8 hcloud
-LB (TCP, no firewall on LBs) → Envoy TLS; §14 zone `hetzner.<root-domain>`,
+LB (TCP, no firewall on LBs) → Envoy TLS; §14 zone `hz.<root-domain>`,
 no ACM; §16 full compliance through hcloud `labels`; §17 same command pairs;
 §19 fork steps add the Hetzner project, token, SSH key, and CA ceremony.
 

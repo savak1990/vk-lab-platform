@@ -22,7 +22,7 @@ completed: ""
 
 ## 1. Outcome and rationale
 
-Grafana at `grafana.hetzner.<root-domain>` shows the cluster, control
+Grafana at `grafana.hz.<root-domain>` shows the cluster, control
 plane, CNPG, Envoy and Argo dashboards with logs from Loki. The stack runs
 on `hcloud-volumes` with the same charts and retention as AWS and Civo.
 Unlike the managed control plane on Civo, the control plane is a node in

@@ -35,7 +35,7 @@ Never renumber them. Numbers step by ten. Insert later work into the gaps
 | `READY` | Approved for development; no active blocker. An implementer may start only when every `depends_on` is `DONE` (checked at session start) |
 | `IN_PROGRESS` | An authorized implementer started the bounded work |
 | `BLOCKED` | Needs a named decision, capability, prerequisite, or unfinished hard dependency; `blocked_by` names it |
-| `IN_REVIEW` | Implementation and checks complete, awaiting review. **Used only when the operator asks for a pull request.** A change that goes straight to `main` skips this status |
+| `IN_REVIEW` | Implementation and checks complete; the pull request is open and awaiting review |
 | `DONE` | Acceptance criteria and gates passed, evidence recorded, reviewed and integrated |
 | `DEFERRED` | Postponed by a recorded decision; may return to `READY` |
 | `SUPERSEDED` | Replaced by another spec or ADR; the replacement is named |
@@ -43,8 +43,7 @@ Never renumber them. Numbers step by ten. Insert later work into the gaps
 
 Each status maps to a folder letter; see `../README.md`.
 
-Flow: `DRAFT → READY → IN_PROGRESS → DONE`, or
-`DRAFT → READY → IN_PROGRESS → IN_REVIEW → DONE` when a pull request exists.
+Flow: `DRAFT → READY → IN_PROGRESS → IN_REVIEW → DONE`.
 `BLOCKED` may interrupt anywhere. It returns to `READY` or `IN_PROGRESS`.
 A review failure returns the spec to `IN_PROGRESS`. Reopening `DONE` needs a
 recorded reason.
@@ -74,9 +73,8 @@ verified in this environment.
 3. Set `status: "IN_PROGRESS"` and `updated`. Add a status-history line.
 4. Implement only the spec's scope. Do not touch AWS behavior unless the spec says so. Run the AWS regression gate that the spec names.
 5. Run the validation section. Record the commands and results (no secrets) under "Execution evidence".
-6. A pull request is optional. The operator decides. **The default is to push the change straight to `main` and open no pull request.** Ask only when the change is large, risky, or touches AWS behaviour.
-   - No pull request: skip `IN_REVIEW`. Go to step 7.
-   - Pull request: set `IN_REVIEW` and open one PR mapped to the spec ID. Go to step 7 after the merge.
+6. Open a pull request mapped to the spec ID and set `IN_REVIEW`. `main` is
+   protected; a direct push is not possible. Go to step 7 after the merge.
 7. When the change is on `main` and the gates pass, set `DONE` and `completed`. Record in the status history whether a pull request was used. Re-check the direct dependents' `blocked_by`.
 8. Update the index table below if the status, priority, or dependencies changed.
 

@@ -7,8 +7,8 @@
 # Selects the provider's project/stack defaults and dispatch. aws is the
 # default; behavior is unchanged from before this variable existed.
 export PROVIDER ?= aws
-ifeq ($(filter aws civo,$(PROVIDER)),)
-$(error PROVIDER must be aws or civo, got '$(PROVIDER)')
+ifeq ($(filter aws civo hetzner,$(PROVIDER)),)
+$(error PROVIDER must be aws, civo or hetzner, got '$(PROVIDER)')
 endif
 
 # Overridable so CI/integration runs can use a disposable, randomly
@@ -17,6 +17,9 @@ endif
 ifeq ($(PROVIDER),civo)
 export PROJECT_NAME ?= vk-civo-lab
 export SUBDOMAIN ?= civo
+else ifeq ($(PROVIDER),hetzner)
+export PROJECT_NAME ?= vk-hetzner-lab
+export SUBDOMAIN ?= hz
 else
 export PROJECT_NAME ?= vk-lab-platform
 export SUBDOMAIN ?= lab
@@ -31,13 +34,18 @@ endif
 LAB_KUBECONFIG := $(CURDIR)/.kube/$(PROJECT_NAME).config
 LAB_TEST_KUBECONFIG := $(CURDIR)/.kube/$(PROJECT_NAME)-test.config
 
-# The disposable-cluster stack directory; civo uses its own directory,
-# never wired into the aws path.
+# The disposable-cluster stack directory; civo and hetzner each use their
+# own directory, never wired into the aws path.
 ifeq ($(PROVIDER),civo)
 export CLUSTER_DIR := cluster-civo
 export PERSISTENT_EXTRA_DIR := persistent-civo
 export BOOTSTRAP_EXCLUDE := acm
 export PERSISTENT_EXCLUDE := vpc backups
+else ifeq ($(PROVIDER),hetzner)
+export CLUSTER_DIR := cluster-hetzner
+export PERSISTENT_EXTRA_DIR := persistent-hetzner
+export BOOTSTRAP_EXCLUDE := acm
+export PERSISTENT_EXCLUDE := vpc
 else
 export CLUSTER_DIR := cluster
 export PERSISTENT_EXTRA_DIR :=
@@ -133,6 +141,9 @@ bootstrap-down:
 ifeq ($(PROVIDER),civo)
 persistent-up:
 	./scripts/persistent-up-civo.sh
+else ifeq ($(PROVIDER),hetzner)
+persistent-up:
+	./scripts/persistent-up-hetzner.sh
 else
 persistent-up:
 	./scripts/generate-secrets.sh
@@ -158,6 +169,10 @@ ifeq ($(PROVIDER),civo)
 cluster-up:
 	./scripts/require-persistent.sh
 	@bash -c 'source scripts/lib/region.sh; source scripts/lib/provider.sh; civo_token; cd terraform/live/$(CLUSTER_DIR) && terragrunt run --all --non-interactive -- apply -auto-approve'
+else ifeq ($(PROVIDER),hetzner)
+cluster-up:
+	./scripts/require-persistent.sh
+	@bash -c 'source scripts/lib/region.sh; source scripts/lib/provider.sh; hcloud_token; cd terraform/live/$(CLUSTER_DIR) && terragrunt run --all --non-interactive -- apply -auto-approve'
 else
 cluster-up:
 	./scripts/require-persistent.sh
