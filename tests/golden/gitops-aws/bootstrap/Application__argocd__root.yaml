@@ -32,9 +32,9 @@ spec:
         - name: karpenter.onDemand.cpuLimit
           value: "4"
         - name: capacity.autoscaler.min
-          value: "2"
-        - name: capacity.autoscaler.max
           value: "3"
+        - name: capacity.autoscaler.max
+          value: "4"
         - name: capacity.autoscaler.pool
           value: workers
         - name: envoyGateway.acmCertificateArn

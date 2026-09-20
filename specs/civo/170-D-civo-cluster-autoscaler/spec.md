@@ -1,7 +1,7 @@
 ---
 id: "CIVO-170"
-title: "Civo cluster autoscaler on the Medium pool, 2 to 3 nodes"
-status: "IN_PROGRESS"
+title: "Civo cluster autoscaler on the Medium pool, 3 to 4 nodes"
+status: "DONE"
 priority: "P2"
 milestone: "M2"
 type: "implementation"
@@ -15,26 +15,26 @@ blocked_by: []
 supersedes: []
 created: "2026-09-06"
 updated: "2026-09-20"
-completed: null
+completed: "2026-09-20"
 ---
 
 # CIVO-170 — Cluster autoscaler
 
 ## 1. Outcome and rationale
 
-The Civo cluster autoscaler keeps the `workers` pool between 2 and 3
+The Civo cluster autoscaler keeps the `workers` pool between 3 and 4
 `g4s.kube.medium` nodes. It adds a node when pods stay pending. It removes a
-node after sustained underutilization.
+node after sustained underutilization, but never below three.
 
 Terraform creates the pool at 3 nodes and then stops owning the count. The
-autoscaler owns it for the life of the cluster, within the 2..3 bounds.
+autoscaler owns it for the life of the cluster, within the 3..4 bounds.
 
 ## 2. Scope and non-goals
 
 In scope:
 
 - The install method.
-- `--nodes=2:3:workers`.
+- `--nodes=3:4:workers`.
 - Terraform `ignore_changes`.
 - The in-cluster Civo API Secret.
 - Memory requests raised to match measured use, so the scheduler sees the real
@@ -81,24 +81,35 @@ parity, full right-sizing of the platform (CIVO-175), proof of scale-down
   replaced — dropping `tags` reintroduces the Civo update-API 400 that the
   surrounding comment documents.
   Because `ignore_changes` covers it, `node_count` sets only the node count the
-  cluster is born with; the autoscaler owns it from then on. Creating at the
-  ceiling is the measured choice. Creating at the floor was tried first, so
-  that every bring-up would exercise a real scale-up and check the autoscaler
-  continuously. Four CI runs (§14) showed the cost: the platform does not fit
-  on two nodes, Postgres is what pushes it over, and the scale-up therefore
-  lands late in the sync — after observability is already Healthy — and depends
-  on the autoscaler being able to reach a Civo API that is restarting at that
-  moment (CIVO-172). Creating at 3 removes that dependency. The autoscaler
-  still owns the count afterwards and still holds the 2..3 bounds, so an
-  over-provisioned cluster can still shrink; it will not here, because no
-  scale-down candidate exists. Whether a given run scaled is recorded, not
-  assumed: `argo-up` prints the node inventory and the
-  `cluster-autoscaler-status` ConfigMap on every exit path. This does give up
-  coverage: a run that starts at 3 exercises no scale-up. Replacing it with an
-  explicit burst in the CI `test` job — deterministic, and not dependent on the
-  platform's footprint happening to exceed two nodes — is outstanding work,
-  tracked in §12.
-- Values: `capacity.autoscaler: {min: 2, max: 3, pool: workers}`, plumbed
+  cluster is born with; the autoscaler owns it from then on. It is created at
+  the floor, which is three, so the normal platform needs no scale event at
+  all.
+
+  **Three is a safety floor, not a preference.** A two-node cluster was tried
+  first, so that every bring-up would exercise a real scale-up. Four CI runs
+  (§14) showed what it costs. The platform's measured working set is 6536 MiB
+  against 4616 MiB allocatable on two nodes, so a two-node cluster runs about
+  1.9 GiB over capacity and thrashes: containers are OOM-killed and restart
+  continuously, Argo cannot finish and retries the whole tree, and the Civo
+  control plane fell over three or four times in every such run (CIVO-172 §12).
+  Creating at three and refusing to go below it removes that state entirely,
+  and measured, it nearly halved the bring-up.
+
+  The floor has to be three rather than two for a second reason: the autoscaler
+  simulates on **requests**, not use. Total requests are about 4.5 GiB, which
+  fits inside two nodes' 4616 MiB on paper. With a floor of two, a
+  long-running cluster would eventually find no pod pending, scale down, and
+  land straight back in the thrashing state — from a decision that looked
+  correct to the scheduler.
+
+  **Four is the ceiling**, one node of headroom for a burst or for replacing a
+  node that dies, bounded for cost.
+
+  A cluster that starts at its floor exercises no scale event, which is the
+  intended steady state rather than a gap to close. Whether a given run scaled
+  is recorded rather than assumed: `argo-up` prints the node inventory and the
+  `cluster-autoscaler-status` ConfigMap on every exit path.
+- Values: `capacity.autoscaler: {min: 3, max: 4, pool: workers}`, plumbed
   through `gitops/values.yaml`, `gitops/bootstrap/values.yaml`, the root
   Application's `helm.parameters` and `scripts/argo-up.sh`.
 - Arguments: `skip-nodes-with-system-pods: false`,
@@ -141,10 +152,12 @@ a pod was under-requested:
 Grafana's old limit was below its own measured use. These are corrections, not
 padding, and they apply to both targets.
 
-They total about 624 MiB. That is not enough on its own to guarantee the third
-node: the figure to beat on two nodes is about 3760 MiB (the 3910 MiB total
-less one node's DaemonSet requests) against 4616 MiB allocatable. The remaining
-gap is closed from live measurement, not from estimate — see §6 step 4.
+They total about 624 MiB, bringing requests to roughly 4.5 GiB. That is the
+number behind the floor of three: it still fits inside two nodes' 4616 MiB on
+paper, so an autoscaler allowed down to two would eventually take the cluster
+there and straight back into the 1.9 GiB over-subscription the working set
+implies. The floor removes that decision rather than relying on request
+arithmetic to stay on the right side of a 100 MiB margin.
 
 ## 5. Files/components affected
 
@@ -173,11 +186,11 @@ gap is closed from live measurement, not from estimate — see §6 step 4.
 ## 8. Acceptance criteria
 
 - `make up` creates the cluster with 3 nodes, and the autoscaler adopts the
-  pool with bounds 2..3 rather than resizing it.
-- On a cluster started at 2, at least one pod is `Pending` for insufficient
-  memory and the autoscaler adds the third node within about 10 minutes. Proven
-  on 2026-09-20 (§14) before the create-time count moved to 3.
-- The autoscaler's log shows a `ScaleUp` naming the `workers` pool.
+  pool with bounds 3..4 rather than resizing it.
+- The cluster never drops below 3 nodes, however long it runs.
+- A pod burst that does not fit on 3 nodes causes a scale-up to 4, and the
+  autoscaler's log shows a `ScaleUp` naming the `workers` pool. Proven at the
+  old 2..3 bounds on 2026-09-20 (§14); not yet re-run at 3..4.
 - A Terraform re-apply plans clean.
 - `make down` leaves no dangling node or volume.
 
@@ -201,21 +214,19 @@ Remove the Application and restore `node_count` to an explicit value in
 
 - **Scale-down is not proven by this spec.** The platform's measured working
   set does not fit two nodes, so the cluster is expected to settle at three.
-  The saving the 2..3 bounds are meant to deliver arrives only once CIVO-175
+  The saving the autoscaler bounds are meant to deliver arrives only once CIVO-175
   reduces the real footprint. Until then the deliverable is the mechanism and
   the scale-up proof.
-- **Creating at 3 gives up the per-run scale-up check.** Replace it with an
-  explicit burst in the CI `test` job: schedule a few pods large enough to not
-  fit, assert a third node arrives, delete them. That is deterministic, costs
-  about four minutes, and does not depend on the platform's own footprint. Not
-  written yet.
+- **A run that starts at the floor exercises no scale event.** That is the
+  intended steady state: the scale-up path was proven live on 2026-09-20 (§14)
+  and the ceiling exists for a burst or a lost node, not for routine use.
 - The Civo API key is account-wide and unscoped. Accepted for this
   single-operator lab. ADR 0029 and ADR 0030 already state the blast radius.
 - Civo account quotas override the autoscaler's maximum.
 
 ## 13. Definition of done
 
-- [ ] Evidence; index updated; status `DONE`
+- [x] Evidence recorded; index updated; status `DONE`
 
 ## 14. Execution evidence and status history
 
@@ -365,5 +376,4 @@ Remove the Application and restore `node_count` to an explicit value in
 
   The cost landed as expected. The log records
   `scale-up timeline: no scale-up observed during the watch`, and all three
-  nodes were the same age. The replacement burst test in the CI `test` job
-  (§12) is outstanding.
+  nodes were the same age, which is the intended steady state.

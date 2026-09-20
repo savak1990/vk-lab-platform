@@ -63,13 +63,20 @@ argo_api_probe() {
 
 # Civo's own view of the cluster during an outage: a status other than
 # ACTIVE, or an instance not ACTIVE, means Civo is doing something to it.
+# --region is required: the CLI defaults to NYC1 and answers "zero matches"
+# for a LON1 cluster. Failure prints a line rather than nothing, because
+# silence here is indistinguishable from a healthy lookup.
 argo_civo_cluster_state() {
   [ "${PROVIDER:-}" = civo ] || return 0
   command -v civo_cli >/dev/null 2>&1 || return 0
-  [ -n "${PROJECT_NAME:-}" ] || return 0
-  civo_cli kubernetes show "$PROJECT_NAME" -o json 2>/dev/null \
-    | jq -r '"ARGO-UP: civo cluster: status=\(.status // "?") ready=\(.ready // "?") target_nodes=\(.num_target_nodes // "?") instances: \([.instances[]? | "\(.hostname)=\(.status)"] | join(" "))"' 2>/dev/null \
-    || true
+  [ -n "${CLUSTER_NAME:-}" ] && [ -n "${CIVO_REGION:-}" ] || return 0
+  local json line
+  if ! json="$(civo_cli kubernetes show "$CLUSTER_NAME" -o json --region "$CIVO_REGION" 2>&1)"; then
+    echo "ARGO-UP: civo cluster: unavailable ($(head -n1 <<< "$json"))"
+    return 0
+  fi
+  line="$(jq -r '"status=\(.status // "?") ready=\(.ready // "?") target_nodes=\(.num_target_nodes // "?") instances: \([.instances[]? | "\(.hostname)=\(.status)"] | join(" "))"' <<< "$json" 2>/dev/null)" || true
+  echo "ARGO-UP: civo cluster: ${line:-unavailable (unparsable response)}"
 }
 
 # The API server's process start time plus the control-plane lease holders.

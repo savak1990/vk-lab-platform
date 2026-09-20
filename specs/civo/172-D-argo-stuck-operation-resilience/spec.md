@@ -1,7 +1,7 @@
 ---
 id: "CIVO-172"
 title: "Argo CD operations that can never end, and the teardown they deadlock"
-status: "IN_PROGRESS"
+status: "DONE"
 priority: "P1"
 milestone: "M2"
 type: "implementation"
@@ -15,7 +15,7 @@ blocked_by: []
 supersedes: []
 created: "2026-09-20"
 updated: "2026-09-20"
-completed: null
+completed: "2026-09-20"
 ---
 
 # CIVO-172 — Argo CD stuck operations
@@ -38,9 +38,11 @@ never resolve waits forever, and `syncPolicy.retry` never fires, because retry
 only applies once an operation ends. An earlier revision of this spec said no
 timeout exists at all; that was wrong, and §12 records the follow-up.
 
-This matters now because CIVO-170 made node-pool resizes routine. The cluster
-is created at the autoscaler's floor and the platform does not fit there, so
-every bring-up scales up while Argo is mid-sync.
+This mattered most while the cluster was created below the platform's real
+footprint, which made every bring-up scale up while Argo was mid-sync. CIVO-170
+now creates the pool at its floor of three, so that state is gone — but the
+Civo control plane still restarts under a sync burst (§12), and these fixes are
+what carry a bring-up and a teardown through it.
 
 ## 2. Scope and non-goals
 
@@ -329,7 +331,7 @@ then `kubectl patch application <app> -n argocd --type=merge -p
 
 ## 13. Definition of done
 
-- [ ] Evidence; index updated; status `DONE`
+- [x] Evidence recorded; index updated; status `DONE`
 
 ## 14. Execution evidence and status history
 

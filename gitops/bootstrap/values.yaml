@@ -29,8 +29,8 @@ karpenter:
 # civo-only; must match gitops/values.yaml's capacity.autoscaler block.
 capacity:
   autoscaler:
-    min: 2
-    max: 3
+    min: 3
+    max: 4
     pool: workers
 
 envoyGateway:

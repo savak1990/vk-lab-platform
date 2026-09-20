@@ -86,7 +86,14 @@ echo "000 0.000 0.000 5.001"
 EOF
 cat > "$TMP/bin/civo_cli" <<'EOF'
 #!/usr/bin/env bash
-echo '{"status":"ACTIVE","ready":true,"num_target_nodes":2,"instances":[{"hostname":"node-a","status":"ACTIVE"},{"hostname":"node-b","status":"ACTIVE"}]}'
+# Answers only when asked for the right cluster in the right region, so a
+# missing --region or the wrong name shows up as a failure, not as silence.
+[ -n "${FAKE_CIVO_FAIL:-}" ] && { echo "Error: ZeroMatchesError" >&2; exit 1; }
+case "$*" in
+  *"kubernetes show test-cluster"*--region\ LON1*) ;;
+  *) echo "Error: Kubernetes ZeroMatchesError: unable to find, zero matches" >&2; exit 1 ;;
+esac
+echo '{"status":"ACTIVE","ready":true,"num_target_nodes":3,"instances":[{"hostname":"node-a","status":"ACTIVE"},{"hostname":"node-b","status":"ACTIVE"}]}'
 EOF
 chmod +x "$TMP/bin/kubectl" "$TMP/bin/curl" "$TMP/bin/civo_cli"
 export PATH="$TMP/bin:$PATH"
@@ -97,6 +104,8 @@ export ARGO_UP_HEARTBEAT_SECONDS=1000
 export PRIOR_OPERATION_STARTED_AT=""
 export PROVIDER=civo
 export PROJECT_NAME=test-project
+export CLUSTER_NAME=test-cluster
+export CIVO_REGION=LON1
 
 fail=0
 err() { echo "ARGO-WATCH-TEST: $*" >&2; fail=1; }
@@ -155,6 +164,12 @@ grep -q "setting group workers size to 3" <<< "$OUT" || err "success: group-size
 grep -q "unrelated line" <<< "$OUT" && err "success: unrelated autoscaler log line leaked through"
 grep -q "adding node pool" <<< "$OUT" && err "success: the 10s refresh line 'adding node pool' leaked through"
 grep -q "name: workers" <<< "$OUT" || err "success: status ConfigMap cut before its nodeGroups section"
+
+# A failing Civo lookup says so. Silence here is what hid a wrong region for
+# two CI runs, so the absence of this line must never be the failure mode.
+FAKE_CIVO_FAIL=1 run "fail Synced/Healthy"
+grep -q "civo cluster: unavailable" <<< "$OUT" || err "outage: a failed Civo lookup printed nothing"
+unset FAKE_CIVO_FAIL
 
 # No restart across a clean run: say so, once, on recovery only.
 run "fail Synced/Healthy"
