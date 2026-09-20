@@ -1,7 +1,7 @@
 ---
 id: "HETZ-015"
 title: "Governance for a third target: ADR 0036, amendments to ADR 0029/0030/0024/0002/0022, per-provider constitution §20, architecture §10a, HLD Hetzner column"
-status: "IN_REVIEW"
+status: "DONE"
 priority: "P0"
 milestone: "M0"
 type: "documentation"
@@ -15,7 +15,7 @@ blocked_by: []
 supersedes: []
 created: "2026-09-11"
 updated: "2026-09-20"
-completed: ""
+completed: "2026-09-20"
 ---
 
 # HETZ-015 — Governance and documentation base
@@ -182,9 +182,9 @@ One PR. A revert removes the documents. Nothing depends on them at run time.
 
 ## 13. Definition of done
 
-- [ ] ADR 0036 and the five notes merged
-- [ ] §20 table, §10a table, HLD, `CLAUDE.md` updated
-- [ ] Index row in this package's `README.md` updated (`docs/adr/` has no index file); `decisions.md` §2 status column added and set; status `DONE`
+- [x] ADR 0036 and the five notes written
+- [x] §20 table, §10a table, HLD, `CLAUDE.md` updated
+- [x] Index row in this package's `README.md` updated (`docs/adr/` has no index file); `decisions.md` §2 status column added and set; status `DONE`
 
 ## 14. Execution evidence and status history
 
@@ -281,3 +281,18 @@ One PR. A revert removes the documents. Nothing depends on them at run time.
   No lifecycle run was performed and none is warranted. This change alters no
   runtime behaviour, and a documentation-only PR skips every heavy gate by
   design.
+
+- 2026-09-20 — **`DONE`, set inside PR #36 rather than after the merge, at
+  the user's instruction.** This departs from step 7 of the
+  implementation-session protocol, which sets `DONE` once the change is on
+  `main`. The departure is recorded here rather than left implicit, because
+  the protocol is otherwise followed and a reader comparing this spec against
+  it would otherwise see an unexplained gap. The PR's own checks passed
+  before the flip: `changes`, `pr-gate`, `validate-repo` and
+  `validate-secrets` all green, and the six lifecycle and validation jobs
+  skipped as a documentation-only change.
+
+  Direct dependents to re-check after the merge: HETZ-025, HETZ-030 and
+  HETZ-140 all name 015 in `depends_on`, and none carries a `blocked_by`
+  entry pointing at it, so no dependent needs unblocking. HETZ-016 and
+  HETZ-018 remain the next work in M0.
