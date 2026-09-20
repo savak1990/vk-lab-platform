@@ -16,6 +16,15 @@ if [ "$PROVIDER" = "civo" ]; then
   export BOOTSTRAP_EXCLUDE="${BOOTSTRAP_EXCLUDE:-acm}"
   export PERSISTENT_EXCLUDE="${PERSISTENT_EXCLUDE:-vpc backups}"
   export BACKUP_SSM_LAYER="${BACKUP_SSM_LAYER:-persistent-civo}"
+elif [ "$PROVIDER" = "hetzner" ]; then
+  export PROJECT_NAME="${PROJECT_NAME:-vk-hetzner-lab}"
+  export SUBDOMAIN="${SUBDOMAIN:-hz}"
+  export CLUSTER_DIR="${CLUSTER_DIR:-cluster-hetzner}"
+  export CLUSTER_NAME="${CLUSTER_NAME:-$PROJECT_NAME}"
+  export PERSISTENT_EXTRA_DIR="${PERSISTENT_EXTRA_DIR:-persistent-hetzner}"
+  export BOOTSTRAP_EXCLUDE="${BOOTSTRAP_EXCLUDE:-acm}"
+  export PERSISTENT_EXCLUDE="${PERSISTENT_EXCLUDE:-vpc}"
+  export BACKUP_SSM_LAYER="${BACKUP_SSM_LAYER:-persistent}"
 else
   export PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
   export SUBDOMAIN="${SUBDOMAIN:-lab}"
@@ -66,6 +75,34 @@ civo_list_names() {
   case "$raw" in
     \[*) echo "$raw" | jq -r '.[].name' ;;
   esac
+}
+
+# Decrypts the Hetzner API token and exports it as HCLOUD_TOKEN. Masks it in
+# GitHub Actions logs; never echoes it anywhere else.
+hcloud_token() {
+  local token
+  token="$(SECRET_SCOPE=global "$PROVIDER_SH_REPO_ROOT/scripts/secret-decrypt.sh" hetzner-token)"
+  if [ -n "${GITHUB_ACTIONS:-}" ]; then
+    echo "::add-mask::$token"
+  fi
+  export HCLOUD_TOKEN="$token"
+}
+
+# hcloud is stateless with HCLOUD_TOKEN set; an empty config keeps a stray
+# operator context out of the run, and nothing is ever written to disk.
+hcloud_cli() {
+  HCLOUD_CONFIG=/dev/null hcloud "$@"
+}
+
+# Names of this project's <resource>s, narrowed by extra key=value label terms.
+# CLIs before 1.55 print null rather than [] for an empty list.
+hcloud_list_names() {
+  local resource="$1" selector="project=$PROJECT_NAME"
+  shift
+  if [ $# -gt 0 ]; then
+    selector="$selector,$(IFS=,; printf '%s' "$*")"
+  fi
+  hcloud_cli "$resource" list -o json -l "$selector" | jq -r '(. // [])[].name'
 }
 
 cluster_exists() {
@@ -121,6 +158,9 @@ configure_kubeconfig() {
     kubectl ${kcfg[@]:+"${kcfg[@]}"} config delete-context "${PROJECT_NAME}-civo" >/dev/null 2>&1 || true
     kubectl ${kcfg[@]:+"${kcfg[@]}"} config rename-context "$raw_context" "${PROJECT_NAME}-civo" >/dev/null
     kubectl ${kcfg[@]:+"${kcfg[@]}"} config use-context "${PROJECT_NAME}-civo" >/dev/null
+  elif [ "$PROVIDER" = "hetzner" ]; then
+    echo "configure_kubeconfig: PROVIDER=hetzner is implemented in HETZ-035" >&2
+    return 1
   else
     aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$LAB_REGION" --alias "$CLUSTER_NAME" \
       --role-arn "$(aws iam get-role --role-name eks-access-identity --query Role.Arn --output text)" \
@@ -137,6 +177,10 @@ configure_test_kubeconfig() {
   local kcfg=()
   [ -n "$kubeconfig" ] && kcfg=(--kubeconfig "$kubeconfig")
 
+  if [ "$PROVIDER" = "hetzner" ]; then
+    echo "configure_test_kubeconfig: PROVIDER=hetzner is implemented in HETZ-130" >&2
+    return 1
+  fi
   if [ "$PROVIDER" != "civo" ]; then
     aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$LAB_REGION" --alias "${CLUSTER_NAME}-test" \
       --role-arn "$(aws iam get-role --role-name eks-test-identity --query Role.Arn --output text)" \
