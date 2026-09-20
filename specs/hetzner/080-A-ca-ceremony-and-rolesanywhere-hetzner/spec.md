@@ -1,7 +1,7 @@
 ---
 id: "HETZ-080"
 title: "CA ceremony and bootstrap/rolesanywhere for the Hetzner project, before its first bootstrap-up"
-status: "READY"
+status: "IN_PROGRESS"
 priority: "P0"
 milestone: "M1"
 type: "implementation"
