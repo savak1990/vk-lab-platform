@@ -1,7 +1,7 @@
 ---
 id: "HETZ-010"
 title: "PROVIDER=hetzner operator input with Hetzner project defaults, token helper, and Make dispatch"
-status: "IN_REVIEW"
+status: "DONE"
 priority: "P1"
 milestone: "M0"
 type: "implementation"
@@ -15,7 +15,7 @@ blocked_by: []
 supersedes: []
 created: "2026-09-11"
 updated: "2026-09-20"
-completed: ""
+completed: "2026-09-20"
 ---
 
 # HETZ-010 — PROVIDER=hetzner operator input and Make dispatch
@@ -119,7 +119,7 @@ One PR together with `specs/hetzner/`. A revert restores the previous Makefile a
 - [x] Acceptance criteria met with recorded diffs
 - [ ] `shellcheck` clean — not run: not installed on the workstation and never run for the aws or civo arms; `bash -n` is clean (see §14)
 - [x] `secrets/README.md` updated with the manual project and token step
-- [ ] Change on `main`; index row updated; status `DONE` with date
+- [x] Change on `main`; index row updated; status `DONE` with date
 
 ## 14. Execution evidence and status history
 
@@ -191,3 +191,7 @@ One PR together with `specs/hetzner/`. A revert restores the previous Makefile a
     are not `ifeq` blocks in the Makefile; the stubs live in `provider.sh`.
     `.gitignore`, `secret-*.sh`: no edit, as §5 already states.
 - 2026-09-20 — pull request opened; IN_REVIEW.
+- 2026-09-20 — PR #34 green (static checks; lifecycle waived with
+  `ci:skip-lifecycle` because aws and civo `make -n` are byte-identical and
+  no Hetzner resource exists yet); set DONE in the same pull request at the
+  operator's request. HETZ-016 and HETZ-025 are unblocked.
