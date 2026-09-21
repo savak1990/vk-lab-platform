@@ -361,6 +361,11 @@ node-config-check:
 argo-watch-check:
 	@./tests/scripts/argo-watch-test.sh
 
+## Runs pr-gate's decision step against label and job-result combinations,
+## with no GitHub involved. Usage: make pr-gate-check
+pr-gate-check:
+	@./tests/scripts/pr-gate-test.sh
+
 ## Generates throwaway secrets/$(PROJECT_NAME)/ files for a CI/test
 ## environment: root-domain from ROOT_DOMAIN and fixed, publicly-known
 ## passwords ("test"). Never use this for the personal lab - persistent-up

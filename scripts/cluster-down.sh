@@ -47,6 +47,10 @@ else
   echo "CLUSTER-DOWN: cluster $CLUSTER_NAME does not exist - skipping kubectl checks, proceeding to terragrunt destroy."
 fi
 
+if [ "$PROVIDER" = "hetzner" ]; then
+  hcloud_token
+fi
+
 cd "$REPO_ROOT/terraform/live/${CLUSTER_DIR:-cluster}" && terragrunt run --all --non-interactive -- destroy -auto-approve
 
 echo "CLUSTER-DOWN: destroy complete - checking for leaked disposable-lifecycle AWS resources..."
@@ -94,6 +98,28 @@ if [ "$PROVIDER" = "civo" ]; then
   if [ -n "$LEAKED_LBS" ]; then
     echo "CLUSTER-DOWN: WARNING - leaked Civo load balancer(s), cannot delete via CLI (no 'civo loadbalancer remove' command exists): $LEAKED_LBS" >&2
     echo "CLUSTER-DOWN: delete manually via the Civo dashboard or API." >&2
+    LEAK_COUNT=$((LEAK_COUNT + 1))
+  fi
+elif [ "$PROVIDER" = "hetzner" ]; then
+  # Only what this stack creates, and both carry the four labels. The load
+  # balancer and CSI volume sweeps wait for the specs that can create one:
+  # a Hetzner load balancer is named by a hash unrelated to the Service, so
+  # it has to be enumerated rather than matched (HETZ-040, HETZ-047).
+  LEAKED_SERVERS="$(hcloud_list_names server lifecycle=disposable || true)"
+  if [ -n "$LEAKED_SERVERS" ]; then
+    echo "CLUSTER-DOWN: leaked Hetzner server(s), deleting: $LEAKED_SERVERS" >&2
+    for srv in $LEAKED_SERVERS; do
+      hcloud_cli server delete "$srv" >/dev/null 2>&1 || true
+    done
+    LEAK_COUNT=$((LEAK_COUNT + 1))
+  fi
+
+  LEAKED_FIREWALLS="$(hcloud_list_names firewall lifecycle=disposable || true)"
+  if [ -n "$LEAKED_FIREWALLS" ]; then
+    echo "CLUSTER-DOWN: leaked Hetzner firewall(s), deleting: $LEAKED_FIREWALLS" >&2
+    for fw in $LEAKED_FIREWALLS; do
+      hcloud_cli firewall delete "$fw" >/dev/null 2>&1 || true
+    done
     LEAK_COUNT=$((LEAK_COUNT + 1))
   fi
 else
