@@ -37,8 +37,11 @@ argo_state() {
     fi
     ;;
   hetzner)
-    echo "unknown  (PROVIDER=hetzner is implemented in HETZ-040)"
-    return
+    if ! CLUSTER_NAME="$cluster" configure_kubeconfig "$kubeconfig" >/dev/null 2>&1 \
+      || ! kubectl --kubeconfig "$kubeconfig" cluster-info --request-timeout=5s >/dev/null 2>&1; then
+      echo "unknown  (cluster unreachable)"
+      return
+    fi
     ;;
   *)
     local role_arn

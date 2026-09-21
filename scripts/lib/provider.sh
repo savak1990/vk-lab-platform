@@ -136,6 +136,36 @@ hcloud_list_names() {
   hcloud_cli "$resource" list -o json -l "$selector" | jq -r '(. // [])[].name'
 }
 
+# The control plane's public address, published to SSM by the k8s unit. Absent
+# means the stack is down, which is a "no" to every caller, never an error.
+hetzner_cp_ip() {
+  local ip
+  ip="$(aws ssm get-parameter --region "$LAB_REGION" \
+    --name "/$PROJECT_NAME/cluster-hetzner/k8s/control_plane_ip" \
+    --query 'Parameter.Value' --output text 2>/dev/null || true)"
+  [ -n "$ip" ] && [ "$ip" != "None" ] || return 1
+  printf '%s' "$ip"
+}
+
+# Runs one command on a node as root. The subshell's trap removes the decrypted
+# key even on Ctrl-C. That costs one KMS decrypt per call, so a caller that polls
+# runs its loop on the far side of a single call, never this in a local loop.
+hetzner_ssh() {
+  local ip="${1:?hetzner_ssh: ip required}"
+  shift
+  (
+    dir="$(mktemp -d)"
+    trap 'rm -rf "$dir"' EXIT INT TERM
+    "$PROVIDER_SH_REPO_ROOT/scripts/secret-decrypt.sh" hetzner-ssh-key >"$dir/key" || exit 1
+    chmod 600 "$dir/key"
+    # accept-new, into a known_hosts this call throws away: the operator's own
+    # file must not collect entries for servers that live for one bring-up.
+    ssh -i "$dir/key" -o StrictHostKeyChecking=accept-new \
+      -o UserKnownHostsFile="$dir/known_hosts" -o ConnectTimeout=10 \
+      "root@$ip" "$@"
+  )
+}
+
 cluster_exists() {
   case "$PROVIDER" in
     civo)
@@ -143,8 +173,14 @@ cluster_exists() {
       civo_cli kubernetes show "$CLUSTER_NAME" --region "$CIVO_REGION" >/dev/null 2>&1
       ;;
     hetzner)
-      echo "cluster_exists: PROVIDER=hetzner is implemented in HETZ-040" >&2
-      return 1
+      # Two parts, because a server that booted is not yet a cluster: the k3s
+      # install runs from cloud-init and can fail, leaving the server running.
+      # Anything unreadable answers no, so teardown destroys rather than refuse.
+      local cp_ip
+      hcloud_token
+      [ -n "$(hcloud_list_names server role=control-plane 2>/dev/null)" ] || return 1
+      cp_ip="$(hetzner_cp_ip)" || return 1
+      hetzner_ssh "$cp_ip" 'test -f /etc/rancher/k3s/k3s.yaml' >/dev/null 2>&1
       ;;
     local)
       kind get clusters 2>/dev/null | grep -qx "$CLUSTER_NAME"
@@ -202,30 +238,21 @@ require_local_context() {
 hetzner_kubeconfig() {
   local target="${1:-${KUBECONFIG:-$HOME/.kube/config}}"
   local ctx="${PROJECT_NAME}-hetzner"
-  local ip key tmp merged status=0
+  local ip tmp merged attempts status=0
 
-  ip="$(aws ssm get-parameter --region "$LAB_REGION" \
-    --name "/$PROJECT_NAME/cluster-hetzner/k8s/control_plane_ip" \
-    --query 'Parameter.Value' --output text 2>/dev/null || true)"
-  if [ -z "$ip" ] || [ "$ip" = "None" ]; then
+  if ! ip="$(hetzner_cp_ip)"; then
     echo "hetzner_kubeconfig: no control_plane_ip in SSM - has 'make cluster-up' run?" >&2
     return 1
   fi
 
-  key="$(mktemp)"
-  chmod 600 "$key"
+  # sshd answers a good minute before cloud-init has finished installing k3s,
+  # so the file is waited for on the far side of the one call this is allowed.
+  attempts=$(( ${HETZNER_K3S_WAIT_SECONDS:-180} / 5 ))
   tmp="$(mktemp)"
-  "$PROVIDER_SH_REPO_ROOT/scripts/secret-decrypt.sh" hetzner-ssh-key >"$key" || status=1
-  if [ "$status" -eq 0 ]; then
-    # accept-new, not no: the host key is worth pinning once the server exists,
-    # and a changed one on a re-created cluster is caught by the operator.
-    ssh -i "$key" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 \
-      "root@$ip" 'cat /etc/rancher/k3s/k3s.yaml' >"$tmp" 2>/dev/null || status=1
-  fi
-  rm -f "$key"
+  hetzner_ssh "$ip" "i=0; while [ \$i -lt $attempts ]; do if [ -s /etc/rancher/k3s/k3s.yaml ]; then cat /etc/rancher/k3s/k3s.yaml; exit 0; fi; i=\$((i+1)); sleep 5; done; exit 1" >"$tmp" 2>/dev/null || status=1
   if [ "$status" -ne 0 ] || [ ! -s "$tmp" ]; then
     rm -f "$tmp"
-    echo "hetzner_kubeconfig: could not read /etc/rancher/k3s/k3s.yaml from $ip over SSH." >&2
+    echo "hetzner_kubeconfig: /etc/rancher/k3s/k3s.yaml did not appear on $ip within ${HETZNER_K3S_WAIT_SECONDS:-180}s." >&2
     return 1
   fi
 
@@ -241,6 +268,11 @@ hetzner_kubeconfig() {
   mkdir -p "$(dirname "$target")"
   merged="$(mktemp)"
   if [ -s "$target" ]; then
+    # The first file to set a name wins a flatten merge, so an entry left by an
+    # earlier cluster would shadow this one and keep its dead server address.
+    kubectl --kubeconfig "$target" config delete-context "$ctx" >/dev/null 2>&1 || true
+    kubectl --kubeconfig "$target" config delete-cluster "$ctx" >/dev/null 2>&1 || true
+    kubectl --kubeconfig "$target" config delete-user "$ctx" >/dev/null 2>&1 || true
     KUBECONFIG="$target:$tmp" kubectl config view --flatten >"$merged" || status=1
   else
     cp "$tmp" "$merged" || status=1
@@ -301,6 +333,49 @@ api_reachable() {
     i=$((i + 1))
   done
   return 1
+}
+
+# Terraform returns when the servers boot; k3s installs itself afterwards from
+# cloud-init, so a bring-up is not finished until every node has joined. Ready
+# is the whole assertion - nodes stay tainted uninitialized until HETZ-045's
+# cloud controller manager runs, so waiting for schedulable would never return.
+wait_for_nodes_ready() {
+  local expected="${NODE_COUNT:-3}"
+  local budget="${HETZNER_NODE_READY_SECONDS:-600}"
+  local interval="${ARGO_UP_POLL_INTERVAL:-5}"
+  local deadline=$((SECONDS + budget))
+  local nodes total ready
+
+  echo "CLUSTER-UP: waiting for $expected node(s) to report Ready (up to ${budget}s)..."
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    nodes="$(kubectl get nodes --no-headers 2>/dev/null || true)"
+    total="$(printf '%s' "$nodes" | grep -c . || true)"
+    ready="$(printf '%s' "$nodes" | awk '$2 ~ /^Ready/' | grep -c . || true)"
+    if [ "$total" -eq "$expected" ] && [ "$ready" -eq "$expected" ]; then
+      echo "CLUSTER-UP: all $expected node(s) Ready."
+      return 0
+    fi
+    sleep "$interval"
+  done
+
+  echo "CLUSTER-UP: ERROR - only $ready of $expected node(s) Ready after ${budget}s." >&2
+  kubectl get nodes -o wide >&2 2>&1 || true
+  hetzner_node_diagnostics
+  return 1
+}
+
+# One remote command per server that never registered: the decrypt is per call,
+# so everything worth reading is collected in a single shell on the far side.
+hetzner_node_diagnostics() {
+  local registered srv ip
+  registered=" $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}' 2>/dev/null || true) "
+  for srv in $(hcloud_list_names server lifecycle=disposable 2>/dev/null); do
+    case "$registered" in *" $srv "*) continue ;; esac
+    ip="$(hcloud_cli server ip "$srv" 2>/dev/null || true)"
+    [ -n "$ip" ] || continue
+    echo "--- $srv ($ip) never registered ---" >&2
+    hetzner_ssh "$ip" 'cloud-init status --long; echo; tail -n 50 /var/log/cloud-init-output.log; echo; journalctl -u k3s -u k3s-agent --no-pager -n 50' >&2 2>&1 || true
+  done
 }
 
 # On AWS, eks-test-identity maps to the read-only role through its EKS access
