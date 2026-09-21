@@ -263,8 +263,19 @@ whether the expensive half is needed:
 |---|---|---|
 | Only `.md` files — specs, docs, README | Secret scanning and the specs layout check, ~30 seconds | green, no cloud spend |
 | Touches `terraform/`, `gitops/`, `scripts/`, `tests/`, `images/`, `Makefile`, `go.mod`, or a workflow | The static checks | red — add the label |
-| …and carries the **`ci:lifecycle`** label | One EKS cluster and one Civo cluster are created, `make test` runs against both, and both are destroyed | green if all of that passed |
+| …and carries the **`ci:lifecycle`** label | Every provider that has a job: a cluster is created, `make test` runs against it, and it is destroyed | green if all of that passed |
+| …**plus `ci:aws` and/or `ci:civo`** | Only the selected providers | green if those passed; the run names the clouds it skipped |
 | …and carries **`ci:skip-lifecycle`** instead | The static checks only | green, but the waiver is recorded — see below |
+
+**`ci:lifecycle` is the trigger; the provider labels only narrow it.** A
+provider label on its own starts nothing, so you can add two of them and then
+fire one run — rather than two runs that cancel each other's validation. To run
+Civo alone: add `ci:civo`, then add `ci:lifecycle`.
+
+Pick the clouds the change actually needs. A Hetzner-only Terraform change does
+not need an EKS cluster, and AWS is most of the 55 minutes. `ci:hetzner` and
+`ci:local` name jobs that do not exist yet — selecting one fails the gate with a
+message rather than quietly doing nothing.
 
 A pull request is **documentation-only** when every changed file ends in `.md`.
 It skips the four heavy checks — Terraform, GitOps, YAML and Actions lint — which
