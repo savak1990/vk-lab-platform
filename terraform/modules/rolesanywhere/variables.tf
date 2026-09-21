@@ -3,6 +3,11 @@ variable "project" {
   type        = string
 }
 
+variable "provider_region" {
+  description = "The provider's own region, lowercased - the backup bucket carries it in its name, so the grant must too or every write is denied."
+  type        = string
+}
+
 variable "ca_cert_pem" {
   description = "PEM content of the workload root CA certificate. Empty string means this project has no Roles Anywhere trust chain - no resources are created."
   type        = string

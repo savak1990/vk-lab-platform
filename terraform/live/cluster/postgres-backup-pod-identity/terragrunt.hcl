@@ -1,5 +1,7 @@
 include "root" {
   path = find_in_parent_folders("root.hcl")
+  # Needed to read provider_region below.
+  expose = true
 }
 
 terraform {
@@ -20,6 +22,7 @@ dependency "eks" {
 }
 
 inputs = {
-  cluster_name = dependency.eks.outputs.cluster_name
-  project      = get_env("PROJECT_NAME", "vk-lab-platform")
+  cluster_name    = dependency.eks.outputs.cluster_name
+  project         = get_env("PROJECT_NAME", "vk-lab-platform")
+  provider_region = include.root.locals.provider_region
 }
