@@ -17,7 +17,7 @@ updated: "2026-09-17"
 Implements `.github/workflows/validate.yml`, running on every pull-request update, per architecture.md §26:
 
 - Terraform formatting and validation, Terragrunt validation.
-- Helm template rendering and Kubernetes schema validation, for both `values-aws.yaml` and `values-local.yaml` on every `gitops/` component (spec 022 Requirement 17).
+- Helm template rendering and Kubernetes schema validation, for every value of the umbrella chart's `target` (`--set target=aws|civo|hetzner|local`). There are no per-component `values-<target>.yaml` files; ADR 0038 withdrew that layout, which CIVO-050 never built.
 - YAML linting.
 - Security/static scanning (e.g., secret-scanning, `tfsec`/`checkov`).
 - Argo manifest validation for anything under `gitops/`.
@@ -29,7 +29,7 @@ Excludes: `terraform plan` against real state — that runs inside Atlantis (spe
 
 1. Every pull request MUST receive this fast validation before merge (constitution §11) — spec 017 wires this workflow's result in as a required status check on `main`.
 2. This workflow MUST perform read-only checks only (formatting, validation, linting, schema checks, static scanning). It MUST NOT call `terraform plan` or `terraform apply` against real state — that responsibility belongs to Atlantis (spec 018), so plan output is never duplicated or contradicted between two tools.
-3. This workflow MUST NOT request AWS credentials of any kind, since none of its checks touch real AWS state — confirm no OIDC role is configured for this workflow. This includes the `values-local.yaml` rendering check added above: it MUST use dummy/placeholder secret values, never the opt-in real-secrets KMS-decrypt path from spec 022 Requirement 12, which stays entirely out of scope for this workflow.
+3. This workflow MUST NOT request AWS credentials of any kind, since none of its checks touch real AWS state — confirm no OIDC role is configured for this workflow. This includes the `target=local` rendering check added above: it MUST use dummy/placeholder secret values. There is no credentialed path to exclude here any more — ADR 0038 withdrew spec 022's opt-in KMS decrypt, so the `local` target reaches AWS nowhere at all.
 4. Documentation-only changes SHOULD skip infrastructure-specific checks where practical (e.g., path filters), so this workflow stays fast for the changes it doesn't need to check.
 5. This workflow MUST expose an always-running gate job that is itself the required GitHub status check (constitution §11) — it determines which change categories (Terraform, GitOps/Helm, documentation-only) apply to the PR and reports a result (pass or explicit skip) for each, fanning out to the path-filtered sub-jobs from Requirement 4 rather than exposing any of them directly as a required check. This is what keeps a documentation-only PR from leaving a Terraform- or Helm-specific required check permanently pending.
 

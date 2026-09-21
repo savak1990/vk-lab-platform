@@ -5,7 +5,7 @@ updated: "2026-09-17"
 ---
 # 009 — Observability
 
-**Status note:** Implemented (aws target) — Tempo/OpenTelemetry Collector deferred to spec 029 per ADR 0018 (no trace producer exists yet); `local`-target `values-local.yaml` tracked under spec 022
+**Status note:** Implemented (aws target) — Tempo/OpenTelemetry Collector deferred to spec 029 per ADR 0018 (no trace producer exists yet); `local`-target sizing tracked under spec 022
 
 **Complexity:** Medium–High
 **Risk:** Low — non-critical path; the main risk is cost/retention creep, not correctness-critical failure.
@@ -22,7 +22,7 @@ Deploys the full observability stack from architecture.md §19, wired to every p
 - Dashboards/scrape configs covering: Kubernetes cluster health, Karpenter, Envoy (dashboards ready even though Envoy itself lands in spec 010 — wire it there, stub here), AWS Load Balancer Controller, Kafka/Strimzi, PostgreSQL + operator. Debezium dashboards are deferred to spec 026 (Debezium lands last, after this spec) — added retroactively when that spec is implemented, not part of this spec's initial acceptance criteria.
 - Basic alerting for the invariants that matter most in a lab (e.g., replication slot lag, disk pressure), not a full production alerting suite.
 
-On the `local` target (spec 022), this stack runs a trimmed, laptop-scale subset (reduced replica counts, resource requests, and retention) — any component omitted for `local` MUST be stated explicitly in `values-local.yaml`, not silently dropped. See spec 022 for specifics.
+On the `local` target (spec 022), this stack runs a trimmed, laptop-scale subset (reduced replica counts, resource requests, and retention) — any component omitted for `local` MUST be stated explicitly in spec 022 or in `gitops/values.yaml`'s comments, not silently dropped. See spec 022 for specifics.
 
 Excludes: Envoy/NLB-specific dashboards' actual data source (those land with spec 010/011 — this spec should leave the scrape config ready, wired in once those exist), tracing instrumentation of any application code (out of scope — no application code in this repo), Debezium connector-health dashboards (deferred until spec 026 lands).
 

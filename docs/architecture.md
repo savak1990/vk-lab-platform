@@ -215,7 +215,7 @@ vk-lab-platform/
 │   ├── aws/                            # AWS/EKS target specs, one directory per spec
 │   ├── civo/                           # Civo second-target planning package (ADR 0027)
 │   ├── hetzner/                        # Hetzner target planning package
-│   ├── local/                          # local (minikube/kind) target specs
+│   ├── local/                          # local (kind) target specs
 │   └── shared/                         # cross-target specs, incl. 000-D-constitution/
 │
 ├── docs/
@@ -505,11 +505,11 @@ default (constitution §9).
 
 The platform supports four execution targets: **`aws`** (real EKS, the
 target described throughout the rest of this document unless stated
-otherwise), **`local`** (minikube or kind, AWS-free except where noted),
+otherwise), **`local`** (kind, AWS-free with no exceptions),
 **`civo`** (real Civo managed Kubernetes, a second real cloud target,
 ADR 0027), and **`hetzner`** (real Hetzner Cloud servers carrying a
 platform-owned k3s control plane, a third real cloud target,
-ADR 0036 and ADR 0037). See ADR 0006 and spec 022 for the `local` design,
+ADR 0036 and ADR 0037). See ADR 0038 and spec 022 for the `local` design,
 ADR 0027 plus `specs/civo/` for the Civo design, and ADR 0036, ADR 0037
 plus `specs/hetzner/` for the Hetzner design; this section summarizes the
 shape of all four so later sections can refer to "the `aws` target", "the
@@ -539,26 +539,28 @@ different identity mechanism (ADR 0029) instead of EKS Pod Identity. The
 Hetzner target renders with `target=hetzner`, which selects its own
 provider-specific subtree (the CSI driver and its storage class) while
 sharing every AWS-integrated component with the other two real targets.
-`PROVIDER` (aws/civo/hetzner) and `target` (aws/local/hetzner) are
-orthogonal values, not the same selector.
+`PROVIDER` (aws/civo/hetzner/local) and `target` (aws/civo/hetzner/local)
+name the same four targets, but remain separate selectors: `PROVIDER` is the
+operator input the Makefile dispatches on, `target` the chart value the root
+Application carries.
 
-The `local` target's `make minikube-up`/`make kind-up` entry points and
-its per-file `local`-only rendering are specified (spec 022) but not yet
-implemented — no `values-local.yaml`, no `local`-mode gating, no local
-StorageClass override exist on disk today. The divergences below
-describe the target design, not current behavior, for `local`.
+The `local` target is selected by `PROVIDER=local` and reuses the same
+lifecycle commands as every other target, with Bootstrap and Persistent as
+no-ops (ADR 0038). Its render exists but is still a skeleton: the chart gates
+Postgres, the Gateway, observability and External Secrets off for `local`, so
+the divergences below describe the target design, not current behavior.
 
 The four targets diverge in kind, not just in values, on seven points:
 
 | Divergence | `aws` | `local` | `civo` | `hetzner` |
 |---|---|---|---|---|
-| **Install path** | `make argo-up`/`make argo-down` (scripts) install and remove Argo CD and the root Application — no Terraform involved (ADR 0012, spec 004 Requirement 1). Requires the disposable EKS cluster to exist first (`make cluster-up`). | `make minikube-up` and `make kind-up` (spec 022, not yet implemented); there is no unified `make local-up` wrapper. | Same scripts as `aws`. Requires the disposable Civo k3s cluster to exist first (`PROVIDER=civo make cluster-up`, spec CIVO-030, ADR 0027). | Same scripts as `aws`, with one addition: `argo-up` helm-installs the hcloud cloud controller manager *before* Argo CD and waits for the uninitialized taint to clear, because cluster DNS is unavailable until it runs. That release joins Argo CD in the untracked bootstrap class. Requires the disposable cluster to exist first, which `cluster-up` creates with kubeadm rather than asking a provider API (ADR 0036, specs HETZ-030/035/045). |
+| **Install path** | `make argo-up`/`make argo-down` (scripts) install and remove Argo CD and the root Application — no Terraform involved (ADR 0012, spec 004 Requirement 1). Requires the disposable EKS cluster to exist first (`make cluster-up`). | Same scripts as `aws`. Requires the kind cluster to exist first (`PROVIDER=local make cluster-up`, which runs `kind create cluster` rather than asking a provider API). Bootstrap and Persistent are no-ops on this target (ADR 0038). | Same scripts as `aws`. Requires the disposable Civo k3s cluster to exist first (`PROVIDER=civo make cluster-up`, spec CIVO-030, ADR 0027). | Same scripts as `aws`, with one addition: `argo-up` helm-installs the hcloud cloud controller manager *before* Argo CD and waits for the uninitialized taint to clear, because cluster DNS is unavailable until it runs. That release joins Argo CD in the untracked bootstrap class. Requires the disposable cluster to exist first, which `cluster-up` creates with kubeadm rather than asking a provider API (ADR 0036, specs HETZ-030/035/045). |
 | **Persistence** | Postgres data is Persistent-lifecycle, surviving `make down` (§6, spec 005), through continuous physical backups to a per-project S3 bucket written by the CloudNativePG barman-cloud plugin (ADR 0033, superseding ADR 0013's `VolumeSnapshot` mechanism). Identity is EKS Pod Identity. Each bring-up recovers from the previous generation named in SSM; point-in-time recovery is available. Teardown never blocks on a backup result and never asks for confirmation: WAL archiving has already made every committed row durable, so the pre-teardown base backup is best-effort — it warns loudly on failure and the teardown proceeds. | Fully throwaway — no persistent-lifecycle class, default local StorageClass with `Delete` reclaim semantics, no destroy/recreate persistence proof. | The same barman-cloud mechanism and the same best-effort teardown (ADR 0032). Only the identity differs: IAM Roles Anywhere rather than EKS Pod Identity. The Civo network and reserved IP are Persistent-lifecycle (ADR 0027). | The same barman-cloud mechanism and the same Roles Anywhere identity as `civo`. Hetzner volumes support neither snapshots nor cloning and Hetzner takes no backups of them, so the object store is the only persistence mechanism. The Hetzner network, its subnet and the SSH key are Persistent-lifecycle; there is no reserved IP (ADR 0036). |
 | **Public edge** | Route 53 → NLB → Envoy (§11–12); ExternalDNS (spec 012) publishes the Route 53 records, AWS Load Balancer Controller (spec 011) provisions the NLB. | No NLB/Route 53/ACM/ExternalDNS; access is via `kubectl port-forward` directly to Envoy Gateway's Service. | Route 53 (a separate `civo.<root-domain>` delegation, ADR 0027) → Civo load balancer (a plain TCP forwarder, no TLS) → Envoy (spec CIVO-060). | Route 53 (a third delegation, `hz.<root-domain>`) → hcloud load balancer (plain TCP, no TLS, and no firewall can be attached to it) → Envoy (spec HETZ-060). The load balancer is created and deleted by the cloud controller manager with the Service, and takes a new address each time. |
 | **Routing** | Gateway API `HTTPRoute`s match by hostname (`api.lab.<root-domain>`). | Routes match by path (`/api`, `/grafana`, `/argo`), since `kubectl port-forward` to `localhost` can't present a matching Host header. This is a permanent, accepted divergence. | Hostname matching, unchanged from `aws` (`api.civo.<root-domain>`). | Hostname matching, unchanged from `aws` (`api.hz.<root-domain>`). |
 | **TLS** | ACM certificate, terminated at the NLB's TLS listener (§12) — Envoy never holds a certificate. | Plain HTTP, no TLS anywhere in the request path. | No ACM/NLB equivalent; TLS terminates at Envoy Gateway itself via cert-manager and Let's Encrypt DNS-01, with the Secret persisted across down/up as an SSM `SecureString` (ADR 0028). | No ACM/NLB equivalent; the same cert-manager wildcard DNS-01 design as `civo`, with the same Secret persistence. HTTP-01 is never used on this target (spec HETZ-070). |
-| **Secrets** | SSM Parameter Store (ADR 0023) reached via EKS Pod Identity (spec 013). | Placeholder credentials loaded directly into Kubernetes `Secret` objects by default, with an opt-in path to decrypt real values from `secrets/*.enc` via AWS KMS instead (spec 022) — the local path touches neither SSM nor Pod Identity nor Roles Anywhere. | The same SSM Parameter Store, reached instead via IAM Roles Anywhere and a per-pod credential-helper sidecar (ADR 0029, spec CIVO-090) — no EKS Pod Identity on Civo. | The same SSM Parameter Store and the same Roles Anywhere sidecar chain as `civo` (spec HETZ-085). One addition with no equivalent on the other targets: a dedicated in-cluster Hetzner API token, distinct from the operator's, in `kube-system/cloud-operator-secret`, because the cloud controller manager and the CSI driver read it (ADR 0030 as amended, ADR 0036). |
-| **Sync source** | The root Application syncs from the GitHub repo. | The root Application syncs from the local working directory on disk, so `gitops/` edits reconcile without a commit/push. | GitHub repo, unchanged from `aws`. | GitHub repo, unchanged from `aws`. |
+| **Secrets** | SSM Parameter Store (ADR 0023) reached via EKS Pod Identity (spec 013). | Generated placeholder credentials written directly into Kubernetes `Secret` objects at bring-up (spec 022). No SSM, no Pod Identity, no Roles Anywhere, no External Secrets, and no KMS — the local path makes no AWS API call at all (ADR 0038). | The same SSM Parameter Store, reached instead via IAM Roles Anywhere and a per-pod credential-helper sidecar (ADR 0029, spec CIVO-090) — no EKS Pod Identity on Civo. | The same SSM Parameter Store and the same Roles Anywhere sidecar chain as `civo` (spec HETZ-085). One addition with no equivalent on the other targets: a dedicated in-cluster Hetzner API token, distinct from the operator's, in `kube-system/cloud-operator-secret`, because the cloud controller manager and the CSI driver read it (ADR 0030 as amended, ADR 0036). |
+| **Sync source** | The root Application syncs from the GitHub repo. | GitHub repo, unchanged from `aws`. ADR 0006's working-directory sync is withdrawn: Argo CD's repo-server clones over git and has no local-filesystem source, so honoring it meant running a git daemon for the life of the cluster (ADR 0038). | GitHub repo, unchanged from `aws`. | GitHub repo, unchanged from `aws`. |
 
 The `local` target sits outside the State/Bootstrap/Persistent/Disposable
 lifecycle model (§6) entirely — it is not a fifth class, it simply isn't
@@ -1158,7 +1160,7 @@ The Account layer applies in the platform's single region, `eu-west-1` (`terrafo
 
 `make full-up`/`make full-down` are convenience compositions of the commands above, for the from-scratch case. They add no new guard logic and change no individual command's own contract — each step still enforces its own precondition/confirmation exactly as if invoked standalone, so `full-down` still pauses on `persistent-down`'s and `bootstrap-down`'s own confirmation prompts rather than smoothing them over.
 
-`make minikube-up` and `make kind-up` (the `local` target, §10a) are separate commands outside this lifecycle-class command surface entirely — they don't create or destroy any State/Bootstrap/Persistent/Disposable resource, so they aren't governed by the "one command per class" rule below.
+The `local` target (§10a) shares this command surface under `PROVIDER=local` and adds no command of its own. Bootstrap and Persistent are no-ops there, since it owns no cloud resources; `cluster-up` creates its kind cluster and `cluster-down` deletes it (ADR 0038).
 
 `make up` verifies that Persistent-lifecycle resources already exist before doing anything else, via `scripts/require-persistent.sh` (wired into `cluster-up`, the target `up` composes). If they do not, it fails with an actionable error telling the operator to run `make persistent-up` first — it never creates Persistent resources on the caller's behalf. This keeps the "what survives `make down`" boundary (§6) visible at the command layer, not just in Terraform state layout.
 
@@ -1685,7 +1687,7 @@ State locking must prevent concurrent infrastructure mutations.
 
 # 34. Workstation-Initiated and GitHub Lifecycle Equivalence
 
-The platform must expose the same high-level lifecycle interface whether initiated from a developer's workstation (running `make up`/`make down` against real AWS) or from GitHub Actions. "Workstation-initiated" here means the `aws` target (§10a) run from a laptop — this is distinct from the `local` target (minikube/kind, §10a), which has no AWS equivalence requirement to satisfy.
+The platform must expose the same high-level lifecycle interface whether initiated from a developer's workstation (running `make up`/`make down` against real AWS) or from GitHub Actions. "Workstation-initiated" here means the `aws` target (§10a) run from a laptop — this is distinct from the `local` target (kind, §10a), which has no AWS equivalence requirement to satisfy.
 
 Workstation-initiated:
 
