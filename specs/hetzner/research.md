@@ -298,6 +298,33 @@ gateway is the network's first address (`10.0.0.1`), not the subnet's, so
 HETZ-170's premise holds: one render serves the fixed worker and any
 autoscaled node.
 
+### DataSourceHetzner is broken in init-local (HETZ-030, 2026-09-21)
+
+On every `ubuntu-24.04` node measured across two bring-ups, `cloud-init status
+--long` reports four `init-local` failures:
+
+    errors:
+      - can only concatenate str (not "NoneType") to str   (x4)
+    WARNING:
+      - network-config-v1 failed schema validation!        (x4)
+
+The stage that fails is the one that builds network configuration from the
+Hetzner metadata, and the run ends `error - done` — later stages complete, the
+status stays latched at `error`. Two consequences.
+
+First, **`cloud-init status` cannot gate anything on this target.** A criterion
+demanding exit 0 fails a perfectly healthy three-node cluster. Assert on what
+the node ends up with — `/etc/rancher/k3s/k3s.yaml`, `systemctl is-active k3s`,
+an address on the private NIC — not on cloud-init's own verdict. HETZ-040's
+node-Ready wait must not use it either.
+
+Second, this is the upstream cause of the private-NIC failure recorded above.
+The datasource sometimes recovers on a retry and writes the `enp7s0` stanza
+anyway, and sometimes does not; that is the whole difference between a node
+that joins and a node that never does. On the first bring-up one node of three
+recovered, on the second all three did. Since the outcome is not controllable,
+every path that creates a node configures the private NIC itself.
+
 ### Stock, 2026-09-21 later the same day (HETZ-030)
 
 Between one `apply` and the next, **every catalogue-legal shape went out of

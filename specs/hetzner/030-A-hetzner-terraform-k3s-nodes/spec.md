@@ -116,6 +116,13 @@ Kubernetes object Terraform would own.
   therefore own the netplan stanza rather than depending on the datasource.
   `research.md`'s spike note reasoned the opposite, on a spike that created
   its servers stopped and attached them before power-on.
+- The datasource is not merely late, it is faulty. On every node measured,
+  `cloud-init status --long` reports four `init-local` failures, `can only
+  concatenate str (not "NoneType") to str`, alongside `network-config-v1
+  failed schema validation`. Sometimes it recovers on a retry and writes the
+  `enp7s0` stanza anyway; sometimes it does not, and that is the difference
+  between a node that joins and a node that never does. Either way the run
+  ends `error - done`, so `cloud-init status` cannot gate anything here.
 - decisions.md §3, row "Bootstrap mechanism" (decided 2026-09-20) and
   ADR 0037: k3s from cloud-init, embedded etcd, flannel, and a
   Terraform-generated token in `user_data`; one schedulable control plane
@@ -306,6 +313,17 @@ Servers (`cluster-hetzner/k8s`, module `hcloud-nodes`):
   teardown, and a stub that reports "no cluster" lets a destroy proceed,
   where a failed SSH probe would block one and leak servers. Making it real
   belongs with HETZ-040's node-Ready wait.
+
+  That stub is safe only while nothing runs on the cluster, and HETZ-045 is
+  where it stops being safe. Observed in this spec's own teardown, against
+  three live servers: `argo-down` printed "cluster does not exist - nothing
+  to cascade, skipping" and `cluster-down` proceeded straight to destroy.
+  Today that is correct, because there is no Argo CD and no load balancer to
+  strand. The moment either exists, the same two lines mean the graceful
+  cascade is silently skipped and whatever Argo created outlives the servers
+  — and a Hetzner load balancer, as HETZ-020 measured, is orphaned rather
+  than reaped and bills indefinitely. `cluster_exists` must become real in
+  the same change that first installs Argo CD on this target, not later.
 - `scripts/cluster-down.sh`: a hetzner arm. It exports the API token before
   the destroy — without it terraform refuses with "Missing Hetzner Cloud API
   token" and the servers survive their own teardown target — and sweeps for
@@ -359,9 +377,18 @@ against the SSM outputs this spec writes.
 
 - All `NODE_COUNT` servers reach `running` within a few minutes of `apply`.
 - Over SSH on the control plane within `HETZNER_CP_BOOTSTRAP_SECONDS`
-  (default 600 s) of `apply`: `cloud-init status --wait` exits 0;
-  `/etc/rancher/k3s/k3s.yaml` exists; `k3s --version` prints the pinned
-  `k3s_version`; `systemctl is-active k3s` prints `active`.
+  (default 600 s) of `apply`: `/etc/rancher/k3s/k3s.yaml` exists; `k3s
+  --version` prints the pinned `k3s_version`; `systemctl is-active k3s`
+  prints `active`; `/etc/netplan/60-hcloud-private.yaml` exists and the
+  private NIC carries an address.
+- `cloud-init status` is **not** an acceptance signal on this target, and a
+  criterion demanding exit 0 would fail every node. `DataSourceHetzner`
+  raises `can only concatenate str (not "NoneType") to str` in `init-local`
+  while building its network config, and the run ends `error - done`:
+  the stages after it complete, but the status is latched to `error`.
+  That defect is upstream and is the reason a node can come up with no
+  private-NIC stanza at all — which is why the templates write their own.
+  Assert what the node ends up with, not what cloud-init reports.
 - `k3s kubectl get nodes` on the control plane lists every node, each
   `Ready`, each still carrying
   `node.cloudprovider.kubernetes.io/uninitialized`. CoreDNS is `Pending`
@@ -467,10 +494,14 @@ and HETZ-040's sweep removes any that Terraform lost.
 
 - [x] Modules formatted and validated; both cloud-init templates rendered,
       parsed and size-checked against the 32 KiB cap
-- [x] One real create recorded, with timings, and one real destroy with an
+- [x] Two real creates and two real destroys recorded, with timings and an
       empty leak sweep
-- [ ] A create on the fixed templates brings every node to `Ready` with no
-      manual step — blocked on Hetzner stock, see §14
+- [x] A create on the fixed templates brings every node to `Ready` with no
+      manual step, and every other §8 check passes against it
+- [ ] One create in which a node loses the attach race, to show the fix
+      carries that node too. Not reproducible on demand: the race is per
+      server and won three times out of three on the second run. The
+      mechanism is proven separately, on a node that had lost it (§14)
 - [ ] AWS and Civo no-op plans recorded
 - [ ] Index updated; status `DONE`
 
@@ -538,3 +569,41 @@ and HETZ-040's sweep removes any that Terraform lost.
   config were both exercised against a synthetic k3s kubeconfig carrying a
   `default` context: the two contexts coexist and the base64 blobs, which
   contain the string `default`, are untouched.
+- 2026-09-21 — second real bring-up, on `cpx32`. The CX line was still out of
+  stock in the whole `eu-central` zone, so the run used the CPX equivalent,
+  which is the same 4 vCPU / 8 GiB shape and is unrelated to the defect under
+  test — the attach race is a property of the boot, not of the server type.
+  `cpx22` and `cpx32` joined the catalogue in the same change, so this needed
+  no override.
+
+  Three servers created in 37 s. `make kubeconfig` fetched a working
+  kubeconfig on its first successful attempt, and every check below was made
+  with `kubectl` from the operator's machine rather than `k3s kubectl` over
+  SSH. All three nodes `Ready` — the control plane at 20 s, the workers at 14
+  and 9 s — at `10.0.1.10`, `.11` and `.12`, with **no manual step**. Every
+  node carried `node.cloudprovider.kubernetes.io/uninitialized` with an empty
+  `providerID`. No StorageClass at all, no `traefik`, no `svclb-`, no
+  `local-path-provisioner`; `metrics-server` present and the only one; CoreDNS
+  and metrics-server `Pending` on the tainted nodes, as ADR 0037 predicts.
+  `k3s etcd-snapshot save` succeeded. Five plain `String` SSM parameters and
+  `worker_user_data` the only `SecureString`; decoded, it differs from what
+  the worker booted with by exactly the one trailing newline `aws --output
+  text` appends. Control plane: 22 and 6443 open, 80, 443, 10250 and 30000
+  refused; worker: 22 open, 6443 and 10250 refused.
+
+  **What this run did not prove.** All three nodes won the attach race, so
+  cloud-init wrote its own `enp7s0` stanza on each and the templates' stanza,
+  though present and correctly merged beside it, was never load-bearing. The
+  fix is therefore proven in two halves rather than one: that the stanza
+  rescues a node that lost the race was measured directly on such a node in
+  the first bring-up, and that it is harmless on a node that won it, across a
+  full boot, was measured here. The union is untested only in the sense that
+  no single run has shown both.
+- 2026-09-21 — the cloud-init status criterion in §8 was wrong and is
+  amended. `DataSourceHetzner` raises `can only concatenate str (not
+  "NoneType") to str` four times in `init-local`, with `network-config-v1
+  failed schema validation` beside it, on every node measured. The run ends
+  `error - done`: later stages complete, the status stays `error`. So the
+  original criterion would have failed a perfectly healthy cluster. This is
+  also the upstream defect behind the whole class of failure — a datasource
+  that sometimes recovers and writes the stanza, and sometimes does not.
