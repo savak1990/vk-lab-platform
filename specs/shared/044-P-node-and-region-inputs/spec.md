@@ -339,7 +339,32 @@ against the 5-server account limit.
 HETZ-170's autoscaler leaves M1 as a consequence: at 3 + 2 there is no room
 under the cap for it.
 
-### 3.11 `README.md`
+### 3.11 `lab.yml` workflow inputs
+
+`.github/workflows/lab.yml` is the operator-facing entry point and MUST expose
+the three values, or they can only be set locally.
+
+They take the shape `project_name` and `subdomain` already use — `type: string`,
+`default: ""`, blank meaning the provider's default — with a comment saying what
+blank resolves to. A `type: choice` cannot express the constraint: GitHub has no
+dependent dropdowns, so one flat list could not say that `cx43` is valid in
+`nbg1` but not in `hel1`. The gate rejects a bad combination in the job's first
+seconds, which is where that check belongs.
+
+This is the input ADR 0024 deleted, and its reasoning was sound then — "a
+one-option `type: choice` still presents region as an operator knob". It is no
+longer one option. ADR 0039 MUST say so explicitly, rather than leave a reader
+thinking the earlier argument was simply reversed.
+
+**A pre-existing gap this exposes:** `lab.yml`'s `provider` choice offers only
+`aws` and `civo`. `hetzner` has been supported since HETZ-010 and `local` since
+ADR 0038, and neither can be selected from the Actions tab. Adding `hetzner` is
+HETZ-140's work, and `local` owns no cloud resources so it may not belong in a
+billable workflow at all — but the new inputs are unreachable on Hetzner until
+`provider` can name it, so this spec records the dependency rather than shipping
+inputs that cannot be used.
+
+### 3.12 `README.md`
 
 The README under-documents the command surface **before this change**: 35 make
 targets exist and the `## Usage` block lists about 15, while `PROVIDER` — the
@@ -391,6 +416,9 @@ not duplicated.
   against its own region.
 - **README.** Every one of the 35 targets appears; every variable has a
   default and valid values; each provider has a worked example.
+- **Workflow inputs.** A `lab.yml` run with the three inputs blank behaves
+  exactly as before; a run with a bad combination fails in the gate, not in a
+  cloud call.
 - `make specs-check`, `make gitops-check` and `make secrets-check` green.
 
 ## 5. Risks and deferred work
