@@ -101,7 +101,7 @@ combinations that cannot be created.
 
 | Provider | Region | Node types allowed there |
 |---|---|---|
-| `aws` | `eu-west-1` *(default)* | `t4g.medium` *(default)*, `t4g.large`, `m6g.large` |
+| `aws` | `eu-west-1` *(default, and the only one until §3.6 lands)* | `t4g.medium` *(default)*, `t4g.large`, `m6g.large` |
 | `civo` | `LON1` *(default)*, `NYC1`, `FRA1`, `MUM1` | `g4s.kube.medium` *(default)* |
 | `hetzner` | `nbg1` *(default)* | `cx23`, `cx33` *(default)*, `cx43` |
 | `hetzner` | `hel1` | `cx23`, `cx33` — **not** `cx43` |
@@ -209,15 +209,50 @@ aws_region = contains(["account", "account-state"], local.raw_class)
   ? local.account_region : local.project_region
 ```
 
-`scripts/lib/region.sh` splits into `LAB_ACCOUNT_REGION` (constant, never
-derived) and `LAB_PROJECT_REGION`. Roughly 95 `--region "$LAB_REGION"` call
-sites across 22 scripts MUST be audited individually — each is account-scoped,
-project-scoped, or inert because the service is global.
+**`REGION` means the provider's region.** On `aws` it is the AWS region; on
+`civo` and `hetzner` it is that cloud's own region or location and their
+AWS-side resources stay in the account region regardless; `local` accepts none.
+So `aws_region` is account-region unless the target is `aws`:
+
+```hcl
+aws_region = (contains(["account", "account-state"], local.raw_class)
+  || local.provider_name != "aws"
+  || local.region_input == "") ? local.account_region : local.region_input
+```
+
+`scripts/lib/region.sh` gains `LAB_ACCOUNT_REGION` — a constant, never derived —
+and **`LAB_REGION` keeps its name** while gaining a provider-aware value.
+Measured on this branch: of 84 `LAB_REGION` occurrences in `scripts/`, only
+**10 are account-scoped**, in four files — `account-state-down.sh` (7),
+`account-state-up.sh` (1), `secret-encrypt.sh` (1), `secret-decrypt.sh` (1).
+Those move to `LAB_ACCOUNT_REGION`; the other 66 need no edit. Renaming the
+common case would be churn for its own sake.
+
+Two sites MUST NOT be changed by a mechanical pass:
+
+- **`account-down.sh:32,38`** look account-scoped from the file name but are
+  project-scoped: they drive the guard that refuses to tear down the account
+  layer while a project still holds state. Pointed at the account region, that
+  guard silently finds nothing for a project elsewhere and `account-down`
+  proceeds.
+- **`cluster-down.sh:196`** is not a `--region` flag. It interpolates the
+  region into an IAM path Karpenter mints,
+  `--path-prefix "/karpenter/$LAB_REGION/$CLUSTER_NAME/"`. IAM is global, so
+  treating it as inert is wrong; it must follow the project region.
 
 `gitops/values.yaml:7` needs the `--set region=` chain ADR 0024 deleted
 restored in three places: `scripts/argo-up.sh`, `gitops/bootstrap/values.yaml`
 and `gitops/bootstrap/templates/root-application.yaml`. Six golden files bake
 the literal and MUST fail loudly until updated.
+
+**AWS keeps one region until §3.6 lands.** The catalogue lists only
+`eu-west-1` for `aws`, so the gate refuses any other in a second rather than
+letting it fail deep inside `persistent-up`. `AWS-031` warns exactly against
+the alternative: "a partially-solved multi-region path is worse than none: it
+fails deep inside `persistent-up` on an SSM `SecureString` create rather than
+at validation time, which is precisely how the previous attempt decayed
+unnoticed." Civo and Hetzner regions open immediately, because changing them
+moves no AWS resource.
 
 ### 3.6 The KMS migration
 
@@ -286,9 +321,17 @@ Changing `REGION` migrates nothing. Terraform state is keyed by path, not
 region: pointed at a new region it finds nothing, builds a second platform, and
 leaves the first billing and invisible to state.
 
-`require_valid_node_config` MUST therefore refuse a region change while the
-project's state bucket holds resources, naming what to destroy first. It
-reuses the `count_resources` shape already in `persistent-down.sh:53-81`.
+**The check cannot live in the offline gate of §3.2**, which is
+credential-free by design; deciding this needs AWS access to look at buckets.
+It goes in `scripts/state-up.sh`, the one place that creates the bucket:
+refuse when `<project>-<other-region>-tf-state` exists and holds objects,
+naming what to destroy first. It reuses the `count_resources` shape already in
+`persistent-down.sh:53-81`.
+
+Because §3.11 puts the region in the bucket name, the rest is **self-detecting**:
+a different region means a different bucket, so terragrunt cannot silently
+build a second platform against a backend that does not exist — it fails
+closed. The guard only has to cover the one command that would create it.
 
 This converts a silently doubled cloud bill into an actionable error, at the
 cost of one `make full-down` before a region move.
