@@ -593,8 +593,23 @@ than SSM:
   regions both create it. Either each region takes its own subdomain — which
   changes every URL — or one zone is shared and its records are region-scoped,
   which means deciding who owns the zone's lifecycle.
-- **The Roles Anywhere trust anchor**, `<project>-<provider>-workload-ca`: one
-  per project by HETZ-018's naming, so two regions collide on the name.
+- **The Roles Anywhere chain becomes per project per region** (operator
+  decision, 2026-09-21). It is not only a naming collision: Roles Anywhere is
+  a **regional** service — `arn:aws:rolesanywhere:<region>:…` — so a project
+  spanning two regions needs an anchor and a profile in each, whatever they
+  are called. Today HETZ-018 names them `<project>-<provider>-workload-ca` and
+  `<project>-<provider>`, which collide.
+
+  **The IAM roles stay global and stay one set.** `<project>-ra-<consumer>` is
+  an IAM resource, and IAM is not regional; minting four more per region would
+  be duplication with no isolation gained. What changes is their trust
+  policies, which condition on `aws:SourceArn` and must accept **every**
+  region's anchor rather than one.
+
+  **The CA stays one per project.** The committed certificate is material, not
+  an AWS resource: the same certificate can be registered as an anchor in each
+  region. A second CA would mean a second ceremony and a second private key to
+  hold, for no security gain.
 - **The backups bucket** is already region-namespaced by §3.11, so it is done.
 
 Until that spec lands, two regions in parallel means **two projects** —
