@@ -68,6 +68,75 @@ measured on a live cluster.
 {{- end -}}
 
 {{/*
+The envoy Service's type and its provider annotations. Everything else about
+the EnvoyProxy is identical on every target, so this is the whole of what
+differs. Callers supply the envoyService key and indent by 8.
+*/}}
+{{- define "platform.envoyServiceSpec" -}}
+{{- if eq .Values.target "aws" -}}
+type: LoadBalancer
+annotations:
+  service.beta.kubernetes.io/aws-load-balancer-type: "external"
+  service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "ip"
+  # Public internet access to argo.lab.<root-domain>/grafana.lab.<root-domain>
+  # requires this - default is "internal" (VPC-private only).
+  service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
+  # Explicit for now, though the platform VPC's subnets already
+  # carry kubernetes.io/role/elb (spec 020) - drop this once the
+  # pinned controller's tag-based discovery is verified against a
+  # real NLB, so it doesn't also expect a cluster-scoped tag here.
+  service.beta.kubernetes.io/aws-load-balancer-subnets: {{ .Values.envoyGateway.nlbSubnetIds | quote }}
+  service.beta.kubernetes.io/aws-load-balancer-ssl-cert: {{ .Values.envoyGateway.acmCertificateArn | quote }}
+  service.beta.kubernetes.io/aws-load-balancer-ssl-ports: "443"
+  # Without this, every request appears to come from the NLB's own
+  # IP and per-client rate limiting collapses into one global limit.
+  # Must be paired with the listener-side PROXY protocol setting below.
+  service.beta.kubernetes.io/aws-load-balancer-proxy-protocol: "*"
+{{- else if eq .Values.target "civo" -}}
+type: LoadBalancer
+annotations:
+  kubernetes.civo.com/firewall-id: {{ .Values.envoyGateway.firewallId | quote }}
+  kubernetes.civo.com/ipv4-address: {{ .Values.envoyGateway.reservedIp | quote }}
+  kubernetes.civo.com/loadbalancer-algorithm: round_robin
+{{- end -}}
+{{- end -}}
+
+{{/*
+The Gateway's listeners. Callers supply the listeners key and indent by 4.
+*/}}
+{{- define "platform.envoyListeners" -}}
+{{- if eq .Values.target "aws" -}}
+# port 443, protocol HTTP: NLB terminates TLS and forwards plaintext
+# here - Envoy never holds a cert. Must match ssl-ports=443 above, since
+# the Service's ports mirror this list 1:1. No port 80, by design.
+- name: https
+  protocol: HTTP
+  port: 443
+  allowedRoutes:
+    namespaces:
+      from: All
+{{- else if eq .Values.target "civo" -}}
+- name: http
+  protocol: HTTP
+  port: 80
+  allowedRoutes:
+    namespaces:
+      from: All
+# Civo has no NLB terminating TLS upstream (unlike aws) - Envoy holds
+# the certificate itself and terminates TLS directly.
+- name: https
+  protocol: HTTPS
+  port: 443
+  tls:
+    certificateRefs:
+      - name: platform-public-tls
+  allowedRoutes:
+    namespaces:
+      from: All
+{{- end -}}
+{{- end -}}
+
+{{/*
 The E2E suite's RBAC subject. aws maps eks-test-identity to a Group via its
 EKS access entry; a self-managed target has no IAM, so the suite uses a
 ServiceAccount token.
