@@ -4,6 +4,10 @@
 
 LAB_REGION="eu-west-1"
 
+# AWS CLI v2 pipes output through a pager on a terminal, which stops a script
+# dead at (END). Every script that sources this one runs unattended.
+export AWS_PAGER=""
+
 # Civo's region constant. Also declared in terraform/live/root.hcl
 # (civo_region) - Terraform and shell each need their own copy since one
 # isn't reachable from the other; never derive this value, keep both literal.
