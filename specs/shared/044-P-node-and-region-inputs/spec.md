@@ -106,7 +106,7 @@ combinations that cannot be created.
 | `hetzner` | `nbg1` *(default)* | `cx23`, `cx33` *(default)*, `cx43` |
 | `hetzner` | `hel1` | `cx23`, `cx33` — **not** `cx43` |
 | `hetzner` | `fsn1` | none orderable as of 2026-09-21 |
-| `local` | — | takes none of the three inputs |
+| `local` | — | ignores all three inputs |
 
 Default `NODE_COUNT`: `aws` 1, `civo` 3, `hetzner` 3.
 
@@ -165,11 +165,13 @@ Refusing: invalid node configuration for PROVIDER=aws
   hetzner : nbg1 hel1 fsn1
 ```
 
-On `PROVIDER=local` it MUST refuse all three inputs, in the voice that
-target's own recipes already use — `Makefile:137` answers
-`"PROVIDER=local owns no cloud resources - nothing to create."` `local` is one
-kind cluster on the operator's machine (`scripts/cluster-up-local.sh`), reaches
-no cloud API and has neither a region nor a cloud node type.
+On `PROVIDER=local` it MUST **ignore** all three rather than refuse them.
+`local` is one kind cluster on the operator's machine
+(`scripts/cluster-up-local.sh`), reaches no cloud API and has neither a region
+nor a cloud node type, so there is nothing for them to describe. They are
+commonly left exported in a shell while switching targets, and refusing would
+make `PROVIDER=local make up` fail over values it does not read.
+`scripts/lib/region.sh` discards them the same way.
 
 `NODE_COUNT` being a positive integer is additionally checked in the Makefile
 itself, in the existing `Makefile:9-12` idiom, so a typo fails before any

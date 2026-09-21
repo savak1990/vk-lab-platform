@@ -53,15 +53,18 @@ For `PROVIDER=aws` that is the AWS region. For `civo` and `hetzner` it is that
 cloud's own region or location, and **their AWS-side resources stay in
 `eu-west-1` regardless** — a Civo project's state bucket, Route 53 zone, SSM
 parameters and KMS usage do not move because its cluster is in Frankfurt.
-`PROVIDER=local` owns no cloud resources and accepts no region at all.
+`PROVIDER=local` owns no cloud resources, so it ignores the region rather than refusing it — these values are commonly left exported while switching targets.
 
 **The account layer stays pinned to `eu-west-1`, permanently.** The shared
 secrets KMS key, `lab-role`, the GitHub OIDC provider, `eks-access-identity`
 and the account's own state bucket never move. This keeps one OIDC provider and
 one shared role, which is what ADR 0021's account/project split is for.
 `terraform/live/root.hcl` discriminates the region by layer exactly as it
-already discriminates the state bucket, and `scripts/lib/region.sh` splits into
-`LAB_ACCOUNT_REGION` — a constant, never derived — and `LAB_PROJECT_REGION`.
+already discriminates the state bucket. `scripts/lib/region.sh` gains
+`LAB_ACCOUNT_REGION`, a constant that is never derived, while `LAB_REGION`
+keeps its name and gains a provider-aware value — of its 84 uses across
+`scripts/`, only 10 are account-scoped, so renaming the other 66 would have
+been churn for its own sake.
 
 **ADR 0024's actual property is preserved where it still applies.** The account
 region remains a single literal declaration with no derivation. What changes is

@@ -105,7 +105,8 @@ All offline, none need credentials: `make specs-check`, `make gitops-check`,
 | `FIXED_TEST_PASSWORDS` | unset | `true` for CI only |
 
 Defaults are listed `aws` / `civo` / `hetzner`. `PROVIDER=local` owns no cloud
-resources and accepts none of `REGION`, `NODE_TYPE` or `NODE_COUNT`.
+resources, so it **ignores** `REGION`, `NODE_TYPE` and `NODE_COUNT` — leaving
+them exported while switching targets is harmless.
 
 `REGION`, `NODE_TYPE` and `NODE_COUNT` are validated **before any cloud call
 and without credentials**, so a typo fails in under a second rather than part

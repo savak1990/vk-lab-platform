@@ -27,15 +27,10 @@ require_valid_node_config() {
   local region="${REGION:-}" node_type="${NODE_TYPE:-}" node_count="${NODE_COUNT:-}"
   local errors=()
 
+  # Ignored rather than refused: these are commonly left exported in a shell
+  # while switching targets, and local owns no cloud resources for them to
+  # describe. region.sh discards them the same way.
   if ! catalog_takes_node_inputs "$provider"; then
-    local set_vars=()
-    [ -n "$region" ] && set_vars+=("REGION")
-    [ -n "$node_type" ] && set_vars+=("NODE_TYPE")
-    [ -n "$node_count" ] && set_vars+=("NODE_COUNT")
-    if [ "${#set_vars[@]}" -gt 0 ]; then
-      echo "Refusing: PROVIDER=$provider owns no cloud resources and accepts none of these: ${set_vars[*]}" >&2
-      exit 1
-    fi
     return 0
   fi
 
