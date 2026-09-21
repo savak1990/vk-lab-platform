@@ -18,7 +18,7 @@ updated: "2026-09-17"
 
 This spec describes the **`aws` target**. Terraform installs Argo CD onto the cluster and creates exactly one root ("app-of-apps") Application pointing at `gitops/`. After that, Terraform's job here is done — everything else in Kubernetes is Argo CD's responsibility.
 
-For the **`local` target** (minikube/kind), Argo CD is installed by a plain script/Makefile target instead of Terraform, and the same root Application manifest is applied with a different `target` value — see spec 022, which this spec's implementation MUST accommodate from the outset (a single, `target`-parameterized root Application manifest, not two divergent ones).
+The **`local` target** (kind) applies the same root Application manifest with a different `target` value — see spec 022. Script-installed Argo CD is no longer a local divergence: ADR 0012 moved the `aws` target off Terraform for the same reason, so every target now installs Argo CD the same way.
 
 Excludes: any Argo `Application`/`ApplicationSet` beyond the single root one (those live in `gitops/` and are reconciled by Argo itself), Karpenter/AWS LB Controller/Envoy/etc. installation (those are Argo-managed from here on).
 
