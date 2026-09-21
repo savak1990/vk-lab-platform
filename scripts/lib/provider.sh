@@ -16,6 +16,15 @@ if [ "$PROVIDER" = "civo" ]; then
   export BOOTSTRAP_EXCLUDE="${BOOTSTRAP_EXCLUDE:-acm}"
   export PERSISTENT_EXCLUDE="${PERSISTENT_EXCLUDE:-vpc backups}"
   export BACKUP_SSM_LAYER="${BACKUP_SSM_LAYER:-persistent-civo}"
+elif [ "$PROVIDER" = "local" ]; then
+  export PROJECT_NAME="${PROJECT_NAME:-vk-local-lab}"
+  export SUBDOMAIN="${SUBDOMAIN:-local}"
+  export CLUSTER_DIR="${CLUSTER_DIR:-}"
+  export CLUSTER_NAME="${CLUSTER_NAME:-$PROJECT_NAME}"
+  export PERSISTENT_EXTRA_DIR="${PERSISTENT_EXTRA_DIR:-}"
+  export BOOTSTRAP_EXCLUDE="${BOOTSTRAP_EXCLUDE:-}"
+  export PERSISTENT_EXCLUDE="${PERSISTENT_EXCLUDE:-}"
+  export BACKUP_SSM_LAYER="${BACKUP_SSM_LAYER:-}"
 elif [ "$PROVIDER" = "hetzner" ]; then
   export PROJECT_NAME="${PROJECT_NAME:-vk-hetzner-lab}"
   export SUBDOMAIN="${SUBDOMAIN:-hz}"
@@ -115,6 +124,9 @@ cluster_exists() {
       echo "cluster_exists: PROVIDER=hetzner is implemented in HETZ-040" >&2
       return 1
       ;;
+    local)
+      kind get clusters 2>/dev/null | grep -qx "$CLUSTER_NAME"
+      ;;
     *)
       aws eks describe-cluster --name "$CLUSTER_NAME" --region "$LAB_REGION" >/dev/null 2>&1
       ;;
@@ -146,6 +158,20 @@ require_isolated_kubeconfig() {
   fi
 }
 
+# Refuses to act on anything but a cluster whose API server is on this machine.
+# The local lifecycle scripts take a cluster name from the environment, so a
+# stale or hand-edited kubeconfig would otherwise let PROVIDER=local reach a
+# real cluster.
+require_local_context() {
+  local server
+  server="$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}' 2>/dev/null || true)"
+  case "$server" in
+    https://127.0.0.1:* | https://localhost:* | https://0.0.0.0:* | "https://[::1]:"*) return 0 ;;
+  esac
+  echo "require_local_context: refusing to act - context server '$server' is not a local kind cluster" >&2
+  return 1
+}
+
 # On civo, renames context to ${PROJECT_NAME}-civo (no --context-name flag); deletes target context first
 # to guard against reruns. On AWS, uses update-kubeconfig with the eks-access-identity role.
 configure_kubeconfig() {
@@ -165,6 +191,9 @@ configure_kubeconfig() {
     kubectl ${kcfg[@]:+"${kcfg[@]}"} config delete-context "${PROJECT_NAME}-civo" >/dev/null 2>&1 || true
     kubectl ${kcfg[@]:+"${kcfg[@]}"} config rename-context "$raw_context" "${PROJECT_NAME}-civo" >/dev/null
     kubectl ${kcfg[@]:+"${kcfg[@]}"} config use-context "${PROJECT_NAME}-civo" >/dev/null
+  elif [ "$PROVIDER" = "local" ]; then
+    kind export kubeconfig --name "$CLUSTER_NAME" \
+      ${kubeconfig:+--kubeconfig "$kubeconfig"} >/dev/null || return 1
   elif [ "$PROVIDER" = "hetzner" ]; then
     echo "configure_kubeconfig: PROVIDER=hetzner is implemented in HETZ-040" >&2
     return 1
