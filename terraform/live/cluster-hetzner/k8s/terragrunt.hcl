@@ -38,6 +38,7 @@ inputs = {
   project         = get_env("PROJECT_NAME", "vk-lab-platform")
   node_count      = tonumber(get_env("NODE_COUNT", "3"))
   node_type       = get_env("NODE_TYPE", "cx33")
+  location        = get_env("REGION", "nbg1")
   network_id      = dependency.persistent_network.outputs.network_id
   subnet_ip_range = dependency.persistent_network.outputs.subnet_ip_range
   ssh_key_id      = dependency.ssh_key.outputs.ssh_key_id
