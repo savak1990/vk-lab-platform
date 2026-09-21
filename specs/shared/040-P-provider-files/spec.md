@@ -79,7 +79,7 @@ line 30), `scripts/status.sh` (1: line 59), and `scripts/verify-no-leaks.sh`
 civo-vs-aws split through a differently-named variable.
 
 A third provider (Hetzner, tracked under `specs/hetzner/`) adds a third arm
-to every one of those branches. `specs/hetzner/016-P-non-aws-generalisation/
+to every one of those branches. `specs/hetzner/016-D-non-aws-generalisation/
 spec.md` (HETZ-016) already reclassifies most of the `civo`-named branches
 in `argo-up.sh`, `argo-down.sh`, `provider.sh`, and the eleven `eq
 .Values.target "civo"` Helm sites as "non-AWS" rather than "civo" - it does

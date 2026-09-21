@@ -164,3 +164,4 @@ Revert the change. Delete the SSM parameter to force a fresh order. Data risk: n
     rather than an aborted teardown. Stored size with a two-certificate
     prod chain: 7390 chars, ~10% headroom — CIVO-075 must re-check this
     with the wildcard chain.
+- 2026-09-20 — HETZ-016: `tls/{issuers,certificate,redirect}.yaml` moved to `gitops/templates/platform/shared/tls/`, gated by `platform.selfManaged`.

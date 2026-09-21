@@ -46,12 +46,13 @@ spec:
             reject_old_samples_max_age: 168h
         singleBinary:
           replicas: 1
-          # Requests sized from measured usage (~81Mi over 45m); limit
-          # leaves headroom for log-volume growth toward the 7d retention.
+          # Requests sized from measured usage (161Mi on a settled cluster,
+          # up from the 81Mi seen over the first 45m); limit leaves headroom
+          # for log-volume growth toward the 7d retention.
           resources:
             requests:
               cpu: 20m
-              memory: 96Mi
+              memory: 192Mi
             limits:
               memory: 256Mi
           {{- if eq (include "platform.spotAvoidance" .) "true" }}

@@ -1,0 +1,60 @@
+{{- if eq .Values.target "civo" }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cluster-autoscaler
+  namespace: argocd
+  annotations:
+    # Wave 0 puts this after external-secrets (-2) and the operators, and
+    # before the observability stack (1) whose pending pods it must serve.
+    # Karpenter's wave -4 exists so teardown destroys it after the nodes it
+    # created; this autoscaler only resizes a pool Terraform owns, so
+    # reverse-wave removal ahead of the workloads leaks nothing.
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://kubernetes.github.io/autoscaler
+    chart: cluster-autoscaler
+    targetRevision: 9.59.0
+    helm:
+      values: |
+        cloudProvider: civo
+        # Civo's k3s ships this Secret in kube-system for its own CCM and CSI
+        # drivers, with exactly the four keys this chart reads. Pointing at it
+        # keeps the API token out of Git and out of any script. Never write to
+        # it: a k3s Addon owns it, and the CSI driver needs a fifth key that
+        # this chart does not know about.
+        secretKeyRefNameOverride: civo-api-access
+        autoscalingGroups:
+          - name: {{ .Values.capacity.autoscaler.pool }}
+            minSize: {{ .Values.capacity.autoscaler.min }}
+            maxSize: {{ .Values.capacity.autoscaler.max }}
+        extraArgs:
+          # Without the first two, every scale-down is blocked: external-dns
+          # runs in kube-system with no PodDisruptionBudget, and several
+          # platform pods mount emptyDir scratch.
+          skip-nodes-with-system-pods: false
+          skip-nodes-with-local-storage: false
+          scale-down-unneeded-time: 10m
+        podAnnotations:
+          # Keeps the autoscaler off a node it is draining.
+          cluster-autoscaler.kubernetes.io/safe-to-evict: "false"
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            memory: 256Mi
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+{{- end }}

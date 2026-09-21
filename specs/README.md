@@ -7,7 +7,7 @@ Specs are grouped by execution target. Each spec is a folder with a `spec.md`.
 | `aws/` | AWS/EKS target specs | `AWS-` |
 | `civo/` | Civo target package (see its README) | `CIVO-` |
 | `hetzner/` | Hetzner target package (see its README) | `HETZ-` |
-| `local/` | `local` (minikube/kind) target specs | `LOCAL-` |
+| `local/` | `local` (kind) target specs | `LOCAL-` |
 | `shared/` | Specs that apply to every target, including the constitution | `SHARED-` |
 
 ## Folder name

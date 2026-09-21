@@ -166,3 +166,4 @@ Revert the change. The `argo-down` gate cleans stale records. Otherwise, clean t
     tracked as CIVO-210). See CIVO-100 §14 for the full diagnosis.
   - Full stack torn down afterward per the user's instruction — all
     clean, no leaked resources.
+- 2026-09-20 — HETZ-016: the Roles Anywhere sidecar block in `shared/external-dns/application.yaml` is gated by `platform.selfManaged` instead of `eq .Values.target "civo"`.

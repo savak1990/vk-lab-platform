@@ -103,7 +103,7 @@ fi
 # The retained serving certificate is exempt for the same reason
 # verify-no-leaks.sh exempts it: argo-down writes it on purpose so the next
 # bring-up can skip an ACME order.
-KEPT_TLS="/${PROJECT_NAME}/persistent/civo/tls/platform-public"
+KEPT_TLS="/${PROJECT_NAME}/persistent/${PROVIDER}/tls/platform-public"
 # describe-parameters rather than a path query, for the reason
 # verify-no-leaks.sh records: lab-role authorizes a path query against the
 # prefix parameter/<project>/, which none of its grants match.

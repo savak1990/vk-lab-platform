@@ -1,0 +1,29 @@
+{{- if (eq (include "platform.selfManaged" .) "true") }}
+{{- range .Values.workloadIdentity.consumers }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ .name }}
+  namespace: {{ .namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  commonName: {{ printf "%s-%s-%s" $.Values.project $.Values.target .name | quote }}
+  subject:
+    organizations: [{{ $.Values.project | quote }}]
+  usages: ["digital signature"]
+  isCA: false
+  duration: 24h
+  renewBefore: 8h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  secretName: {{ printf "%s-ra-cert" .name | quote }}
+  issuerRef:
+    name: {{ include "platform.workloadIssuerName" $ }}
+    kind: ClusterIssuer
+---
+{{- end }}
+{{- end }}

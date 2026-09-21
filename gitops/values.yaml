@@ -18,6 +18,13 @@ storage:
 # only meaningful where Karpenter's spot/on-demand distinction exists (aws).
 capacity:
   spotAvoidance: true
+  # civo-only; the cluster autoscaler's node-group bounds. The pool name
+  # "workers" is special to the civo cloud provider - it applies min/max to
+  # every pool in the cluster, which is correct here because there is one.
+  autoscaler:
+    min: 3
+    max: 4
+    pool: workers
 
 # aws's current defaults; civo overrides both through the
 # platform.kubeletInsecureTls/platform.metricsServerEnabled helpers instead.
@@ -136,10 +143,12 @@ tls:
   # skip route53:ListHostedZones entirely.
   hostedZoneId: ""
 
-# civo-only: each name/namespace here must match a Roles Anywhere trust-policy
-# key in terraform/modules/rolesanywhere - name also becomes the
-# commonName/secretName suffix.
-civoIdentity:
+# Self-managed targets only: each name/namespace here must match a Roles
+# Anywhere trust-policy key in terraform/modules/rolesanywhere - name also
+# becomes the commonName/secretName suffix.
+workloadIdentity:
+  # Empty derives "<target>-workload-ca", matching the trust anchor name.
+  issuerName: ""
   consumers:
     - name: eso
       namespace: external-secrets

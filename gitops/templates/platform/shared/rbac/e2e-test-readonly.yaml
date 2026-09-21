@@ -1,7 +1,7 @@
 # Read-only access for the E2E suite (tests/e2e), never cluster-admin. One
 # ClusterRole bound per namespace: a namespace grants nothing for a kind it
 # has none of, so the minor over-grant costs nothing real.
-{{- if eq .Values.target "civo" }}
+{{- if (eq (include "platform.selfManaged" .) "true") }}
 apiVersion: v1
 kind: Namespace
 metadata:

@@ -2,7 +2,15 @@
 
 ## Status
 
-Accepted
+**Superseded by ADR 0038.** Written before `gitops/` existed, it specified a
+per-component `values-aws.yaml` / `values-local.yaml` chart layout that was
+never built — CIVO-050 used one umbrella chart with per-file target gates — and
+a separate `make minikube-up` / `make kind-up` command set that predates the
+`PROVIDER` selector Civo and Hetzner established. ADR 0012, two days later, also
+removed the Terraform-versus-script install divergence this ADR relied on.
+ADR 0038 keeps the target and its ClusterIP, plain-HTTP, path-routing and
+throwaway-data decisions, and withdraws the rest. The text below is kept
+unchanged as the record of the decision it replaced.
 
 ## Context
 

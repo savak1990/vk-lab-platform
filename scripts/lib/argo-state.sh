@@ -27,14 +27,20 @@ argo_state() {
   local kubeconfig="${2:?argo_state: kubeconfig path required}"
   local sync_health app_count
 
-  if [ "${PROVIDER:-aws}" = "civo" ]; then
+  case "${PROVIDER:-aws}" in
+  civo)
     civo_token
     if ! CLUSTER_NAME="$cluster" configure_kubeconfig "$kubeconfig" >/dev/null 2>&1 \
       || ! kubectl --kubeconfig "$kubeconfig" cluster-info --request-timeout=5s >/dev/null 2>&1; then
       echo "unknown  (cluster unreachable)"
       return
     fi
-  else
+    ;;
+  hetzner)
+    echo "unknown  (PROVIDER=hetzner is implemented in HETZ-040)"
+    return
+    ;;
+  *)
     local role_arn
     role_arn="$(argo_access_role_arn)"
     [ -n "$role_arn" ] || { echo "unknown  (eks-access-identity not found)"; return; }
@@ -45,7 +51,8 @@ argo_state() {
       echo "unknown  (cluster unreachable)"
       return
     fi
-  fi
+    ;;
+  esac
 
   if ! kubectl --kubeconfig "$kubeconfig" get application root -n argocd >/dev/null 2>&1; then
     echo "absent   (not installed, or torn down by argo-down)"

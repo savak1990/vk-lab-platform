@@ -16,6 +16,15 @@ if [ "$PROVIDER" = "civo" ]; then
   export BOOTSTRAP_EXCLUDE="${BOOTSTRAP_EXCLUDE:-acm}"
   export PERSISTENT_EXCLUDE="${PERSISTENT_EXCLUDE:-vpc backups}"
   export BACKUP_SSM_LAYER="${BACKUP_SSM_LAYER:-persistent-civo}"
+elif [ "$PROVIDER" = "local" ]; then
+  export PROJECT_NAME="${PROJECT_NAME:-vk-local-lab}"
+  export SUBDOMAIN="${SUBDOMAIN:-local}"
+  export CLUSTER_DIR="${CLUSTER_DIR:-}"
+  export CLUSTER_NAME="${CLUSTER_NAME:-$PROJECT_NAME}"
+  export PERSISTENT_EXTRA_DIR="${PERSISTENT_EXTRA_DIR:-}"
+  export BOOTSTRAP_EXCLUDE="${BOOTSTRAP_EXCLUDE:-}"
+  export PERSISTENT_EXCLUDE="${PERSISTENT_EXCLUDE:-}"
+  export BACKUP_SSM_LAYER="${BACKUP_SSM_LAYER:-}"
 elif [ "$PROVIDER" = "hetzner" ]; then
   export PROJECT_NAME="${PROJECT_NAME:-vk-hetzner-lab}"
   export SUBDOMAIN="${SUBDOMAIN:-hz}"
@@ -106,12 +115,22 @@ hcloud_list_names() {
 }
 
 cluster_exists() {
-  if [ "$PROVIDER" = "civo" ]; then
-    civo_token
-    civo_cli kubernetes show "$CLUSTER_NAME" --region "$CIVO_REGION" >/dev/null 2>&1
-  else
-    aws eks describe-cluster --name "$CLUSTER_NAME" --region "$LAB_REGION" >/dev/null 2>&1
-  fi
+  case "$PROVIDER" in
+    civo)
+      civo_token
+      civo_cli kubernetes show "$CLUSTER_NAME" --region "$CIVO_REGION" >/dev/null 2>&1
+      ;;
+    hetzner)
+      echo "cluster_exists: PROVIDER=hetzner is implemented in HETZ-040" >&2
+      return 1
+      ;;
+    local)
+      kind get clusters 2>/dev/null | grep -qx "$CLUSTER_NAME"
+      ;;
+    *)
+      aws eks describe-cluster --name "$CLUSTER_NAME" --region "$LAB_REGION" >/dev/null 2>&1
+      ;;
+  esac
 }
 
 # Points this process's kubectl and helm at a repo-local kubeconfig instead of
@@ -139,6 +158,20 @@ require_isolated_kubeconfig() {
   fi
 }
 
+# Refuses to act on anything but a cluster whose API server is on this machine.
+# The local lifecycle scripts take a cluster name from the environment, so a
+# stale or hand-edited kubeconfig would otherwise let PROVIDER=local reach a
+# real cluster.
+require_local_context() {
+  local server
+  server="$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}' 2>/dev/null || true)"
+  case "$server" in
+    https://127.0.0.1:* | https://localhost:* | https://0.0.0.0:* | "https://[::1]:"*) return 0 ;;
+  esac
+  echo "require_local_context: refusing to act - context server '$server' is not a local kind cluster" >&2
+  return 1
+}
+
 # On civo, renames context to ${PROJECT_NAME}-civo (no --context-name flag); deletes target context first
 # to guard against reruns. On AWS, uses update-kubeconfig with the eks-access-identity role.
 configure_kubeconfig() {
@@ -158,6 +191,9 @@ configure_kubeconfig() {
     kubectl ${kcfg[@]:+"${kcfg[@]}"} config delete-context "${PROJECT_NAME}-civo" >/dev/null 2>&1 || true
     kubectl ${kcfg[@]:+"${kcfg[@]}"} config rename-context "$raw_context" "${PROJECT_NAME}-civo" >/dev/null
     kubectl ${kcfg[@]:+"${kcfg[@]}"} config use-context "${PROJECT_NAME}-civo" >/dev/null
+  elif [ "$PROVIDER" = "local" ]; then
+    kind export kubeconfig --name "$CLUSTER_NAME" \
+      ${kubeconfig:+--kubeconfig "$kubeconfig"} >/dev/null || return 1
   elif [ "$PROVIDER" = "hetzner" ]; then
     echo "configure_kubeconfig: PROVIDER=hetzner is implemented in HETZ-040" >&2
     return 1
@@ -167,6 +203,23 @@ configure_kubeconfig() {
       ${kcfg[@]:+"${kcfg[@]}"} >/dev/null || return 1
   fi
   kubectl ${kcfg[@]:+"${kcfg[@]}"} config set-context --current --namespace=default >/dev/null
+}
+
+# True once the API server answers, retrying through a transient outage rather
+# than refusing on one bad probe. Teardown's callers abort when this fails, so
+# a single blip would otherwise orphan load balancers and nodes - and a blip is
+# most likely exactly here, right after a node pool resize.
+api_reachable() {
+  local attempts="${API_REACHABLE_ATTEMPTS:-6}" interval="${API_REACHABLE_INTERVAL:-10}" i=1
+  while [ "$i" -le "$attempts" ]; do
+    if kubectl cluster-info --request-timeout=10s >/dev/null 2>&1; then
+      [ "$i" -gt 1 ] && echo "API reachable again after $i attempts." >&2
+      return 0
+    fi
+    [ "$i" -lt "$attempts" ] && sleep "$interval"
+    i=$((i + 1))
+  done
+  return 1
 }
 
 # On AWS, eks-test-identity maps to the read-only role through its EKS access
@@ -337,7 +390,7 @@ backup_teardown_warn() {
 # Exports the whole Secret, not just cert/key fields, to preserve its
 # cert-manager.io/* annotations and avoid a spurious reissue on next import.
 # A missing Secret is not an error - first-ever run, argo-up bootstraps fresh.
-civo_export_tls_secret() {
+export_tls_secret() {
   require_isolated_kubeconfig || return 1
   if ! kubectl get secret platform-public-tls -n envoy >/dev/null 2>&1; then
     echo "ARGO-DOWN: no platform-public-tls Secret found - nothing to export."
@@ -351,7 +404,7 @@ civo_export_tls_secret() {
   # while aborting here would leave the whole cluster running.
   if aws ssm put-parameter \
     --region "$LAB_REGION" \
-    --name "/${PROJECT_NAME}/persistent/civo/tls/platform-public" \
+    --name "/${PROJECT_NAME}/persistent/${PROVIDER}/tls/platform-public" \
     --type SecureString \
     --tier Advanced \
     --key-id alias/lab-secrets \
@@ -366,7 +419,7 @@ civo_export_tls_secret() {
 # Restoring before the root Application creates the Certificate avoids a
 # redundant ACME order. A cert already past its renewal time is skipped -
 # importing it would just trigger an immediate reissue anyway.
-civo_import_tls_secret() {
+import_tls_secret() {
   require_isolated_kubeconfig || return 1
   if kubectl get secret platform-public-tls -n envoy >/dev/null 2>&1; then
     echo "ARGO-UP: platform-public-tls Secret already present - leaving the live one alone."
@@ -376,7 +429,7 @@ civo_import_tls_secret() {
   local manifest
   manifest="$(aws ssm get-parameter \
     --region "$LAB_REGION" \
-    --name "/${PROJECT_NAME}/persistent/civo/tls/platform-public" \
+    --name "/${PROJECT_NAME}/persistent/${PROVIDER}/tls/platform-public" \
     --with-decryption \
     --query 'Parameter.Value' --output text 2>/dev/null || true)"
   if [ -z "$manifest" ] || [ "$manifest" = "None" ]; then
@@ -388,8 +441,10 @@ civo_import_tls_secret() {
   # so read the leaf's own expiry. Inside the default renewal window (last 30
   # days) an import only triggers an immediate renewal order anyway.
   local not_after not_after_epoch now_epoch
+  # Guarded: an unreadable stored cert must fall through to a fresh order,
+  # not end the whole bring-up silently under pipefail.
   not_after="$(echo "$manifest" | yq '.data["tls.crt"] // ""' | base64 -d 2>/dev/null \
-    | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2)"
+    | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2 || true)"
   if [ -n "$not_after" ]; then
     not_after_epoch="$(date -u -d "$not_after" +%s 2>/dev/null \
       || date -u -jf "%b %e %H:%M:%S %Y %Z" "$not_after" +%s 2>/dev/null || echo 0)"

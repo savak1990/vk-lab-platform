@@ -7,7 +7,7 @@ a login attempt. It's committed as plain text on purpose; nothing here
 decrypts it, and `make secret-decrypt`/`secret-encrypt` don't apply to it.
 
 **Exception — `.pem` certificate files:** a public certificate (e.g.
-`civo-ca-cert.pem`) is not secret by design. IAM Roles Anywhere trust
+`<provider>-ca-cert.pem`) is not secret by design. IAM Roles Anywhere trust
 anchors are public X.509 certificates; the private key is the only secret
 (stored in the adjacent `.enc` file). The certificate is committed in the
 clear for readability and to allow offline validation of signed objects;
@@ -65,8 +65,10 @@ passed as `VALUE`.
 `PROVIDER=hetzner` reads `secrets/hetzner-token.enc`. No API creates a
 Hetzner Cloud project, so this is done by hand once:
 
-1. In the Hetzner Cloud Console, create a project named `vk-hetzner-lab`
-   (the `PROJECT_NAME` default for `PROVIDER=hetzner`).
+1. In the Hetzner Cloud Console, create a project. The name is free-form and
+   nothing reads it — the token alone selects the project, and resource labels
+   use `PROJECT_NAME`. Naming it after the `PROVIDER=hetzner` default,
+   `vk-hetzner-lab`, keeps the Console and the repository readable together.
 2. In that project, under Security → API tokens, create one token with
    Read & Write permission. Copy it once; the Console never shows it again.
 3. Encrypt and commit it:
@@ -138,6 +140,24 @@ before `make persistent-up` can succeed:
   `vkdb` role's password, consumed by spec 002's `secrets` unit. Create
   it via `make secret-encrypt NAME=postgres-app-password VALUE=<generated password>`.
 
+## The workload CA file names
+
+A project directory holds at most one Roles Anywhere trust chain, named
+`<provider>-ca-cert.pem` and `<provider>-ca-key.enc`. The provider string in
+those names identifies the trust chain, not the cloud API: it is what every
+object in the chain is named after — the trust anchor, the profile, the
+trust-policy CN conditions, the cert-manager ClusterIssuer, and the Secret
+it reads. `terraform/live/bootstrap/rolesanywhere` derives the provider from
+whichever of these files exists, so the names can never disagree with the
+certificate that is loaded. An `aws` project has no such file and no chain.
+
+Run the ceremony (`PROVIDER=<provider> make ca-init`) **before the first
+lifecycle command of any kind** against a new non-AWS project.
+`make bootstrap-up` calls `generate-secrets.sh`, which mints a CA if none
+exists — so a bring-up run first would silently create that project's real
+root of trust as a side effect, with the same crypto properties but without
+the deliberate step.
+
 ## What happens to this directory on `make bootstrap-down`
 
 `make bootstrap-down` destroys the KMS key these files are encrypted with.
@@ -152,8 +172,9 @@ re-encrypt under a new key at your own judgment.
 
 When a root CA certificate needs rotation:
 
-1. Generate a new certificate pair by running `make civo-ca-init ROTATE=1`.
-   This creates `civo-ca-cert-next.pem` and `civo-ca-key-next.enc` alongside
+1. Generate a new certificate pair by running
+   `PROVIDER=<provider> make ca-init ROTATE=1`. This creates
+   `<provider>-ca-cert-next.pem` and `<provider>-ca-key-next.enc` alongside
    the current pair.
 2. Commit the new certificate and encrypted key.
 3. Register the new certificate as a second AWS IAM Roles Anywhere trust
@@ -163,8 +184,10 @@ When a root CA certificate needs rotation:
 5. Wait at least 24 hours (the maximum workload certificate lifetime) for all
    outstanding certificates signed by the old root to naturally expire.
 6. Remove the old trust anchor from AWS IAM Roles Anywhere.
-7. Promote the new pair: `git mv civo-ca-cert-next.pem civo-ca-cert.pem` and
-   `git mv civo-ca-key-next.enc civo-ca-key.enc`; commit the rename. The old
+7. Promote the new pair: `git mv <provider>-ca-cert-next.pem
+   <provider>-ca-cert.pem` and
+   `git mv <provider>-ca-key-next.enc <provider>-ca-key.enc`; commit the
+   rename. The old
    pair no longer exists under its old name, so there is nothing left to
    delete — the issuer is already pointed at what is now the current pair.
 8. If any old-named files remain (e.g. the promotion step above used copies

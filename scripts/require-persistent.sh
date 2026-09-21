@@ -31,21 +31,25 @@ if [ "$total" -eq 0 ]; then
   exit 1
 fi
 
-if [ "$PROVIDER" = "civo" ]; then
-  civo_keys=$(aws s3api list-objects-v2 --bucket "$BUCKET" --prefix "persistent-civo/network/" --region "$LAB_REGION" \
+# Keyed off the stack directory rather than off PROVIDER: every non-AWS
+# target has its own network unit under its own directory, and only the AWS
+# target needs the EKS access role.
+if [ -n "$PERSISTENT_EXTRA_DIR" ]; then
+  network_prefix="$PERSISTENT_EXTRA_DIR/network/"
+  network_keys=$(aws s3api list-objects-v2 --bucket "$BUCKET" --prefix "$network_prefix" --region "$LAB_REGION" \
     --query "Contents[?ends_with(Key, 'terraform.tfstate')].Key" --output text)
 
-  civo_total=0
-  if [ -n "$civo_keys" ] && [ "$civo_keys" != "None" ]; then
-    for key in $civo_keys; do
+  network_total=0
+  if [ -n "$network_keys" ] && [ "$network_keys" != "None" ]; then
+    for key in $network_keys; do
       aws s3api get-object --bucket "$BUCKET" --key "$key" --region "$LAB_REGION" "$TMP_DIR/state.json" >/dev/null
       count=$(jq '.resources | length' "$TMP_DIR/state.json")
-      civo_total=$((civo_total + count))
+      network_total=$((network_total + count))
     done
   fi
 
-  if [ "$civo_total" -eq 0 ]; then
-    echo "Civo network not found under persistent-civo/network/ in s3://$BUCKET. Run 'make persistent-up' first." >&2
+  if [ "$network_total" -eq 0 ]; then
+    echo "$PROVIDER network not found under $network_prefix in s3://$BUCKET. Run 'make persistent-up' first." >&2
     exit 1
   fi
 else

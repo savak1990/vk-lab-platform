@@ -71,21 +71,39 @@ fi
 generate_password_if_missing postgres-app-password
 generate_password_if_missing grafana-admin-password
 
-# The CA is civo-only (Roles Anywhere); aws never touches these files.
+# Every non-EKS target reaches AWS through Roles Anywhere and so needs the
+# CA; aws uses Pod Identity and never touches these files.
 generate_ca_if_missing() {
-  local file="$SECRETS_DIR/civo-ca-cert.pem"
-  if [ "$PROVIDER" != "civo" ]; then
-    echo "Skipping civo-ca-cert - PROVIDER is not civo"
+  local file="$SECRETS_DIR/${PROVIDER}-ca-cert.pem"
+  if [ "$PROVIDER" = "aws" ]; then
+    echo "Skipping the workload CA - PROVIDER is aws"
     return
   fi
   if [ -f "$file" ]; then
-    echo "Skipping civo-ca-cert - $file already exists"
+    echo "Skipping ${PROVIDER}-ca-cert - $file already exists"
     return
   fi
-  ROTATE='' PROJECT_NAME="$PROJECT_NAME" "$SCRIPT_DIR/civo-ca-init.sh"
+  ROTATE='' PROJECT_NAME="$PROJECT_NAME" "$SCRIPT_DIR/ca-init.sh"
 }
 
 generate_ca_if_missing
+
+# Only the Hetzner target boots servers from an SSH key; aws and civo hand
+# out cluster access through their own APIs and must not get one.
+generate_ssh_key_if_missing() {
+  local file="$SECRETS_DIR/hetzner-ssh-key.pub"
+  if [ "$PROVIDER" != "hetzner" ]; then
+    echo "Skipping the node SSH key - PROVIDER is $PROVIDER"
+    return
+  fi
+  if [ -f "$file" ]; then
+    echo "Skipping hetzner-ssh-key - $file already exists"
+    return
+  fi
+  ROTATE='' PROJECT_NAME="$PROJECT_NAME" "$SCRIPT_DIR/ssh-key-init.sh"
+}
+
+generate_ssh_key_if_missing
 
 # argocd-admin-password.bcrypt is plaintext-committed (not KMS-encrypted -
 # secret-encrypt.sh doesn't apply, see secrets/README.md), generated in

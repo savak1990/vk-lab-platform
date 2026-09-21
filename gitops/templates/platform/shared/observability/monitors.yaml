@@ -94,4 +94,27 @@ spec:
     - port: metrics
       path: /stats/prometheus
       interval: 30s
+{{- if eq .Values.target "civo" }}
+---
+# The chart's own serviceMonitor.enabled would render at the autoscaler
+# Application's wave, before kube-prometheus-stack installs the CRD, and would
+# stamp a release selector label this platform does not use.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: cluster-autoscaler
+  namespace: kube-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  selector:
+    matchLabels:
+      # The chart prefixes the cloud provider onto its own name label.
+      app.kubernetes.io/name: civo-cluster-autoscaler
+      app.kubernetes.io/instance: cluster-autoscaler
+  endpoints:
+    - port: http
+      interval: 30s
+{{- end }}
 {{- end }}

@@ -4,7 +4,12 @@ variable "project" {
 }
 
 variable "ca_cert_pem" {
-  description = "PEM content of the Civo workload root CA certificate. Empty string means this is not a Civo project - no resources are created."
+  description = "PEM content of the workload root CA certificate. Empty string means this project has no Roles Anywhere trust chain - no resources are created."
+  type        = string
+}
+
+variable "provider_name" {
+  description = "Infrastructure provider whose trust chain this is (civo, hetzner). Names every object in the chain, so it must match the CN inside ca_cert_pem."
   type        = string
 }
 
@@ -14,7 +19,7 @@ variable "hosted_zone_id" {
 }
 
 variable "x509_issuer_cn" {
-  description = "CN that must appear in x509Issuer/CN on presented client certs. Null computes it as \"$${project}-civo-workload-ca\" (the root CA's own Subject CN)."
+  description = "CN that must appear in x509Issuer/CN on presented client certs. Null computes it as \"$${project}-$${provider_name}-workload-ca\" (the root CA's own Subject CN)."
   type        = string
   default     = null
 }

@@ -4,19 +4,40 @@ template that always renders, so an unknown target fails loudly instead
 of silently rendering an empty chart.
 */}}
 {{- define "platform.validateTarget" -}}
-{{- if not (has .Values.target (list "aws" "civo" "local")) -}}
-{{- fail (printf "unsupported .Values.target %q - must be one of: aws, civo, local" .Values.target) -}}
+{{- if not (has .Values.target (list "aws" "civo" "hetzner" "local")) -}}
+{{- fail (printf "unsupported .Values.target %q - must be one of: aws, civo, hetzner, local" .Values.target) -}}
 {{- end -}}
+{{- end -}}
+
+{{/*
+Whether the platform bootstraps the control plane itself. Those targets reach
+AWS through Roles Anywhere and terminate TLS at Envoy; local does neither.
+Emits "true"/"false" as a string, so compare it - a bare if takes "false".
+*/}}
+{{- define "platform.selfManaged" -}}
+{{- has .Values.target (list "civo" "hetzner") -}}
+{{- end -}}
+
+{{/*
+Name of the Roles Anywhere CA ClusterIssuer and of the Secret it reads. The
+provider segment must match the trust anchor Terraform builds from the CA
+certificate committed for this project, so both derive from the target.
+*/}}
+{{- define "platform.workloadIssuerName" -}}
+{{- default (printf "%s-workload-ca" .Values.target) .Values.workloadIdentity.issuerName -}}
 {{- end -}}
 
 {{/*
 The CSI StorageClass name for the current target. civo uses civo-volume,
 preinstalled and owned by a k3s Addon (a patch to it gets reverted), so
 it must only be referenced here, never defined by a template we own.
+hetzner uses hcloud-volumes, which the CSI driver's own chart ships.
 */}}
 {{- define "platform.storageClassName" -}}
 {{- if eq .Values.target "civo" -}}
 civo-volume
+{{- else if eq .Values.target "hetzner" -}}
+hcloud-volumes
 {{- else -}}
 {{- .Values.storage.className -}}
 {{- end -}}
@@ -48,11 +69,12 @@ measured on a live cluster.
 
 {{/*
 The E2E suite's RBAC subject. aws maps eks-test-identity to a Group via its
-EKS access entry; civo has no IAM, so the suite uses a ServiceAccount token.
+EKS access entry; a self-managed target has no IAM, so the suite uses a
+ServiceAccount token.
 A ServiceAccount subject is in the core group and must not set apiGroup.
 */}}
 {{- define "platform.e2eTestSubject" -}}
-{{- if eq .Values.target "civo" -}}
+{{- if (eq (include "platform.selfManaged" .) "true") -}}
 - kind: ServiceAccount
   name: e2e-test
   namespace: e2e

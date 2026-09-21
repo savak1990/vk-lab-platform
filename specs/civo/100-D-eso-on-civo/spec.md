@@ -160,3 +160,4 @@ Revert the values. The secrets remain as last synced.
   - Full stack torn down afterward per the user's instruction
     (`make full-down` then `persistent-down`/`bootstrap-down` with
     `CONFIRM_DESTROY=vk-civo-lab`) — all clean, no leaked resources.
+- 2026-09-20 — HETZ-016: the Roles Anywhere sidecar block in `shared/external-secrets/application.yaml` is gated by `platform.selfManaged` instead of `eq .Values.target "civo"`.

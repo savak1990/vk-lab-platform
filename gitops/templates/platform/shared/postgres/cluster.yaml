@@ -13,7 +13,7 @@ spec:
   instances: 1
   imageName: {{ .Values.postgres.imageName | quote }}
   priorityClassName: postgres-critical
-  {{- if eq .Values.target "civo" }}
+  {{- if (eq (include "platform.selfManaged" .) "true") }}
   # CNPG creates a PodDisruptionBudget even for a single instance, and that
   # budget blocks a node from ever draining.
   enablePDB: false
@@ -54,7 +54,7 @@ spec:
     # Increase-only: shrinking a PVC is rejected by Kubernetes.
     size: {{ .Values.postgres.storageSize | quote }}
     storageClass: {{ include "platform.storageClassName" . }}
-  {{- if and (eq .Values.target "civo") .Values.postgres.backup.enabled }}
+  {{- if and (eq (include "platform.selfManaged" .) "true") .Values.postgres.backup.enabled }}
   # The backup sidecar has no volumeMounts field of its own; it inherits this
   # container's, which is the only way the certificate reaches it. optional
   # keeps a not-yet-issued certificate from wedging pod creation.

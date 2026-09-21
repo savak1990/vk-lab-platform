@@ -298,8 +298,10 @@ data "aws_iam_policy_document" "permissions" {
       "arn:aws:ssm:*:${local.account}:parameter/*/bootstrap/*",
       "arn:aws:ssm:*:${local.account}:parameter/*/persistent/*",
       "arn:aws:ssm:*:${local.account}:parameter/*/persistent-civo/*",
+      "arn:aws:ssm:*:${local.account}:parameter/*/persistent-hetzner/*",
       "arn:aws:ssm:*:${local.account}:parameter/*/cluster/*",
       "arn:aws:ssm:*:${local.account}:parameter/*/cluster-civo/*",
+      "arn:aws:ssm:*:${local.account}:parameter/*/cluster-hetzner/*",
       "arn:aws:ssm:*:${local.account}:parameter/account/*",
     ]
   }
