@@ -102,13 +102,18 @@ combinations that cannot be created.
 | Provider | Region | Node types allowed there |
 |---|---|---|
 | `aws` | `eu-west-1` *(default)* | `t4g.medium` *(default)*, `t4g.large`, `m6g.large` |
-| `civo` | `LON1` *(default)*, `NYC1`, `FRA1`, `PHX1` | `g4s.kube.medium` *(default)* |
+| `civo` | `LON1` *(default)*, `NYC1`, `FRA1`, `MUM1` | `g4s.kube.medium` *(default)* |
 | `hetzner` | `nbg1` *(default)* | `cx23`, `cx33` *(default)*, `cx43` |
 | `hetzner` | `hel1` | `cx23`, `cx33` — **not** `cx43` |
 | `hetzner` | `fsn1` | none orderable as of 2026-09-21 |
 | `local` | — | takes none of the three inputs |
 
 Default `NODE_COUNT`: `aws` 1, `civo` 3, `hetzner` 3.
+
+Civo's regions are `civo region ls` on 2026-09-21. The CLI answers them
+lowercase while the platform has always passed `LON1`, so operator input is
+matched case-insensitively and canonicalised to the spelling above, which is
+what reaches a CLI and Terraform. There is no `PHX1`; `MUM1` exists.
 
 The Hetzner rows are HETZ-020's measurement (`research.md:144`), not a copy of
 Hetzner's catalogue. `fsn1` listing nothing is deliberate — the gate refuses it
@@ -152,9 +157,11 @@ It MUST fail before any cloud call and MUST need no credentials. It MUST name
 what is legal:
 
 ```
-REGION 'nbg1' is not valid for PROVIDER 'aws'.
+Refusing: invalid node configuration for PROVIDER=aws
+  - REGION 'nbg1' is not valid for PROVIDER 'aws'
+
   aws     : eu-west-1
-  civo    : LON1 NYC1 FRA1 PHX1
+  civo    : LON1 NYC1 FRA1 MUM1
   hetzner : nbg1 hel1 fsn1
 ```
 
@@ -349,8 +356,11 @@ not duplicated.
 
 ## 4. Testing / acceptance criteria
 
-- **No-op defaults.** `make -n` is byte-identical to `main` for every provider
-  across all lifecycle targets with no variables set.
+- **No-op defaults.** `make -n` for every provider across all lifecycle
+  targets differs from `main` by **exactly one line per gated target** — the
+  gate's own invocation. No other line changes. Byte-identity is impossible
+  once the gate is a prerequisite, so this is the criterion that can actually
+  be met and proved.
 - **Cross-provider rejection.** `PROVIDER=aws REGION=nbg1` and
   `PROVIDER=hetzner NODE_TYPE=t4g.medium` both fail before any cloud call, with
   no credentials available.
