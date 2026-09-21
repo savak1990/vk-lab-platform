@@ -30,9 +30,9 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 # call itself errors, instead of silently treating a failed check as "ok".
 # State keys are the unit's live path, so the trailing slash makes
 # "persistent/" and "cluster/" unable to match "persistent-civo/" and
-# "cluster-civo/". Both targets' prefixes are listed unconditionally: a
-# prefix with no objects counts zero, so the civo entries are inert on aws.
-for prefix in persistent persistent-civo cluster cluster-civo; do
+# "cluster-civo/". Every target's prefixes are listed unconditionally: a
+# prefix with no objects counts zero, so foreign entries are inert.
+for prefix in persistent persistent-civo persistent-hetzner cluster cluster-civo cluster-hetzner; do
   # An empty prefix makes list-objects-v2's JMESPath filter evaluate
   # against null, which --output text renders as the literal string
   # "None" - not empty - so this must be checked explicitly.

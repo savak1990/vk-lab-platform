@@ -1,4 +1,4 @@
-.PHONY: up down full-up full-down platform-up platform-down state-up state-down status clusters require-valid-project-name account-up account-down bootstrap-up bootstrap-down secret-encrypt secret-decrypt secrets-check generate-secrets ca-init persistent-up persistent-down clear-cache cluster-up cluster-down kubeconfig test-kubeconfig test-kubeconfig-isolated argo-up argo-down test
+.PHONY: up down full-up full-down platform-up platform-down state-up state-down status clusters require-valid-project-name account-up account-down bootstrap-up bootstrap-down secret-encrypt secret-decrypt secrets-check generate-secrets ca-init ssh-key-init persistent-up persistent-down clear-cache cluster-up cluster-down kubeconfig test-kubeconfig test-kubeconfig-isolated argo-up argo-down test
 
 .NOTPARALLEL:
 
@@ -309,6 +309,14 @@ ca-init: export PROJECT_NAME := $(PROJECT_NAME)
 ca-init: export ROTATE := $(ROTATE)
 ca-init:
 	@./scripts/ca-init.sh
+
+## Generates the Hetzner node SSH key: a public key (secrets/$(PROJECT_NAME)/hetzner-ssh-key.pub)
+## and its KMS-encrypted private key. Refuses to overwrite; set ROTATE=1 for a rotation candidate.
+## Usage: PROVIDER=hetzner make ssh-key-init [PROJECT_NAME=vk-hetzner-lab] [ROTATE=1]
+ssh-key-init: export PROJECT_NAME := $(PROJECT_NAME)
+ssh-key-init: export ROTATE := $(ROTATE)
+ssh-key-init:
+	@./scripts/ssh-key-init.sh
 
 ## Renders gitops/ and gitops/bootstrap/ for aws/civo/local and verifies:
 ## the aws render against the committed golden baseline (tests/golden/gitops-aws),

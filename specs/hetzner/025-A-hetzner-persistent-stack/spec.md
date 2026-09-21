@@ -1,7 +1,7 @@
 ---
 id: "HETZ-025"
 title: "persistent-hetzner stack: private network, subnet, and SSH key, with additive persistent-up dispatch"
-status: "READY"
+status: "IN_PROGRESS"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -14,7 +14,7 @@ depends_on: ["HETZ-010", "HETZ-015", "HETZ-080"]
 blocked_by: []
 supersedes: []
 created: "2026-09-11"
-updated: "2026-09-19"
+updated: "2026-09-21"
 completed: ""
 ---
 

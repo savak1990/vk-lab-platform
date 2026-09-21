@@ -195,6 +195,8 @@ jobs:
             persistent-civo/backups \
             persistent-civo/network \
             persistent-civo/reserved-ip \
+            persistent-hetzner/network \
+            persistent-hetzner/ssh-key \
             persistent/backups \
             persistent/secrets \
             persistent/vpc \
