@@ -18,8 +18,9 @@ private configuration (like the root domain, constitution §14) — encrypted
 independently with the shared, account-global secrets KMS key
 (`alias/lab-secrets`, created once by `make account-up` — not per-project).
 That key lives in the platform's single region, `eu-west-1` — the same region
-everything else applies in, so `make secret-encrypt`/`secret-decrypt`/
-`generate-secrets` always resolve it (ADR 0024).
+every AWS resource applies in, on every target, so `make secret-encrypt`/
+`secret-decrypt`/`generate-secrets` always resolve it (ADR 0024, confirmed
+permanent by ADR 0040).
 
 Every value has one of two scopes, chosen with `SCOPE=` on `make
 secret-encrypt`/`secret-decrypt` (`SECRET_SCOPE=` on the scripts):
@@ -158,13 +159,18 @@ exists — so a bring-up run first would silently create that project's real
 root of trust as a side effect, with the same crypto properties but without
 the deliberate step.
 
-## What happens to this directory on `make bootstrap-down`
+## What happens to this directory on `make account-down`
 
-`make bootstrap-down` destroys the KMS key these files are encrypted with.
-Once that key is gone (after its deletion window), every `*.enc` file here
-becomes permanently undecryptable ciphertext. `make bootstrap-down` does
-not delete these files itself — they're left as-is for you to remove or
-re-encrypt under a new key at your own judgment.
+`make account-down` destroys the KMS key these files are encrypted with — the
+key is account-layer (`terraform/live/account/kms`), not per-project, so
+`make bootstrap-down` does not touch it and never has. Once that key is gone
+(after its deletion window), every `*.enc` file here becomes permanently
+undecryptable ciphertext.
+
+`account-down` deletes the per-project files itself, `secrets/*/*.enc`. It
+deliberately leaves the account-global ones — `root-domain.enc`,
+`civo-token.enc`, `hetzner-token.enc` — for you to remove or re-encrypt under
+a new key at your own judgment.
 
 ## Runbooks
 

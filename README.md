@@ -102,7 +102,7 @@ All offline, none need credentials: `make specs-check`, `make gitops-check`,
 | `PROVIDER` | `aws` | `aws` `civo` `hetzner` `local` |
 | `PROJECT_NAME` | per provider | lowercase letters, digits and hyphens, at most 23 characters |
 | `SUBDOMAIN` | per provider | must differ per project |
-| `REGION` | `eu-west-1` / `LON1` / `nbg1` | see below; matched case-insensitively |
+| `REGION` | `LON1` / `nbg1` | `civo` and `hetzner` only, see below; matched case-insensitively. Refused on `aws` |
 | `NODE_TYPE` | `t4g.medium` / `g4s.kube.medium` / `cx33` | see below |
 | `NODE_COUNT` | `1` / `3` / `3` | a positive integer |
 | `CONFIRM_DESTROY` | unset | must equal `PROJECT_NAME`, on guarded targets |
@@ -114,6 +114,12 @@ Defaults are listed `aws` / `civo` / `hetzner`. `PROVIDER=local` owns no cloud
 resources, so it **ignores** `REGION`, `NODE_TYPE` and `NODE_COUNT` — leaving
 them exported while switching targets is harmless.
 
+**`REGION` does not apply to `aws`.** Every AWS resource this platform creates
+lives in `eu-west-1`, including a Civo or Hetzner project's state bucket, SSM
+parameters and Roles Anywhere chain. `PROVIDER=aws` with any other region is
+refused rather than ignored, because a typed region is a statement of intent
+the platform cannot honor. See ADR 0024 and ADR 0040.
+
 `REGION`, `NODE_TYPE` and `NODE_COUNT` are validated **before any cloud call
 and without credentials**, so a typo fails in under a second rather than part
 way through an apply. The allowed shapes, and why each is on the list, are in
@@ -122,14 +128,17 @@ copy of each cloud's catalogue.
 
 | `PROVIDER` | `REGION` | `NODE_TYPE` allowed there |
 |---|---|---|
-| `aws` | `eu-west-1` | `t4g.medium`, `t4g.large`, `m6g.large` |
+| `aws` | fixed at `eu-west-1`, not an input | `t4g.medium`, `t4g.large`, `m6g.large` |
 | `civo` | `LON1` `NYC1` `FRA1` `MUM1` | `g4s.kube.medium` |
-| `hetzner` | `nbg1` | `cx23` `cx33` `cx43` |
-| `hetzner` | `hel1` | `cx23` `cx33` |
+| `hetzner` | `nbg1` | `cx23` `cx33` `cx43` `cx53` `cpx32` `cpx42` |
+| `hetzner` | `hel1` | `cx23` `cx33` `cpx32` `cpx42` |
 | `hetzner` | `fsn1` | nothing orderable as of 2026-09-21 |
 
 Node types are listed per region because availability differs: `cx43` can be
-ordered in `nbg1` but not `hel1`.
+ordered in `nbg1` but not `hel1`. The larger Hetzner types are above the lab's
+cost ceiling on a monthly basis and are allowed anyway, because the Hetzner
+limit is on server count rather than spend, and a CI run that lives 25 minutes
+costs cents at any of these prices.
 
 ### Worked examples
 
@@ -143,7 +152,7 @@ PROVIDER=civo REGION=FRA1 make full-up
 # Hetzner: three cx33 for the lab, in Helsinki rather than Nuremberg.
 PROVIDER=hetzner REGION=hel1 NODE_COUNT=3 make full-up
 
-# A bigger AWS system node group.
+# A bigger AWS system node group. AWS takes no REGION.
 PROVIDER=aws NODE_TYPE=t4g.large make up
 
 # One kind cluster locally. No cloud, no credentials.

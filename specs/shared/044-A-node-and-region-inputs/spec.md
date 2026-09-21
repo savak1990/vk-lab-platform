@@ -1,18 +1,17 @@
 ---
 id: "SHARED-044"
 title: "NODE_COUNT, NODE_TYPE and REGION as validated operator inputs on every provider"
-status: "READY"
+status: "IN_PROGRESS"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
 difficulty: "L"
 recommended_model_tier: "strongest"
-model_rationale: "A KMS key migration over committed ciphertext, a two-axis region split across ~95 call sites, and a guard whose failure mode is a silently doubled cloud bill"
-effort_estimate: "Three sessions, one per pull request; the third needs a real apply in a second AWS region"
+model_rationale: "A two-axis region split across ~95 call sites, and a guard whose failure mode is a silently doubled cloud bill. The KMS key migration that also justified this tier is cancelled (ADR 0040)"
+effort_estimate: "Four sessions, one per pull request; no live apply is needed after the second"
 estimate_confidence: "low"
 depends_on: []
 blocked_by: []
-supersedes: ["AWS-031"]
 created: "2026-09-21"
 updated: "2026-09-21"
 completed: ""
@@ -101,7 +100,7 @@ combinations that cannot be created.
 
 | Provider | Region | Node types allowed there |
 |---|---|---|
-| `aws` | `eu-west-1` *(default, and the only one until §3.6 lands)* | `t4g.medium` *(default)*, `t4g.large`, `m6g.large` |
+| `aws` | `eu-west-1` *(fixed - `REGION` is refused on this provider, ADR 0040)* | `t4g.medium` *(default)*, `t4g.large`, `m6g.large` |
 | `civo` | `LON1` *(default)*, `NYC1`, `FRA1`, `MUM1` | `g4s.kube.medium` *(default)* |
 | `hetzner` | `nbg1` *(default)* | `cx23`, `cx33` *(default)*, `cx43` |
 | `hetzner` | `hel1` | `cx23`, `cx33` — **not** `cx43` |
@@ -211,16 +210,23 @@ aws_region = contains(["account", "account-state"], local.raw_class)
   ? local.account_region : local.project_region
 ```
 
-**`REGION` means the provider's region.** On `aws` it is the AWS region; on
-`civo` and `hetzner` it is that cloud's own region or location and their
-AWS-side resources stay in the account region regardless; `local` accepts none.
-So `aws_region` is account-region unless the target is `aws`:
+**`REGION` means the provider's own region, and never an AWS one.** On
+`civo` and `hetzner` it selects that cloud's region or location, and their
+AWS-side resources stay in the account region regardless. On `aws` it is
+refused (ADR 0040). `local` accepts none.
+
+Every AWS resource therefore lives in the account region, and `aws_region`
+does not branch at all:
 
 ```hcl
-aws_region = (contains(["account", "account-state"], local.raw_class)
-  || local.provider_name != "aws"
-  || local.region_input == "") ? local.account_region : local.region_input
+aws_region = local.account_region
 ```
+
+The conditional form this section originally specified shipped in PR 2 and
+was collapsed in PR 3, once `REGION` could no longer select an AWS region.
+Collapsing it also closed a latent defect: terragrunt invoked directly,
+bypassing the Makefile and so the gate, previously honoured `REGION=FRA1` on
+`aws` and rendered a backend bucket named `<project>-fra1-tf-state`.
 
 `scripts/lib/region.sh` gains `LAB_ACCOUNT_REGION` — a constant, never derived —
 and **`LAB_REGION` keeps its name** while gaining a provider-aware value.
@@ -247,83 +253,64 @@ restored in three places: `scripts/argo-up.sh`, `gitops/bootstrap/values.yaml`
 and `gitops/bootstrap/templates/root-application.yaml`. Six golden files bake
 the literal.
 
-**That restoration belongs with the KMS migration, not with the region
-split.** The value feeds the AWS Load Balancer Controller and the
-`ClusterSecretStore`, both of which read AWS in the *project's AWS region* —
-which is `eu-west-1` for every provider until the AWS catalogue widens.
-Restoring the chain earlier would add a knob that can only ever be set to the
-value it already has, and six golden files would churn for no behaviour
-change.
+**That restoration is CANCELLED (2026-09-21).** It was deferred to §3.6 on
+the grounds that the value could not yet differ. Under ADR 0040 it never can:
+the AWS region is fixed, and the two consumers — the AWS Load Balancer
+Controller and the `ClusterSecretStore` — read AWS in `eu-west-1` on every
+provider, forever. `gitops/values.yaml:7` keeps its literal and its existing
+comment, "Fixed, not an operator knob", which is now permanently true. The
+six golden files never churn.
 
-**AWS keeps one region until §3.6 lands.** The catalogue lists only
-`eu-west-1` for `aws`, so the gate refuses any other in a second rather than
-letting it fail deep inside `persistent-up`. `AWS-031` warns exactly against
-the alternative: "a partially-solved multi-region path is worse than none: it
-fails deep inside `persistent-up` on an SSM `SecureString` create rather than
-at validation time, which is precisely how the previous attempt decayed
-unnoticed." Civo and Hetzner regions open immediately, because changing them
+**AWS keeps one region, permanently.** The catalogue lists only `eu-west-1`
+for `aws`, and `REGION` is refused on that provider rather than matched
+against the list, so the refusal states a rule instead of implying an
+unlisted option (ADR 0040, §3.2). `AWS-031` warned against the alternative:
+"a partially-solved multi-region path is worse than none: it fails deep
+inside `persistent-up` on an SSM `SecureString` create rather than at
+validation time, which is precisely how the previous attempt decayed
+unnoticed." That risk is now closed by declining the capability rather than
+by half-building it. Civo and Hetzner regions are open, because changing them
 moves no AWS resource.
 
-### 3.6 The KMS migration
+### 3.6 The KMS migration — CANCELLED (2026-09-21)
 
-`alias/lab-secrets` is account-layer, `eu-west-1`, and single-region —
-verified live: `MultiRegion: false`, key id `bc8ca7ef-…`, a plain UUID rather
-than the `mrk-` prefix a multi-region key carries. AWS does not allow
-converting an existing key, so this needs a new one.
+Not done, and never to be done. The operator fixed the AWS region at
+`eu-west-1` permanently (ADR 0040), which removes this section's only reason
+to exist: nothing needs `alias/lab-secrets` resolvable outside the account
+region, because no AWS resource this platform creates ever leaves it.
 
-Four project-scoped consumers depend on it:
+Cancelled rather than deleted, because the investigation that preceded it
+found things the rest of the repository had wrong.
 
-| # | Consumer | Location |
-|---|---|---|
-| 1 | `data "aws_kms_secrets"` decrypting the committed `.enc` files | `persistent-secrets/main.tf:1-10` |
-| 2 | three `SecureString` parameters with `key_id` | `persistent-secrets/main.tf:12-26`, `lib/provider.sh:376` |
-| 3 | alias read | `external-secrets-pod-identity/main.tf:13-15` |
-| 4 | alias read | `rolesanywhere/main.tf:4-6` |
+**All four consumers block, not one.** ADR 0023, ADR 0024 and `AWS-031` all
+describe the blocker as "the two ESO-consumed passwords", and the original
+text of this section repeated it while adding that the constraint is "a
+service call, not KMS". That reasoning was too narrow:
 
-**The constraint is a service call, not KMS.** A KMS key is regional but its
-API is callable from any region, and this key's policy is the AWS default
-(`…:root` / `kms:*`), so IAM alone governs. What cannot cross a region is
-another service encrypting on your behalf: SSM in one region calls KMS in that
-region. That is why #2 blocks and #1, #3 and #4 do not.
+| # | Consumer | Location | What it calls in the project's region |
+|---|---|---|---|
+| 1 | `data "aws_kms_secrets"` over the committed `.enc` files | `persistent-secrets/main.tf:1-10` | `Decrypt` against a blob bound to a `eu-west-1` key |
+| 2 | `SecureString` parameters naming the alias | `persistent-secrets/main.tf:12-26` | SSM encrypts on your behalf, calling KMS locally |
+| 3 | alias lookup | `external-secrets-pod-identity/main.tf:13-15` | `ListAliases`, where the alias does not exist |
+| 4 | alias lookup | `rolesanywhere/main.tf:4-6` | `ListAliases`, where the alias does not exist |
 
-Note both ADR 0024 and AWS-031 say "the two ESO-consumed passwords". **There
-are three** — the third is the TLS Secret export at `lib/provider.sh:376`,
-which holds a private key. Consumer #1 is documented in neither, despite being
-the first thing that fails.
+There are also three `SecureString` parameters, not two — the third is the
+TLS Secret export in `scripts/lib/provider.sh`, which holds a private key.
 
-**The fix is one new multi-region key, replicated, with a per-region alias.**
-Aliases are regional, so `alias/lab-secrets` exists in every region and
-resolves to that region's replica. All four consumers are then satisfied
-locally and no aliased provider is needed anywhere.
+**The alias repoint had an unstated ordering requirement.**
+`terraform/modules/lab-role/main.tf:393-403` builds both its `kms:*` grant and
+its `DenySharedKmsKeyDestruction` Deny from
+`data.aws_kms_alias.secrets.target_key_arn`, resolved at apply time. Moving
+the alias would have left CI holding permissions on the previous key until
+the account layer was applied again. No record named this.
 
-The migration MUST run in this order, so every step before the last is
-reversible:
+**Three live `SecureString` parameters would have been stranded.** Step 5
+assumed a live `persistent-up` re-encrypts them. All three belong to
+torn-down projects that nothing would re-apply, and the Civo TLS one is
+written outside Terraform and retained across teardown on purpose. Scheduling
+the old key for deletion would have made them undecryptable.
 
-1. `terraform/modules/kms` gains a `multi_region` variable. Create the new key
-   in the account layer under a temporary alias `lab-secrets-next`, following
-   the repository's existing `ROTATE=1` → `*-next` convention.
-2. Replicate into every region in the catalogue's `aws` list, each with its own
-   `alias/lab-secrets-next`.
-3. Re-encrypt the 12 committed `.enc` files against the new key. Decrypt needs
-   no key id — KMS reads it from the ciphertext — so this pipes
-   `secret-decrypt.sh` into `secret-encrypt.sh` and plaintext never reaches
-   disk.
-4. **Verify all 12 round-trip against the new key before anything is removed.**
-   This is the gate. The old key is still intact here.
-5. Repoint `alias/lab-secrets` to the new key in every region. No code changes:
-   every consumer already names the alias. The three `SecureString` parameters
-   re-encrypt in place on the next apply, because their plaintext is
-   re-supplied from the `.enc` files.
-6. Retire the `-next` aliases.
-7. Prove it: a full `up` → `test` → `down` on **both** AWS and Civo.
-8. **Only then** schedule the old key for deletion, at the maximum 30-day
-   window. It costs about 1 USD/month and is the rollback until it dies.
-
-During steps 3 to 5 mixed ciphertext works, because decrypt resolves the key
-from the blob. There is no flag day.
-
-Re-encryption is not regeneration: the plaintext is unchanged, so ADR 0014's
-rule that `postgres-app-password` is never regenerated is not engaged.
+None of this is now a risk, because no key moves.
 
 ### 3.7 The region-change guard
 
@@ -457,8 +444,9 @@ matches, and re-proves HETZ-025 and HETZ-080 end to end as a side effect.
 
 The committed secrets are unaffected and MUST NOT be regenerated: the two
 cloud tokens and `root-domain.enc` are real external values, and the Hetzner
-CA private key has to keep matching its committed certificate. They are
-re-encrypted by §3.6, never re-created.
+CA private key has to keep matching its committed certificate. Nothing
+re-encrypts them either, now that §3.6 is cancelled — they stay exactly as
+committed, under the key that already holds them.
 
 This is done **now, deliberately, because it is the cheapest it will ever be**.
 Once several projects hold live state, renaming a state bucket means migrating
@@ -529,12 +517,13 @@ not duplicated.
   changes.
 - **Account layer pinned.** Every `account*` unit renders `eu-west-1` whatever
   `REGION` is set to.
-- **KMS migration.** All 12 `.enc` files round-trip against the new key before
-  anything is removed; a full `up`/`test`/`down` passes on both AWS and Civo;
-  only then is the old key scheduled for deletion.
-- **Region move.** A full `bootstrap-up` → `persistent-up` → `up` in a second
-  AWS region reaches Healthy, proving the KMS migration end to end, then is
-  destroyed.
+- **AWS refuses a region.** `PROVIDER=aws REGION=<anything but eu-west-1>`
+  fails offline, in under a second, with a message naming the rule rather
+  than the catalogue. `REGION=eu-west-1` and an unset `REGION` both pass.
+  Covered by `make node-config-check`.
+- **The AWS region is inert.** `terragrunt render` across every unit and all
+  four providers, and `make -n` across every target and all four providers,
+  are byte-identical to the previous commit on `main`.
 - **Guard.** Changing `REGION` with live state fails and names the destroy
   command to run first.
 - **Two regions at once.** Two projects, one in `eu-west-1` and one elsewhere,
@@ -571,9 +560,11 @@ Every other sweep is project-scoped and follows its own project's region:
 
 ### 5.2 One project in two regions at once — deferred to its own spec
 
-This spec lets a project **choose** its region. It does not let one project
-**occupy two at once**, and the operator has asked for that as a follow-up
-after the KMS migration.
+This spec lets a project **choose** its Civo region or Hetzner location. It
+does not let one project **occupy two at once**, and the operator has asked
+for that as a follow-up. It no longer concerns AWS at all: ADR 0040 makes two
+AWS regions impossible by construction, so what remains is a naming problem
+on the non-AWS targets, not a region one.
 
 Per-region SSM paths are necessary but **not sufficient**. Measured
 2026-09-21: all 22 SSM parameters are `/<project>/…` with no region, and they
