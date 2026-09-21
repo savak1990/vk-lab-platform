@@ -339,7 +339,52 @@ against the 5-server account limit.
 HETZ-170's autoscaler leaves M1 as a consequence: at 3 + 2 there is no room
 under the cap for it.
 
-### 3.11 `lab.yml` workflow inputs
+### 3.11 Bucket names carry the region
+
+An S3 bucket name is unique across **every AWS account and every region**, and
+a bucket lives in exactly one region. So `<project>-tf-state` can exist in one
+region at a time, and a region move would be a delete-then-recreate against a
+name AWS does not guarantee is immediately reusable.
+
+Both project buckets therefore take the region:
+
+| Today | Becomes |
+|---|---|
+| `<project>-tf-state` | `<project>-<region>-tf-state` |
+| `<project>-postgres-backups` | `<project>-<region>-postgres-backups` |
+
+**The region goes before the suffix, not after, and that is load-bearing.**
+`lab-role` grants `arn:aws:s3:::*-tf-state` and `arn:aws:s3:::*-postgres-backups`
+(`lab-role/main.tf:36,40`). A name ending in the region would no longer match
+either wildcard and would need an IAM change; a name ending in the existing
+suffix matches unchanged. **No `lab-role` edit is required.**
+
+Length stays inside S3's 63-character limit: `PROJECT_NAME` is capped at 23,
+the longest AWS region name is 14, and `-postgres-backups` is 17, totalling 56.
+
+The account layer's own bucket (`<owner>-account-state`, `root.hcl:20-21`) is
+**unchanged** — that layer is pinned to `eu-west-1` permanently, so a region in
+its name would assert a variability it does not have.
+
+Roughly ten sites construct these names: `root.hcl:34`,
+`postgres-backups/main.tf:2`, and `STATE_BUCKET`/`BUCKET` in `state-up.sh`,
+`state-down.sh`, `bootstrap-down.sh`, `account-down.sh`, `persistent-down.sh`,
+`require-persistent.sh`, `force-clean-ci.sh` and `verify-no-leaks.sh`.
+
+**Migration, measured 2026-09-21:** only one project has buckets at all.
+`vk-hetzner-lab-tf-state` holds **7 objects** and
+`vk-hetzner-lab-postgres-backups` is empty; `vk-lab-platform` and `vk-civo-lab`
+have no buckets, so there is nothing to migrate for either. The step is an
+`aws s3 sync` to the new name, a verification that all 7 objects arrived, then
+deleting the old bucket. State objects are ordinary S3 objects, so this is
+lossless and reversible until the delete.
+
+This is done **now, deliberately, because it is the cheapest it will ever be**.
+Once several projects hold live state, renaming a state bucket means migrating
+state that resources depend on, and a mistake there orphans resources nobody
+can destroy.
+
+### 3.12 `lab.yml` workflow inputs
 
 `.github/workflows/lab.yml` is the operator-facing entry point and MUST expose
 the three values, or they can only be set locally.
@@ -364,7 +409,7 @@ billable workflow at all — but the new inputs are unreachable on Hetzner until
 `provider` can name it, so this spec records the dependency rather than shipping
 inputs that cannot be used.
 
-### 3.12 `README.md`
+### 3.13 `README.md`
 
 The README under-documents the command surface **before this change**: 35 make
 targets exist and the `## Usage` block lists about 15, while `PROVIDER` — the
@@ -416,6 +461,10 @@ not duplicated.
   against its own region.
 - **README.** Every one of the 35 targets appears; every variable has a
   default and valid values; each provider has a worked example.
+- **Bucket migration.** All 7 objects from `vk-hetzner-lab-tf-state` arrive
+  in `vk-hetzner-lab-eu-west-1-tf-state`, a `terragrunt plan` against the new
+  bucket shows no changes, and only then is the old bucket deleted.
+  `lab-role` is **not** edited, and its two wildcards still match.
 - **Workflow inputs.** A `lab.yml` run with the three inputs blank behaves
   exactly as before; a run with a bad combination fails in the gate, not in a
   cloud call.
@@ -449,10 +498,10 @@ Every other sweep is project-scoped and follows its own project's region:
   names to physical zones differently per account, and an `a` zone is not
   guaranteed to offer the chosen instance type. This fails at node-group
   creation, not at plan.
-- **S3 bucket names are global and reuse is delayed.** Destroying
-  `<project>-tf-state` and recreating it in another region under the same name
-  can fail for a period. Only relevant to a region move, which §3.7 forces the
-  operator to sequence deliberately.
+- **S3 bucket names carry the region** (§3.11), so the global-uniqueness
+  constraint that used to make a region move a delete-and-recreate race no
+  longer applies. Migrating to the new names is a one-time step, costed in
+  §3.11.
 - **Karpenter's instance list** carries the same region-availability
   constraint as `NODE_TYPE` and is not governed by the catalogue.
 - **The allowlist goes stale.** Clouds change catalogues: HETZ-020 found
