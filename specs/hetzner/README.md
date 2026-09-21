@@ -92,7 +92,7 @@ two additions:
 | HETZ-017 | [017-D-k3s-bootstrap-governance](017-D-k3s-bootstrap-governance/spec.md) | k3s replaces kubeadm: ADR 0037, a note on ADR 0036, four specs retired, the package rewritten | DONE | P0 | M | strongest | 015 | M0 |
 | HETZ-018 | [018-D-identity-chain-provider-naming](018-D-identity-chain-provider-naming/spec.md) | Roles Anywhere chain names parametrized by provider; Civo names unchanged | DONE | P0 | M | strongest | 010, 016 | M0 |
 | HETZ-020 | [020-D-hetzner-feasibility-spike](020-D-hetzner-feasibility-spike/spec.md) | Feasibility spike: volume survival, LB lifecycle and orphaning, account limits, invoice | DONE | P0 | S | standard | 017 | M0 |
-| HETZ-025 | [025-P-hetzner-persistent-stack](025-P-hetzner-persistent-stack/spec.md) | `persistent-hetzner` network, subnet, SSH key | READY | P1 | S | standard | 010, 015, 080 | M1 |
+| HETZ-025 | [025-A-hetzner-persistent-stack](025-A-hetzner-persistent-stack/spec.md) | `persistent-hetzner` network, subnet, SSH key | IN_REVIEW | P1 | S | standard | 010, 015, 080 | M1 |
 | HETZ-030 | [030-P-hetzner-terraform-k3s-nodes](030-P-hetzner-terraform-k3s-nodes/spec.md) | `cluster-hetzner` firewall and two `cx33` servers that install k3s from their own cloud-init | READY | P1 | M | strongest | 010, 015, 017, 025 | M1 |
 | HETZ-035 | [035-Z-hetzner-kubeadm-bootstrap](035-Z-hetzner-kubeadm-bootstrap/spec.md) | `kubeadm join` over SSH from `cluster-up`, `admin.conf` kubeconfig, idempotent re-run | SUPERSEDED | P1 | M | strongest | 030, 040, 020 | M1 |
 | HETZ-037 | [037-Z-hetzner-cilium-cni](037-Z-hetzner-cilium-cni/spec.md) | Cilium from the control plane's cloud-init; `cluster-up` ends when every node is Ready | SUPERSEDED | P1 | M | standard | 030, 035 | M1 |

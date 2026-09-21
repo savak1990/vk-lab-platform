@@ -82,10 +82,10 @@ count_resources() {
 
 echo "Checking for Disposable state in s3://$STATE_BUCKET ..."
 
-# Both targets' disposable prefixes, unconditionally: the trailing slash in
+# Every target's disposable prefix, unconditionally: the trailing slash in
 # count_resources stops "cluster/" from matching "cluster-civo/", and a
-# prefix with no objects counts zero, so the civo entry is inert on aws.
-for disposable_prefix in cluster cluster-civo; do
+# prefix with no objects counts zero, so a foreign entry is inert.
+for disposable_prefix in cluster cluster-civo cluster-hetzner; do
   if ! disposable_total=$(count_resources "$disposable_prefix"); then
     exit 1
   fi
@@ -147,10 +147,16 @@ fi
 aws ssm delete-parameter --region "$LAB_REGION" \
   --name "/$PROJECT_NAME/$BACKUP_SSM_LAYER/postgres-backup/server_name" >/dev/null 2>&1 || true
 
-# The extra civo stack is destroyed first: it is the layer the disposable
+# The extra non-AWS stack is destroyed first: it is the layer the disposable
 # cluster attaches to, so teardown runs the reverse of persistent-up's order.
 if [ -n "$PERSISTENT_EXTRA_DIR" ]; then
-  civo_token
+  # Both targets set PERSISTENT_EXTRA_DIR, so the token has to follow
+  # PROVIDER - the wrong one leaves the whole stack behind, undestroyed.
+  if [ "$PROVIDER" = "hetzner" ]; then
+    hcloud_token
+  else
+    civo_token
+  fi
 
   cd "$REPO_ROOT/terraform/live/$PERSISTENT_EXTRA_DIR"
   terragrunt run --all --non-interactive -- destroy -auto-approve
@@ -170,7 +176,7 @@ while IFS= read -r arg; do exclude_args+=("$arg"); done < <(persistent_exclude_f
 # The empty-array form keeps bash 3.2 from failing on an unset expansion under set -u.
 terragrunt run --all ${exclude_args[@]+"${exclude_args[@]}"} --non-interactive -- destroy -auto-approve
 
-for unit_prefix in persistent/vpc persistent/secrets persistent/backups persistent-civo/network persistent-civo/reserved-ip persistent-civo/backups; do
+for unit_prefix in persistent/vpc persistent/secrets persistent/backups persistent-civo/network persistent-civo/reserved-ip persistent-civo/backups persistent-hetzner/network persistent-hetzner/ssh-key; do
   if ! remaining=$(count_resources "$unit_prefix"); then
     exit 1
   fi
