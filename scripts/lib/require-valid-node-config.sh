@@ -16,8 +16,9 @@ source "$REQUIRE_NODE_CONFIG_DIR/catalog.sh"
 # Providers are listed with their regions so an operator who aimed one
 # cloud's region at another can see where it actually belongs.
 node_config_legal_regions() {
+  printf '  %-8s: %s (fixed - not an input)\n' aws "$(catalog_regions aws)"
   local p
-  for p in aws civo hetzner; do
+  for p in civo hetzner; do
     printf '  %-8s: %s\n' "$p" "$(catalog_regions "$p")"
   done
 }
@@ -38,7 +39,15 @@ require_valid_node_config() {
   node_count="${node_count:-$(catalog_default_node_count "$provider")}"
 
   local canonical_region=""
-  if ! canonical_region="$(catalog_canonical_region "$provider" "$region")"; then
+  # Fixed rather than merely unlisted: the shared secrets key, lab-role and
+  # the OIDC provider all live in it, so a project elsewhere fails deep in an
+  # apply instead of here. Resolved anyway, so NODE_TYPE is still checked.
+  if [ "$provider" = "aws" ]; then
+    canonical_region="$(catalog_default_region aws)"
+    if [ -n "${REGION:-}" ] && [ "$(catalog_lower "$REGION")" != "$canonical_region" ]; then
+      errors+=("REGION is not an input for PROVIDER=aws; the AWS region is fixed at $canonical_region. REGION selects a region only on civo and hetzner")
+    fi
+  elif ! canonical_region="$(catalog_canonical_region "$provider" "$region")"; then
     errors+=("REGION '$region' is not valid for PROVIDER '$provider'")
   fi
 

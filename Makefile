@@ -1,4 +1,4 @@
-.PHONY: up down full-up full-down platform-up platform-down state-up state-down status clusters require-valid-project-name require-valid-node-config account-up account-down bootstrap-up bootstrap-down secret-encrypt secret-decrypt secrets-check generate-secrets ca-init ssh-key-init persistent-up persistent-down clear-cache cluster-up cluster-down kubeconfig node-ssh test-kubeconfig test-kubeconfig-isolated argo-up argo-down test
+.PHONY: up down full-up full-down platform-up platform-down state-up state-down status clusters require-valid-project-name require-valid-node-config account-up account-down bootstrap-up bootstrap-down secret-encrypt secret-decrypt secrets-check node-config-check generate-secrets ca-init ssh-key-init persistent-up persistent-down clear-cache cluster-up cluster-down kubeconfig node-ssh test-kubeconfig test-kubeconfig-isolated argo-up argo-down test
 
 .NOTPARALLEL:
 
@@ -361,11 +361,22 @@ secret-decrypt:
 secrets-check:
 	@./tests/scripts/secret-scope-test.sh
 
+## Runs the credential-free test of the node-configuration gate: which
+## PROVIDER/REGION pairs it accepts, and that aws refuses a region.
+## Usage: make node-config-check
+node-config-check:
+	@./tests/scripts/node-config-test.sh
+
 ## Runs the cluster-free test of argo-up's root watch loop (API blips,
 ## failed syncs, heartbeat, timeout) against a fake kubectl.
 ## Usage: make argo-watch-check
 argo-watch-check:
 	@./tests/scripts/argo-watch-test.sh
+
+## Runs pr-gate's decision step against label and job-result combinations,
+## with no GitHub involved. Usage: make pr-gate-check
+pr-gate-check:
+	@./tests/scripts/pr-gate-test.sh
 
 ## Generates throwaway secrets/$(PROJECT_NAME)/ files for a CI/test
 ## environment: root-domain from ROOT_DOMAIN and fixed, publicly-known

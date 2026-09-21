@@ -141,8 +141,11 @@ RoleBinding__observability__e2e-test-readonly \
 Application__argocd__cluster-autoscaler ServiceMonitor__kube-system__cluster-autoscaler \
 PodMonitor__cnpg-system__cnpg-postgres ServiceMonitor__argocd__argocd \
 Namespace__cluster__e2e ServiceAccount__e2e__e2e-test"
+REQUIRED_OBJECTS_LOCAL="EnvoyProxy__envoy__envoy-proxy-config \
+Gateway__envoy__platform-gateway GatewayClass__cluster__envoy-gateway \
+HTTPRoute__argocd__argocd"
 FORBIDDEN_KINDS_LOCAL="StorageClass VolumeSnapshotClass VolumeSnapshotContent VolumeSnapshot \
-ClusterSecretStore ExternalSecret Cluster NodePool EC2NodeClass EnvoyProxy Gateway GatewayClass \
+ClusterSecretStore ExternalSecret Cluster NodePool EC2NodeClass \
 ObjectStore ScheduledBackup"
 FORBIDDEN_KINDS_CIVO="StorageClass VolumeSnapshotClass VolumeSnapshotContent VolumeSnapshot \
 NodePool EC2NodeClass"
@@ -152,7 +155,7 @@ external-dns barman-cloud-plugin"
 FORBIDDEN_APPLICATIONS_CIVO="aws-load-balancer-controller ebs-csi-driver karpenter \
 external-snapshotter external-snapshotter-crds"
 FORBIDDEN_OBJECTS_LOCAL="BackendTrafficPolicy__observability__grafana-traffic-policy \
-HTTPRoute__observability__grafana HTTPRoute__argocd__argocd \
+HTTPRoute__observability__grafana \
 RoleBinding__observability__e2e-test-readonly \
 ExternalSecret__observability__grafana-admin-credentials \
 Namespace__cluster__e2e ServiceAccount__e2e__e2e-test"
@@ -187,7 +190,7 @@ verify_object_set() {
       forbidden_objects="$FORBIDDEN_OBJECTS_HETZNER"
       ;;
     local)
-      required="$REQUIRED_OBJECTS"
+      required="$REQUIRED_OBJECTS $REQUIRED_OBJECTS_LOCAL"
       forbidden_kinds="$FORBIDDEN_KINDS_LOCAL"
       forbidden_apps="$FORBIDDEN_APPLICATIONS_LOCAL"
       forbidden_objects="$FORBIDDEN_OBJECTS_LOCAL"

@@ -5,27 +5,22 @@
 # bucket all live there, and deriving it from anything is exactly what
 # ADR 0024 prohibits - that rule is unchanged for this layer.
 #
-# LAB_REGION is this project's AWS region. It keeps its name because most
-# uses across scripts/ are project-scoped and mean what they always did;
-# only the account layer's own calls take LAB_ACCOUNT_REGION instead.
+# LAB_REGION is this project's AWS region. Every AWS resource the platform
+# creates lives in the account region whatever the target, so the two always
+# hold the same value. Both names survive because they answer different
+# questions - whose resource is this, and where does the account live - and
+# because renaming either would touch ~80 call sites to change nothing.
 #
-# REGION is the provider's region, and is already validated against
-# scripts/lib/catalog.sh before any of this is read. On aws it selects the
-# AWS region; on civo and hetzner it selects that cloud's own region or
-# location, and their AWS-side resources stay in the account region - which
-# is why LAB_REGION below does not follow them.
+# REGION is the provider's region, validated against scripts/lib/catalog.sh
+# before any of this is read. It selects a Civo region or a Hetzner location
+# only; on aws it is refused, so nothing here reads it.
 #
 # Deliberately not named AWS_REGION and deliberately not exported: an
 # exported AWS_REGION would let the AWS CLI resolve a region ambiently and
 # collide with the operator's own profile.
 
 LAB_ACCOUNT_REGION="eu-west-1"
-
-if [ "${PROVIDER:-aws}" = "aws" ] && [ -n "${REGION:-}" ]; then
-  LAB_REGION="$REGION"
-else
-  LAB_REGION="$LAB_ACCOUNT_REGION"
-fi
+LAB_REGION="$LAB_ACCOUNT_REGION"
 
 if [ "${PROVIDER:-}" = "civo" ] && [ -n "${REGION:-}" ]; then
   CIVO_REGION="$REGION"

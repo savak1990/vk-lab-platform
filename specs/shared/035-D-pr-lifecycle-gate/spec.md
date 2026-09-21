@@ -1,6 +1,6 @@
 ---
 id: "SHARED-035"
-title: "Label-gated two-provider lifecycle check as the required status check on main"
+title: "Label-gated lifecycle check as the required status check on main"
 status: "DONE"
 priority: "P1"
 milestone: "M1"
@@ -14,7 +14,7 @@ depends_on: ["SHARED-017", "CIVO-140", "AWS-020"]
 blocked_by: []
 supersedes: []
 created: "2026-09-19"
-updated: "2026-09-19"
+updated: "2026-09-21"
 completed: "2026-09-19"
 ---
 
@@ -27,8 +27,9 @@ AWS cluster and one Civo cluster have been brought up, verified with `make
 test`, and destroyed - both of them, whatever happened during the run. Direct
 pushes to `main` are rejected.
 
-The heavy half is opt-in per pull request through the `ci:lifecycle` label,
-because a run costs roughly 55 minutes and a little under one US dollar.
+The heavy half is opt-in per pull request through a lifecycle label, because
+both providers together cost roughly 55 minutes and a little under one US
+dollar. Which providers run is chosen per pull request (Requirement 2).
 
 The reasoning behind every choice here is in ADR 0035. This spec states the
 requirements and how they are verified.
@@ -61,9 +62,36 @@ Non-goals:
 
 1. Static validation MUST run on every pull request event, and MUST gate the
    lifecycle jobs so a lint failure costs no cloud time.
-2. The two-provider lifecycle MUST run only when the pull request carries the
-   `ci:lifecycle` label, and applying the label MUST itself start the run
-   against the pull request's current head commit.
+2. The lifecycle MUST run only when the pull request carries a lifecycle
+   label, and applying one MUST itself start the run against the pull
+   request's current head commit.
+
+   `ci:lifecycle` MUST be the only trigger, and MUST mean every provider that
+   has a job when it carries no selector. `ci:aws`, `ci:civo`, `ci:hetzner`
+   and `ci:local` MUST be selectors that narrow it, and MUST start nothing on
+   their own — otherwise selecting two providers costs two label events, two
+   runs, and the second cancelling the first's validation.
+
+   A selected provider with no job behind it MUST fail `pr-gate` with a
+   message saying so, rather than be ignored — a selector that silently does
+   nothing is worse than no selector.
+
+   The labels MUST be read once, and every later job MUST read that answer.
+   The match MUST be exact string equality, so a label whose name merely
+   contains a provider name cannot select that provider.
+
+   `pr-gate` MUST judge each provider against what the labels asked for, and
+   MUST NOT infer the request from the job results: a deliberately omitted
+   provider and an unlabeled pull request both report `skipped`, and only one
+   of those may merge.
+
+   A run covering a subset of providers MUST name the providers it did not
+   exercise, both as a warning and in the run's step summary, for the same
+   reason the waiver in ADR 0035 Decision 2a is loud.
+
+   (Amended 2026-09-21. As first written this requirement made `ci:lifecycle`
+   the only trigger, and it always meant both providers. See ADR 0035
+   Decision 1a.)
 3. Exactly one job, `pr-gate`, MUST be the required status check. It MUST
    report a decided result for every reachable state and MUST NOT be reachable
    in a pending state (constitution §11).
@@ -130,8 +158,13 @@ Non-goals:
 ## 5. Testing / acceptance criteria
 
 1. A pull request with no label runs the six validate jobs, skips `lifecycle`,
-   and shows `pr-gate` red naming the label.
-2. Adding the label starts a run with no further push; both providers appear.
+   and shows `pr-gate` red naming the labels.
+2. Adding `ci:lifecycle` starts a run with no further push; both providers
+   appear.
+2a. Adding `ci:civo` alone starts no run. Adding `ci:lifecycle` after it starts
+    civo only, `pr-gate` passes, and the run names aws as not exercised.
+    `ci:lifecycle` with `ci:hetzner` fails `pr-gate`, because no hetzner job
+    exists yet.
 3. Both `test` jobs pass and both `down` jobs pass, including
    `verify-no-leaks.sh`.
 4. After the run, neither CI project has a cluster, state bucket, backup

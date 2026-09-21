@@ -1,4 +1,3 @@
-{{- if ne .Values.target "local" }}
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -8,6 +7,30 @@ metadata:
     argocd.argoproj.io/sync-wave: "2"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
+{{- if eq .Values.target "local" }}
+  # Matches by path, not hostname: a port-forward to localhost cannot present
+  # the Host header hostname matching needs. No hostnames key at all, so any
+  # Host matches.
+  #
+  # Argo CD takes the root prefix because it cannot be served from a subpath
+  # here: server.rootpath moves its API and redirects, but the UI keeps
+  # <base href="/">, so every relative asset resolves to the root and 404s.
+  # server.basehref does not change that tag either - both were measured on a
+  # live cluster. Components that do handle a subpath get their own prefix,
+  # which Gateway API matches ahead of this one because it is longer.
+  parentRefs:
+    - name: platform-gateway
+      namespace: envoy
+      sectionName: http
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: argocd-server
+          port: 80
+{{- else }}
   # https listener only: on civo the http listener carries just the
   # HTTP->HTTPS redirect and the ACME solver routes.
   parentRefs:
@@ -22,6 +45,8 @@ spec:
     - backendRefs:
         - name: argocd-server
           port: 80
+{{- end }}
+{{- if ne .Values.target "local" }}
 ---
 # Stays gated: lives in and targets the observability namespace, which only
 # kube-prometheus-stack's Application creates - unconditional here would

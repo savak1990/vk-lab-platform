@@ -51,6 +51,74 @@ merge attempt against `main` plus the pull request, which is a stronger
 guarantee, but it surfaces a failure only at merge time and adds a second
 triggering mechanism. The cost of that choice is recorded in Decision 4.
 
+#### 1a. The set of clouds is chosen per pull request
+
+**Amended 2026-09-21.** As first accepted, `ci:lifecycle` was the only trigger
+and it meant both providers, always. A third target landed and a fourth is
+coming, so "all of them" became the wrong default for most pull requests: a
+change that touches only the Hetzner Terraform does not need an EKS cluster,
+and an AWS run costs most of the 55 minutes.
+
+`ci:lifecycle` stays the trigger and keeps meaning every provider that has a
+job. Each provider also gains a label — `ci:aws`, `ci:civo`, `ci:hetzner`,
+`ci:local` — but those are **selectors, not triggers**: on their own they start
+nothing, and they only narrow a run that `ci:lifecycle` starts.
+
+That split is the point, not an accident of naming. Every label event starts a
+workflow run, and the validate jobs cancel an older run on the same pull
+request. Had a selector also been a trigger, choosing two of four providers
+would mean two label events, two runs, and the second cancelling the first's
+validation half-way — which is exactly the failure that mangled an earlier
+pull request's run graph. Selectors being inert means the maintainer stages the
+choice, then fires once with `ci:lifecycle`.
+
+`ci:all` was considered and rejected. With `ci:lifecycle` alone already meaning
+every provider, it would be a second name for one behavior.
+
+Only `ci:lifecycle` can contradict `ci:skip-lifecycle`, and that pairing is
+rejected as before. A selector alongside the waiver is not a contradiction,
+because a selector asks for nothing.
+
+Three properties follow, and each is enforced rather than documented:
+
+- **`pr-gate` reads what was asked for, never what the results imply.** Before
+  this amendment it inferred "was this labeled?" from both lifecycle jobs
+  reporting `skipped`. That inference is now wrong: a deliberately omitted
+  provider and an unlabeled pull request are both `skipped`, and only one of
+  the two may merge. The gate holds `(requested, result)` per provider instead.
+- **A selector with no job behind it is refused, not ignored.** `ci:hetzner`
+  and `ci:local` exist before their jobs do, because naming the full set once
+  is clearer than adding labels piecemeal. Selecting one fails the gate with a
+  message saying so. A selector that silently does nothing is worse than no
+  selector.
+
+  The default must therefore never reach for them. `ci:lifecycle` with no
+  selector expands to the providers that *have* a job — one list in the label
+  step, which is also the single line to change when a job lands. Expanding to
+  all four instead makes the commonest label of all refuse itself, which is
+  how it shipped and how it was caught: each step was right alone, and the
+  pair was not.
+- **A partial run says which clouds it never touched**, as a warning and a step
+  summary entry. This is the same reasoning as the waiver in Decision 2a: a
+  partial merge and a full merge are otherwise indistinguishable afterwards.
+
+The labels are read once, in the `changes` job, and every later job reads that
+answer. Two reasons. The expression would otherwise be a `contains()` chain per
+provider per job, growing with both. And matching there is done with `jq`, on
+exact string equality, so a future label whose name merely contains a provider
+name cannot select that provider.
+
+The concurrency groups are unchanged, and this is not a fix for them. They
+remain fixed strings shared by every pull request, so two pull requests still
+contend for one cloud. Fewer pull requests asking for AWS means that contention
+bites less often.
+
+`tests/scripts/pr-gate-test.sh` runs the gate's decision step, the label step,
+and the two **composed** against these combinations with no GitHub involved,
+and `validate-repo` runs it. The composed cases are not redundant: the two
+steps were each correct alone while the pair was not, and only feeding one
+step's real output into the other shows that.
+
 ### 2. One always-reporting gate job is the required status check
 
 `pr-gate` is the only required check on `main`. Every other job feeds it, and

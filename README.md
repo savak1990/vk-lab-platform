@@ -102,7 +102,7 @@ All offline, none need credentials: `make specs-check`, `make gitops-check`,
 | `PROVIDER` | `aws` | `aws` `civo` `hetzner` `local` |
 | `PROJECT_NAME` | per provider | lowercase letters, digits and hyphens, at most 23 characters |
 | `SUBDOMAIN` | per provider | must differ per project |
-| `REGION` | `eu-west-1` / `LON1` / `nbg1` | see below; matched case-insensitively |
+| `REGION` | `LON1` / `nbg1` | `civo` and `hetzner` only, see below; matched case-insensitively. Refused on `aws` |
 | `NODE_TYPE` | `t4g.medium` / `g4s.kube.medium` / `cx33` | see below |
 | `NODE_COUNT` | `1` / `3` / `3` | a positive integer |
 | `CONFIRM_DESTROY` | unset | must equal `PROJECT_NAME`, on guarded targets |
@@ -114,6 +114,12 @@ Defaults are listed `aws` / `civo` / `hetzner`. `PROVIDER=local` owns no cloud
 resources, so it **ignores** `REGION`, `NODE_TYPE` and `NODE_COUNT` — leaving
 them exported while switching targets is harmless.
 
+**`REGION` does not apply to `aws`.** Every AWS resource this platform creates
+lives in `eu-west-1`, including a Civo or Hetzner project's state bucket, SSM
+parameters and Roles Anywhere chain. `PROVIDER=aws` with any other region is
+refused rather than ignored, because a typed region is a statement of intent
+the platform cannot honor. See ADR 0024 and ADR 0040.
+
 `REGION`, `NODE_TYPE` and `NODE_COUNT` are validated **before any cloud call
 and without credentials**, so a typo fails in under a second rather than part
 way through an apply. The allowed shapes, and why each is on the list, are in
@@ -122,14 +128,17 @@ copy of each cloud's catalogue.
 
 | `PROVIDER` | `REGION` | `NODE_TYPE` allowed there |
 |---|---|---|
-| `aws` | `eu-west-1` | `t4g.medium`, `t4g.large`, `m6g.large` |
+| `aws` | fixed at `eu-west-1`, not an input | `t4g.medium`, `t4g.large`, `m6g.large` |
 | `civo` | `LON1` `NYC1` `FRA1` `MUM1` | `g4s.kube.medium` |
-| `hetzner` | `nbg1` | `cx23` `cx33` `cx43` |
-| `hetzner` | `hel1` | `cx23` `cx33` |
+| `hetzner` | `nbg1` | `cx23` `cx33` `cx43` `cx53` `cpx32` `cpx42` |
+| `hetzner` | `hel1` | `cx23` `cx33` `cpx32` `cpx42` |
 | `hetzner` | `fsn1` | nothing orderable as of 2026-09-21 |
 
 Node types are listed per region because availability differs: `cx43` can be
-ordered in `nbg1` but not `hel1`.
+ordered in `nbg1` but not `hel1`. The larger Hetzner types are above the lab's
+cost ceiling on a monthly basis and are allowed anyway, because the Hetzner
+limit is on server count rather than spend, and a CI run that lives 25 minutes
+costs cents at any of these prices.
 
 ### Worked examples
 
@@ -143,7 +152,7 @@ PROVIDER=civo REGION=FRA1 make full-up
 # Hetzner: three cx33 for the lab, in Helsinki rather than Nuremberg.
 PROVIDER=hetzner REGION=hel1 NODE_COUNT=3 make full-up
 
-# A bigger AWS system node group.
+# A bigger AWS system node group. AWS takes no REGION.
 PROVIDER=aws NODE_TYPE=t4g.large make up
 
 # One kind cluster locally. No cloud, no credentials.
@@ -192,8 +201,10 @@ in spec LOCAL-050. See [`specs/local/`](specs/local/) and
 ### Running more than one lab
 
 `PROJECT_NAME` and `SUBDOMAIN` are the only two identity variables; everything
-else is derived (`<project>-tf-state`, `<project>-eks`, `secrets/<project>/`,
-`/<project>/...` SSM paths, `<subdomain>.<root-domain>`). Both are free-form
+else is derived (`<project>-<region>-tf-state`, `<project>-eks`,
+`secrets/<project>/`, `/<project>/...` SSM paths, `<subdomain>.<root-domain>`).
+The `<region>` in the bucket name is the *provider's* region, so the same
+project in two Civo regions gets two buckets. Both variables are free-form
 inputs on `lab.yml` and plain env vars locally, so a second lab is:
 
 ```sh
@@ -211,14 +222,16 @@ Two rules the tooling enforces for you:
 
 - **`PROJECT_NAME`**: lowercase letters, digits and hyphens, starting and ending
   alphanumeric, at most 23 characters. The charset is S3's (via
-  `<project>-tf-state`); the length is what IAM's 64-char role-name cap leaves
-  after the EKS module's `<cluster>-system-ng-` prefix and the provider's
+  `<project>-<region>-tf-state`); the length is what IAM's 64-char role-name cap
+  leaves after the EKS module's `<cluster>-system-ng-` prefix and the provider's
   26-char suffix. `scripts/lib/require-valid-project-name.sh` refuses anything
-  else before a single resource is created. Note `<project>-tf-state` must also
-  be unique across *all* AWS accounts, which cannot be checked ahead of time.
-- **`SUBDOMAIN`**: must differ per project. Two projects sharing one would
-  contend for the same Route 53 zone; `scripts/require-unique-subdomain.sh`
-  refuses before any apply.
+  else before a single resource is created. Note the bucket name must also be
+  unique across *all* AWS accounts, which cannot be checked ahead of time.
+- **`SUBDOMAIN`**: must differ per project, and you MUST set it explicitly for
+  a second lab. Its default is keyed on `PROVIDER`, not on `PROJECT_NAME`, so a
+  second Civo project started without it inherits `SUBDOMAIN=civo` and contends
+  for the same Route 53 zone. `scripts/require-unique-subdomain.sh` refuses
+  before any apply, but only after a Route 53 call, not offline.
 
 Run `make clear-cache` when switching between projects in one checkout — every
 composite target already does.
@@ -263,8 +276,19 @@ whether the expensive half is needed:
 |---|---|---|
 | Only `.md` files — specs, docs, README | Secret scanning and the specs layout check, ~30 seconds | green, no cloud spend |
 | Touches `terraform/`, `gitops/`, `scripts/`, `tests/`, `images/`, `Makefile`, `go.mod`, or a workflow | The static checks | red — add the label |
-| …and carries the **`ci:lifecycle`** label | One EKS cluster and one Civo cluster are created, `make test` runs against both, and both are destroyed | green if all of that passed |
+| …and carries the **`ci:lifecycle`** label | Every provider that has a job: a cluster is created, `make test` runs against it, and it is destroyed | green if all of that passed |
+| …**plus `ci:aws` and/or `ci:civo`** | Only the selected providers | green if those passed; the run names the clouds it skipped |
 | …and carries **`ci:skip-lifecycle`** instead | The static checks only | green, but the waiver is recorded — see below |
+
+**`ci:lifecycle` is the trigger; the provider labels only narrow it.** A
+provider label on its own starts nothing, so you can add two of them and then
+fire one run — rather than two runs that cancel each other's validation. To run
+Civo alone: add `ci:civo`, then add `ci:lifecycle`.
+
+Pick the clouds the change actually needs. A Hetzner-only Terraform change does
+not need an EKS cluster, and AWS is most of the 55 minutes. `ci:hetzner` and
+`ci:local` name jobs that do not exist yet — selecting one fails the gate with a
+message rather than quietly doing nothing.
 
 A pull request is **documentation-only** when every changed file ends in `.md`.
 It skips the four heavy checks — Terraform, GitOps, YAML and Actions lint — which

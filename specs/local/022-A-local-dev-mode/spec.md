@@ -88,12 +88,30 @@ integration, which is spec 024's job.
    `<pending>` indefinitely on kind, which has no cloud load-balancer
    implementation, and no MetalLB or `cloud-provider-kind` substitute is used
    (ADR 0006 alternative d, carried forward by ADR 0038).
-10. The `local` target's `HTTPRoute`s MUST match by **path** (`/argo`,
-    `/grafana`). Every other target MUST continue matching by hostname. This is
-    a permanent, accepted divergence in route-matching *kind*: a forward to
-    `localhost:PORT` cannot present the Host header hostname matching needs.
-    Each local route MUST carry a `URLRewrite` filter replacing the prefix with
-    `/`, or the backend receives the prefix and returns 404.
+10. The `local` target's `HTTPRoute`s MUST match by **path** (`/argocd`,
+    `/grafana`) and MUST omit `hostnames` entirely. Every other target MUST
+    continue matching by hostname. This is a permanent, accepted divergence in
+    route-matching *kind*: a forward to `localhost:PORT` cannot present the
+    Host header hostname matching needs.
+
+    A `URLRewrite` filter stripping the prefix MUST NOT be used. Instead, a
+    component that can serve itself from a subpath gets its own prefix and
+    receives it unrewritten — Grafana through `GF_SERVER_ROOT_URL` and
+    `serve_from_sub_path`. A component that cannot MUST take the root prefix
+    rather than be forced under one.
+
+    **Argo CD takes the root prefix.** `server.rootpath` moves its API and its
+    redirects, but the UI keeps `<base href="/">`, so every relative asset
+    resolves to the root and returns 404; `server.basehref` does not change
+    that tag either. Both were measured on a live cluster against chart
+    10.4.0 before this requirement was settled. Since there is exactly one
+    gateway on this target and no hostname matching, giving Argo CD `/` costs
+    nothing: Gateway API matches a longer prefix first, so every other
+    component still reaches its own.
+
+    (Amended 2026-09-21. As first written this requirement mandated the
+    `URLRewrite` filter; the first amendment replaced it with `rootpath`,
+    which the live test then disproved.)
 11. The `local` target MUST use plain HTTP. No cert-manager issuer and no TLS
     termination at Envoy MUST be configured for it.
 12. Bring-up MUST create the Kubernetes `Secret` objects the platform needs
