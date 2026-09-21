@@ -569,6 +569,39 @@ default region.
 Every other sweep is project-scoped and follows its own project's region:
 `verify-no-leaks.sh`, `force-clean-ci.sh`, `status.sh`.
 
+### 5.2 One project in two regions at once — deferred to its own spec
+
+This spec lets a project **choose** its region. It does not let one project
+**occupy two at once**, and the operator has asked for that as a follow-up
+after the KMS migration.
+
+Per-region SSM paths are necessary but **not sufficient**. Measured
+2026-09-21: all 22 SSM parameters are `/<project>/…` with no region, and they
+fall into three groups that need different treatment, so a blanket region
+prefix would be wrong:
+
+| Group | Examples | Treatment |
+|---|---|---|
+| Region-varying | `persistent-civo/network/id`, `cluster-civo/k8s/*`, `persistent-hetzner/*`, `cluster/eks/node_subnet_id`, `persistent/vpc/vpc_id`, `bootstrap/acm/certificate_arn` | MUST gain the region |
+| Region-invariant | `persistent/postgres/app_password`, `persistent/grafana/admin_password`, `persistent/argocd/admin_password_bcrypt` | MUST NOT — one credential per project, whatever region it runs in |
+| Needs a decision | `bootstrap/route53/*`, `bootstrap/rolesanywhere/*` | see below |
+
+Three other collisions have to be solved in the same spec, and two are harder
+than SSM:
+
+- **The Route 53 zone.** One `<subdomain>.<root-domain>` per project. Two
+  regions both create it. Either each region takes its own subdomain — which
+  changes every URL — or one zone is shared and its records are region-scoped,
+  which means deciding who owns the zone's lifecycle.
+- **The Roles Anywhere trust anchor**, `<project>-<provider>-workload-ca`: one
+  per project by HETZ-018's naming, so two regions collide on the name.
+- **The backups bucket** is already region-namespaced by §3.11, so it is done.
+
+Until that spec lands, two regions in parallel means **two projects** —
+`PROJECT_NAME` and `SUBDOMAIN` already namespace everything, and that works
+today with no new code. §3.7's guard refuses the same-project case, which is
+the correct behaviour rather than a limitation to work around.
+
 ### 5.2 Other risks
 
 - **Service quotas are per region.** A region never used before starts at AWS
