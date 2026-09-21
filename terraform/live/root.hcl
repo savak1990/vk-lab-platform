@@ -15,12 +15,10 @@ locals {
   provider_name = get_env("PROVIDER", "aws")
   region_input  = get_env("REGION", "")
 
-  # REGION is the provider's region, validated before terragrunt runs. Only
-  # the aws target moves its AWS resources; civo and hetzner keep theirs in
-  # the account region whatever their own region is (ADR 0039).
-  aws_region = (contains(["account", "account-state"], local.raw_class)
-    || local.provider_name != "aws"
-  || local.region_input == "") ? local.account_region : local.region_input
+  # Every AWS resource this platform creates lives in the account region,
+  # whatever the target. REGION selects a Civo region or a Hetzner location
+  # and never an AWS one, so no layer varies this.
+  aws_region = local.account_region
 
   # The account layer's own state (the shared lab-role/kms/github-oidc/
   # eks-access-identity units) must never live in any one project's own

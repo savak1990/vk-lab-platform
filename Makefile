@@ -1,4 +1,4 @@
-.PHONY: up down full-up full-down platform-up platform-down state-up state-down status clusters require-valid-project-name require-valid-node-config account-up account-down bootstrap-up bootstrap-down secret-encrypt secret-decrypt secrets-check generate-secrets ca-init ssh-key-init persistent-up persistent-down clear-cache cluster-up cluster-down kubeconfig test-kubeconfig test-kubeconfig-isolated argo-up argo-down test
+.PHONY: up down full-up full-down platform-up platform-down state-up state-down status clusters require-valid-project-name require-valid-node-config account-up account-down bootstrap-up bootstrap-down secret-encrypt secret-decrypt secrets-check node-config-check generate-secrets ca-init ssh-key-init persistent-up persistent-down clear-cache cluster-up cluster-down kubeconfig test-kubeconfig test-kubeconfig-isolated argo-up argo-down test
 
 .NOTPARALLEL:
 
@@ -348,6 +348,12 @@ secret-decrypt:
 ## Usage: make secrets-check
 secrets-check:
 	@./tests/scripts/secret-scope-test.sh
+
+## Runs the credential-free test of the node-configuration gate: which
+## PROVIDER/REGION pairs it accepts, and that aws refuses a region.
+## Usage: make node-config-check
+node-config-check:
+	@./tests/scripts/node-config-test.sh
 
 ## Runs the cluster-free test of argo-up's root watch loop (API blips,
 ## failed syncs, heartbeat, timeout) against a fake kubectl.

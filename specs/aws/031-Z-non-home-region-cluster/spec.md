@@ -1,13 +1,26 @@
 ---
 id: "AWS-031"
 status: "DEFERRED"
-updated: "2026-09-17"
+updated: "2026-09-21"
 ---
 # 031 — Non-Home-Region Cluster Support (Deferred)
 
-**Status note:** Proposed — design only. ADR 0024 fixed the platform at a single
-region; this document records what re-widening would actually cost, so the
-capability is deferred rather than lost.
+**Status note (2026-09-21):** the deferral is now permanent. ADR 0040 fixes the
+AWS region at `eu-west-1` for every layer and refuses `REGION` on the `aws`
+target, so this capability is declined rather than merely postponed. SHARED-044
+briefly claimed to supersede this document while ADR 0039 was in force; it does
+not. Everything below stands, and stands as the record of a road not taken.
+
+One correction, found while costing the cancelled migration: the blocker set
+below and in ADR 0023, ADR 0024 and SHARED-044 §3.6 names two SSM
+`SecureString` parameters. There are three, and there are four consumers of
+`alias/lab-secrets` that fail outside its region — the `aws_kms_secrets`
+decrypt over the committed ciphertext and both `aws_kms_alias` lookups fail
+alongside the parameters. The cost recorded here was understated.
+
+**Original status note:** Proposed — design only. ADR 0024 fixed the platform at
+a single region; this document records what re-widening would actually cost, so
+the capability is deferred rather than lost.
 
 **Complexity:** High — not one hard problem. The blockers span KMS key topology,
 the ACM/NLB co-region constraint, IAM ARN scoping, cross-region SSM reads, and an
