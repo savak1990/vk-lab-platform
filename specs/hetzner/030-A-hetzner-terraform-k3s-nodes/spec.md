@@ -573,8 +573,9 @@ and HETZ-040's sweep removes any that Terraform lost.
   stock in the whole `eu-central` zone, so the run used the CPX equivalent,
   which is the same 4 vCPU / 8 GiB shape and is unrelated to the defect under
   test — the attach race is a property of the boot, not of the server type.
-  `cpx22` and `cpx32` joined the catalogue in the same change, so this needed
-  no override.
+  `cpx32` is in the catalogue, so this needed no override — SHARED-044 added
+  the CPX and `cx53` entries on main for an unrelated reason, the per-account
+  server-count cap, and they cover the stock case too.
 
   Three servers created in 37 s. `make kubeconfig` fetched a working
   kubeconfig on its first successful attempt, and every check below was made

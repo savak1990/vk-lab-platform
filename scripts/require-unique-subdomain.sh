@@ -21,7 +21,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
 SUBDOMAIN="${SUBDOMAIN:-lab}"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/region.sh"
-STATE_BUCKET="${PROJECT_NAME}-tf-state"
+STATE_BUCKET="${PROJECT_NAME}-${LAB_PROVIDER_REGION}-tf-state"
 STATE_KEY="bootstrap/route53/terraform.tfstate"
 
 # lab-role already holds kms:* on alias/lab-secrets (for the SSM

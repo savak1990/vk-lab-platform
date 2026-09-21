@@ -5,8 +5,8 @@ set -euo pipefail
 
 # shellcheck source=lib/provider.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib/provider.sh"
-BUCKET="${PROJECT_NAME}-tf-state"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/region.sh"
+BUCKET="${PROJECT_NAME}-${LAB_PROVIDER_REGION}-tf-state"
 
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT

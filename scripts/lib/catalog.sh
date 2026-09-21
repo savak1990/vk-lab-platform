@@ -29,28 +29,34 @@
 #     cx23   2 vCPU /  4 GiB    7.85
 #     cx33   4 vCPU /  8 GiB   12.09   default
 #     cx43   8 vCPU / 16 GiB   22.37
-#     cpx22  2 vCPU /  4 GiB   27.82
-#     cpx32  4 vCPU /  8 GiB   50.81
-#   Excluded: cx53 42.34; cpx12 is 1 vCPU / 2 GiB, too small to hold this
-#   platform; cpx42 99.21 and the whole ccx line buy nothing the cheaper
-#   entries do not.
+#     cx53  16 vCPU / 32 GiB   42.34   over the lab ceiling, see below
+#     cpx32  4 vCPU /  8 GiB   50.81   over the lab ceiling, see below
+#     cpx42  8 vCPU / 16 GiB   99.21   over the lab ceiling, see below
+#   Excluded: cpx52, cpx62 and the whole ccx line, over ceiling with no
+#   argument for them. cax* (ARM) are cheap but every real create has
+#   failed since 2026-09-19, so listing them would only fail later.
 #
-#   The two cpx entries are the one deliberate breach of the 25 EUR ceiling,
-#   and they are here because CX alone cannot be relied on to exist. On
-#   2026-09-21 cx23, cx33 and cx43 were all unorderable in nbg1 AND hel1
-#   within hours of a successful create, while every cpx type stayed
-#   orderable in both; the CX line has been stock-constrained since
-#   2026-09-02. A stock-out is not a retryable flake - it is a red pipeline,
-#   or a lab that cannot be brought up, for as long as the shortage lasts.
+# The three over-ceiling Hetzner entries are deliberate, for two reasons
+# the monthly price hides.
 #
-#   Price still decides which one to pick, because the two lines are bought
-#   over different spans. An ephemeral CI cluster lives under an hour, so
-#   what it costs is the hourly rate - 0.0814 against 0.0194 per server, so
-#   three nodes for an hour costs about 0.19 EUR more - and that is noise
-#   against a pipeline that cannot run. A lab cluster lives for months, so
-#   what it costs is the monthly rate, and cpx32 is four times the ceiling.
-#   This list cannot express that difference, so nothing but this comment
-#   stops a lab from sitting on one. Do not make either cpx entry a default.
+# The Hetzner limit is on server COUNT, per account, not on spend - so when
+# the cap binds, fewer-and-bigger is the only shape that fits, and a single
+# cx53 or cpx42 beats three cx33 that will not be granted.
+#
+# And a CI run is minutes, not a month. cpx42 at 99.21/month is about 0.06
+# EUR for a 25-minute lifecycle run. The ceiling was reasoned for a lab
+# that stays up; it is the wrong metric for a cluster that is destroyed
+# before the hour is out.
+#
+# cpx32 and cpx42 also matter for a reason unrelated to cost: on 2026-09-21
+# every cx* type reads unavailable in every eu-central location while the
+# cpx*2 generation reads available. That flag has been wrong in both
+# directions (HETZ-020), so it is not proof - but the cheap line being
+# unorderable for weeks is, and an allowlist with nothing orderable in it
+# is worse than an expensive one.
+#
+# fsn1 stays empty regardless: HETZ-020's real creates found nothing there
+# on 2026-09-21, and a flag is not evidence against a failed create.
 #
 # m6g.large costs 17% more than t4g.large for identical specs and exists
 # for one reason: t4g is burstable and throttles to 20% baseline once CPU
@@ -86,8 +92,8 @@ catalog_node_types() {
   case "$1:$2" in
     aws:eu-west-1) echo "t4g.medium t4g.large m6g.large" ;;
     civo:LON1 | civo:NYC1 | civo:FRA1 | civo:MUM1) echo "g4s.kube.medium" ;;
-    hetzner:nbg1) echo "cx23 cx33 cx43 cpx22 cpx32" ;;
-    hetzner:hel1) echo "cx23 cx33 cpx22 cpx32" ;;
+    hetzner:nbg1) echo "cx23 cx33 cx43 cx53 cpx32 cpx42" ;;
+    hetzner:hel1) echo "cx23 cx33 cpx32 cpx42" ;;
     hetzner:fsn1) echo "" ;;
     *) echo "" ;;
   esac
