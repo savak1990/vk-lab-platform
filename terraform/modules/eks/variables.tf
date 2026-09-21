@@ -36,3 +36,20 @@ variable "project" {
   description = "PROJECT_NAME - used to build this project's SSM parameter path."
   type        = string
 }
+
+variable "node_count" {
+  description = "NODE_COUNT - size of the fixed system node group. Karpenter supplies workload capacity on top, so this is not the cluster's total."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.node_count > 0
+    error_message = "node_count must be a positive integer."
+  }
+}
+
+variable "node_type" {
+  description = "NODE_TYPE - instance type for the system node group. Validated against scripts/lib/catalog.sh before Terraform runs; pod density per type is spec 028."
+  type        = string
+  default     = "t4g.medium"
+}
