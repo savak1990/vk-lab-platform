@@ -110,7 +110,7 @@ karpenter:
       ["t4g.medium", "t4g.large", "m6g.medium", "m6g.large", "m7g.medium", "m7g.large"]
     cpuLimit: "4"
 
-# Set by scripts/argo-up.sh: acmCertificateArn from persistent/acm's
+# Set by scripts/argo-up.sh: acmCertificateArn from bootstrap/acm's
 # certificate_arn output, nlbSubnetIds from the eks unit's node_subnet_id -
 # kept explicit as a fast-follow even though spec 020's VPC subnets already
 # carry kubernetes.io/role/elb (see envoy-gateway/gateway.yaml's comment).

@@ -177,7 +177,7 @@ data "aws_iam_policy_document" "permissions" {
       "rolesanywhere:ListTagsForResource",
       "rolesanywhere:DisableTrustAnchor", "rolesanywhere:EnableTrustAnchor",
     ]
-    resources = ["arn:aws:rolesanywhere:eu-west-1:${local.account}:*"]
+    resources = ["arn:aws:rolesanywhere:*:${local.account}:*"]
   }
 
   # Karpenter dynamically creates/owns an EC2 instance profile per

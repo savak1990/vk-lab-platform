@@ -243,7 +243,15 @@ Two sites MUST NOT be changed by a mechanical pass:
 `gitops/values.yaml:7` needs the `--set region=` chain ADR 0024 deleted
 restored in three places: `scripts/argo-up.sh`, `gitops/bootstrap/values.yaml`
 and `gitops/bootstrap/templates/root-application.yaml`. Six golden files bake
-the literal and MUST fail loudly until updated.
+the literal.
+
+**That restoration belongs with the KMS migration, not with the region
+split.** The value feeds the AWS Load Balancer Controller and the
+`ClusterSecretStore`, both of which read AWS in the *project's AWS region* —
+which is `eu-west-1` for every provider until the AWS catalogue widens.
+Restoring the chain earlier would add a knob that can only ever be set to the
+value it already has, and six golden files would churn for no behaviour
+change.
 
 **AWS keeps one region until §3.6 lands.** The catalogue lists only
 `eu-west-1` for `aws`, so the gate refuses any other in a second rather than
