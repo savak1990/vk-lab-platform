@@ -45,7 +45,7 @@ locals {
   # bootstrap|persistent|disposable, not a scope name, on every tagged resource).
   # "cluster" is likewise a directory name, not a lifecycle class - the
   # constitution's tag vocabulary is disposable, so it maps back to that.
-  lifecycle_class = lookup({ account = "bootstrap", "account-state" = "bootstrap", cluster = "disposable", "cluster-civo" = "disposable", "persistent-civo" = "persistent" }, local.raw_class, local.raw_class)
+  lifecycle_class = lookup({ account = "bootstrap", "account-state" = "bootstrap", cluster = "disposable", "cluster-civo" = "disposable", "cluster-hetzner" = "disposable", "persistent-civo" = "persistent", "persistent-hetzner" = "persistent" }, local.raw_class, local.raw_class)
 
   # The Civo target runs in exactly one region, for the same reason aws_region
   # is a constant: a second region was never made to work and is not supported.
@@ -60,6 +60,20 @@ locals {
   # Interpolated directly after the aws block's closing brace, so an aws stack
   # renders the empty string and its provider.tf stays byte-identical.
   civo_provider = local.civo_stack ? "\nprovider \"civo\" {\n  region = \"${local.civo_region}\"\n}" : ""
+
+  # The Hetzner target runs in exactly one location, for the same reason
+  # aws_region and civo_region are constants. Also declared in
+  # scripts/lib/region.sh - Terraform and shell each need their own copy since
+  # one isn't reachable from the other; never derive this, keep both literal.
+  hcloud_location = "nbg1"
+
+  # Hetzner stacks get an hcloud provider in addition to aws, for the same
+  # reason Civo stacks get theirs. The token is read from HCLOUD_TOKEN by the
+  # provider itself and is deliberately never written here, so it cannot reach
+  # the generated file or the state.
+  hetzner_stack = contains(["persistent-hetzner", "cluster-hetzner"], local.raw_class)
+
+  hcloud_provider = local.hetzner_stack ? "\nprovider \"hcloud\" {}" : ""
 }
 
 generate "provider" {
@@ -77,7 +91,7 @@ provider "aws" {
       ManagedBy = "terraform"
     }
   }
-}${local.civo_provider}
+}${local.civo_provider}${local.hcloud_provider}
 EOF
 }
 
