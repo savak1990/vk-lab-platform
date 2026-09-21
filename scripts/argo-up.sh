@@ -18,6 +18,9 @@ use_isolated_kubeconfig
 ARGOCD_CHART_VERSION="${ARGOCD_CHART_VERSION:-10.4.0}"
 TARGET_REVISION="${TARGET_REVISION:-main}"
 REPO_URL="${REPO_URL:-https://github.com/savak1990/vk-lab-platform}"
+# local target only. Fixed and publicly known on purpose, like
+# FIXED_TEST_PASSWORDS: the cluster is throwaway and holds nothing real.
+LOCAL_ARGOCD_PASSWORD="${LOCAL_ARGOCD_PASSWORD:-test}"
 # Comma-separated; cpu limit is a node-count cap, not a vCPU budget - keep
 # it in sync with the instance types' vCPU count when overriding either.
 # spot is general workload capacity (several arm64 families/sizes, so a
@@ -156,13 +159,36 @@ civo_resolve_inputs() {
   configure_kubeconfig "$KUBECONFIG"
 }
 
+# Reaches no cloud API at all. Every value the other resolvers read from SSM
+# either has no local equivalent or is generated here, and the password is the
+# publicly-known "test" that FIXED_TEST_PASSWORDS already uses for throwaway
+# environments - nothing on this target is real enough to protect.
+local_resolve_inputs() {
+  command -v htpasswd >/dev/null 2>&1 || {
+    echo "ARGO-UP: htpasswd is required to hash the local Argo CD password." >&2
+    exit 1
+  }
+  ADMIN_PASSWORD_BCRYPT_HASH="$(htpasswd -nbBC 10 "" "$LOCAL_ARGOCD_PASSWORD" | cut -d: -f2 | tr -d '\n')"
+  # Empty rather than unset: the DNS and backup machinery below is shared by
+  # every target and reads these outside a provider branch, under `set -u`.
+  LAB_FQDN=""
+  BACKUP_BUCKET=""
+  BACKUP_SERVER_NAME=""
+  RECOVER_SERVER_NAME=""
+  configure_kubeconfig "$KUBECONFIG"
+  require_local_context
+}
+
 case "$PROVIDER" in
   civo) civo_resolve_inputs ;;
+  local) local_resolve_inputs ;;
   aws) aws_resolve_inputs ;;
   *) echo "ARGO-UP: no input resolver for PROVIDER=$PROVIDER." >&2; exit 1 ;;
 esac
 
-if [ "$PROVIDER" != aws ]; then
+# Named providers rather than "not aws": local has no TLS Secret to import and
+# no SSM to import it from, and would otherwise inherit the AWS call.
+if [ "$PROVIDER" = civo ] || [ "$PROVIDER" = hetzner ]; then
   import_tls_secret
 fi
 
@@ -291,7 +317,9 @@ aws_wait_for_dns() {
 # Runs above the fast-path guard below so repeated argo-up runs still repair
 # the Secret even on the fast path, and creates the cert-manager namespace
 # itself, since it runs before cert-manager's own Application can CreateNamespace=true it.
-if [ "$PROVIDER" != aws ]; then
+# Named providers rather than "not aws": local has no Roles Anywhere CA, and
+# ensure_ca_secret would hard-fail on the missing committed certificate.
+if [ "$PROVIDER" = civo ] || [ "$PROVIDER" = hetzner ]; then
   ensure_ca_secret
 fi
 
@@ -304,9 +332,12 @@ fi
 # some Application spec fields once it's reconciled the object, and a plain
 # client-side `helm upgrade --install` on an already-synced root fails with
 # "Apply failed with 1 conflict" against that field manager otherwise).
+# Never taken on local: re-running argo-up is that target's edit-reconcile
+# loop, so a Synced/Healthy root is the normal starting state, not a reason
+# to stop.
 EXISTING_STATUS="$(kubectl get application root -n argocd \
   -o jsonpath='{.status.sync.status}/{.status.health.status}' 2>/dev/null || true)"
-if [ "$EXISTING_STATUS" = "Synced/Healthy" ]; then
+if [ "$EXISTING_STATUS" = "Synced/Healthy" ] && [ "$PROVIDER" != local ]; then
   echo "ARGO-UP: root Application already Synced/Healthy - checking DNS."
   case "$PROVIDER" in
     civo)
@@ -482,8 +513,78 @@ civo_install_root_application() {
     --set tls.hostedZoneId="$ROUTE53_ZONE_ID"
 }
 
+# Renders gitops/ from the working tree and hands the result to the controller,
+# so an uncommitted edit reconciles without a commit or a push. Argo refuses a
+# local sync while automated sync is on, which is why the root Application omits
+# that block for this target - nothing else syncs it, so this call is required,
+# not an optimization. A previous failed sync leaves an operation Running and
+# the next one is rejected outright, so clear that first.
+local_sync_root() {
+  local phase i
+  command -v argocd >/dev/null 2>&1 || {
+    echo "ARGO-UP: the argocd CLI is required on the local target - https://argo-cd.readthedocs.io/en/stable/cli_installation/" >&2
+    return 1
+  }
+  # The CLI's core mode reads its namespace from the kubeconfig context, and
+  # reports a missing argocd-cm rather than a missing namespace when it is wrong.
+  kubectl config set-context --current --namespace=argocd >/dev/null
+  export ARGOCD_OPTS="--core"
+
+  phase="$(kubectl get application root -n argocd -o jsonpath='{.status.operationState.phase}' 2>/dev/null || true)"
+  if [ "$phase" = Running ] || [ "$phase" = Terminating ]; then
+    echo "ARGO-UP: clearing a $phase sync operation left by a previous run."
+    argocd app terminate-op root >/dev/null 2>&1 || true
+    for i in $(seq 1 30); do
+      phase="$(kubectl get application root -n argocd -o jsonpath='{.status.operationState.phase}' 2>/dev/null || true)"
+      [ "$phase" != Running ] && [ "$phase" != Terminating ] && break
+      sleep 2
+    done
+  fi
+
+  argocd app sync root --local "$REPO_ROOT/gitops" --local-repo-root "$REPO_ROOT" \
+    --timeout "${LOCAL_SYNC_TIMEOUT:-600}"
+  local rc=$?
+  kubectl config set-context --current --namespace=default >/dev/null
+  return $rc
+}
+
+# Every Application, not just root: see the call site for why root alone is not
+# enough on this target.
+local_wait_for_children() {
+  local watch_seconds="${LOCAL_CHILDREN_WATCH_SECONDS:-900}" elapsed=0 unready last=""
+  while [ "$elapsed" -lt "$watch_seconds" ]; do
+    unready="$(kubectl get application -n argocd \
+      -o jsonpath='{range .items[*]}{.metadata.name}={.status.sync.status}/{.status.health.status} {end}' 2>/dev/null \
+      | tr ' ' '\n' | grep -v '=Synced/Healthy$' | grep -v '^$' | tr '\n' ' ')"
+    if [ -z "$unready" ]; then
+      return 0
+    fi
+    if [ "$unready" != "$last" ]; then
+      echo "ARGO-UP: [+${elapsed}s] still reconciling: $unready"
+      last="$unready"
+    fi
+    sleep "${ARGO_UP_POLL_INTERVAL:-5}"
+    elapsed=$((elapsed + ${ARGO_UP_POLL_INTERVAL:-5}))
+  done
+  echo "ARGO-UP: timed out after ${watch_seconds}s with Applications not Synced/Healthy: $unready" >&2
+  return 1
+}
+
+local_install_root_application() {
+  helm upgrade --install root-application "$REPO_ROOT/gitops/bootstrap" \
+    --namespace argocd \
+    --server-side=true --force-conflicts \
+    --set target=local \
+    --set project="$PROJECT_NAME" \
+    --set repoURL="$REPO_URL" \
+    --set targetRevision="$TARGET_REVISION" \
+    --set postgres.storageSize="$POSTGRES_STORAGE_SIZE"
+  local_sync_root
+}
+
 case "$PROVIDER" in
   civo) civo_install_root_application ;;
+  local) local_install_root_application ;;
   aws) aws_install_root_application ;;
   *) echo "ARGO-UP: no root Application installer for PROVIDER=$PROVIDER." >&2; exit 1 ;;
 esac
@@ -492,11 +593,23 @@ esac
 # (including Postgres) is really ready. ARGO_UP_WATCH_SECONDS defaults to
 # 2700 on both targets: root's retry budget alone is ~16 min worst case.
 argo_watch_root || exit 1
-echo "ARGO-UP: root Synced/Healthy - waiting for external-dns to publish records."
+if [ "$PROVIDER" != local ]; then
+  echo "ARGO-UP: root Synced/Healthy - waiting for external-dns to publish records."
+fi
 case "$PROVIDER" in
   civo)
     civo_wait_for_lb_ip || exit 1
     civo_wait_for_dns
+    ;;
+  local)
+    # No load balancer and no DNS to wait for, but root reports Healthy as soon
+    # as its own child Application objects are applied - before those children
+    # have pulled an image or run a hook. On the other targets the DNS wait
+    # absorbs that gap; here nothing would, so a bring-up would claim success
+    # with the platform still starting.
+    local_wait_for_children || exit 1
+    echo "ARGO-UP: root and every child Synced/Healthy - platform ready."
+    echo "ARGO-UP: reach it with 'kubectl port-forward -n argocd svc/argocd-server 8080:80'; admin password is '$LOCAL_ARGOCD_PASSWORD'."
     ;;
   aws)
     aws_wait_for_dns
@@ -507,4 +620,7 @@ case "$PROVIDER" in
     exit 1
     ;;
 esac
-backup_publish_server_name
+# Writes to SSM and prunes S3; the local target has neither and takes no backups.
+if [ "$PROVIDER" != local ]; then
+  backup_publish_server_name
+fi

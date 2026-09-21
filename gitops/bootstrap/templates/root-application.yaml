@@ -89,9 +89,15 @@ spec:
     server: https://kubernetes.default.svc
     namespace: argocd
   syncPolicy:
+    {{- if ne .Values.target "local" }}
     automated:
       prune: true
       selfHeal: true
+    {{- else }}
+    # Omitted on local: that target syncs from the working tree via
+    # `argocd app sync --local`, which Argo refuses while automated sync is on.
+    # argo-up performs the sync, so nothing here is left unreconciled.
+    {{- end }}
     # A failed automated sync is never re-attempted for the same revision, so a
     # sibling Application's CRDs or namespace arriving late wedges root forever.
     # The budget outlasts Argo's own API-discovery cache refresh, not just the CRD.

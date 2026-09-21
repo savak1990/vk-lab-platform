@@ -103,9 +103,13 @@ integration, which is spec 024's job.
     Store, assume a role, use EKS Pod Identity or IAM Roles Anywhere, or
     decrypt a committed ciphertext through KMS. ADR 0006's opt-in KMS path is
     withdrawn (ADR 0038).
-14. The root Application MUST sync from a git ref, naming the current branch or
-    commit, exactly as every other target does. ADR 0006's working-directory
-    sync is withdrawn (ADR 0038).
+14. The root Application MUST reconcile `gitops/` edits from the working tree,
+    with no commit and no push, via `argocd app sync root --local gitops`
+    (ADR 0038 as amended). Its `syncPolicy.automated` MUST be omitted for this
+    target only — Argo refuses a local sync while automated sync is enabled —
+    and bring-up MUST perform the sync itself, since nothing else will. A
+    previous failed sync leaves an operation `Running` and the next sync is
+    rejected outright, so bring-up MUST clear a stale operation first.
 15. Observability and Postgres MUST carry an explicit laptop-scale posture for
     this target — replica counts, resource requests, retention windows — stated
     in `gitops/values.yaml` or in the bring-up script's overrides. Any
@@ -149,6 +153,10 @@ integration, which is spec 024's job.
   in the environment**, and the root Application reaches `Synced/Healthy`. This
   is the real test of Requirement 13; a run with ambient credentials present
   proves nothing.
+- Editing a file under `gitops/` and re-running `PROVIDER=local make argo-up`
+  reconciles that change into the cluster **without a commit or a push**,
+  proving Requirement 14. Re-running on an already-healthy cluster must not
+  take the idempotency fast path: that re-sync is the loop.
 - `kubectl port-forward` to Envoy Gateway's Service, followed by plain-HTTP
   requests to `/argo` and `/grafana` on that port, succeeds.
 - `PROVIDER=local make down` leaves no kind cluster behind, proving
