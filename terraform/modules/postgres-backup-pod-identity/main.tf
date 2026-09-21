@@ -10,7 +10,7 @@ module "pod_identity" {
 locals {
   # A literal rather than a dependency: the bucket lives in the persistent
   # stack, which this disposable unit must not reach into.
-  bucket_arn = "arn:aws:s3:::${var.project}-postgres-backups"
+  bucket_arn = "arn:aws:s3:::${var.project}-${var.provider_region}-postgres-backups"
 }
 
 # Scoped to this project's backup bucket only. DeleteObject lets the backup

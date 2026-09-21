@@ -15,7 +15,7 @@ locals {
 
   # Built as a literal rather than read from the bucket's own state: the
   # bucket lives in the persistent stack, which is applied after this one.
-  backups_bucket_arn = "arn:aws:s3:::${var.project}-postgres-backups"
+  backups_bucket_arn = "arn:aws:s3:::${var.project}-${var.provider_region}-postgres-backups"
 
   consumers = local.create ? {
     eso            = data.aws_iam_policy_document.eso.json

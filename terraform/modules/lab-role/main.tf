@@ -34,8 +34,8 @@ locals {
   # the account layer's own state bucket is named distinctly (not "*-tf-state")
   # specifically so this role never matches it.
   bucket_arn = "arn:aws:s3:::*-tf-state"
-  # Every project's Postgres backup bucket, on either target - the name is
-  # "<project>-postgres-backups" and the project is a free-form operator input,
+  # Every project's Postgres backup bucket, on any target - the name is
+  # "<project>-<region>-postgres-backups" and both parts are operator input,
   # so the wildcard sits in the same place as the state bucket's above.
   backups_bucket_arn = "arn:aws:s3:::*-postgres-backups"
 }

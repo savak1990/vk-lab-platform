@@ -1,5 +1,7 @@
 include "root" {
   path = find_in_parent_folders("root.hcl")
+  # Needed to read provider_region below.
+  expose = true
 }
 
 terraform {
@@ -34,8 +36,9 @@ locals {
 }
 
 inputs = {
-  project        = local.project
-  provider_name  = local.ca_provider
-  ca_cert_pem    = fileexists(local.ca_cert_path) ? file(local.ca_cert_path) : ""
-  hosted_zone_id = dependency.route53.outputs.zone_id
+  project         = local.project
+  provider_region = include.root.locals.provider_region
+  provider_name   = local.ca_provider
+  ca_cert_pem     = fileexists(local.ca_cert_path) ? file(local.ca_cert_path) : ""
+  hosted_zone_id  = dependency.route53.outputs.zone_id
 }
