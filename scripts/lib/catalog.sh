@@ -64,6 +64,13 @@
 # recorded here, so it is insurance and never the default. Do not delete
 # it as poor value - that is the whole point of it.
 #
+# The aws list has exactly one entry and always will. That region is fixed
+# platform-wide, not merely the only one tried: the shared secrets KMS key,
+# lab-role and the OIDC provider all live in it, and REGION is refused on
+# this provider rather than matched against the list. The entry stays rather
+# than emptying because catalog_default_region, the aws:eu-west-1 node-type
+# key and state-up's region-change guard all read it.
+#
 # Region lists carry their own constraints. Hetzner is limited to the
 # eu-central network zone because the private network HETZ-025 creates is
 # eu-central, and a server outside that zone cannot attach to it. Hetzner

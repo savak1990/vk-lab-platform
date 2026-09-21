@@ -366,9 +366,10 @@ jobs:
 
   # Checks the Makefile owns: gitops-check diffs the rendered aws manifests
   # against the committed golden baseline, specs-check verifies the specs/
-  # layout and its links, and secrets-check exercises secret-encrypt/decrypt
-  # path resolution against a fake aws. All run with no AWS credentials at
-  # all, which is what lets them sit in fast validation.
+  # layout and its links, secrets-check exercises secret-encrypt/decrypt
+  # path resolution against a fake aws, and node-config-check pins which
+  # PROVIDER/REGION pairs the offline gate accepts. All run with no AWS
+  # credentials at all, which is what lets them sit in fast validation.
   validate-repo:
     concurrency:
       group: validate-repo-${{ github.event.pull_request.number || github.ref }}
@@ -399,6 +400,8 @@ jobs:
       - run: make secrets-check
 
       - run: make argo-watch-check
+
+      - run: make node-config-check
 
   # Both providers at once, each an independent up -> test -> down chain.
   #
