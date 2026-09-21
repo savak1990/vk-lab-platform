@@ -27,7 +27,7 @@ if [ ! -f "$SECRET_FILE" ]; then
 fi
 
 aws kms decrypt \
-  --region "$LAB_REGION" \
+  --region "$LAB_ACCOUNT_REGION" \
   --ciphertext-blob "fileb://$SECRET_FILE" \
   --output text \
   --query Plaintext | base64 --decode
