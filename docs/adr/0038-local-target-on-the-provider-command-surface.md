@@ -72,14 +72,28 @@ inner development loop — and redesigned around what the platform became.
   `gitops/values.yaml` and `_helpers.tpl` functions. ADR 0006's per-component
   `values-aws.yaml` / `values-local.yaml` layout is withdrawn. It never existed
   and will not be created.
-- **The root Application syncs from a git ref.** `targetRevision` names the
-  current branch or commit, exactly as every other target does. ADR 0006
-  required `local` to sync from the working directory on disk so that editing
-  `gitops/` reconciled without a commit, and left the mechanism unresolved.
-  Argo CD's repo-server clones over git and has no local-filesystem Application
-  source, so satisfying that requirement means running a git daemon or an
-  in-cluster Gitea for the whole life of the cluster. That is the most complex
-  piece of ADR 0006 in service of saving a commit. It is withdrawn.
+- **The root Application syncs from the working tree, through the CLI.**
+  ADR 0006 required `local` to reconcile `gitops/` edits without a commit and
+  left the mechanism unresolved. Argo CD's repo-server clones over git and has
+  no local-filesystem Application source, so the obvious readings of that
+  requirement — a git daemon, or an in-cluster Gitea — mean running a component
+  for the whole life of the cluster to save a commit.
+
+  `argocd app sync root --local gitops` needs neither. The CLI renders the
+  chart locally and hands the result to the controller, so an uncommitted edit
+  reconciles directly. It works here specifically because every child
+  Application sources an *upstream* chart: everything this repository authors
+  is in the root chart's own render, so one root sync covers it. Argo refuses a
+  local sync while automated sync is enabled, so the root Application omits
+  `syncPolicy.automated` for this target only, and `argo-up` performs the sync
+  itself. Re-running `PROVIDER=local make argo-up` is therefore the target's
+  edit-reconcile loop, and it adds an `argocd` CLI dependency that the other
+  targets do not have.
+
+  **Amended 2026-09-21.** As first accepted, this bullet said the opposite —
+  that `targetRevision` would name a pushed branch like every other target.
+  A spike disproved the premise behind that: the CLI path was assumed to be
+  defeated by the app-of-apps structure, and it is not.
 - **Placeholder secrets only, and no AWS call anywhere.** `argo-up` creates the
   Kubernetes `Secret` objects the platform needs, with generated throwaway
   values, in the same untracked bootstrap class as the Civo CA secret. The

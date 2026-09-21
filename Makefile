@@ -246,7 +246,11 @@ endif
 ## the generated kubeconfig's exec plugin), so access never depends on
 ## whether you or GitHub Actions created the cluster. On civo, merges the
 ## cluster's kubeconfig and renames its context to $(PROJECT_NAME)-civo (the
-## civo CLI has no way to name the context directly).
+## civo CLI has no way to name the context directly). On local, exports the
+## kind cluster's context (kind-$(PROJECT_NAME)) - a bring-up leaves it out of
+## your kubeconfig entirely, so run this once to get a context to switch to.
+## Note for local: `kind delete cluster` removes that context again on teardown
+## and leaves current-context unset, so reselect your own afterwards.
 ## This target and test-kubeconfig are the only two that write ~/.kube/config
 ## or change your current context. up/down/argo-up/argo-down/cluster-down/
 ## status/test all work through $(LAB_KUBECONFIG) instead, so a bring-up never
