@@ -271,6 +271,23 @@ controller. Primary IPs were the exception — removed with their servers.
    `network { ip = … }` does it in one resource, so this only matters to
    scripts (HETZ-040).
 
+   **Corrected 2026-09-21 (HETZ-030).** The last sentence is wrong, and the
+   spike could not have seen it: creating servers stopped and attaching them
+   before power-on is precisely what avoids the race, so a spike that did
+   that had no way to observe it. One resource is not one API call. Terraform
+   creates the server, which begins to boot, and attaches the network after.
+   Cloud-init reads its network configuration once, so a server that loses
+   that race writes an `eth0`-only netplan; the private NIC then appears as a
+   link in state `DOWN` that nothing ever configures, and `--flannel-iface`
+   and `--node-ip` have no address to bind. On the first real bring-up of
+   `cluster-hetzner` — three servers created in one `apply` — the control
+   plane won the race and both workers lost it, so both agents retried the
+   API address indefinitely. The race is per server and not otherwise
+   predictable. Any path that creates a server attached to the network,
+   Terraform's included, must configure the private NIC itself rather than
+   rely on the datasource; HETZ-030's templates write the netplan stanza and
+   wait for the address before installing k3s.
+
 ### Autoscaler node path (experiment 8, node half)
 
 A `cx33` created from the **unmodified** worker cloud-init with no pinned
@@ -280,6 +297,18 @@ gateway is the network's first address (`10.0.0.1`), not the subnet's, so
 `.1`–`.9` stay assignable when the control plane is pinned at `.10`.
 HETZ-170's premise holds: one render serves the fixed worker and any
 autoscaled node.
+
+### Stock, 2026-09-21 later the same day (HETZ-030)
+
+Between one `apply` and the next, **every catalogue-legal shape went out of
+stock across the whole `eu-central` zone**: `cx23`, `cx33` and `cx43` all
+reported `available=false` in `nbg1` and in `hel1`, and a create failed with
+`error during placement (resource_unavailable)`. The morning's measurement in
+the table above had `cx33` orderable in both. So the CX line's stock moves
+within hours, not days, and a second *location* is not a fallback when the
+shortage is zone-wide — which weakens the "a second location beats a second
+SKU" conclusion recorded above, and is the strongest argument yet for
+HETZ-175's pre-flight probe running before any `apply`, not as a retry.
 
 ### Still open
 
