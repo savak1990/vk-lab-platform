@@ -1,5 +1,7 @@
 include "root" {
   path = find_in_parent_folders("root.hcl")
+  # Needed to read provider_region below.
+  expose = true
 }
 
 terraform {
@@ -7,5 +9,6 @@ terraform {
 }
 
 inputs = {
-  project = get_env("PROJECT_NAME", "vk-lab-platform")
+  project         = get_env("PROJECT_NAME", "vk-lab-platform")
+  provider_region = include.root.locals.provider_region
 }

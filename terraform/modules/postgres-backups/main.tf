@@ -1,7 +1,5 @@
-data "aws_region" "current" {}
-
 resource "aws_s3_bucket" "this" {
-  bucket        = "${var.project}-${data.aws_region.current.region}-postgres-backups"
+  bucket        = "${var.project}-${var.provider_region}-postgres-backups"
   force_destroy = var.force_destroy
 }
 

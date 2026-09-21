@@ -41,7 +41,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/confirm-destroy.sh"
 # the guard every other destroy path uses applies here too.
 confirm_destroy "$PROJECT_NAME"
 
-STATE_BUCKET="${PROJECT_NAME}-${LAB_REGION}-tf-state"
+STATE_BUCKET="${PROJECT_NAME}-${LAB_PROVIDER_REGION}-tf-state"
 CLEANED=0
 
 echo "FORCE-CLEAN-CI: $PROJECT_NAME on $PROVIDER."

@@ -9,7 +9,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/region.sh"
-BUCKET="${PROJECT_NAME}-${LAB_REGION}-tf-state"
+BUCKET="${PROJECT_NAME}-${LAB_PROVIDER_REGION}-tf-state"
 
 if ! aws s3api head-bucket --bucket "$BUCKET" --region "$LAB_REGION" >/dev/null 2>&1; then
   echo "s3://$BUCKET does not exist. Nothing to do."

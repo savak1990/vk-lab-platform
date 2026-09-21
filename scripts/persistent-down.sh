@@ -26,7 +26,7 @@ source "$REPO_ROOT/scripts/lib/provider.sh"
 
 PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/region.sh"
-STATE_BUCKET="${PROJECT_NAME}-${LAB_REGION}-tf-state"
+STATE_BUCKET="${PROJECT_NAME}-${LAB_PROVIDER_REGION}-tf-state"
 
 confirm_destroy "$PROJECT_NAME"
 
@@ -120,7 +120,7 @@ fi
 # Named as a literal rather than read from SSM: the parameter lives in the
 # same unit this run destroys, and a missing parameter must never be read
 # as "no bucket to empty".
-BACKUP_BUCKET="${PROJECT_NAME}-${LAB_REGION}-postgres-backups"
+BACKUP_BUCKET="${PROJECT_NAME}-${LAB_PROVIDER_REGION}-postgres-backups"
 if backup_objects=$(aws s3api list-objects-v2 --bucket "$BACKUP_BUCKET" --region "$LAB_REGION" \
   --query 'length(Contents)' --output text 2>/dev/null); then
   [ "$backup_objects" = "None" ] && backup_objects=0

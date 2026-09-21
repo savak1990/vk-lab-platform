@@ -9,7 +9,7 @@ PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/region.sh"
 # shellcheck source=lib/catalog.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib/catalog.sh"
-BUCKET="${PROJECT_NAME}-${LAB_REGION}-tf-state"
+BUCKET="${PROJECT_NAME}-${LAB_PROVIDER_REGION}-tf-state"
 
 cd "$UNIT_DIR"
 
@@ -42,12 +42,13 @@ fi
 # new region means a new bucket while the old platform keeps billing,
 # invisible to this project's state. Candidates come from the catalogue, not
 # a name prefix, which would false-match a longer project name.
-for candidate_region in $(catalog_regions aws); do
-  [ "$candidate_region" = "$LAB_REGION" ] && continue
-  other_bucket="${PROJECT_NAME}-${candidate_region}-tf-state"
-  aws s3api head-bucket --bucket "$other_bucket" --region "$candidate_region" >/dev/null 2>&1 || continue
+for candidate_region in $(catalog_regions "$PROVIDER"); do
+  candidate_lower="$(catalog_lower "$candidate_region")"
+  [ "$candidate_lower" = "$LAB_PROVIDER_REGION" ] && continue
+  other_bucket="${PROJECT_NAME}-${candidate_lower}-tf-state"
+  aws s3api head-bucket --bucket "$other_bucket" --region "$LAB_REGION" >/dev/null 2>&1 || continue
 
-  other_count="$(aws s3api list-objects-v2 --bucket "$other_bucket" --region "$candidate_region" \
+  other_count="$(aws s3api list-objects-v2 --bucket "$other_bucket" --region "$LAB_REGION" \
     --query 'length(Contents)' --output text 2>/dev/null || echo 0)"
   [ "$other_count" = "None" ] && other_count=0
   [ "$other_count" -gt 0 ] || continue

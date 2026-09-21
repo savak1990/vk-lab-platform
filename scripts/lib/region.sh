@@ -42,3 +42,14 @@ fi
 # Not derived from REGION: every location the catalogue allows is in this
 # zone, and one outside it could not attach to the private network at all.
 HCLOUD_NETWORK_ZONE="eu-central"
+
+# The provider's own region, lowercased: what namespaces this project's
+# Terraform state. A state bucket is an AWS resource and lives in
+# LAB_REGION, but its NAME says whose state it holds - without that, two
+# Civo regions would share one state and the second run would orphan the
+# first's network while believing it had built cleanly.
+case "${PROVIDER:-aws}" in
+  civo) LAB_PROVIDER_REGION="$(printf '%s' "$CIVO_REGION" | tr '[:upper:]' '[:lower:]')" ;;
+  hetzner) LAB_PROVIDER_REGION="$HCLOUD_LOCATION" ;;
+  *) LAB_PROVIDER_REGION="$LAB_REGION" ;;
+esac

@@ -403,8 +403,28 @@ Both project buckets therefore take the region:
 
 | Today | Becomes |
 |---|---|
-| `<project>-tf-state` | `<project>-<region>-tf-state` |
-| `<project>-postgres-backups` | `<project>-<region>-postgres-backups` |
+| `<project>-tf-state` | `<project>-<provider-region>-tf-state` |
+| `<project>-postgres-backups` | `<project>-<provider-region>-postgres-backups` |
+
+**The region in the name is the *provider's*, lowercased — not the AWS
+region.** The bucket is an AWS resource and lives in the project's AWS
+region, but its name records whose state it holds. Using the AWS region
+would leave two Civo regions sharing one bucket and one set of state keys:
+a run in `FRA1` after a run in `LON1` would read a network id that exists
+only in `LON1`, fail to find it through a `FRA1`-scoped provider, and plan a
+fresh create — **orphaning the `LON1` network while reporting success**. The
+same applies to Hetzner between `nbg1` and `hel1`.
+
+| Provider | `REGION` | Bucket |
+|---|---|---|
+| `aws` | `eu-west-1` | `vk-lab-platform-eu-west-1-tf-state` |
+| `civo` | `LON1` | `vk-civo-lab-lon1-tf-state` |
+| `civo` | `FRA1` | `vk-civo-lab-fra1-tf-state` |
+| `hetzner` | `hel1` | `vk-hetzner-lab-hel1-tf-state` |
+
+This also makes §3.7's guard live immediately rather than dormant: it loops
+the *provider's* regions, so it protects Civo and Hetzner now instead of
+waiting for the AWS catalogue to widen.
 
 **The region goes before the suffix, not after, and that is load-bearing.**
 `lab-role` grants `arn:aws:s3:::*-tf-state` and `arn:aws:s3:::*-postgres-backups`
