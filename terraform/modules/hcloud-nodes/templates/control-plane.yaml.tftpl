@@ -1,15 +1,33 @@
 #cloud-config
-bootcmd:
-  # k3s binds --flannel-iface at start, so the private NIC must already carry
-  # its address or the CNI comes up on the public one.
-  - |
-    for _ in $(seq 1 60); do
-      ip -4 addr show ${nic} | grep -q 'inet ' && break
-      sleep 1
-    done
+write_files:
+  # The private NIC is attached by a second API call, after the server has
+  # already begun to boot. Cloud-init reads its network configuration once, so
+  # a server that loses that race gets an eth0-only netplan, and the NIC then
+  # appears as a link nothing ever configures. Owning the stanza here makes the
+  # outcome the same either way.
+  - path: /etc/netplan/60-hcloud-private.yaml
+    permissions: '0600'
+    content: |
+      network:
+        version: 2
+        ethernets:
+          ${nic}:
+            dhcp4: true
 runcmd:
   - |
     set -eu
+    for _ in $(seq 1 60); do
+      if ip link show ${nic} >/dev/null 2>&1; then break; fi
+      sleep 2
+    done
+    netplan apply
+    # k3s binds the CNI and the node address at start, so the address must
+    # exist before the install line runs, not merely the link.
+    for _ in $(seq 1 60); do
+      if ip -4 addr show ${nic} | grep -q 'inet '; then break; fi
+      sleep 2
+    done
+    ip -4 addr show ${nic} | grep -q 'inet '
     PUB="$(curl -sf --retry 10 --retry-delay 2 http://169.254.169.254/hetzner/v1/metadata/public-ipv4)"
     test -n "$PUB"
     # eviction-hard is quoted whole: unquoted, the '<' is a redirection from a
