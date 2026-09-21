@@ -7,8 +7,8 @@
 # Selects the provider's project/stack defaults and dispatch. aws is the
 # default; behavior is unchanged from before this variable existed.
 export PROVIDER ?= aws
-ifeq ($(filter aws civo hetzner,$(PROVIDER)),)
-$(error PROVIDER must be aws, civo or hetzner, got '$(PROVIDER)')
+ifeq ($(filter aws civo hetzner local,$(PROVIDER)),)
+$(error PROVIDER must be aws, civo, hetzner or local, got '$(PROVIDER)')
 endif
 
 # Overridable so CI/integration runs can use a disposable, randomly
@@ -20,6 +20,9 @@ export SUBDOMAIN ?= civo
 else ifeq ($(PROVIDER),hetzner)
 export PROJECT_NAME ?= vk-hetzner-lab
 export SUBDOMAIN ?= hz
+else ifeq ($(PROVIDER),local)
+export PROJECT_NAME ?= vk-local-lab
+export SUBDOMAIN ?= local
 else
 export PROJECT_NAME ?= vk-lab-platform
 export SUBDOMAIN ?= lab
@@ -46,6 +49,11 @@ export CLUSTER_DIR := cluster-hetzner
 export PERSISTENT_EXTRA_DIR := persistent-hetzner
 export BOOTSTRAP_EXCLUDE := acm
 export PERSISTENT_EXCLUDE := vpc
+else ifeq ($(PROVIDER),local)
+export CLUSTER_DIR :=
+export PERSISTENT_EXTRA_DIR :=
+export BOOTSTRAP_EXCLUDE :=
+export PERSISTENT_EXCLUDE :=
 else
 export CLUSTER_DIR := cluster
 export PERSISTENT_EXTRA_DIR :=
@@ -124,14 +132,24 @@ account-down:
 
 ## Creates Bootstrap-lifecycle resources for this project: its own state
 ## bucket, then the lab DNS zone/delegation + ACM cert.
+ifeq ($(PROVIDER),local)
+bootstrap-up:
+	@echo "PROVIDER=local owns no cloud resources - nothing to create."
+else
 bootstrap-up:
 	./scripts/bootstrap-up.sh
+endif
 
 ## Destroys Bootstrap-lifecycle resources for this project: the DNS zone/
 ## cert, then its own state bucket. Guarded (CONFIRM_DESTROY must match
 ## PROJECT_NAME) and refuses while Persistent/Disposable state still exists.
+ifeq ($(PROVIDER),local)
+bootstrap-down:
+	@echo "PROVIDER=local owns no cloud resources - nothing to destroy."
+else
 bootstrap-down:
 	./scripts/bootstrap-down.sh
+endif
 
 ## Creates Persistent-lifecycle resources (VPC, Secrets Manager).
 ## Auto-generates postgres-app-password.enc / grafana-admin-password.enc /
@@ -144,6 +162,9 @@ persistent-up:
 else ifeq ($(PROVIDER),hetzner)
 persistent-up:
 	./scripts/persistent-up-hetzner.sh
+else ifeq ($(PROVIDER),local)
+persistent-up:
+	@echo "PROVIDER=local owns no cloud resources - nothing to create."
 else
 persistent-up:
 	./scripts/generate-secrets.sh
@@ -158,8 +179,13 @@ endif
 ## any Postgres EBS snapshot left from before ADR 0033 - listed before the
 ## destroy, since they're Persistent-lifecycle data.
 ## Usage: CONFIRM_DESTROY=vk-lab-platform make persistent-down
+ifeq ($(PROVIDER),local)
+persistent-down:
+	@echo "PROVIDER=local owns no cloud resources - nothing to destroy."
+else
 persistent-down:
 	./scripts/persistent-down.sh
+endif
 
 ## Creates the disposable cluster (system node group + addons, or firewall +
 ## k3s cluster on civo). Fails fast (naming `make persistent-up`) if the
@@ -173,6 +199,9 @@ else ifeq ($(PROVIDER),hetzner)
 cluster-up:
 	./scripts/require-persistent.sh
 	@bash -c 'source scripts/lib/region.sh; source scripts/lib/provider.sh; hcloud_token; cd terraform/live/$(CLUSTER_DIR) && terragrunt run --all --non-interactive -- apply -auto-approve'
+else ifeq ($(PROVIDER),local)
+cluster-up:
+	./scripts/cluster-up-local.sh
 else
 cluster-up:
 	./scripts/require-persistent.sh
@@ -184,8 +213,13 @@ endif
 ## resources - refuses to run otherwise (see scripts/cluster-down.sh, ADR 0012).
 ## Configures its own kubeconfig if the cluster exists; skips straight to
 ## `terragrunt destroy` if it doesn't.
+ifeq ($(PROVIDER),local)
+cluster-down:
+	./scripts/cluster-down-local.sh
+else
 cluster-down:
 	./scripts/cluster-down.sh
+endif
 
 ## Switches your own kubectl context to the disposable cluster. On aws, every
 ## kubectl call re-assumes eks-access-identity via --role-arn (baked into
