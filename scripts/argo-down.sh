@@ -36,6 +36,9 @@ if ! cluster_exists; then
 fi
 
 configure_kubeconfig "$KUBECONFIG"
+if [ "$PROVIDER" = local ]; then
+  require_local_context
+fi
 
 if ! api_reachable; then
   echo "ARGO-DOWN: ERROR - cluster $CLUSTER_NAME exists but is unreachable via kubectl (cluster-info failed)." >&2
@@ -45,7 +48,9 @@ if ! api_reachable; then
   exit 1
 fi
 
-if [ "$PROVIDER" != aws ]; then
+# Named providers rather than "not aws": local terminates no TLS and has no
+# SSM to persist a certificate into.
+if [ "$PROVIDER" = civo ] || [ "$PROVIDER" = hetzner ]; then
   export_tls_secret
 fi
 
@@ -127,8 +132,11 @@ if [ "$DISARMED" -gt 0 ]; then
 fi
 
 # Best effort: WAL archiving already made every committed row durable, so a
-# failed final base backup never blocks the teardown.
-backup_teardown
+# failed final base backup never blocks the teardown. Local takes no backups
+# at all, and its data is throwaway by design.
+if [ "$PROVIDER" != local ]; then
+  backup_teardown
+fi
 
 # Argo deletes one sync wave at a time and refuses to start the next while
 # any object it manages still has a deletionTimestamp - so a single object
@@ -190,6 +198,9 @@ kubectl delete httproute -A --all >/dev/null 2>&1 || true
 # constitution S7: a controller must stay alive until what it manages is
 # actually cleaned up). Poll Route 53 directly for its own TXT ownership
 # records under the lab zone until none remain, instead of trusting timing.
+# Skipped on local: no hosted zone, no external-dns, and the root-domain
+# decrypt below would be the one AWS call left in that target's teardown.
+if [ "$PROVIDER" != local ]; then
 SUBDOMAIN="${SUBDOMAIN:-lab}"
 ROOT_DOMAIN="$(SECRET_SCOPE=global "$REPO_ROOT/scripts/secret-decrypt.sh" root-domain)"
 FQDN="${SUBDOMAIN}.${ROOT_DOMAIN}"
@@ -222,6 +233,7 @@ if [ -z "$ZONE_ID" ] || [ "$ZONE_ID" = "None" ]; then
       dns_elapsed=$((dns_elapsed + POLL_INTERVAL))
     done
   fi
+fi
 
 # The Service behind the NLB is a controller side effect, not an
 # Argo-applied resource - the cascade below doesn't wait on it before
