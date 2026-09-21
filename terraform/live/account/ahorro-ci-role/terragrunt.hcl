@@ -3,7 +3,7 @@ include "root" {
 }
 
 terraform {
-  source = "${get_repo_root()}/terraform/modules//ssm-reader-role"
+  source = "${get_repo_root()}/terraform/modules//ahorro-ci-role"
 }
 
 # account-global and shared: the role is scoped to the consuming repository,
@@ -13,7 +13,5 @@ locals {
 }
 
 inputs = {
-  name            = "ahorro-domain-reader"
-  github_repo     = local.github_repo
-  parameter_names = ["/account/root_domain"]
+  github_repo = local.github_repo
 }

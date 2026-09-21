@@ -40,9 +40,10 @@ every project's clusters), `eks-test-identity` (same shape as
 `eks-access-identity` — no AWS permission policy — but mapped to a read-only
 EKS access entry instead of `AmazonEKSClusterAdminPolicy`, so `make test`/the
 CI test job never runs with cluster-admin access; see
-`terraform/modules/eks/main.tf`), `ahorro-domain-reader` (a read-only role
-that lets the `vk-ahorro` repository's CI read `/account/root_domain`, so
-that value reaches it without ever being committed). Does not qualify: this project's own state
+`terraform/modules/eks/main.tf`), `ahorro-ci-role` (the role the
+`vk-ahorro` repository's CI assumes; today it reads `/account/root_domain`
+only, so that value reaches the app without ever being committed. The app's
+own workload identity is a separate role, with its own trust). Does not qualify: this project's own state
 bucket, the lab DNS zone + ACM cert (both per-project, in `bootstrap/`).
 
 ## Prerequisite: this layer's own dedicated state bucket

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Destroys account-global resources (ahorro-domain-reader, root-domain,
+# Destroys account-global resources (ahorro-ci-role, root-domain,
 # lab-role, eks-access-identity,
 # eks-test-identity, github-oidc, the shared secrets KMS key, in that
 # sequence), then the
@@ -73,8 +73,8 @@ cd "$REPO_ROOT/terraform/live/account"
 # re-resolves its data.aws_kms_alias/data.aws_iam_role lookups, aborting
 # mid-teardown). lab-role first (the only one with such lookups), the rest
 # in any order - mirrors account-up.sh's apply order, reversed.
-echo "Destroying ahorro-domain-reader ..."
-(cd "$REPO_ROOT/terraform/live/account/ahorro-domain-reader" && terragrunt destroy --non-interactive -auto-approve)
+echo "Destroying ahorro-ci-role ..."
+(cd "$REPO_ROOT/terraform/live/account/ahorro-ci-role" && terragrunt destroy --non-interactive -auto-approve)
 
 echo "Destroying root-domain ..."
 (cd "$REPO_ROOT/terraform/live/account/root-domain" && terragrunt destroy --non-interactive -auto-approve)

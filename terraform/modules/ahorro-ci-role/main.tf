@@ -7,10 +7,7 @@ data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 
 locals {
-  parameter_arns = [
-    for name in var.parameter_names :
-    "arn:aws:ssm:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:parameter${name}"
-  ]
+  root_domain_parameter_arn = "arn:aws:ssm:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:parameter/account/root_domain"
 }
 
 resource "aws_iam_role" "this" {
@@ -18,11 +15,13 @@ resource "aws_iam_role" "this" {
   assume_role_policy = module.github_oidc_trust.json
 }
 
+# The app's CI, not the app itself: a workload identity is a separate role
+# with its own trust. Grants grow here as the app's pipeline needs them.
 data "aws_iam_policy_document" "permissions" {
   statement {
-    sid       = "AllowReadNamedParameters"
+    sid       = "AllowReadRootDomainParameter"
     actions   = ["ssm:GetParameter"]
-    resources = local.parameter_arns
+    resources = [local.root_domain_parameter_arn]
   }
 }
 

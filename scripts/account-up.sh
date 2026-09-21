@@ -57,8 +57,8 @@ echo "Applying root-domain ..."
 (cd "$REPO_ROOT/terraform/live/account/root-domain" && terragrunt apply --non-interactive -auto-approve)
 
 # After root-domain: the role grants read on a parameter that unit creates.
-echo "Applying ahorro-domain-reader ..."
-(cd "$REPO_ROOT/terraform/live/account/ahorro-domain-reader" && terragrunt apply --non-interactive -auto-approve)
+echo "Applying ahorro-ci-role ..."
+(cd "$REPO_ROOT/terraform/live/account/ahorro-ci-role" && terragrunt apply --non-interactive -auto-approve)
 
 # --- absorbed from the now-deleted scripts/github-vars-up.sh ---
 
@@ -67,7 +67,7 @@ gh variable set AWS_ROLE_ARN --repo "$GITHUB_REPO" --body "$role_arn"
 echo "Set $GITHUB_REPO vars.AWS_ROLE_ARN = $role_arn"
 
 ahorro_repo="${AHORRO_GITHUB_REPO:-savak1990/vk-ahorro}"
-ahorro_role_arn=$(aws iam get-role --role-name ahorro-domain-reader --query Role.Arn --output text)
+ahorro_role_arn=$(aws iam get-role --role-name ahorro-ci-role --query Role.Arn --output text)
 gh variable set AWS_ROLE_ARN --repo "$ahorro_repo" --body "$ahorro_role_arn"
 echo "Set $ahorro_repo vars.AWS_ROLE_ARN = $ahorro_role_arn"
 
