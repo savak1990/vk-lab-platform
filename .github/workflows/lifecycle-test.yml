@@ -1,13 +1,23 @@
 name: lifecycle-test
 
-# The merge gate. Static checks on every pull request; a full two-provider
-# lifecycle - full-up, make test, full-down against one AWS cluster and one
-# Civo cluster at the same time - when a maintainer adds the `ci:lifecycle`
-# label. `pr-gate` below is the single required status check on main.
+# The merge gate. Static checks on every pull request; a full lifecycle -
+# full-up, make test, full-down against a real cluster - when a maintainer adds
+# a lifecycle label. `pr-gate` below is the single required status check on
+# main.
 #
-# The heavy half is opt-in because it costs roughly 55 minutes and a little
-# under a dollar. Adding the label starts it against the pull request's current
-# head commit; removing and re-adding the label is the re-run handle.
+# `ci:lifecycle` is the trigger. `ci:aws`, `ci:civo`, `ci:hetzner` and
+# `ci:local` are selectors that narrow it, and on their own they start nothing:
+# that is what lets two of them be added without starting two runs that cancel
+# each other's validation. `ci:lifecycle` with no selector runs every provider.
+#
+# `ci:hetzner` and `ci:local` name jobs that do not exist yet, and pr-gate
+# rejects a run that selects one rather than let the selector do nothing. A run
+# on a subset says loudly which clouds it never touched.
+#
+# The heavy half is opt-in because both providers together cost roughly 55
+# minutes and a little under a dollar. Adding `ci:lifecycle` starts the run
+# against the pull request's current head commit; removing and re-adding it is
+# the re-run handle, and the selectors decide what that re-run covers.
 #
 # Isolation is by PROJECT_NAME/SUBDOMAIN (ADR 0026), not a separate
 # terraform/live/ci/ tree - a documented deviation from spec AWS-020
@@ -49,10 +59,68 @@ jobs:
       terraform: ${{ steps.classify.outputs.terraform }}
       infra: ${{ steps.classify.outputs.infra }}
       infra_files: ${{ steps.classify.outputs.infra_files }}
+      triggered: ${{ steps.labels.outputs.triggered }}
+      run_aws: ${{ steps.labels.outputs.run_aws }}
+      run_civo: ${{ steps.labels.outputs.run_civo }}
+      run_hetzner: ${{ steps.labels.outputs.run_hetzner }}
+      run_local: ${{ steps.labels.outputs.run_local }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      # Read once here so every later job asks the same question of the same
+      # answer, and so the label names live in one place rather than in a
+      # `contains()` chain per provider per job.
+      #
+      # `ci:lifecycle` is the trigger and a provider label is only a selector:
+      # adding two selectors would otherwise start two runs that cancel each
+      # other's validation. Selectors alone start nothing; `ci:lifecycle` with
+      # no selector means every provider.
+      #
+      # Matched with jq rather than the `contains()` expression so the
+      # comparison is exact string equality, not whatever a future label name
+      # makes of a substring test.
+      - id: labels
+        env:
+          DISPATCH: ${{ github.event_name == 'workflow_dispatch' }}
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        run: |
+          set -euo pipefail
+          PROVIDERS="aws civo hetzner local"
+
+          has() {
+            printf '%s' "${LABELS:-[]}" | jq -e --arg x "$1" 'any(.[]?; . == $x)' > /dev/null
+          }
+
+          if [ "$DISPATCH" = "true" ]; then
+            TRIGGERED=true
+            SELECTED="$PROVIDERS"
+          else
+            TRIGGERED=false
+            if has "ci:lifecycle"; then
+              TRIGGERED=true
+            fi
+            SELECTED=""
+            for p in $PROVIDERS; do
+              if has "ci:$p"; then
+                SELECTED="$SELECTED $p"
+              fi
+            done
+            if [ -z "$SELECTED" ]; then
+              SELECTED="$PROVIDERS"
+            fi
+          fi
+
+          echo "triggered=$TRIGGERED" >> "$GITHUB_OUTPUT"
+          for p in $PROVIDERS; do
+            run=false
+            if [ "$TRIGGERED" = "true" ] && [[ " $SELECTED " == *" $p "* ]]; then
+              run=true
+            fi
+            echo "run_$p=$run" >> "$GITHUB_OUTPUT"
+            echo "run_$p=$run"
+          done
 
       - id: classify
         env:
@@ -404,6 +472,8 @@ jobs:
 
       - run: make argo-watch-check
 
+      - run: make pr-gate-check
+
   # Both providers at once, each an independent up -> test -> down chain.
   #
   # Two explicit jobs rather than one matrix job. A matrix would name its legs
@@ -435,10 +505,10 @@ jobs:
       !contains(needs.*.result, 'failure') &&
       !contains(needs.*.result, 'cancelled') &&
       needs.changes.outputs.docs_only != 'true' &&
+      needs.changes.outputs.run_aws == 'true' &&
+      !contains(github.event.pull_request.labels.*.name, 'ci:skip-lifecycle') &&
       (github.event_name == 'workflow_dispatch' ||
-       (contains(github.event.pull_request.labels.*.name, 'ci:lifecycle') &&
-        !contains(github.event.pull_request.labels.*.name, 'ci:skip-lifecycle') &&
-        github.event.pull_request.head.repo.full_name == github.repository))
+       github.event.pull_request.head.repo.full_name == github.repository)
     # Matches lab.yml's group expression, which is what stops a run here racing
     # a manual dispatch against the same Terraform state.
     concurrency:
@@ -469,10 +539,10 @@ jobs:
       !contains(needs.*.result, 'failure') &&
       !contains(needs.*.result, 'cancelled') &&
       needs.changes.outputs.docs_only != 'true' &&
+      needs.changes.outputs.run_civo == 'true' &&
+      !contains(github.event.pull_request.labels.*.name, 'ci:skip-lifecycle') &&
       (github.event_name == 'workflow_dispatch' ||
-       (contains(github.event.pull_request.labels.*.name, 'ci:lifecycle') &&
-        !contains(github.event.pull_request.labels.*.name, 'ci:skip-lifecycle') &&
-        github.event.pull_request.head.repo.full_name == github.repository))
+       github.event.pull_request.head.repo.full_name == github.repository)
     concurrency:
       group: lab-civo-vk-civo-ci
       cancel-in-progress: false
@@ -524,8 +594,14 @@ jobs:
           LIFECYCLE_CIVO: ${{ needs.lifecycle-civo.result }}
           EVENT_NAME: ${{ github.event_name }}
           HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
-          WANTS_RUN: ${{ contains(github.event.pull_request.labels.*.name, 'ci:lifecycle') }}
+          TRIGGERED: ${{ needs.changes.outputs.triggered }}
           WANTS_SKIP: ${{ contains(github.event.pull_request.labels.*.name, 'ci:skip-lifecycle') }}
+          WANTS_AWS: ${{ needs.changes.outputs.run_aws }}
+          WANTS_CIVO: ${{ needs.changes.outputs.run_civo }}
+          # No job exists for these yet. Named here so the gate can say
+          # so out loud rather than let the selector do nothing.
+          WANTS_HETZNER: ${{ needs.changes.outputs.run_hetzner }}
+          WANTS_LOCAL: ${{ needs.changes.outputs.run_local }}
         run: |
           set -euo pipefail
 
@@ -597,36 +673,47 @@ jobs:
 
           # Two contradictory instructions are an error, not a precedence rule.
           # Picking one silently would make the gate's behavior depend on a
-          # rule nobody reading the labels can see.
-          if [ "$WANTS_RUN" = "true" ] && [ "$WANTS_SKIP" = "true" ]; then
+          # rule nobody reading the labels can see. Only the trigger can
+          # contradict the waiver; a provider selector asks for nothing on its
+          # own.
+          if [ "$TRIGGERED" = "true" ] && [ "$WANTS_SKIP" = "true" ]; then
             echo "::error::this pull request carries both 'ci:lifecycle' and 'ci:skip-lifecycle'. Remove one - they ask for opposite things."
             exit 1
           fi
 
-          if [ "$INFRA" != "true" ]; then
-            echo "no infrastructure change - the lifecycle check is not required for this pull request."
-            exit 0
-          fi
+          # A provider label with no job behind it would otherwise do nothing at
+          # all, which is worse than refusing it.
+          for pair in "hetzner:$WANTS_HETZNER" "local:$WANTS_LOCAL"; do
+            if [ "${pair#*:}" = "true" ]; then
+              echo "::error::'ci:${pair%%:*}' was requested, but no ${pair%%:*} lifecycle job exists yet. Remove the label."
+              exit 1
+            fi
+          done
+
+          # The backtick is passed as an argument rather than written into the
+          # format string: shellcheck reads a backtick inside quotes as a
+          # command substitution, whichever quoting style is used.
+          BT='`'
 
           # The waiver. Deliberately loud: a waived merge and a verified merge
           # are otherwise indistinguishable afterwards, and the first question
           # asked when main breaks is whether the change was ever tested. The
           # warning and the summary entry make that answer findable in the run.
           #
-          # It waives only the two-cloud half; static validation above has
-          # already had to pass. Frequent use is a signal that the path list is
-          # too broad, not that the gate is too strict.
+          # It waives only the cluster half; static validation above has already
+          # had to pass. Frequent use is a signal that the path list is too
+          # broad, not that the gate is too strict.
           if [ "$WANTS_SKIP" = "true" ]; then
+            if [ "$INFRA" != "true" ]; then
+              echo "no infrastructure change - the lifecycle check was not required anyway."
+              exit 0
+            fi
             echo "::warning::the lifecycle check was WAIVED by the 'ci:skip-lifecycle' label. These files would otherwise have required it."
             printf '%s\n' "$INFRA_FILES" | sed 's/^/  waived: /'
-            # The backtick is passed as an argument rather than written into
-            # the format string: shellcheck reads a backtick inside quotes as
-            # a command substitution, whichever quoting style is used.
-            BT='`'
             {
               echo "### Lifecycle check waived"
               echo
-              echo "This pull request merged **without** bringing up either cluster."
+              echo "This pull request merged **without** bringing up any cluster."
               printf -- 'It carried the %sci:skip-lifecycle%s label.\n' "$BT" "$BT"
               echo
               echo "Paths that would otherwise have required the check:"
@@ -638,21 +725,51 @@ jobs:
             exit 0
           fi
 
-          # Judged per provider, so the message names which cloud failed. Both
-          # are skipped together or run together, so either one answers the
-          # "was it labeled" question.
-          if [ "$LIFECYCLE_AWS" = "skipped" ] && [ "$LIFECYCLE_CIVO" = "skipped" ]; then
-            echo "::error::this pull request changes infrastructure, so it needs the full lifecycle check. Add the 'ci:lifecycle' label to run it."
+          if [ "$TRIGGERED" != "true" ]; then
+            if [ "$INFRA" != "true" ]; then
+              echo "no infrastructure change - the lifecycle check is not required for this pull request."
+              exit 0
+            fi
+            echo "::error::this pull request changes infrastructure, so it needs the lifecycle check. Add 'ci:lifecycle' to start it - on its own it runs every provider, and with 'ci:aws' or 'ci:civo' it runs only those."
             exit 1
           fi
 
+          # Judged against what was asked for, never inferred from the results:
+          # a deliberately omitted provider and an unlabeled pull request both
+          # report "skipped", and only one of the two is acceptable.
           GATE=0
-          for pair in "aws:$LIFECYCLE_AWS" "civo:$LIFECYCLE_CIVO"; do
-            case "$pair" in
-              *:success) echo "${pair%%:*}: came up, passed make test, and was destroyed." ;;
+          OMITTED=""
+          for triple in "aws:$LIFECYCLE_AWS:$WANTS_AWS" "civo:$LIFECYCLE_CIVO:$WANTS_CIVO"; do
+            name="${triple%%:*}"
+            rest="${triple#*:}"
+            result="${rest%%:*}"
+            wanted="${rest#*:}"
+            if [ "$wanted" != "true" ]; then
+              OMITTED="$OMITTED $name"
+              continue
+            fi
+            case "$result" in
+              success) echo "$name: came up, passed make test, and was destroyed." ;;
               *)
-                echo "::error::the ${pair%%:*} lifecycle did not pass (${pair#*:})."
+                echo "::error::the $name lifecycle did not pass (${result:-no result})."
                 GATE=1 ;;
             esac
           done
+
+          # Same reasoning as the waiver block: a partial run and a full run are
+          # indistinguishable afterwards unless the run says which clouds it
+          # never touched.
+          if [ -n "$OMITTED" ]; then
+            echo "::warning::the lifecycle check ran on a subset of providers. Not exercised:$OMITTED"
+            {
+              echo "### Lifecycle check ran on a subset of providers"
+              echo
+              echo "Not exercised by this pull request:"
+              echo
+              for name in $OMITTED; do
+                printf -- '- %s%s%s\n' "$BT" "$name" "$BT"
+              done
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
           exit "$GATE"
