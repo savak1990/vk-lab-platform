@@ -124,6 +124,11 @@ integration, which is spec 024's job.
   first, and add a `target` branch only where the structure genuinely differs.
   `platform.storageClassName` already shows the shape: civo and hetzner name
   their provider's class, everything else falls through to the values file.
+- kind's default StorageClass is `standard`, backed by
+  `rancher.io/local-path`, with `reclaimPolicy: Delete` and
+  `volumeBindingMode: WaitForFirstConsumer` already — measured on kind 0.33.0,
+  node image v1.37.0. Requirement 7 needs no reclaim-policy override, only the
+  name.
 - `platform.metricsServerEnabled` needs a local arm — kind ships no
   metrics-server, so the observability stack's own must be enabled.
 - `gateway.yaml` is today a single `if aws … else if civo` chain that
