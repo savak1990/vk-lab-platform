@@ -91,6 +91,13 @@ Three properties follow, and each is enforced rather than documented:
   is clearer than adding labels piecemeal. Selecting one fails the gate with a
   message saying so. A selector that silently does nothing is worse than no
   selector.
+
+  The default must therefore never reach for them. `ci:lifecycle` with no
+  selector expands to the providers that *have* a job — one list in the label
+  step, which is also the single line to change when a job lands. Expanding to
+  all four instead makes the commonest label of all refuse itself, which is
+  how it shipped and how it was caught: each step was right alone, and the
+  pair was not.
 - **A partial run says which clouds it never touched**, as a warning and a step
   summary entry. This is the same reasoning as the waiver in Decision 2a: a
   partial merge and a full merge are otherwise indistinguishable afterwards.
@@ -106,9 +113,11 @@ remain fixed strings shared by every pull request, so two pull requests still
 contend for one cloud. Fewer pull requests asking for AWS means that contention
 bites less often.
 
-`tests/scripts/pr-gate-test.sh` runs both the gate's decision step and the label
-step against these combinations with no GitHub involved, and `validate-repo`
-runs it.
+`tests/scripts/pr-gate-test.sh` runs the gate's decision step, the label step,
+and the two **composed** against these combinations with no GitHub involved,
+and `validate-repo` runs it. The composed cases are not redundant: the two
+steps were each correct alone while the pair was not, and only feeding one
+step's real output into the other shows that.
 
 ### 2. One always-reporting gate job is the required status check
 

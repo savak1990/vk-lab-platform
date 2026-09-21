@@ -88,6 +88,10 @@ jobs:
         run: |
           set -euo pipefail
           PROVIDERS="aws civo hetzner local"
+          # Providers with a job behind them. Selecting one of the others is an
+          # explicit request the gate refuses out loud, so the default must
+          # never reach for them - it would refuse the commonest case of all.
+          AVAILABLE="aws civo"
 
           has() {
             printf '%s' "${LABELS:-[]}" | jq -e --arg x "$1" 'any(.[]?; . == $x)' > /dev/null
@@ -95,7 +99,7 @@ jobs:
 
           if [ "$DISPATCH" = "true" ]; then
             TRIGGERED=true
-            SELECTED="$PROVIDERS"
+            SELECTED="$AVAILABLE"
           else
             TRIGGERED=false
             if has "ci:lifecycle"; then
@@ -108,7 +112,7 @@ jobs:
               fi
             done
             if [ -z "$SELECTED" ]; then
-              SELECTED="$PROVIDERS"
+              SELECTED="$AVAILABLE"
             fi
           fi
 
