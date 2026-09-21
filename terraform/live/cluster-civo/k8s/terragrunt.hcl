@@ -32,4 +32,6 @@ inputs = {
   project     = local.project
   network_id  = dependency.persistent_network.outputs.network_id
   firewall_id = dependency.cluster_network.outputs.cluster_firewall_id
+  node_count  = tonumber(get_env("NODE_COUNT", "3"))
+  node_type   = get_env("NODE_TYPE", "g4s.kube.medium")
 }

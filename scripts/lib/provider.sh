@@ -45,6 +45,28 @@ else
   export BACKUP_SSM_LAYER="${BACKUP_SSM_LAYER:-persistent}"
 fi
 
+# The cluster's shape. Defaults come from the catalogue so an unset
+# variable reproduces the behaviour that predates them; operator input is
+# canonicalised here so every consumer sees the provider's own spelling,
+# whatever case was typed. An unrecognised value is left alone for
+# require_valid_node_config to reject with a message worth reading.
+# shellcheck source=catalog.sh
+source "$PROVIDER_SH_REPO_ROOT/scripts/lib/catalog.sh"
+
+if catalog_takes_node_inputs "$PROVIDER"; then
+  export REGION="${REGION:-$(catalog_default_region "$PROVIDER")}"
+  export NODE_TYPE="${NODE_TYPE:-$(catalog_default_node_type "$PROVIDER")}"
+  export NODE_COUNT="${NODE_COUNT:-$(catalog_default_node_count "$PROVIDER")}"
+
+  if _provider_canonical="$(catalog_canonical_region "$PROVIDER" "$REGION")"; then
+    export REGION="$_provider_canonical"
+    if _provider_canonical="$(catalog_canonical_node_type "$PROVIDER" "$REGION" "$NODE_TYPE")"; then
+      export NODE_TYPE="$_provider_canonical"
+    fi
+  fi
+  unset _provider_canonical
+fi
+
 # One negated --filter per unit named in PERSISTENT_EXCLUDE, one argument per line.
 persistent_exclude_filters() {
   local unit

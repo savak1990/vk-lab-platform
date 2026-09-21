@@ -31,40 +31,121 @@ Later layers depend on earlier ones already existing; `make <layer>-up`
 does not create the layers below it for you (it fails fast, naming the
 command to run first, instead).
 
-```bash
-make account-up        # once per AWS account: its own state bucket, shared
-                        # secrets KMS key, GitHub OIDC provider, shared
-                        # lab-role, eks-access-identity - also wires
-                        # lab.yml's vars.AWS_ROLE_ARN
-make bootstrap-up      # per project: this project's own state bucket,
-                        # lab.<root-domain> zone + cert
-make persistent-up     # occasional: VPC, Secrets Manager
-make up                # frequent: EKS cluster + Argo CD + everything it manages
+### Choosing a target
 
-make down               # frequent: destroy the disposable stack only
-make persistent-down    # rare, guarded: destroys the VPC/secrets
-make bootstrap-down     # rare, guarded (CONFIRM_DESTROY=<PROJECT_NAME>):
-                         # destroys the zone/cert, then this project's own
-                         # state bucket
-make account-down       # essentially never, guarded (CONFIRM_DESTROY=<PROJECT_NAME>):
-                         # destroys the shared role/KMS/OIDC provider and
-                         # the account's own state bucket - affects EVERY
-                         # project in the account at once
+`PROVIDER` selects which cloud a command acts on. It defaults to `aws`, and
+every other variable defaults to that provider's own value, so an unset
+variable never changes behaviour.
 
-make platform-up        # persistent-up -> up, onto an existing Bootstrap layer
-make platform-down      # down -> persistent-down, stopping before Bootstrap
-
-make full-up            # from nothing: bootstrap-up -> persistent-up -> up
-make full-down          # the exact reverse of full-up (rarely used - each
-                         # step keeps its own guard/confirmation)
-
-make status             # reports which layers currently have state, for THIS PROJECT_NAME
-make clusters           # lists every platform cluster live in the account, ALL projects
-
-make gitops-check       # offline: renders gitops/ for target=aws/civo/local and
-                         # checks it - aws against the committed golden baseline
-                         # (tests/golden/gitops-aws), civo/local structurally
+```sh
+PROVIDER=aws      # EKS on AWS (the default)
+PROVIDER=civo     # managed Kubernetes on Civo
+PROVIDER=hetzner  # self-managed k3s on Hetzner Cloud
+PROVIDER=local    # one kind cluster on this machine; owns no cloud resources
 ```
+
+### Lifecycle commands
+
+Four independent layers, created in order and destroyed in reverse. A
+`*-up` target never creates the layer below it — it fails fast and names the
+command to run first.
+
+| Command | Does | Frequency |
+|---|---|---|
+| `make account-up` | Account-global: its own state bucket, the shared secrets KMS key, GitHub OIDC, `lab-role`, `eks-access-identity`. Also sets `lab.yml`'s `vars.AWS_ROLE_ARN` | once per AWS account |
+| `make bootstrap-up` | This project's state bucket, its `<subdomain>.<root-domain>` zone and certificate | once per project |
+| `make persistent-up` | VPC, Secrets Manager, backups. Generates any missing project secrets | occasional |
+| `make up` | The disposable cluster, then Argo CD and everything it manages | frequent |
+| `make down` | Destroys the disposable layer only | frequent |
+| `make persistent-down` | Destroys the VPC, every secret and every retained volume. Guarded | rare |
+| `make bootstrap-down` | Destroys the zone, the certificate, then this project's state bucket. Guarded | rare |
+| `make account-down` | Destroys the shared role, KMS key and OIDC provider — **every project in the account at once**. Guarded | essentially never |
+
+Compositions, which change no individual command's own guards:
+
+| Command | Equivalent to |
+|---|---|
+| `make platform-up` / `platform-down` | `persistent-up` → `up`, onto an existing Bootstrap layer, and the reverse |
+| `make full-up` / `full-down` | `bootstrap-up` → `persistent-up` → `up`, and the exact reverse |
+
+Layer commands can also be run on their own: `state-up`, `state-down`,
+`cluster-up`, `cluster-down`, `argo-up`, `argo-down`.
+
+### Setup, secrets and inspection
+
+| Command | Does |
+|---|---|
+| `make ca-init` | Generates the Roles Anywhere CA for a non-AWS target. `PROVIDER=civo\|hetzner`, `ROTATE=1` for a candidate |
+| `make ssh-key-init` | Generates the Hetzner node SSH key. `PROVIDER=hetzner`, `ROTATE=1` for a candidate |
+| `make secret-encrypt` / `secret-decrypt` | One value in or out of `secrets/`, through the shared KMS key |
+| `make generate-secrets` | Throwaway secrets for a CI project. **Writes the publicly known password `test`** — never for a real lab |
+| `make kubeconfig` / `test-kubeconfig` | The only commands that touch your own kubectl context |
+| `make status` | Which layers currently hold state, for this `PROJECT_NAME` |
+| `make clusters` | Every platform cluster live in the account, across all projects |
+| `make clear-cache` | Clears every `.terragrunt-cache`. Run when switching projects |
+
+### Checks
+
+All offline, none need credentials: `make specs-check`, `make gitops-check`,
+`make secrets-check`, `make argo-watch-check`, `make test`.
+
+### Environment variables
+
+| Variable | Default | Accepted values |
+|---|---|---|
+| `PROVIDER` | `aws` | `aws` `civo` `hetzner` `local` |
+| `PROJECT_NAME` | per provider | lowercase letters, digits and hyphens, at most 23 characters |
+| `SUBDOMAIN` | per provider | must differ per project |
+| `REGION` | `eu-west-1` / `LON1` / `nbg1` | see below; matched case-insensitively |
+| `NODE_TYPE` | `t4g.medium` / `g4s.kube.medium` / `cx33` | see below |
+| `NODE_COUNT` | `1` / `3` / `3` | a positive integer |
+| `CONFIRM_DESTROY` | unset | must equal `PROJECT_NAME`, on guarded targets |
+| `ROTATE` | unset | `1`, on `ca-init` and `ssh-key-init` |
+| `ROOT_DOMAIN` | unset | only used to seed `secrets/root-domain.enc` when missing |
+| `FIXED_TEST_PASSWORDS` | unset | `true` for CI only |
+
+Defaults are listed `aws` / `civo` / `hetzner`. `PROVIDER=local` owns no cloud
+resources and accepts none of `REGION`, `NODE_TYPE` or `NODE_COUNT`.
+
+`REGION`, `NODE_TYPE` and `NODE_COUNT` are validated **before any cloud call
+and without credentials**, so a typo fails in under a second rather than part
+way through an apply. The allowed shapes, and why each is on the list, are in
+`scripts/lib/catalog.sh` — it is a deliberately short cost guardrail, not a
+copy of each cloud's catalogue.
+
+| `PROVIDER` | `REGION` | `NODE_TYPE` allowed there |
+|---|---|---|
+| `aws` | `eu-west-1` | `t4g.medium`, `t4g.large`, `m6g.large` |
+| `civo` | `LON1` `NYC1` `FRA1` `MUM1` | `g4s.kube.medium` |
+| `hetzner` | `nbg1` | `cx23` `cx33` `cx43` |
+| `hetzner` | `hel1` | `cx23` `cx33` |
+| `hetzner` | `fsn1` | nothing orderable as of 2026-09-21 |
+
+Node types are listed per region because availability differs: `cx43` can be
+ordered in `nbg1` but not `hel1`.
+
+### Worked examples
+
+```sh
+# The defaults. Identical to running with nothing set.
+make full-up
+
+# Civo, in Frankfurt instead of London.
+PROVIDER=civo REGION=FRA1 make full-up
+
+# Hetzner: three cx33 for the lab, in Helsinki rather than Nuremberg.
+PROVIDER=hetzner REGION=hel1 NODE_COUNT=3 make full-up
+
+# A bigger AWS system node group.
+PROVIDER=aws NODE_TYPE=t4g.large make up
+
+# One kind cluster locally. No cloud, no credentials.
+PROVIDER=local make up
+```
+
+On Hetzner the server limit is **per account, not per project**, and defaults
+to 5. A three-node lab plus a two-node CI run is exactly that limit, so
+`NODE_COUNT` is how the two are kept from colliding.
 
 ### Running more than one lab
 
