@@ -175,7 +175,7 @@ beyond the manual steps this spec documents.
 
 `scripts/argo-up.sh` (`ensure_autoscaler_secret`, which reads
 `terraform/modules/hcloud-nodes/templates/node.yaml.tftpl` as a plain
-file, not a Terraform output); `specs/hetzner/030-A-hetzner-terraform-k3s-nodes/spec.md`
+file, not a Terraform output); `specs/hetzner/030-D-hetzner-terraform-k3s-nodes/spec.md`
 (§14 history — the cross-spec edit recording that the template is also
 rendered by this spec and must stay substitution-friendly).
 

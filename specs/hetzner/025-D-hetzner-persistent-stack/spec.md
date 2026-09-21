@@ -1,7 +1,7 @@
 ---
 id: "HETZ-025"
 title: "persistent-hetzner stack: private network, subnet, and SSH key, with additive persistent-up dispatch"
-status: "IN_REVIEW"
+status: "DONE"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
