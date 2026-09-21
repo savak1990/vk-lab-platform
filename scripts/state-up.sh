@@ -7,6 +7,8 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 UNIT_DIR="$REPO_ROOT/terraform/live/state"
 PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/region.sh"
+# shellcheck source=lib/catalog.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/catalog.sh"
 BUCKET="${PROJECT_NAME}-${LAB_REGION}-tf-state"
 
 cd "$UNIT_DIR"
@@ -35,6 +37,31 @@ if ! aws sts get-caller-identity >/dev/null 2>&1; then
   echo "No usable AWS credentials - set AWS_PROFILE or log in, then re-run." >&2
   exit 1
 fi
+
+# Changing REGION migrates nothing. The bucket name carries the region, so a
+# new region means a new bucket while the old platform keeps billing,
+# invisible to this project's state. Candidates come from the catalogue, not
+# a name prefix, which would false-match a longer project name.
+for candidate_region in $(catalog_regions aws); do
+  [ "$candidate_region" = "$LAB_REGION" ] && continue
+  other_bucket="${PROJECT_NAME}-${candidate_region}-tf-state"
+  aws s3api head-bucket --bucket "$other_bucket" --region "$candidate_region" >/dev/null 2>&1 || continue
+
+  other_count="$(aws s3api list-objects-v2 --bucket "$other_bucket" --region "$candidate_region" \
+    --query 'length(Contents)' --output text 2>/dev/null || echo 0)"
+  [ "$other_count" = "None" ] && other_count=0
+  [ "$other_count" -gt 0 ] || continue
+
+  {
+    echo "Refusing: this project already exists in $candidate_region."
+    echo "  s3://$other_bucket still holds $other_count object(s)."
+    echo "Changing REGION does not move a platform - it would build a second one"
+    echo "and leave the first running and billing, invisible to the new state."
+    echo "Destroy the existing one first:"
+    echo "  REGION=$candidate_region CONFIRM_DESTROY=$PROJECT_NAME make full-down"
+  } >&2
+  exit 1
+done
 
 head_error="$(aws s3api head-bucket --bucket "$BUCKET" --region "$LAB_REGION" 2>&1)" && head_rc=0 || head_rc=$?
 
