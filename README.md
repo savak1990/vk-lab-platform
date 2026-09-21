@@ -23,6 +23,13 @@ Kafka is deferred (ADR 0017). The GitHub OIDC provider and `lab.yml` are
 also implemented — the platform can be started/stopped from GitHub
 Actions, not just a workstation.
 
+The same `make` commands run against four execution targets, selected with
+`PROVIDER`. `aws` (EKS) is the primary one and is complete. `civo` (managed
+k3s, ADR 0027) is complete through its first milestone. `hetzner` (ADR 0036,
+ADR 0037 — self-installed k3s, since Hetzner sells no managed Kubernetes) is
+in progress. `local` (kind, ADR 0038) is AWS-free and exists for fast
+iteration on `gitops/`; see [Running locally on kind](#running-locally-on-kind).
+
 ## Usage
 
 The platform is built as four independent lifecycle layers, each with its
@@ -65,6 +72,41 @@ make gitops-check       # offline: renders gitops/ for target=aws/civo/local and
                          # checks it - aws against the committed golden baseline
                          # (tests/golden/gitops-aws), civo/local structurally
 ```
+
+### Running locally on kind
+
+`PROVIDER=local` runs the same `gitops/` content on a kind cluster on your own
+machine. It makes no cloud API call of any kind and needs no credentials.
+
+```sh
+PROVIDER=local make up          # kind create cluster + Argo CD + the platform
+PROVIDER=local make argo-up     # re-run after editing gitops/ - see below
+PROVIDER=local make down        # deletes the cluster and everything in it
+PROVIDER=local make kubeconfig  # adds the kind-vk-local-lab context to ~/.kube/config
+```
+
+Needs `docker`, `kind`, `helm`, `kubectl` and the `argocd` CLI. Bootstrap and
+Persistent own no cloud resources here, so they are no-ops and `make full-up`
+does the same as `make up`.
+
+**The point of it is the edit loop.** The root Application syncs from your
+working tree, so editing anything under `gitops/` and re-running
+`PROVIDER=local make argo-up` reconciles that change with **no commit and no
+push**. That is why `syncPolicy.automated` is omitted on this target, and why
+re-running `argo-up` here never takes the idempotency short-circuit the other
+targets do.
+
+**What it is not.** Local data is throwaway — no persistence guarantee, no
+destroy/recreate proof, no backups. There is no load balancer, DNS or TLS;
+reach the cluster with `kubectl port-forward`. Argo CD's admin password is the
+literal `test`, because nothing on this target is real. A green local run is
+never a substitute for the `aws`-target lifecycle test.
+
+**What renders today.** Argo CD, plus the Envoy Gateway, CloudNativePG operator
+and External Secrets Applications. Postgres, the Gateway itself, path-based
+routes and the observability stack are still gated off for this target and land
+in spec LOCAL-050. See [`specs/local/`](specs/local/) and
+[`docs/adr/0038-local-target-on-the-provider-command-surface.md`](docs/adr/0038-local-target-on-the-provider-command-surface.md).
 
 ### Running more than one lab
 
