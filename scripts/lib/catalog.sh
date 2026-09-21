@@ -29,7 +29,34 @@
 #     cx23   2 vCPU /  4 GiB    7.85
 #     cx33   4 vCPU /  8 GiB   12.09   default
 #     cx43   8 vCPU / 16 GiB   22.37
-#   Excluded: cx53 42.34 and the ccx/cpx lines over ceiling.
+#     cx53  16 vCPU / 32 GiB   42.34   over the lab ceiling, see below
+#     cpx32  4 vCPU /  8 GiB   50.81   over the lab ceiling, see below
+#     cpx42  8 vCPU / 16 GiB   99.21   over the lab ceiling, see below
+#   Excluded: cpx52, cpx62 and the whole ccx line, over ceiling with no
+#   argument for them. cax* (ARM) are cheap but every real create has
+#   failed since 2026-09-19, so listing them would only fail later.
+#
+# The three over-ceiling Hetzner entries are deliberate, for two reasons
+# the monthly price hides.
+#
+# The Hetzner limit is on server COUNT, per account, not on spend - so when
+# the cap binds, fewer-and-bigger is the only shape that fits, and a single
+# cx53 or cpx42 beats three cx33 that will not be granted.
+#
+# And a CI run is minutes, not a month. cpx42 at 99.21/month is about 0.06
+# EUR for a 25-minute lifecycle run. The ceiling was reasoned for a lab
+# that stays up; it is the wrong metric for a cluster that is destroyed
+# before the hour is out.
+#
+# cpx32 and cpx42 also matter for a reason unrelated to cost: on 2026-09-21
+# every cx* type reads unavailable in every eu-central location while the
+# cpx*2 generation reads available. That flag has been wrong in both
+# directions (HETZ-020), so it is not proof - but the cheap line being
+# unorderable for weeks is, and an allowlist with nothing orderable in it
+# is worse than an expensive one.
+#
+# fsn1 stays empty regardless: HETZ-020's real creates found nothing there
+# on 2026-09-21, and a flag is not evidence against a failed create.
 #
 # m6g.large costs 17% more than t4g.large for identical specs and exists
 # for one reason: t4g is burstable and throttles to 20% baseline once CPU
@@ -65,8 +92,8 @@ catalog_node_types() {
   case "$1:$2" in
     aws:eu-west-1) echo "t4g.medium t4g.large m6g.large" ;;
     civo:LON1 | civo:NYC1 | civo:FRA1 | civo:MUM1) echo "g4s.kube.medium" ;;
-    hetzner:nbg1) echo "cx23 cx33 cx43" ;;
-    hetzner:hel1) echo "cx23 cx33" ;;
+    hetzner:nbg1) echo "cx23 cx33 cx43 cx53 cpx32 cpx42" ;;
+    hetzner:hel1) echo "cx23 cx33 cpx32 cpx42" ;;
     hetzner:fsn1) echo "" ;;
     *) echo "" ;;
   esac
