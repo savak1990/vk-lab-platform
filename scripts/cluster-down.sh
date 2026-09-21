@@ -49,6 +49,25 @@ fi
 
 if [ "$PROVIDER" = "hetzner" ]; then
   hcloud_token
+
+  # Autoscaled nodes are not in Terraform's state, but they sit on the network
+  # and firewall it is about to destroy. They go first, or the destroy fails on
+  # resources still in use.
+  AUTOSCALED="$(hcloud_list_names server managed_by=autoscaler || true)"
+  if [ -n "$AUTOSCALED" ]; then
+    echo "CLUSTER-DOWN: deleting autoscaled server(s) before destroy: $AUTOSCALED"
+    for srv in $AUTOSCALED; do
+      hcloud_cli server delete "$srv" >/dev/null 2>&1 || true
+    done
+    SWEEP_DEADLINE=$((SECONDS + 180))
+    while [ -n "$(hcloud_list_names server managed_by=autoscaler || true)" ]; do
+      if [ "$SECONDS" -ge "$SWEEP_DEADLINE" ]; then
+        echo "CLUSTER-DOWN: WARNING - autoscaled server(s) still present after 180s; destroy may fail." >&2
+        break
+      fi
+      sleep 5
+    done
+  fi
 fi
 
 cd "$REPO_ROOT/terraform/live/${CLUSTER_DIR:-cluster}" && terragrunt run --all --non-interactive -- destroy -auto-approve
@@ -101,27 +120,21 @@ if [ "$PROVIDER" = "civo" ]; then
     LEAK_COUNT=$((LEAK_COUNT + 1))
   fi
 elif [ "$PROVIDER" = "hetzner" ]; then
-  # Only what this stack creates, and both carry the four labels. The load
-  # balancer and CSI volume sweeps wait for the specs that can create one:
-  # a Hetzner load balancer is named by a hash unrelated to the Service, so
-  # it has to be enumerated rather than matched (HETZ-040, HETZ-047).
-  LEAKED_SERVERS="$(hcloud_list_names server lifecycle=disposable || true)"
-  if [ -n "$LEAKED_SERVERS" ]; then
-    echo "CLUSTER-DOWN: leaked Hetzner server(s), deleting: $LEAKED_SERVERS" >&2
-    for srv in $LEAKED_SERVERS; do
-      hcloud_cli server delete "$srv" >/dev/null 2>&1 || true
+  # Dependency order: a load balancer or an attached volume blocks its server,
+  # and a server holds its primary IP. The project label alone is the match;
+  # nothing in the persistent layer is one of these five resource types.
+  for resource in load-balancer volume server primary-ip firewall; do
+    LEAKED="$(hcloud_list_names "$resource" || true)"
+    [ -n "$LEAKED" ] || continue
+    echo "CLUSTER-DOWN: leaked Hetzner $resource(s), deleting: $LEAKED" >&2
+    for name in $LEAKED; do
+      if [ "$resource" = "volume" ]; then
+        hcloud_cli volume detach "$name" >/dev/null 2>&1 || true
+      fi
+      hcloud_cli "$resource" delete "$name" >/dev/null 2>&1 || true
     done
     LEAK_COUNT=$((LEAK_COUNT + 1))
-  fi
-
-  LEAKED_FIREWALLS="$(hcloud_list_names firewall lifecycle=disposable || true)"
-  if [ -n "$LEAKED_FIREWALLS" ]; then
-    echo "CLUSTER-DOWN: leaked Hetzner firewall(s), deleting: $LEAKED_FIREWALLS" >&2
-    for fw in $LEAKED_FIREWALLS; do
-      hcloud_cli firewall delete "$fw" >/dev/null 2>&1 || true
-    done
-    LEAK_COUNT=$((LEAK_COUNT + 1))
-  fi
+  done
 else
   LEAKED_INSTANCES="$(aws ec2 describe-instances --region "$LAB_REGION" \
     --filters "Name=tag:Project,Values=$PROJECT_NAME" "Name=tag:Lifecycle,Values=disposable" "Name=instance-state-name,Values=running,pending,stopping,stopped" \

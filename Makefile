@@ -1,4 +1,4 @@
-.PHONY: up down full-up full-down platform-up platform-down state-up state-down status clusters require-valid-project-name require-valid-node-config account-up account-down bootstrap-up bootstrap-down secret-encrypt secret-decrypt secrets-check generate-secrets ca-init ssh-key-init persistent-up persistent-down clear-cache cluster-up cluster-down kubeconfig test-kubeconfig test-kubeconfig-isolated argo-up argo-down test
+.PHONY: up down full-up full-down platform-up platform-down state-up state-down status clusters require-valid-project-name require-valid-node-config account-up account-down bootstrap-up bootstrap-down secret-encrypt secret-decrypt secrets-check generate-secrets ca-init ssh-key-init persistent-up persistent-down clear-cache cluster-up cluster-down kubeconfig node-ssh test-kubeconfig test-kubeconfig-isolated argo-up argo-down test
 
 .NOTPARALLEL:
 
@@ -218,7 +218,7 @@ cluster-up: require-valid-node-config
 else ifeq ($(PROVIDER),hetzner)
 cluster-up: require-valid-node-config
 	./scripts/require-persistent.sh
-	@bash -c 'source scripts/lib/region.sh; source scripts/lib/provider.sh; hcloud_token; cd terraform/live/$(CLUSTER_DIR) && terragrunt run --all --non-interactive -- apply -auto-approve'
+	@bash -c 'source scripts/lib/region.sh; source scripts/lib/provider.sh; hcloud_token; use_isolated_kubeconfig; cd terraform/live/$(CLUSTER_DIR) && terragrunt run --all --non-interactive -- apply -auto-approve && configure_kubeconfig "$$KUBECONFIG" && wait_for_nodes_ready'
 else ifeq ($(PROVIDER),local)
 cluster-up: require-valid-node-config
 	./scripts/cluster-up-local.sh
@@ -258,6 +258,18 @@ endif
 ## Usage: make kubeconfig
 kubeconfig:
 	@bash -c 'source scripts/lib/region.sh; source scripts/lib/provider.sh; configure_kubeconfig'
+
+## Opens a root shell on a Hetzner node. NODE defaults to the control plane.
+## The SSH key is decrypted into a temp directory the call removes on exit,
+## including on Ctrl-C, so no private key is ever left on disk.
+## Usage: make node-ssh [NODE=$(PROJECT_NAME)-worker-1]
+export NODE ?= $(PROJECT_NAME)-cp-1
+node-ssh:
+	@bash -c 'source scripts/lib/region.sh; source scripts/lib/provider.sh; \
+	  if [ "$$PROVIDER" != "hetzner" ]; then echo "node-ssh: not applicable for PROVIDER=$$PROVIDER"; exit 0; fi; \
+	  hcloud_token; \
+	  ip="$$(hcloud_cli server ip "$$NODE" 2>/dev/null)" || { echo "node-ssh: no server named $$NODE" >&2; exit 1; }; \
+	  hetzner_ssh "$$ip"'
 
 ## Installs Argo CD and the root Application onto the disposable EKS
 ## cluster (ADR 0012 - a script, not Terraform), then blocks until the
