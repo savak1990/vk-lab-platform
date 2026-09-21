@@ -149,7 +149,9 @@ Records inside the lab zone (e.g., the NLB's record) are disposable; the zone an
 
 Never use a real root domain in code, tfvars, Helm values, or docs — use placeholders like `<root-domain>` or `lab.<root-domain>`. Keeping it out of the public repo is for hygiene, not a security control — it's also derivable from public DNS once a project's zone is delegated (the `lab.<root-domain>` zone's NS records name the parent). `root_domain` and `fqdn` (which embeds it) are stored as plain `String` in SSM Parameter Store, not `SecureString` — private/hygiene data, not credentials, consistent with that same public-DNS exposure; this also removes a KMS-key-must-exist-first ordering dependency. See `docs/adr/0002-delegated-lab-subdomain.md`, `docs/adr/0023-ssm-parameter-store-for-terraform-derived-config-and-secrets.md`, and `specs/shared/000-D-constitution/spec.md` §14.
 
-The platform targets exactly one AWS region, `eu-west-1`, declared once per layer and never derived from an environment variable or workflow input. See `docs/adr/0024-single-fixed-aws-region.md`; `specs/aws/031-Z-non-home-region-cluster/` records the deferred non-home-region work.
+The platform targets exactly one AWS region, `eu-west-1`, declared once per layer and never derived from an environment variable or workflow input. Every AWS resource lives there whatever the target, including a Civo or Hetzner project's state bucket, SSM parameters and Roles Anywhere chain. See `docs/adr/0024-single-fixed-aws-region.md` and `docs/adr/0040-the-aws-region-stays-fixed.md`; `specs/aws/031-Z-non-home-region-cluster/` costs the non-home-region work, permanently declined.
+
+The `REGION` operator input selects the Civo region or the Hetzner location only, validated offline against `scripts/lib/catalog.sh` (ADR 0039, as narrowed by ADR 0040). On `aws` it is refused; on `local` it is ignored.
 
 ---
 

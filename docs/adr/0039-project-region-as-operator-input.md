@@ -1,12 +1,28 @@
 # ADR 0039: The project layer's region becomes an operator input
 
+> **Note (2026-09-21):** this record's AWS arm is withdrawn by
+> [ADR 0040](0040-the-aws-region-stays-fixed.md). `REGION` selects the Civo
+> region or the Hetzner location only; the AWS region stays fixed at
+> `eu-west-1`, and [ADR 0024](0024-single-fixed-aws-region.md) stands
+> unsuperseded and in full. Nothing had been implemented for the AWS arm — the
+> catalogue never listed a second AWS region and the multi-region KMS key
+> below was never created — so the change costs a specification rewrite only.
+> The blocker analysis below is also incomplete: all four consumers of
+> `alias/lab-secrets` fail outside its region, not only the SSM one. Everything
+> else here stands as written — the account/project split, `REGION` as a
+> validated catalogue input, and region-namespaced state buckets.
+
 ## Status
 
-Accepted
+Accepted for the Civo and Hetzner targets. The AWS arm is withdrawn by
+[ADR 0040](0040-the-aws-region-stays-fixed.md).
 
-Supersedes [ADR 0024](0024-single-fixed-aws-region.md) **for the project layer
-only**. ADR 0024's rule stands unchanged for the account layer, and its
-reasoning about derived declarations is preserved below rather than reversed.
+This record originally superseded [ADR 0024](0024-single-fixed-aws-region.md)
+**for the project layer only**. That supersession is withdrawn: ADR 0024 was
+only ever about the AWS region, so there was nothing here to supersede. ADR
+0024 stands unsuperseded and in full, for the account layer and the project
+layer alike, and its reasoning about derived declarations is preserved below
+rather than reversed.
 
 ## Context
 
