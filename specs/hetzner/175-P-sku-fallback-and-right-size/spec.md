@@ -46,6 +46,8 @@ that CIVO-175 does not already make.
 - `research.md` cost model: the ARM shape C 43.89 EUR; shape D (3 × CPX22) 70.89 EUR; shape E (3 × CX33) 37.89 EUR but sold out at the baseline date.
 - All platform images are multi-arch (`research.md`), so an x86 fallback needs no image change.
 - Hetzner's API reports per-location availability through `GET /v1/server_types` (`deprecation`) and `GET /v1/datacenters` (`server_types.available`); the `hcloud` CLI exposes it as `hcloud server-type describe <type>`.
+- Neither availability field predicts a create, and neither MUST be used as a pre-flight signal. The per-datacenter `server_types.available` is wrong in both directions. Measured 2026-09-22 with real create calls: `cpx32` in fsn1 read `available=no` and created; `cax21` in nbg1 read `available=YES` and was refused. Datacenter targeting was deprecated on 2025-12-16 and the API now rejects the field, so those lists are no longer maintained. The per-type `server_types[].locations[].available` fails too: it read `false` for `cx33` in fsn1, nbg1 and hel1 on 2026-09-22, and a create succeeded in nbg1 and fsn1 the same day.
+- The create endpoint returns two distinct errors, and only the first is about stock. `resource_unavailable` means a temporary shortage: `cx43` in nbg1 returned it and became orderable 20 minutes later on 2026-09-22. `unsupported location for server type` (`invalid_input`) means withdrawn from sale: every `cax` type, and the whole `cpx11`/`cpx21`/`cpx31`/`cpx41` generation, return it in every location.
 - CIVO-175 defines the measurement method (seven days, `container_memory_working_set_bytes` p95 and CPU p95 per workload).
 
 ## 4. Design and contracts
@@ -102,7 +104,8 @@ reverted with one values commit.
 
 ## 12. Risks and unresolved questions
 
-- Hetzner's availability field lags stock changes by minutes; the probe reduces failures but cannot remove them. `terraform apply` on a sold-out type fails with `resource_unavailable`; the script must surface that error with the same fallback message.
+- The pre-flight design in §4 reads `server_types.available`, which §3 disproves. The probe must instead be built on the two create-time error codes, or dropped in favor of a clear failure message. Resolve this before implementation starts.
+- `terraform apply` on a sold-out type fails with `resource_unavailable`; the script must surface that error with the fallback message. It must not surface `unsupported location for server type` the same way — that type is withdrawn, and a fallback table listing it wastes the operator's next attempt.
 - Switching architecture between `make up` runs is safe for stateless workloads and for CNPG (the dump is architecture-neutral), but a retained volume with an x86-specific filesystem quirk is not expected; note it in HETZ-150 if seen.
 - Mixed pools (ARM control plane, x86 workers) would let the autoscaler use whichever line is in stock; deferred.
 
@@ -117,3 +120,4 @@ reverted with one values commit.
 - 2026-09-11 — created as DRAFT.
 - 2026-09-11 — reviewed and approved by the user; promoted to READY.
 - 2026-09-19 — kubeadm wording.
+- 2026-09-22 — create-call probes across every Hetzner location disproved `server_types.available` and separated the two error codes; recorded in §3, and §12 now flags the §4 probe design as unsound. `scripts/lib/catalog.sh` corrected: fsn1 was listed as having nothing orderable and in fact sells `cx23 cx33 cx43 cpx32 cpx42`. `research.md` corrected in the same change, where the fsn1 row and the proposed replacement probe field came from.

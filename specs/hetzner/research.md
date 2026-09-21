@@ -127,14 +127,28 @@ the same set, yet:
     $ hcloud server create --type cax21 --location nbg1 …
     hcloud: unsupported location for server type (invalid_input)
 
-The field that does predict it is `server_types[].locations[].available`,
-which is what `hcloud server-type describe <type>` prints as `Available:`.
+**Correction 2026-09-22: `server_types[].locations[].available` does not
+predict a create either.** It reads `false` for `cx33` in fsn1, nbg1 and
+hel1, and a real create succeeded in nbg1 and in fsn1 on the same day. It
+also read `false` for `cx23` in nbg1, which created. No metadata field on
+either endpoint predicts the outcome.
+
+**Only a create attempt answers the question, and its error code separates
+two different failures.** `error during placement (resource_unavailable)`
+is a temporary shortage: `cx43` in nbg1 returned it and was orderable 20
+minutes later. `unsupported location for server type (invalid_input)` is
+withdrawal from sale: every `cax` type and the whole `cpx11`/`cpx21`/
+`cpx31`/`cpx41` generation return it in every location, permanently.
 
 This invalidates HETZ-175 §4's prescribed pre-flight probe, which reads the
-datacenters endpoint. It must read `hcloud server-type describe "$TYPE" -o
-json` and test `.locations[] | select(.name==$LOC) | .available`.
+datacenters endpoint, and the earlier replacement proposed here. A probe
+built on either field will block valid clusters and admit invalid ones. The
+fallback message must instead be driven by the create-time error code.
 
-Measured 2026-09-21 (EUR/month net, nbg1 price):
+Measured 2026-09-21 with `locations[].available` (EUR/month net, nbg1
+price). **The yes/no columns are unreliable — see the correction above.**
+Real creates on 2026-09-22 contradict the fsn1 column for `cx23`, `cx33`,
+`cx43`, `cpx32` and `cpx42`, all of which created there:
 
 | Type | arch | cpu/mem | EUR/mo | nbg1 | hel1 | fsn1 |
 |---|---|---|---|---|---|---|
@@ -151,8 +165,23 @@ unchanged. The cheap CPX generation is gone from every EU location, so the
 only same-shape x86 fallback to `cx33` is `cpx32` at 4.2× the price. But
 `cx33` is orderable in **`hel1` as well as `nbg1`**, so a second *location*
 is a better first fallback than a second SKU — relevant to HETZ-175 and to
-HETZ-025, which pins `hcloud_location = "nbg1"` as a constant. `fsn1` is out
-for every type including the dedicated line, i.e. datacenter-level capacity.
+HETZ-025, which pins `hcloud_location = "nbg1"` as a constant.
+
+**Corrected 2026-09-22:** `fsn1` is not out. Real creates there succeeded for
+`cx23`, `cx33`, `cx43`, `cpx32` and `cpx42`, and `fsn1` was the only location
+selling `cx43` that morning. The "datacenter-level capacity" reading came from
+the unreliable field. `scripts/lib/catalog.sh` listed `fsn1` as having nothing
+orderable on that basis and is corrected in the same change.
+
+`GET /v1/pricing` reports `currency: USD` and `vat_rate: 21` for this
+account, while the figures above carry EUR labels. The numbers match, so the
+label is what is in doubt, not the amounts. Read the currency from the first
+invoice before the cost model is called final.
+
+The ARM economics also fail independently of stock: `cax21` (4 vCPU/8 GB) is
+12.49 USD against `cx33` (4 vCPU/8 GB) at 9.99 USD. ARM is 25 % dearer than
+the cheapest same-shape x86, so shape C was only ever cheaper than `cpx32`,
+the worst-value type on the menu.
 
 ### Bootstrap ordering, measured (experiment 6)
 

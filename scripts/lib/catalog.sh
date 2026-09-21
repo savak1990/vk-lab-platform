@@ -101,7 +101,7 @@ catalog_node_types() {
     civo:LON1 | civo:NYC1 | civo:FRA1 | civo:MUM1) echo "g4s.kube.medium" ;;
     hetzner:nbg1) echo "cx23 cx33 cx43 cx53 cpx32 cpx42" ;;
     hetzner:hel1) echo "cx23 cx33 cpx32 cpx42" ;;
-    hetzner:fsn1) echo "" ;;
+    hetzner:fsn1) echo "cx23 cx33 cx43 cpx32 cpx42" ;;
     *) echo "" ;;
   esac
 }
