@@ -49,11 +49,11 @@ everything above it are installed later.
 
 In scope: `terraform/live/cluster-hetzner/{firewall,k8s}`, modules
 `hcloud-firewall` and `hcloud-nodes`, both cloud-init templates, the join
-token, the SSM outputs, and the hetzner arm of `cluster-down` — the token
-export and the leak sweep, without which nothing this spec creates can be
-destroyed by its own `make` target. Not in scope: the
-kubeconfig fetch, the node-Ready wait, `cluster_exists` and
-`configure_kubeconfig` (HETZ-040); the
+token, the SSM outputs, the hetzner arm of `cluster-down` — the token export
+and the leak sweep, without which nothing this spec creates can be destroyed
+by its own `make` target — and `configure_kubeconfig`, so that what this spec
+creates can be reached with `kubectl` at all. Not in scope: the
+node-Ready wait and `cluster_exists` (HETZ-040); the
 cloud controller manager and the taint wait (HETZ-045); the CSI driver and
 the storage class (HETZ-050); the autoscaler (HETZ-170); and any
 Kubernetes object Terraform would own.
@@ -295,6 +295,17 @@ Servers (`cluster-hetzner/k8s`, module `hcloud-nodes`):
   with `templates/control-plane.yaml.tftpl` and
   `templates/node.yaml.tftpl` (new); `versions.tf` pins
   `hetznercloud/hcloud` and `hashicorp/random`; lock files.
+- `scripts/lib/provider.sh`: `configure_kubeconfig` gains its hetzner arm.
+  It reads `control_plane_ip` from SSM, fetches `/etc/rancher/k3s/k3s.yaml`
+  over SSH and rewrites the server URL to the public address — which the API
+  server certificate already carries, because `--tls-san=$PUB` is on the
+  install line for this. k3s names every object in that file `default`, so
+  all three are renamed to `${PROJECT_NAME}-hetzner` before the merge; a
+  textual substitution would corrupt any base64 blob containing the string,
+  so the rewrite is structural. `cluster_exists` stays stubbed: it gates
+  teardown, and a stub that reports "no cluster" lets a destroy proceed,
+  where a failed SSH probe would block one and leak servers. Making it real
+  belongs with HETZ-040's node-Ready wait.
 - `scripts/cluster-down.sh`: a hetzner arm. It exports the API token before
   the destroy — without it terraform refuses with "Missing Hetzner Cloud API
   token" and the servers survive their own teardown target — and sweeps for
@@ -521,3 +532,9 @@ and HETZ-040's sweep removes any that Terraform lost.
   whole `eu-central` zone. The fix is proven on the failing node, not yet on
   a fresh `apply`. That recreate is the one open acceptance item, and it is
   the DoD's remaining box.
+- 2026-09-21 — `configure_kubeconfig` gains its hetzner arm, so the next test
+  run can be verified with `kubectl` from the operator's machine rather than
+  `k3s kubectl` over SSH. The yq rewrite and the merge into an existing
+  config were both exercised against a synthetic k3s kubeconfig carrying a
+  `default` context: the two contexts coexist and the base64 blobs, which
+  contain the string `default`, are untouched.

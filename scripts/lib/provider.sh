@@ -194,6 +194,66 @@ require_local_context() {
   return 1
 }
 
+# k3s writes its kubeconfig only on the control plane, naming every object
+# "default" and pointing at 127.0.0.1. The API server certificate already
+# carries the public address, so the server URL is all that has to change for
+# the file to work from here; the names are rewritten so a merge into an
+# operator's own config cannot collide with somebody else's "default".
+hetzner_kubeconfig() {
+  local target="${1:-${KUBECONFIG:-$HOME/.kube/config}}"
+  local ctx="${PROJECT_NAME}-hetzner"
+  local ip key tmp merged status=0
+
+  ip="$(aws ssm get-parameter --region "$LAB_REGION" \
+    --name "/$PROJECT_NAME/cluster-hetzner/k8s/control_plane_ip" \
+    --query 'Parameter.Value' --output text 2>/dev/null || true)"
+  if [ -z "$ip" ] || [ "$ip" = "None" ]; then
+    echo "hetzner_kubeconfig: no control_plane_ip in SSM - has 'make cluster-up' run?" >&2
+    return 1
+  fi
+
+  key="$(mktemp)"
+  chmod 600 "$key"
+  tmp="$(mktemp)"
+  "$PROVIDER_SH_REPO_ROOT/scripts/secret-decrypt.sh" hetzner-ssh-key >"$key" || status=1
+  if [ "$status" -eq 0 ]; then
+    # accept-new, not no: the host key is worth pinning once the server exists,
+    # and a changed one on a re-created cluster is caught by the operator.
+    ssh -i "$key" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 \
+      "root@$ip" 'cat /etc/rancher/k3s/k3s.yaml' >"$tmp" 2>/dev/null || status=1
+  fi
+  rm -f "$key"
+  if [ "$status" -ne 0 ] || [ ! -s "$tmp" ]; then
+    rm -f "$tmp"
+    echo "hetzner_kubeconfig: could not read /etc/rancher/k3s/k3s.yaml from $ip over SSH." >&2
+    return 1
+  fi
+
+  CTX="$ctx" SERVER="https://$ip:6443" yq -i '
+    .clusters[0].name = strenv(CTX) |
+    .clusters[0].cluster.server = strenv(SERVER) |
+    .users[0].name = strenv(CTX) |
+    .contexts[0].name = strenv(CTX) |
+    .contexts[0].context.cluster = strenv(CTX) |
+    .contexts[0].context.user = strenv(CTX) |
+    ."current-context" = strenv(CTX)' "$tmp" || { rm -f "$tmp"; return 1; }
+
+  mkdir -p "$(dirname "$target")"
+  merged="$(mktemp)"
+  if [ -s "$target" ]; then
+    KUBECONFIG="$target:$tmp" kubectl config view --flatten >"$merged" || status=1
+  else
+    cp "$tmp" "$merged" || status=1
+  fi
+  if [ "$status" -eq 0 ]; then
+    cp "$merged" "$target" && chmod 600 "$target"
+  fi
+  rm -f "$tmp" "$merged"
+  [ "$status" -eq 0 ] || return 1
+
+  kubectl --kubeconfig "$target" config use-context "$ctx" >/dev/null
+}
+
 # On civo, renames context to ${PROJECT_NAME}-civo (no --context-name flag); deletes target context first
 # to guard against reruns. On AWS, uses update-kubeconfig with the eks-access-identity role.
 configure_kubeconfig() {
@@ -217,8 +277,7 @@ configure_kubeconfig() {
     kind export kubeconfig --name "$CLUSTER_NAME" \
       ${kubeconfig:+--kubeconfig "$kubeconfig"} >/dev/null || return 1
   elif [ "$PROVIDER" = "hetzner" ]; then
-    echo "configure_kubeconfig: PROVIDER=hetzner is implemented in HETZ-040" >&2
-    return 1
+    hetzner_kubeconfig "$kubeconfig" || return 1
   else
     aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$LAB_REGION" --alias "$CLUSTER_NAME" \
       --role-arn "$(aws iam get-role --role-name eks-access-identity --query Role.Arn --output text)" \
