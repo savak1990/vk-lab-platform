@@ -1,7 +1,7 @@
 ---
 id: "HETZ-030"
 title: "cluster-hetzner stack: firewall and NODE_COUNT cx33 servers that install k3s from their own cloud-init"
-status: "IN_REVIEW"
+status: "DONE"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -608,3 +608,11 @@ and HETZ-040's sweep removes any that Terraform lost.
   original criterion would have failed a perfectly healthy cluster. This is
   also the upstream defect behind the whole class of failure — a datasource
   that sometimes recovers and writes the stanza, and sometimes does not.
+- 2026-09-21 — merged as `55beefb`; status `DONE`, folder renamed to
+  `030-D-hetzner-terraform-k3s-nodes`. The two-cloud lifecycle check ran
+  green on the pre-merge tree; the merge commit itself carried
+  `ci:skip-lifecycle`, because what it added on top was SHARED-044's own
+  merge and one `location` input. Two unrelated fixes rode along: the
+  catalogue conflict with SHARED-044 resolved in main's favour, and every
+  CI release download hardened with `curl -f` and retries after GitHub
+  returned `504` for release assets for roughly forty minutes.
