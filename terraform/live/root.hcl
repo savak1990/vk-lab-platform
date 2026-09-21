@@ -42,7 +42,7 @@ locals {
   # "account-state" (that layer's own bucket, top-level so it's never
   # inside the tree account-down.sh's `terragrunt run --all destroy` walks)
   # both route to the account-global bucket, never a project's own.
-  state_bucket = contains(["account", "account-state"], local.raw_class) ? local.account_state_bucket : "${local.project}-tf-state"
+  state_bucket = contains(["account", "account-state"], local.raw_class) ? local.account_state_bucket : "${local.project}-${local.aws_region}-tf-state"
 
   # Used by the eks unit for node group placement, pinning it to one fixed
   # AZ. Retained EBS volumes are AZ-bound, so this pin is what lets them

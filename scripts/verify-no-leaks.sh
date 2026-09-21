@@ -47,7 +47,7 @@ echo "VERIFY-NO-LEAKS: checking project $PROJECT_NAME on $PROVIDER."
 # s3:* on exactly these two ARNs, so a denial here would itself be the bug -
 # but it would read as a pass, which is why the grant is asserted in the spec
 # rather than assumed silently here.
-for bucket in "${PROJECT_NAME}-tf-state" "${PROJECT_NAME}-postgres-backups"; do
+for bucket in "${PROJECT_NAME}-${LAB_REGION}-tf-state" "${PROJECT_NAME}-${LAB_REGION}-postgres-backups"; do
   if aws s3api head-bucket --bucket "$bucket" --region "$LAB_REGION" >/dev/null 2>&1; then
     leak "S3 bucket s3://$bucket still exists."
   fi

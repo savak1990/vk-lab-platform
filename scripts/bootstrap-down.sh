@@ -12,8 +12,8 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$REPO_ROOT/scripts/lib/confirm-destroy.sh"
 
 PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
-STATE_BUCKET="${PROJECT_NAME}-tf-state"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/region.sh"
+STATE_BUCKET="${PROJECT_NAME}-${LAB_REGION}-tf-state"
 
 confirm_destroy "$PROJECT_NAME"
 
