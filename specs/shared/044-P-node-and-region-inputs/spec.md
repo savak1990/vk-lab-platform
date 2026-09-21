@@ -372,12 +372,20 @@ Roughly ten sites construct these names: `root.hcl:34`,
 `require-persistent.sh`, `force-clean-ci.sh` and `verify-no-leaks.sh`.
 
 **Migration, measured 2026-09-21:** only one project has buckets at all.
-`vk-hetzner-lab-tf-state` holds **7 objects** and
-`vk-hetzner-lab-postgres-backups` is empty; `vk-lab-platform` and `vk-civo-lab`
-have no buckets, so there is nothing to migrate for either. The step is an
-`aws s3 sync` to the new name, a verification that all 7 objects arrived, then
-deleting the old bucket. State objects are ordinary S3 objects, so this is
-lossless and reversible until the delete.
+`vk-hetzner-lab-tf-state` holds 7 objects and `vk-hetzner-lab-postgres-backups`
+is empty; `vk-lab-platform` and `vk-civo-lab` have none.
+
+**Operator decision: destroy rather than copy.** No cluster is running on any
+target, so there is no state worth preserving. `PROVIDER=hetzner make
+bootstrap-down` removes that project's zone, its Roles Anywhere chain and its
+bucket; the next `bootstrap-up` recreates everything under the new name. That
+is simpler than an `aws s3 sync`, needs no verification that copied state
+matches, and re-proves HETZ-025 and HETZ-080 end to end as a side effect.
+
+The committed secrets are unaffected and MUST NOT be regenerated: the two
+cloud tokens and `root-domain.enc` are real external values, and the Hetzner
+CA private key has to keep matching its committed certificate. They are
+re-encrypted by §3.6, never re-created.
 
 This is done **now, deliberately, because it is the cheapest it will ever be**.
 Once several projects hold live state, renaming a state bucket means migrating
@@ -461,10 +469,10 @@ not duplicated.
   against its own region.
 - **README.** Every one of the 35 targets appears; every variable has a
   default and valid values; each provider has a worked example.
-- **Bucket migration.** All 7 objects from `vk-hetzner-lab-tf-state` arrive
-  in `vk-hetzner-lab-eu-west-1-tf-state`, a `terragrunt plan` against the new
-  bucket shows no changes, and only then is the old bucket deleted.
-  `lab-role` is **not** edited, and its two wildcards still match.
+- **Bucket migration.** After `bootstrap-down` and a fresh `bootstrap-up`,
+  the Hetzner project's state lives in `vk-hetzner-lab-eu-west-1-tf-state`,
+  no bucket without a region in its name remains for any project, and
+  `lab-role` is **not** edited because its two wildcards still match.
 - **Workflow inputs.** A `lab.yml` run with the three inputs blank behaves
   exactly as before; a run with a bad combination fails in the gate, not in a
   cloud call.
