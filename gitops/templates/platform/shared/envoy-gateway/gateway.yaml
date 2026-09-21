@@ -1,4 +1,4 @@
-{{- if ne .Values.target "local" }}
+{{- if has .Values.target (list "aws" "civo" "hetzner" "local") }}
 apiVersion: gateway.networking.k8s.io/v1
 kind: GatewayClass
 metadata:
@@ -13,9 +13,9 @@ spec:
     kind: EnvoyProxy
     name: envoy-proxy-config
     namespace: envoy
----
 {{- end }}
-{{- if eq .Values.target "aws" }}
+{{- if has .Values.target (list "aws" "civo" "local") }}
+---
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: EnvoyProxy
 metadata:
@@ -29,24 +29,7 @@ spec:
     type: Kubernetes
     kubernetes:
       envoyService:
-        type: LoadBalancer
-        annotations:
-          service.beta.kubernetes.io/aws-load-balancer-type: "external"
-          service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "ip"
-          # Public internet access to argo.lab.<root-domain>/grafana.lab.<root-domain>
-          # requires this - default is "internal" (VPC-private only).
-          service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
-          # Explicit for now, though the platform VPC's subnets already
-          # carry kubernetes.io/role/elb (spec 020) - drop this once the
-          # pinned controller's tag-based discovery is verified against a
-          # real NLB, so it doesn't also expect a cluster-scoped tag here.
-          service.beta.kubernetes.io/aws-load-balancer-subnets: {{ .Values.envoyGateway.nlbSubnetIds | quote }}
-          service.beta.kubernetes.io/aws-load-balancer-ssl-cert: {{ .Values.envoyGateway.acmCertificateArn | quote }}
-          service.beta.kubernetes.io/aws-load-balancer-ssl-ports: "443"
-          # Without this, every request appears to come from the NLB's own
-          # IP and per-client rate limiting collapses into one global limit.
-          # Must be paired with the listener-side PROXY protocol setting below.
-          service.beta.kubernetes.io/aws-load-balancer-proxy-protocol: "*"
+        {{- include "platform.envoyServiceSpec" . | nindent 8 }}
       envoyDeployment:
         replicas: 1
         container:
@@ -71,15 +54,9 @@ metadata:
 spec:
   gatewayClassName: envoy-gateway
   listeners:
-    # port 443, protocol HTTP: NLB terminates TLS and forwards plaintext
-    # here - Envoy never holds a cert. Must match ssl-ports=443 above, since
-    # the Service's ports mirror this list 1:1. No port 80, by design.
-    - name: https
-      protocol: HTTP
-      port: 443
-      allowedRoutes:
-        namespaces:
-          from: All
+    {{- include "platform.envoyListeners" . | nindent 4 }}
+{{- end }}
+{{- if eq .Values.target "aws" }}
 ---
 # Listener-side half of Proxy Protocol v2 - without this Envoy doesn't
 # expect the header the NLB now prepends and fails to parse every request.
@@ -97,64 +74,4 @@ spec:
     kind: Gateway
     name: platform-gateway
   enableProxyProtocol: true
-{{- else if eq .Values.target "civo" }}
-apiVersion: gateway.envoyproxy.io/v1alpha1
-kind: EnvoyProxy
-metadata:
-  name: envoy-proxy-config
-  namespace: envoy
-  annotations:
-    argocd.argoproj.io/sync-wave: "0"
-    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
-spec:
-  provider:
-    type: Kubernetes
-    kubernetes:
-      envoyService:
-        type: LoadBalancer
-        annotations:
-          kubernetes.civo.com/firewall-id: {{ .Values.envoyGateway.firewallId | quote }}
-          kubernetes.civo.com/ipv4-address: {{ .Values.envoyGateway.reservedIp | quote }}
-          kubernetes.civo.com/loadbalancer-algorithm: round_robin
-      envoyDeployment:
-        replicas: 1
-        container:
-          resources:
-            requests:
-              cpu: 20m
-              memory: 64Mi
-            limits:
-              memory: 128Mi
-  telemetry:
-    metrics:
-      prometheus: {}
----
-apiVersion: gateway.networking.k8s.io/v1
-kind: Gateway
-metadata:
-  name: platform-gateway
-  namespace: envoy
-  annotations:
-    argocd.argoproj.io/sync-wave: "0"
-    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
-spec:
-  gatewayClassName: envoy-gateway
-  listeners:
-    - name: http
-      protocol: HTTP
-      port: 80
-      allowedRoutes:
-        namespaces:
-          from: All
-    # Civo has no NLB terminating TLS upstream (unlike aws) - Envoy holds
-    # the certificate itself and terminates TLS directly.
-    - name: https
-      protocol: HTTPS
-      port: 443
-      tls:
-        certificateRefs:
-          - name: platform-public-tls
-      allowedRoutes:
-        namespaces:
-          from: All
 {{- end }}
