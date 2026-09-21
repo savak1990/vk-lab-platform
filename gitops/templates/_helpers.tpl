@@ -98,6 +98,12 @@ annotations:
   kubernetes.civo.com/firewall-id: {{ .Values.envoyGateway.firewallId | quote }}
   kubernetes.civo.com/ipv4-address: {{ .Values.envoyGateway.reservedIp | quote }}
   kubernetes.civo.com/loadbalancer-algorithm: round_robin
+{{- else if eq .Values.target "local" -}}
+# Stated rather than left to the CRD default of LoadBalancer: kind has no
+# load-balancer implementation, so that default never gets an address, the
+# Gateway's Programmed condition stays false, and the bring-up waits on a
+# Degraded root until it times out. No annotations - there is no cloud here.
+type: ClusterIP
 {{- end -}}
 {{- end -}}
 
@@ -130,6 +136,16 @@ The Gateway's listeners. Callers supply the listeners key and indent by 4.
   tls:
     certificateRefs:
       - name: platform-public-tls
+  allowedRoutes:
+    namespaces:
+      from: All
+{{- else if eq .Values.target "local" -}}
+# One plain-HTTP listener: nothing terminates TLS in front of Envoy here, and
+# a certificate protects no network segment on a cluster that never leaves
+# this machine. Reached through kubectl port-forward.
+- name: http
+  protocol: HTTP
+  port: 80
   allowedRoutes:
     namespaces:
       from: All

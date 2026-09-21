@@ -1,4 +1,4 @@
-{{- if ne .Values.target "local" }}
+{{- if has .Values.target (list "aws" "civo" "hetzner" "local") }}
 apiVersion: gateway.networking.k8s.io/v1
 kind: GatewayClass
 metadata:
@@ -14,7 +14,7 @@ spec:
     name: envoy-proxy-config
     namespace: envoy
 {{- end }}
-{{- if has .Values.target (list "aws" "civo") }}
+{{- if has .Values.target (list "aws" "civo" "local") }}
 ---
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: EnvoyProxy
