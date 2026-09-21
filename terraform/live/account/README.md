@@ -19,8 +19,8 @@ state bucket, the lab DNS zone + ACM cert) are per-project instead — a second
 Putting a per-project resource in this account-global layer breaks as soon as
 a second project needs its own copy - AWS rejects a second `EntityAlreadyExists`
 create, or worse, a second apply silently rescopes a shared resource away from
-the first project. Since `make account-up`/`account-down` and `make
-bootstrap-up`/`bootstrap-down` both discover units by listing the directory
+the first project. Since `make account-up`/`account-down` apply each unit by name and `make
+bootstrap-up`/`bootstrap-down` discover units by listing the directory
 they `cd` into, keeping each layer's units in its own directory makes the
 wrong layer's resources unreachable to the other by construction.
 
@@ -40,7 +40,9 @@ every project's clusters), `eks-test-identity` (same shape as
 `eks-access-identity` — no AWS permission policy — but mapped to a read-only
 EKS access entry instead of `AmazonEKSClusterAdminPolicy`, so `make test`/the
 CI test job never runs with cluster-admin access; see
-`terraform/modules/eks/main.tf`). Does not qualify: this project's own state
+`terraform/modules/eks/main.tf`), `ahorro-domain-reader` (a read-only role
+that lets the `vk-ahorro` repository's CI read `/account/root_domain`, so
+that value reaches it without ever being committed). Does not qualify: this project's own state
 bucket, the lab DNS zone + ACM cert (both per-project, in `bootstrap/`).
 
 ## Prerequisite: this layer's own dedicated state bucket

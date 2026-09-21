@@ -185,6 +185,7 @@ jobs:
           export TF_CLI_ARGS_init="-backend=false"
           for u in \
             account-state \
+            account/ahorro-domain-reader \
             account/eks-access-identity \
             account/eks-test-identity \
             account/github-oidc \
