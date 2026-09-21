@@ -12,7 +12,7 @@ GITHUB_REPO_OWNER="${GITHUB_REPO%%/*}"
 BUCKET="${GITHUB_REPO_OWNER}-account-state"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/region.sh"
 
-if ! aws s3api head-bucket --bucket "$BUCKET" --region "$LAB_REGION" 2>/dev/null; then
+if ! aws s3api head-bucket --bucket "$BUCKET" --region "$LAB_REGION" >/dev/null 2>&1; then
   echo "s3://$BUCKET does not exist. Nothing to do."
   exit 0
 fi

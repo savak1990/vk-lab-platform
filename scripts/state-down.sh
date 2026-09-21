@@ -11,7 +11,7 @@ PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
 BUCKET="${PROJECT_NAME}-tf-state"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/region.sh"
 
-if ! aws s3api head-bucket --bucket "$BUCKET" --region "$LAB_REGION" 2>/dev/null; then
+if ! aws s3api head-bucket --bucket "$BUCKET" --region "$LAB_REGION" >/dev/null 2>&1; then
   echo "s3://$BUCKET does not exist. Nothing to do."
   exit 0
 fi

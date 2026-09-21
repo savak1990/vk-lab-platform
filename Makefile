@@ -1,4 +1,4 @@
-.PHONY: up down full-up full-down platform-up platform-down state-up state-down status clusters require-valid-project-name account-up account-down bootstrap-up bootstrap-down secret-encrypt secret-decrypt secrets-check generate-secrets ca-init ssh-key-init persistent-up persistent-down clear-cache cluster-up cluster-down kubeconfig test-kubeconfig test-kubeconfig-isolated argo-up argo-down test
+.PHONY: up down full-up full-down platform-up platform-down state-up state-down status clusters require-valid-project-name require-valid-node-config account-up account-down bootstrap-up bootstrap-down secret-encrypt secret-decrypt secrets-check generate-secrets ca-init ssh-key-init persistent-up persistent-down clear-cache cluster-up cluster-down kubeconfig test-kubeconfig test-kubeconfig-isolated argo-up argo-down test
 
 .NOTPARALLEL:
 
@@ -26,6 +26,26 @@ export SUBDOMAIN ?= local
 else
 export PROJECT_NAME ?= vk-lab-platform
 export SUBDOMAIN ?= lab
+endif
+
+# The cluster's shape, mirroring scripts/lib/catalog.sh. Exported because
+# several recipes call terragrunt directly and never source provider.sh,
+# so get_env() would otherwise see nothing. local takes none of these.
+# require-valid-node-config rejects a value outside the catalogue; the
+# canonical spelling is resolved in provider.sh, not here.
+ifeq ($(PROVIDER),civo)
+export REGION ?= LON1
+export NODE_TYPE ?= g4s.kube.medium
+export NODE_COUNT ?= 3
+else ifeq ($(PROVIDER),hetzner)
+export REGION ?= nbg1
+export NODE_TYPE ?= cx33
+export NODE_COUNT ?= 3
+else ifeq ($(PROVIDER),local)
+else
+export REGION ?= eu-west-1
+export NODE_TYPE ?= t4g.medium
+export NODE_COUNT ?= 1
 endif
 
 # Repo-local kubeconfigs, one per identity so the read-only test context can
@@ -65,11 +85,11 @@ endif
 ## Fails fast (naming `make persistent-up`) if Persistent doesn't exist yet -
 ## never creates it (constitution §17). For a from-scratch environment use
 ## `make full-up`.
-up: require-valid-project-name clear-cache cluster-up argo-up
+up: require-valid-project-name require-valid-node-config clear-cache cluster-up argo-up
 
 ## Tears down Argo CD then the cluster. Does NOT touch Persistent or
 ## Bootstrap - use `make persistent-down`/`make bootstrap-down` for those.
-down: require-valid-project-name clear-cache argo-down cluster-down
+down: require-valid-project-name require-valid-node-config clear-cache argo-down cluster-down
 
 ## Brings up the entire platform from nothing: Bootstrap (state bucket +
 ## DNS zone + ACM cert) -> Persistent (VPC + Secrets Manager) -> cluster ->
@@ -77,25 +97,25 @@ down: require-valid-project-name clear-cache argo-down cluster-down
 ## (see persistent-up); root-domain.enc is generated from $ROOT_DOMAIN if
 ## set and missing, otherwise it must already exist - it's a real domain,
 ## never randomly generated.
-full-up: require-valid-project-name clear-cache bootstrap-up persistent-up cluster-up argo-up
+full-up: require-valid-project-name require-valid-node-config clear-cache bootstrap-up persistent-up cluster-up argo-up
 
 ## Tears down the entire platform: Argo CD -> cluster -> Persistent ->
 ## Bootstrap (DNS zone + ACM cert, then this project's own state bucket).
 ## Rarely used - persistent-down/bootstrap-down each keep their own guards
 ## (CONFIRM_DESTROY for bootstrap-down).
-full-down: require-valid-project-name clear-cache argo-down cluster-down persistent-down bootstrap-down
+full-down: require-valid-project-name require-valid-node-config clear-cache argo-down cluster-down persistent-down bootstrap-down
 
 ## Brings up Persistent + the disposable cluster + Argo CD onto an existing
 ## State/Bootstrap layer. For cluster+Argo only (Persistent already up) use
 ## `make up`; for everything from scratch use `make full-up`.
-platform-up: require-valid-project-name clear-cache persistent-up cluster-up argo-up
+platform-up: require-valid-project-name require-valid-node-config clear-cache persistent-up cluster-up argo-up
 
 ## Tears down Argo CD -> cluster -> Persistent, stopping there. Leaves
 ## Bootstrap/State untouched. For an environment whose Bootstrap/State must
 ## survive (e.g. the personal lab) but whose Persistent layer (DNS zone,
 ## ACM cert, Secrets Manager) is meant to be torn down along with everything
 ## above it. Reaches persistent-down, so requires CONFIRM_DESTROY=PROJECT_NAME.
-platform-down: require-valid-project-name clear-cache argo-down cluster-down persistent-down
+platform-down: require-valid-project-name require-valid-node-config clear-cache argo-down cluster-down persistent-down
 
 ## Reports which lifecycle layers currently have state in the shared bucket.
 status:
@@ -157,16 +177,16 @@ endif
 ## one - see ADR 0014); bootstrap-up already generates/requires these plus
 ## root-domain, so this is normally a no-op repeat.
 ifeq ($(PROVIDER),civo)
-persistent-up:
+persistent-up: require-valid-node-config
 	./scripts/persistent-up-civo.sh
 else ifeq ($(PROVIDER),hetzner)
-persistent-up:
+persistent-up: require-valid-node-config
 	./scripts/persistent-up-hetzner.sh
 else ifeq ($(PROVIDER),local)
-persistent-up:
+persistent-up: require-valid-node-config
 	@echo "PROVIDER=local owns no cloud resources - nothing to create."
 else
-persistent-up:
+persistent-up: require-valid-node-config
 	./scripts/generate-secrets.sh
 	./scripts/require-persistent-secrets.sh
 	cd terraform/live/persistent && terragrunt run --all --non-interactive -- apply -auto-approve
@@ -180,10 +200,10 @@ endif
 ## destroy, since they're Persistent-lifecycle data.
 ## Usage: CONFIRM_DESTROY=vk-lab-platform make persistent-down
 ifeq ($(PROVIDER),local)
-persistent-down:
+persistent-down: require-valid-node-config
 	@echo "PROVIDER=local owns no cloud resources - nothing to destroy."
 else
-persistent-down:
+persistent-down: require-valid-node-config
 	./scripts/persistent-down.sh
 endif
 
@@ -192,18 +212,18 @@ endif
 ## Persistent layer doesn't exist yet - never creates it (constitution §17).
 ## Run `make argo-up` after this to install Argo CD and the platform.
 ifeq ($(PROVIDER),civo)
-cluster-up:
+cluster-up: require-valid-node-config
 	./scripts/require-persistent.sh
 	@bash -c 'source scripts/lib/region.sh; source scripts/lib/provider.sh; civo_token; cd terraform/live/$(CLUSTER_DIR) && terragrunt run --all --non-interactive -- apply -auto-approve'
 else ifeq ($(PROVIDER),hetzner)
-cluster-up:
+cluster-up: require-valid-node-config
 	./scripts/require-persistent.sh
 	@bash -c 'source scripts/lib/region.sh; source scripts/lib/provider.sh; hcloud_token; cd terraform/live/$(CLUSTER_DIR) && terragrunt run --all --non-interactive -- apply -auto-approve'
 else ifeq ($(PROVIDER),local)
-cluster-up:
+cluster-up: require-valid-node-config
 	./scripts/cluster-up-local.sh
 else
-cluster-up:
+cluster-up: require-valid-node-config
 	./scripts/require-persistent.sh
 	cd terraform/live/$(CLUSTER_DIR) && terragrunt run --all --non-interactive -- apply -auto-approve
 endif
@@ -297,6 +317,12 @@ argo-down:
 ## `PROJECT_NAME=foo make up` are guarded identically.
 require-valid-project-name:
 	@bash -c 'source scripts/lib/require-valid-project-name.sh; require_valid_project_name "$$PROJECT_NAME"'
+
+## Refuses a NODE_COUNT/NODE_TYPE/REGION combination this platform will not
+## order, before any cloud call and without credentials. See
+## scripts/lib/catalog.sh for the allowed shapes and why each is there.
+require-valid-node-config:
+	@bash -c 'source scripts/lib/require-valid-node-config.sh; require_valid_node_config'
 
 clear-cache:
 	find terraform/live -type d -name .terragrunt-cache -prune -exec rm -rf {} +

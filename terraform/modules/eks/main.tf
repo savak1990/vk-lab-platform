@@ -123,11 +123,11 @@ module "eks" {
       # must stay under IAM's 64-char role-name limit for longer PROJECT_NAMEs.
       iam_role_name  = "${var.cluster_name}-system-ng"
       ami_type       = "AL2023_ARM_64_STANDARD"
-      instance_types = ["t4g.medium"]
+      instance_types = [var.node_type]
       capacity_type  = "ON_DEMAND"
-      min_size       = 1
-      max_size       = 1
-      desired_size   = 1
+      min_size       = var.node_count
+      max_size       = var.node_count
+      desired_size   = var.node_count
       subnet_ids     = [local.node_subnet_id] # single fixed AZ, not all defaults
       labels         = { "node-type" = "system" }
 
