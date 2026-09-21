@@ -1,0 +1,51 @@
+#cloud-config
+write_files:
+  # The private NIC is attached by a second API call, after the server has
+  # already begun to boot. Cloud-init reads its network configuration once, so
+  # a server that loses that race gets an eth0-only netplan, and the NIC then
+  # appears as a link nothing ever configures. Owning the stanza here makes the
+  # outcome the same either way.
+  - path: /etc/netplan/60-hcloud-private.yaml
+    permissions: '0600'
+    content: |
+      network:
+        version: 2
+        ethernets:
+          ${nic}:
+            dhcp4: true
+runcmd:
+  - |
+    set -eu
+    for _ in $(seq 1 60); do
+      if ip link show ${nic} >/dev/null 2>&1; then break; fi
+      sleep 2
+    done
+    netplan apply
+    # k3s binds the CNI and the node address at start, so the address must
+    # exist before the install line runs, not merely the link.
+    for _ in $(seq 1 60); do
+      if ip -4 addr show ${nic} | grep -q 'inet '; then break; fi
+      sleep 2
+    done
+    ip -4 addr show ${nic} | grep -q 'inet '
+    PUB="$(curl -sf --retry 10 --retry-delay 2 http://169.254.169.254/hetzner/v1/metadata/public-ipv4)"
+    test -n "$PUB"
+    # eviction-hard is quoted whole: unquoted, the '<' is a redirection from a
+    # file named 300Mi, and since the installer arrives on stdin that redirect
+    # replaces the script itself.
+    curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=${k3s_version} K3S_TOKEN=${token} sh -s - server \
+      --cluster-init \
+      --disable-cloud-controller \
+      --disable=servicelb,traefik,local-storage \
+      --kubelet-arg=cloud-provider=external \
+      --kubelet-arg=system-reserved=cpu=500m,memory=1Gi \
+      --kubelet-arg=kube-reserved=cpu=250m,memory=512Mi \
+      '--kubelet-arg=eviction-hard=memory.available<300Mi' \
+      --node-ip=${cp_private_ip} \
+      --node-external-ip="$PUB" \
+      --tls-san="$PUB" \
+      --flannel-iface=${nic} \
+      --etcd-expose-metrics \
+      --kube-controller-manager-arg=bind-address=${cp_private_ip} \
+      --kube-scheduler-arg=bind-address=${cp_private_ip} \
+      --write-kubeconfig-mode=0600

@@ -1,7 +1,7 @@
 ---
 id: "HETZ-030"
-title: "cluster-hetzner stack: firewall and two cx33 servers that install k3s from their own cloud-init"
-status: "READY"
+title: "cluster-hetzner stack: firewall and NODE_COUNT cx33 servers that install k3s from their own cloud-init"
+status: "DONE"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -14,7 +14,7 @@ depends_on: ["HETZ-010", "HETZ-015", "HETZ-017", "HETZ-025"]
 blocked_by: []
 supersedes: []
 created: "2026-09-11"
-updated: "2026-09-20"
+updated: "2026-09-21"
 completed: ""
 ---
 
@@ -22,15 +22,21 @@ completed: ""
 
 ## 1. Outcome and rationale
 
-`PROVIDER=hetzner make cluster-up` creates a firewall and
-`control_plane_count` (1) plus `worker_count` (1) `cx33` servers in the
-persistent network. Each server's cloud-init installs k3s from
-`get.k3s.io`. The control plane starts `k3s server` with embedded etcd and
-brings itself up; the worker starts `k3s agent` against the control
-plane's private address and joins as soon as the API answers. Both carry
-the same Terraform-generated join token. The cluster is therefore running
-a minute or two after create, with no operator step and no SSH in the
-create path.
+`PROVIDER=hetzner make cluster-up` creates a firewall and `NODE_COUNT`
+`cx33` servers in the persistent network: one control plane and
+`NODE_COUNT - 1` workers, three in all by default. Each server's cloud-init
+installs k3s from `get.k3s.io`. The control plane starts `k3s server` with
+embedded etcd and brings itself up; each worker starts `k3s agent` against
+the control plane's private address and joins as soon as the API answers.
+All carry the same Terraform-generated join token. The cluster is therefore
+running a minute or two after create, with no operator step and no SSH in
+the create path.
+
+The control plane counts toward `NODE_COUNT` because it is schedulable by
+decision and is billed like any other server (SHARED-044 §3.3). This
+supersedes the 1 + 1 fixed pool this spec was written against, and with it
+the M1 placement of HETZ-170: three fixed servers leave no room for two
+autoscaled ones under the four-node ceiling.
 
 Terraform creates no Kubernetes object. It renders `user_data`, holds no
 kubeconfig and configures no Kubernetes or Helm provider. HETZ-040 fetches
@@ -43,9 +49,11 @@ everything above it are installed later.
 
 In scope: `terraform/live/cluster-hetzner/{firewall,k8s}`, modules
 `hcloud-firewall` and `hcloud-nodes`, both cloud-init templates, the join
-token, the SSM outputs, and the `lab-role` allowance for
-`*/cluster-hetzner/*` if HETZ-025 did not apply it. Not in scope: the
-kubeconfig fetch, the node-Ready wait and the leak sweep (HETZ-040); the
+token, the SSM outputs, the hetzner arm of `cluster-down` — the token export
+and the leak sweep, without which nothing this spec creates can be destroyed
+by its own `make` target — and `configure_kubeconfig`, so that what this spec
+creates can be reached with `kubectl` at all. Not in scope: the
+node-Ready wait and `cluster_exists` (HETZ-040); the
 cloud controller manager and the taint wait (HETZ-045); the CSI driver and
 the storage class (HETZ-050); the autoscaler (HETZ-170); and any
 Kubernetes object Terraform would own.
@@ -94,8 +102,27 @@ Kubernetes object Terraform would own.
   or the fallback lookup fails.
   https://github.com/hetznercloud/hcloud-cloud-controller-manager/blob/main/hcloud/instances.go
 - HETZ-020 confirmed the `cx33` server type string and the x86
-  `ubuntu-24.04` image string with real creates in `nbg1`, `fsn1` and
-  `hel1` on 2026-09-19, and that the private NIC is `enp7s0` at MTU 1450.
+  `ubuntu-24.04` image string with real creates on 2026-09-19, and that the
+  private NIC is `enp7s0` at MTU 1450. Its 2026-09-21 re-measurement found
+  `cx33` orderable in `nbg1` and `hel1` but `fsn1` out for every server
+  type, which is what `scripts/lib/catalog.sh` encodes.
+- The private NIC is attached by a second API call, after the server has
+  begun to boot, and cloud-init reads its network configuration once. A
+  server that loses that race gets an `eth0`-only netplan and the NIC then
+  sits as a link in state `DOWN` that nothing configures, so `--node-ip`
+  and `--flannel-iface` have no address to bind and an agent never reaches
+  the API. Measured on the first real bring-up of this stack, 2026-09-21:
+  the control plane won the race, both workers lost it. The templates
+  therefore own the netplan stanza rather than depending on the datasource.
+  `research.md`'s spike note reasoned the opposite, on a spike that created
+  its servers stopped and attached them before power-on.
+- The datasource is not merely late, it is faulty. On every node measured,
+  `cloud-init status --long` reports four `init-local` failures, `can only
+  concatenate str (not "NoneType") to str`, alongside `network-config-v1
+  failed schema validation`. Sometimes it recovers on a retry and writes the
+  `enp7s0` stanza anyway; sometimes it does not, and that is the difference
+  between a node that joins and a node that never does. Either way the run
+  ends `error - done`, so `cloud-init status` cannot gate anything here.
 - decisions.md §3, row "Bootstrap mechanism" (decided 2026-09-20) and
   ADR 0037: k3s from cloud-init, embedded etcd, flannel, and a
   Terraform-generated token in `user_data`; one schedulable control plane
@@ -135,15 +162,16 @@ Servers (`cluster-hetzner/k8s`, module `hcloud-nodes`):
   is regenerated on every `make up` and dies with the cluster, and it
   grants node join and nothing else. ADR 0037 records the exposure and its
   bounds; §12 repeats them.
-- One or more `hcloud_server` named `${project}-cp-1` … up to
-  `control_plane_count`, and `${project}-worker-1` … up to `worker_count`.
-  `server_type = var.server_type` (default `cx33`), `image =
-  "ubuntu-24.04"`, `location = "nbg1"`, `ssh_keys =
+- One `hcloud_server` named `${project}-cp-1`, and `${project}-worker-N`
+  for each of `node_count - control_plane_count`.
+  `server_type = var.node_type` (default `cx33`), `image =
+  "ubuntu-24.04"`, `location = var.location` (default `nbg1`), `ssh_keys =
   [dependency.ssh_key.outputs.ssh_key_id]`, `public_net { ipv4_enabled =
   true, ipv6_enabled = true }` (IPv4 is required: SSM has no IPv6
   endpoint and Hetzner has no managed NAT), `network { network_id, ip,
-  alias_ips = [] }` with the control plane at `10.0.1.10` and workers
-  from `10.0.1.11`, `labels = { project, scope = "platform", lifecycle =
+  alias_ips = [] }` with the control plane at `cidrhost(subnet, 10)` and
+  workers from `cidrhost(subnet, 11)` — derived, not written twice, because
+  the agents' `K3S_URL` must not drift from the subnet — `labels = { project, scope = "platform", lifecycle =
   "disposable", managed_by = "terraform", role =
   "control-plane"|"worker" }`, `shutdown_before_deletion = true`.
 - No `depends_on` between the roles. The agent's systemd unit restarts
@@ -155,23 +183,40 @@ Servers (`cluster-hetzner/k8s`, module `hcloud-nodes`):
   control plane silently, because replacement is cluster loss. A version
   bump ships only through a `make down` then `make up`. The module records
   this in a comment.
-- Variables: `k3s_version` has no default — the `Makefile`'s hetzner
-  `cluster-up` arm exports it as `TF_VAR_k3s_version` from
-  `scripts/lib/versions.sh`, so a missing export fails loudly rather than
-  silently pinning a stale version. It renders into **both** templates
-  from the one variable: a worker on a different k3s version than the
-  control plane fails to join with little explanation (§12).
-  `worker_count` defaults to 1 and `server_type` defaults to `cx33`.
+- Variables: `node_count` and `node_type` are SHARED-044's, read in the
+  unit's `inputs` with `get_env` exactly as `cluster-civo/k8s` and
+  `cluster/eks` read them. The catalogue is the cost guardrail and is not
+  duplicated into Terraform; the module carries only the narrow
+  `node_count > control_plane_count` check.
+  `k3s_version` defaults to `v1.36.4+k3s1`, the value HETZ-020 pinned
+  because `cluster-autoscaler` publishes no 1.37 tag and the hcloud
+  controller manager supports 1.34 to 1.36. A pin belongs in git, so it is
+  a module default rather than a `TF_VAR_*` export from a new
+  `scripts/lib/versions.sh` — which would also be a second mechanism beside
+  the `get_env`-in-`inputs` one SHARED-044 established. It renders into
+  **both** templates from the one variable: a worker on a different k3s
+  version than the control plane fails to join with little explanation
+  (§12).
   `control_plane_count` defaults to 1 and carries `validation { condition
   = var.control_plane_count == 1; error_message = "HA control plane needs
   a stable API address for the agents; see decisions.md" }` until an HA
-  spec lifts it.
+  spec lifts it. The worker count is `node_count - control_plane_count`,
+  not `node_count - 1`, so that validation is the only thing holding the
+  arithmetic at one control plane.
+- `location` is a module variable defaulting to `nbg1`. It is deliberately
+  not wired to `REGION`: that input is validated and exported today but
+  reaches no Terraform anywhere, and constitution §19's prohibition on
+  deriving a region from the environment is unamended. SHARED-044's later
+  parts own that wiring, and the variable makes it a one-line unit change.
 - Two cloud-init templates under `templates/`, each a standalone
   `#cloud-config` document rendered with `templatefile()`. Both begin with
-  a `bootcmd` that waits until the private NIC (`enp7s0`) carries its
-  address, so k3s never binds the wrong interface, and a `runcmd` whose
-  first step reads the node's own public IPv4 from
-  `169.254.169.254/hetzner/v1/metadata` into `$PUB`.
+  a `write_files` that lays down `/etc/netplan/60-hcloud-private.yaml`, a
+  `dhcp4` stanza for the private NIC, and a `runcmd` that waits for the
+  link, runs `netplan apply`, waits for the address and fails loudly if it
+  never arrives. Only then does it read the node's own public IPv4 from
+  `169.254.169.254/hetzner/v1/metadata` into `$PUB` and install k3s. Owning
+  the stanza is what makes the attach race in §3 harmless; an early
+  `bootcmd` wait cannot, because that stage precedes network configuration.
 - `templates/control-plane.yaml.tftpl`, rendered only for
   `${project}-cp-1`:
 
@@ -183,7 +228,7 @@ Servers (`cluster-hetzner/k8s`, module `hcloud-nodes`):
     --kubelet-arg=cloud-provider=external \
     --kubelet-arg=system-reserved=cpu=500m,memory=1Gi \
     --kubelet-arg=kube-reserved=cpu=250m,memory=512Mi \
-    --kubelet-arg=eviction-hard=memory.available<300Mi \
+    '--kubelet-arg=eviction-hard=memory.available<300Mi' \
     --node-ip=10.0.1.10 --node-external-ip=$PUB --tls-san=$PUB \
     --flannel-iface=enp7s0 --etcd-expose-metrics \
     --kube-controller-manager-arg=bind-address=10.0.1.10 \
@@ -212,7 +257,7 @@ Servers (`cluster-hetzner/k8s`, module `hcloud-nodes`):
     --kubelet-arg=cloud-provider=external \
     --kubelet-arg=system-reserved=cpu=500m,memory=1Gi \
     --kubelet-arg=kube-reserved=cpu=250m,memory=512Mi \
-    --kubelet-arg=eviction-hard=memory.available<300Mi \
+    '--kubelet-arg=eviction-hard=memory.available<300Mi' \
     --node-ip=$PRIV --node-external-ip=$PUB \
     --flannel-iface=enp7s0
   ```
@@ -257,17 +302,45 @@ Servers (`cluster-hetzner/k8s`, module `hcloud-nodes`):
   with `templates/control-plane.yaml.tftpl` and
   `templates/node.yaml.tftpl` (new); `versions.tf` pins
   `hetznercloud/hcloud` and `hashicorp/random`; lock files.
-- `scripts/lib/versions.sh` gains `K3S_VERSION`.
-- `Makefile`: the hetzner `cluster-up` arm exports `TF_VAR_k3s_version`
-  before the apply.
-- `terraform/live/root.hcl`: the lifecycle and provider lookups gain
-  `cluster-hetzner`; verify against the existing `cluster-civo` entries
-  rather than assume they are already present.
-- `terraform/modules/lab-role/main.tf`: verify the `*/cluster-hetzner/*`
-  SSM ARN pattern exists (HETZ-025 adds it) rather than assume it.
-- `scripts/status.sh:59`: resolve the Terraform unit per provider
-  (`${CLUSTER_DIR}/k8s`) instead of the hard-coded civo path; CIVO-030 §5
-  recorded the same hazard.
+- `scripts/lib/provider.sh`: `configure_kubeconfig` gains its hetzner arm.
+  It reads `control_plane_ip` from SSM, fetches `/etc/rancher/k3s/k3s.yaml`
+  over SSH and rewrites the server URL to the public address — which the API
+  server certificate already carries, because `--tls-san=$PUB` is on the
+  install line for this. k3s names every object in that file `default`, so
+  all three are renamed to `${PROJECT_NAME}-hetzner` before the merge; a
+  textual substitution would corrupt any base64 blob containing the string,
+  so the rewrite is structural. `cluster_exists` stays stubbed: it gates
+  teardown, and a stub that reports "no cluster" lets a destroy proceed,
+  where a failed SSH probe would block one and leak servers. Making it real
+  belongs with HETZ-040's node-Ready wait.
+
+  That stub is safe only while nothing runs on the cluster, and HETZ-045 is
+  where it stops being safe. Observed in this spec's own teardown, against
+  three live servers: `argo-down` printed "cluster does not exist - nothing
+  to cascade, skipping" and `cluster-down` proceeded straight to destroy.
+  Today that is correct, because there is no Argo CD and no load balancer to
+  strand. The moment either exists, the same two lines mean the graceful
+  cascade is silently skipped and whatever Argo created outlives the servers
+  — and a Hetzner load balancer, as HETZ-020 measured, is orphaned rather
+  than reaped and bills indefinitely. `cluster_exists` must become real in
+  the same change that first installs Argo CD on this target, not later.
+- `scripts/cluster-down.sh`: a hetzner arm. It exports the API token before
+  the destroy — without it terraform refuses with "Missing Hetzner Cloud API
+  token" and the servers survive their own teardown target — and sweeps for
+  leaked servers and firewalls by label instead of falling through to the
+  AWS arm and querying EC2 for a project that owns none.
+- No `Makefile` change: the hetzner `cluster-up` arm has sourced
+  `hcloud_token` and pointed at `cluster-hetzner` since HETZ-010, and
+  `k3s_version` is a module default rather than an exported variable.
+- No `terraform/live/root.hcl` change: `lifecycle_class` already maps
+  `cluster-hetzner` to `disposable` and the `hcloud_provider` generation
+  block already exists, both landed with HETZ-025. `local.hcloud_location`
+  is dead code there — the location does not flow through `root.hcl`.
+- No `terraform/modules/lab-role/main.tf` change: the `*/cluster-hetzner/*`
+  SSM ARN and `kms:*` on `alias/lab-secrets` are both already present.
+- `scripts/status.sh:59` still hardcodes the civo Terraform unit path.
+  Left to HETZ-040, which owns the Hetzner script surface, to keep this
+  change clear of SHARED-044's concurrent edits to `scripts/`.
 - State keys `cluster-hetzner/firewall` and `cluster-hetzner/k8s` in the
   hetzner bucket.
 
@@ -302,12 +375,21 @@ against the SSM outputs this spec writes.
 
 ## 8. Acceptance criteria
 
-- Both servers reach `running` within a few minutes of `apply`.
+- All `NODE_COUNT` servers reach `running` within a few minutes of `apply`.
 - Over SSH on the control plane within `HETZNER_CP_BOOTSTRAP_SECONDS`
-  (default 600 s) of `apply`: `cloud-init status --wait` exits 0;
-  `/etc/rancher/k3s/k3s.yaml` exists; `k3s --version` prints the pinned
-  `k3s_version`; `systemctl is-active k3s` prints `active`.
-- `k3s kubectl get nodes` on the control plane lists both nodes, each
+  (default 600 s) of `apply`: `/etc/rancher/k3s/k3s.yaml` exists; `k3s
+  --version` prints the pinned `k3s_version`; `systemctl is-active k3s`
+  prints `active`; `/etc/netplan/60-hcloud-private.yaml` exists and the
+  private NIC carries an address.
+- `cloud-init status` is **not** an acceptance signal on this target, and a
+  criterion demanding exit 0 would fail every node. `DataSourceHetzner`
+  raises `can only concatenate str (not "NoneType") to str` in `init-local`
+  while building its network config, and the run ends `error - done`:
+  the stages after it complete, but the status is latched to `error`.
+  That defect is upstream and is the reason a node can come up with no
+  private-NIC stanza at all — which is why the templates write their own.
+  Assert what the node ends up with, not what cloud-init reports.
+- `k3s kubectl get nodes` on the control plane lists every node, each
   `Ready`, each still carrying
   `node.cloudprovider.kubernetes.io/uninitialized`. CoreDNS is `Pending`
   until HETZ-045's cloud controller manager clears that taint; that is
@@ -317,7 +399,13 @@ against the SSM outputs this spec writes.
   `k3s kubectl get sc` lists no `local-path`. `metrics-server` is present
   and is the only one in the cluster.
 - `k3s kubectl get nodes -o jsonpath='{.items[*].metadata.name}'` returns
-  the two Hetzner server names exactly.
+  the Hetzner server names exactly.
+- Every node's `status.addresses` carries only `InternalIP` and `Hostname`
+  before the cloud controller manager runs, even though
+  `--node-external-ip` is on the install line. Under
+  `cloud-provider=external` the kubelet publishes no addresses of its own,
+  so `kubectl get nodes -o wide` showing `EXTERNAL-IP <none>` here is the
+  expected state, not a missing flag; HETZ-045 populates it.
 - `k3s etcd-snapshot save` succeeds on the control plane, proving
   `--cluster-init` selected embedded etcd rather than SQLite.
 - `nc -zv <cp ip> 22 6443` succeeds; `nc -zv <cp ip> 80 443 10250 30000`
@@ -331,9 +419,10 @@ against the SSM outputs this spec writes.
 - The `worker_user_data` parameter, decoded, is byte-identical to the
   `user_data` the fixed worker booted with, and contains no substituted
   private address.
-- `cluster-down` leaves the network, subnet, and SSH key; `hcloud
-  primary-ip list` is empty (server IPs are deleted with the servers).
-- One create/destroy cycle costs under 0.20 EUR (two `cx33` for under an
+- `PROVIDER=hetzner make cluster-down` destroys both units and reports no
+  leaks. It leaves the network, subnet, and SSH key; `hcloud primary-ip
+  list` is empty (server IPs are deleted with the servers).
+- One create/destroy cycle costs under 0.30 EUR (three `cx33` for under an
   hour at 0.0160 EUR/h each, plus the primary IPs).
 
 ## 9. Validation
@@ -403,8 +492,16 @@ and HETZ-040's sweep removes any that Terraform lost.
 
 ## 13. Definition of done
 
-- [ ] Acceptance criteria met on two real cycles with timings recorded
-- [ ] Modules formatted and validated; both cloud-init templates schema-checked
+- [x] Modules formatted and validated; both cloud-init templates rendered,
+      parsed and size-checked against the 32 KiB cap
+- [x] Two real creates and two real destroys recorded, with timings and an
+      empty leak sweep
+- [x] A create on the fixed templates brings every node to `Ready` with no
+      manual step, and every other §8 check passes against it
+- [ ] One create in which a node loses the attach race, to show the fix
+      carries that node too. Not reproducible on demand: the race is per
+      server and won three times out of three on the second run. The
+      mechanism is proven separately, on a node that had lost it (§14)
 - [ ] AWS and Civo no-op plans recorded
 - [ ] Index updated; status `DONE`
 
@@ -431,3 +528,91 @@ and HETZ-040's sweep removes any that Terraform lost.
   repeated on the agent because there is no `kubelet-config` ConfigMap to
   inherit. The worker template is no longer substituted by a script —
   HETZ-170 uses the Terraform render as it stands.
+- 2026-09-21 — implemented; status `IN_REVIEW`, folder renamed to
+  `030-A-hetzner-terraform-k3s-nodes`. Amended against two things that
+  landed after the last revision. SHARED-044 made `NODE_COUNT` the operator
+  input and counts the schedulable control plane in it, so the fixed pool is
+  three servers and `server_type`/`worker_count` give way to
+  `node_type`/`node_count`; `k3s_version` becomes a module default rather
+  than a `TF_VAR_*` export from a `scripts/lib/versions.sh` that does not
+  exist. HETZ-020's re-measurement removed `fsn1`. Four §5 items turned out
+  to be already done by HETZ-025 and are recorded as such rather than
+  repeated. `cluster-down` gained the hetzner arm it needed to destroy what
+  `cluster-up` creates.
+- 2026-09-21 — first real bring-up, `vk-hetzner-lab`, `nbg1`, 3 × `cx33`.
+  Three servers `running` 33 s after `apply`; cloud-init `done`; k3s
+  `v1.36.4+k3s1` `active`; the control plane `Ready` at 17 s with roles
+  `control-plane,etcd`; both registered nodes carrying
+  `node.cloudprovider.kubernetes.io/uninitialized` with an empty
+  `providerID`; four plain `String` SSM parameters and `worker_user_data`
+  the only `SecureString`. `make cluster-down` destroyed both units with an
+  empty leak sweep, and the network and SSH key survived it.
+- 2026-09-21 — and it found a real defect: **both workers never joined.**
+  The private NIC is attached by a second API call after the server has
+  begun to boot, and cloud-init reads its network configuration once, so
+  the two servers that lost that race were left with an `eth0`-only netplan
+  and a private NIC in state `DOWN` that nothing configured. Their agents
+  retried the API address forever. Writing the stanza by hand on one of them
+  brought up `10.0.1.11`, opened 6443, and the node was `Ready` 14 s later
+  with no other change — so both templates now own the netplan stanza and
+  wait for the address before installing k3s, and the early `bootcmd` wait
+  is gone, having run in a stage that precedes network configuration.
+- 2026-09-21 — the recreate that would prove that fix in the template could
+  not run: `cx23`, `cx33` and `cx43` were all `available=false` in both
+  `nbg1` and `hel1`, so every catalogue-legal shape was out of stock in the
+  whole `eu-central` zone. The fix is proven on the failing node, not yet on
+  a fresh `apply`. That recreate is the one open acceptance item, and it is
+  the DoD's remaining box.
+- 2026-09-21 — `configure_kubeconfig` gains its hetzner arm, so the next test
+  run can be verified with `kubectl` from the operator's machine rather than
+  `k3s kubectl` over SSH. The yq rewrite and the merge into an existing
+  config were both exercised against a synthetic k3s kubeconfig carrying a
+  `default` context: the two contexts coexist and the base64 blobs, which
+  contain the string `default`, are untouched.
+- 2026-09-21 — second real bring-up, on `cpx32`. The CX line was still out of
+  stock in the whole `eu-central` zone, so the run used the CPX equivalent,
+  which is the same 4 vCPU / 8 GiB shape and is unrelated to the defect under
+  test — the attach race is a property of the boot, not of the server type.
+  `cpx32` is in the catalogue, so this needed no override — SHARED-044 added
+  the CPX and `cx53` entries on main for an unrelated reason, the per-account
+  server-count cap, and they cover the stock case too.
+
+  Three servers created in 37 s. `make kubeconfig` fetched a working
+  kubeconfig on its first successful attempt, and every check below was made
+  with `kubectl` from the operator's machine rather than `k3s kubectl` over
+  SSH. All three nodes `Ready` — the control plane at 20 s, the workers at 14
+  and 9 s — at `10.0.1.10`, `.11` and `.12`, with **no manual step**. Every
+  node carried `node.cloudprovider.kubernetes.io/uninitialized` with an empty
+  `providerID`. No StorageClass at all, no `traefik`, no `svclb-`, no
+  `local-path-provisioner`; `metrics-server` present and the only one; CoreDNS
+  and metrics-server `Pending` on the tainted nodes, as ADR 0037 predicts.
+  `k3s etcd-snapshot save` succeeded. Five plain `String` SSM parameters and
+  `worker_user_data` the only `SecureString`; decoded, it differs from what
+  the worker booted with by exactly the one trailing newline `aws --output
+  text` appends. Control plane: 22 and 6443 open, 80, 443, 10250 and 30000
+  refused; worker: 22 open, 6443 and 10250 refused.
+
+  **What this run did not prove.** All three nodes won the attach race, so
+  cloud-init wrote its own `enp7s0` stanza on each and the templates' stanza,
+  though present and correctly merged beside it, was never load-bearing. The
+  fix is therefore proven in two halves rather than one: that the stanza
+  rescues a node that lost the race was measured directly on such a node in
+  the first bring-up, and that it is harmless on a node that won it, across a
+  full boot, was measured here. The union is untested only in the sense that
+  no single run has shown both.
+- 2026-09-21 — the cloud-init status criterion in §8 was wrong and is
+  amended. `DataSourceHetzner` raises `can only concatenate str (not
+  "NoneType") to str` four times in `init-local`, with `network-config-v1
+  failed schema validation` beside it, on every node measured. The run ends
+  `error - done`: later stages complete, the status stays `error`. So the
+  original criterion would have failed a perfectly healthy cluster. This is
+  also the upstream defect behind the whole class of failure — a datasource
+  that sometimes recovers and writes the stanza, and sometimes does not.
+- 2026-09-21 — merged as `55beefb`; status `DONE`, folder renamed to
+  `030-D-hetzner-terraform-k3s-nodes`. The two-cloud lifecycle check ran
+  green on the pre-merge tree; the merge commit itself carried
+  `ci:skip-lifecycle`, because what it added on top was SHARED-044's own
+  merge and one `location` input. Two unrelated fixes rode along: the
+  catalogue conflict with SHARED-044 resolved in main's favour, and every
+  CI release download hardened with `curl -f` and retries after GitHub
+  returned `504` for release assets for roughly forty minutes.
