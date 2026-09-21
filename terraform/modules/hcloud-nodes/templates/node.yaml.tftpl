@@ -1,0 +1,37 @@
+#cloud-config
+bootcmd:
+  # k3s binds --flannel-iface at start, so the private NIC must already carry
+  # its address or the CNI comes up on the public one.
+  - |
+    for _ in $(seq 1 60); do
+      ip -4 addr show ${nic} | grep -q 'inet ' && break
+      sleep 1
+    done
+runcmd:
+  - |
+    set -eu
+    PUB="$(curl -sf --retry 10 --retry-delay 2 http://169.254.169.254/hetzner/v1/metadata/public-ipv4)"
+    test -n "$PUB"
+    # Read, never substituted, so this one render serves the fixed workers and
+    # every node the autoscaler creates, whose address Terraform cannot know.
+    # The payload's first entry opens with a YAML list dash, which puts the
+    # address in field 3; matching only on 'ip:' yields empty and the agent
+    # then crash-loops on an invalid node-ip.
+    PRIV="$(curl -sf --retry 10 --retry-delay 2 http://169.254.169.254/hetzner/v1/metadata/private-networks \
+      | awk '$1=="-"&&$2=="ip:"{print $3;exit} $1=="ip:"{print $2;exit}')"
+    if [ -z "$PRIV" ]; then
+      PRIV="$(ip -4 -o addr show ${nic} | awk '{split($4,a,"/"); print a[1]; exit}')"
+    fi
+    test -n "$PRIV"
+    # eviction-hard is quoted whole: unquoted, the '<' is a redirection from a
+    # file named 300Mi, and since the installer arrives on stdin that redirect
+    # replaces the script itself.
+    curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=${k3s_version} K3S_TOKEN=${token} \
+      K3S_URL=https://${cp_private_ip}:6443 sh -s - agent \
+      --kubelet-arg=cloud-provider=external \
+      --kubelet-arg=system-reserved=cpu=500m,memory=1Gi \
+      --kubelet-arg=kube-reserved=cpu=250m,memory=512Mi \
+      '--kubelet-arg=eviction-hard=memory.available<300Mi' \
+      --node-ip="$PRIV" \
+      --node-external-ip="$PUB" \
+      --flannel-iface=${nic}

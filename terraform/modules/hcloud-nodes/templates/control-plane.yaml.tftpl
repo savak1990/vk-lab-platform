@@ -1,0 +1,33 @@
+#cloud-config
+bootcmd:
+  # k3s binds --flannel-iface at start, so the private NIC must already carry
+  # its address or the CNI comes up on the public one.
+  - |
+    for _ in $(seq 1 60); do
+      ip -4 addr show ${nic} | grep -q 'inet ' && break
+      sleep 1
+    done
+runcmd:
+  - |
+    set -eu
+    PUB="$(curl -sf --retry 10 --retry-delay 2 http://169.254.169.254/hetzner/v1/metadata/public-ipv4)"
+    test -n "$PUB"
+    # eviction-hard is quoted whole: unquoted, the '<' is a redirection from a
+    # file named 300Mi, and since the installer arrives on stdin that redirect
+    # replaces the script itself.
+    curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=${k3s_version} K3S_TOKEN=${token} sh -s - server \
+      --cluster-init \
+      --disable-cloud-controller \
+      --disable=servicelb,traefik,local-storage \
+      --kubelet-arg=cloud-provider=external \
+      --kubelet-arg=system-reserved=cpu=500m,memory=1Gi \
+      --kubelet-arg=kube-reserved=cpu=250m,memory=512Mi \
+      '--kubelet-arg=eviction-hard=memory.available<300Mi' \
+      --node-ip=${cp_private_ip} \
+      --node-external-ip="$PUB" \
+      --tls-san="$PUB" \
+      --flannel-iface=${nic} \
+      --etcd-expose-metrics \
+      --kube-controller-manager-arg=bind-address=${cp_private_ip} \
+      --kube-scheduler-arg=bind-address=${cp_private_ip} \
+      --write-kubeconfig-mode=0600
