@@ -35,23 +35,32 @@ fi
 # target has its own network unit under its own directory, and only the AWS
 # target needs the EKS access role.
 if [ -n "$PERSISTENT_EXTRA_DIR" ]; then
-  network_prefix="$PERSISTENT_EXTRA_DIR/network/"
-  network_keys=$(aws s3api list-objects-v2 --bucket "$BUCKET" --prefix "$network_prefix" --region "$LAB_REGION" \
-    --query "Contents[?ends_with(Key, 'terraform.tfstate')].Key" --output text)
-
-  network_total=0
-  if [ -n "$network_keys" ] && [ "$network_keys" != "None" ]; then
-    for key in $network_keys; do
-      aws s3api get-object --bucket "$BUCKET" --key "$key" --region "$LAB_REGION" "$TMP_DIR/state.json" >/dev/null
-      count=$(jq '.resources | length' "$TMP_DIR/state.json")
-      network_total=$((network_total + count))
-    done
+  # Hetzner also needs the SSH key: hcloud-nodes takes its id as an input, so a
+  # missing key unit would otherwise surface as a raw dependency error.
+  required_units="network"
+  if [ "$PROVIDER" = "hetzner" ]; then
+    required_units="network ssh-key"
   fi
 
-  if [ "$network_total" -eq 0 ]; then
-    echo "$PROVIDER network not found under $network_prefix in s3://$BUCKET. Run 'make persistent-up' first." >&2
-    exit 1
-  fi
+  for unit in $required_units; do
+    unit_prefix="$PERSISTENT_EXTRA_DIR/$unit/"
+    unit_keys=$(aws s3api list-objects-v2 --bucket "$BUCKET" --prefix "$unit_prefix" --region "$LAB_REGION" \
+      --query "Contents[?ends_with(Key, 'terraform.tfstate')].Key" --output text)
+
+    unit_total=0
+    if [ -n "$unit_keys" ] && [ "$unit_keys" != "None" ]; then
+      for key in $unit_keys; do
+        aws s3api get-object --bucket "$BUCKET" --key "$key" --region "$LAB_REGION" "$TMP_DIR/state.json" >/dev/null
+        count=$(jq '.resources | length' "$TMP_DIR/state.json")
+        unit_total=$((unit_total + count))
+      done
+    fi
+
+    if [ "$unit_total" -eq 0 ]; then
+      echo "$PROVIDER $unit not found under $unit_prefix in s3://$BUCKET. Run 'make persistent-up' first." >&2
+      exit 1
+    fi
+  done
 else
   # terraform/modules/eks looks this up by fixed name (account-global, not
   # state-tracked in this project's bucket) - check it explicitly here so

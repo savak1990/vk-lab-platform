@@ -58,6 +58,11 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$REPO_ROOT/scripts/lib/argo-state.sh"
 if [ "${PROVIDER:-aws}" = "civo" ]; then
   CLUSTER_NAME="$(terragrunt --working-dir "$REPO_ROOT/terraform/live/cluster-civo/k8s" output -raw cluster_name 2>/dev/null || true)"
+elif [ "${PROVIDER:-aws}" = "hetzner" ]; then
+  # k3s has no managed-cluster object, so nothing publishes a cluster name to
+  # read back. The project's own name is it, and the control plane's published
+  # address is what says the cluster is up at all.
+  hetzner_cp_ip >/dev/null 2>&1 || CLUSTER_NAME=""
 else
   CLUSTER_NAME="$(terragrunt --working-dir "$REPO_ROOT/terraform/live/cluster/eks" output -raw cluster_name 2>/dev/null || true)"
 fi

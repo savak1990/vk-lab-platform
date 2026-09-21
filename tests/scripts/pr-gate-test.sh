@@ -148,27 +148,77 @@ ALL_OFF='run_aws=false
 run_civo=false
 run_hetzner=false
 run_local=false'
-ALL_ON='run_aws=true
+# Every provider that HAS A JOB. hetzner and local stay false unless a label
+# names them, because the gate refuses a provider with no job - defaulting to
+# them would refuse the commonest case of all.
+AVAILABLE_ON='run_aws=true
 run_civo=true
-run_hetzner=true
-run_local=true'
+run_hetzner=false
+run_local=false'
+CIVO_ONLY='run_aws=false
+run_civo=true
+run_hetzner=false
+run_local=false'
 
 labels "no labels" "$ALL_OFF" '[]'
 labels "a selector alone is inert" "$ALL_OFF" '["ci:aws"]'
 labels "two selectors alone are inert" "$ALL_OFF" '["ci:aws","ci:civo"]'
-labels "ci:lifecycle alone selects every provider" "$ALL_ON" '["ci:lifecycle"]'
-labels "ci:lifecycle + ci:civo selects civo" 'run_aws=false
-run_civo=true
-run_hetzner=false
-run_local=false' '["ci:lifecycle","ci:civo"]'
-labels "ci:lifecycle + two selectors" 'run_aws=true
-run_civo=true
-run_hetzner=false
-run_local=false' '["ci:lifecycle","ci:aws","ci:civo"]'
+labels "ci:lifecycle alone selects the providers that have jobs" "$AVAILABLE_ON" '["ci:lifecycle"]'
+labels "ci:lifecycle + ci:civo selects civo" "$CIVO_ONLY" '["ci:lifecycle","ci:civo"]'
+labels "ci:lifecycle + two selectors" "$AVAILABLE_ON" '["ci:lifecycle","ci:aws","ci:civo"]'
+# Naming a provider with no job is an explicit request, and stays visible so
+# the gate can refuse it. Only the default avoids reaching for these.
+labels "ci:lifecycle + ci:hetzner keeps the request visible" 'run_aws=false
+run_civo=false
+run_hetzner=true
+run_local=false' '["ci:lifecycle","ci:hetzner"]'
 # Exact string equality, not a substring test: an unrelated label that merely
 # contains a provider name must not select that provider.
-labels "an unrelated label is not a selector" "$ALL_ON" '["ci:lifecycle","ci:aws-migration"]'
-labels "workflow_dispatch selects every provider" "$ALL_ON" '[]' DISPATCH=true
+labels "an unrelated label is not a selector" "$AVAILABLE_ON" '["ci:lifecycle","ci:aws-migration"]'
+labels "workflow_dispatch selects the providers that have jobs" "$AVAILABLE_ON" '[]' DISPATCH=true
+
+# --- the two steps composed ------------------------------------------------
+#
+# The bug this guards against: each step was correct alone, and the pair was
+# not. The label step emitted run_hetzner=true for a bare `ci:lifecycle`, the
+# gate refuses a selected provider with no job, and the gate's own tests set
+# those variables by hand - so both suites passed while the commonest label
+# combination failed in CI. Feed one step's real output into the other.
+
+compose() {
+  local name="$1" want_rc="$2" want_text="$3" json="$4"
+  shift 4
+  local env_args=() line
+  while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    case "$line" in
+      run_aws=*)     env_args+=("WANTS_AWS=${line#*=}") ;;
+      run_civo=*)    env_args+=("WANTS_CIVO=${line#*=}") ;;
+      run_hetzner=*) env_args+=("WANTS_HETZNER=${line#*=}") ;;
+      run_local=*)   env_args+=("WANTS_LOCAL=${line#*=}") ;;
+    esac
+  done < <(env -i PATH="$PATH" DISPATCH=false LABELS="$json" \
+             GITHUB_OUTPUT=/dev/null bash "$TMP/labels.sh" 2>/dev/null)
+
+  local triggered=false
+  if printf '%s' "$json" | jq -e 'any(.[]?; . == "ci:lifecycle")' > /dev/null; then
+    triggered=true
+  fi
+  env_args+=("TRIGGERED=$triggered")
+
+  run "composed: $name" "$want_rc" "$want_text" "${env_args[@]}" "$@"
+}
+
+compose "ci:lifecycle alone, both providers pass" 0 "civo: came up" \
+  '["ci:lifecycle"]' LIFECYCLE_AWS=success LIFECYCLE_CIVO=success
+compose "ci:lifecycle + ci:civo runs civo only" 0 "Not exercised: aws" \
+  '["ci:lifecycle","ci:civo"]' LIFECYCLE_CIVO=success
+compose "ci:lifecycle + ci:aws runs aws only" 0 "Not exercised: civo" \
+  '["ci:lifecycle","ci:aws"]' LIFECYCLE_AWS=success
+compose "ci:lifecycle + ci:hetzner is refused" 1 "no hetzner lifecycle job exists" \
+  '["ci:lifecycle","ci:hetzner"]'
+compose "no label at all" 1 "needs the lifecycle check" '[]'
+compose "a selector alone starts nothing" 1 "needs the lifecycle check" '["ci:civo"]'
 
 echo
 if [ "$FAIL" -ne 0 ]; then
