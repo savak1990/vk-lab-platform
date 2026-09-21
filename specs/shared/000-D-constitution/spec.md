@@ -365,13 +365,19 @@ A successful `local` run is never a substitute for the `aws`-target full lifecyc
 
 ## 19. Fork Configurability
 
-A forked copy of this repository MUST be runnable against the fork owner's own AWS account and domain with zero source-code changes, in the platform's single fixed region `eu-west-1`. The only setup steps a fork owner needs are: run account bootstrap (§17's `make bootstrap-up`, creating the account-level GitHub OIDC provider per §5) once against their own AWS account, generate/commit their own `secrets/root-domain.enc` (§14, §5), and set `AWS_ROLE_ARN` as a GitHub Environment/repository variable. Deploying into any other region is a deliberate source change, not a configuration step — see ADR 0024 and spec 031.
+A forked copy of this repository MUST be runnable against the fork owner's own AWS account and domain with zero source-code changes, in the platform's default region `eu-west-1`. The only setup steps a fork owner needs are: run account bootstrap (§17's `make bootstrap-up`, creating the account-level GitHub OIDC provider per §5) once against their own AWS account, generate/commit their own `secrets/root-domain.enc` (§14, §5), and set `AWS_ROLE_ARN` as a GitHub Environment/repository variable. Deploying a *project* into another region is a configuration step, `REGION`, validated against the catalogue in `scripts/lib/catalog.sh` (ADR 0039). Moving the *account* layer is still a deliberate source change — see ADR 0039 and spec 031.
 
-`AWS_ROLE_ARN` is configuration, not a credential. `ROOT_DOMAIN` is private/hygiene data (§14); GitHub Actions workflows decrypt the committed `secrets/root-domain.enc` ciphertext directly, the same mechanism workstation/local use relies on (ADR 0023 superseded the earlier separate-GitHub-secret path — see ADR 0007). `AWS_REGION` is no longer a fork-configuration variable (ADR 0024).
+`AWS_ROLE_ARN` is configuration, not a credential. `ROOT_DOMAIN` is private/hygiene data (§14); GitHub Actions workflows decrypt the committed `secrets/root-domain.enc` ciphertext directly, the same mechanism workstation/local use relies on (ADR 0023 superseded the earlier separate-GitHub-secret path — see ADR 0007). `AWS_REGION` is not a fork-configuration variable (ADR 0024); the platform's own `REGION` input replaced it rather than restored it, and is never read from the ambient environment (ADR 0039).
 
 No workflow, module, or spec MUST hardcode an AWS account ID, IAM role ARN, or domain value (see ADR 0007).
 
-The AWS region is the single deliberate exception. The platform targets exactly one region, `eu-west-1`. That value MUST be declared once per layer — `terraform/live/root.hcl`'s `aws_region` local, `scripts/lib/region.sh`, `gitops/values.yaml`, the `Makefile`, and `.github/workflows/lab.yml` — and every downstream consumer MUST derive it from its own layer's declaration. It MUST NOT be re-derived from an environment variable, a workflow input, a `get_env` default, or ambient AWS CLI/SDK region resolution (ADR 0024).
+The region is governed in two parts (ADR 0039, superseding ADR 0024 for the project layer only).
+
+**The account layer targets exactly one region, `eu-west-1`, and MUST NOT derive it.** The shared secrets KMS key, `lab-role`, the GitHub OIDC provider, the access identities and the account's own state bucket never move. That value MUST be declared once per layer — `terraform/live/root.hcl`'s `account_region` local and `scripts/lib/region.sh`'s `LAB_ACCOUNT_REGION` — and MUST NOT be re-derived from an environment variable, a workflow input, a `get_env` default, or ambient AWS CLI/SDK region resolution. This is ADR 0024's property, preserved exactly where it still applies.
+
+**A project's region is the `REGION` operator input.** It means the *provider's* region: on `aws` the AWS region, on `civo` and `hetzner` that cloud's own region or location, whose AWS-side resources stay in the account region regardless. `local` accepts none. `REGION` MUST be validated offline, before any cloud call and without credentials, against `scripts/lib/catalog.sh`, which is keyed by (provider, region) because node-type availability varies by region. It reaches Terraform through one `get_env` per unit and MUST NOT be recomputed anywhere else, and it MUST NOT be taken from ambient `AWS_REGION`/`AWS_DEFAULT_REGION` or an operator's AWS profile.
+
+A project's state bucket and backup bucket carry their region in the name, so that a region change cannot silently build a second platform against a bucket that already exists elsewhere.
 
 ---
 

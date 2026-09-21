@@ -101,12 +101,12 @@ combinations that cannot be created.
 
 | Provider | Region | Node types allowed there |
 |---|---|---|
-| `aws` | `eu-west-1` *(default)* | `t4g.medium` *(default)*, `t4g.large`, `m6g.large` |
+| `aws` | `eu-west-1` *(default, and the only one until §3.6 lands)* | `t4g.medium` *(default)*, `t4g.large`, `m6g.large` |
 | `civo` | `LON1` *(default)*, `NYC1`, `FRA1`, `MUM1` | `g4s.kube.medium` *(default)* |
 | `hetzner` | `nbg1` *(default)* | `cx23`, `cx33` *(default)*, `cx43` |
 | `hetzner` | `hel1` | `cx23`, `cx33` — **not** `cx43` |
 | `hetzner` | `fsn1` | none orderable as of 2026-09-21 |
-| `local` | — | takes none of the three inputs |
+| `local` | — | ignores all three inputs |
 
 Default `NODE_COUNT`: `aws` 1, `civo` 3, `hetzner` 3.
 
@@ -165,11 +165,13 @@ Refusing: invalid node configuration for PROVIDER=aws
   hetzner : nbg1 hel1 fsn1
 ```
 
-On `PROVIDER=local` it MUST refuse all three inputs, in the voice that
-target's own recipes already use — `Makefile:137` answers
-`"PROVIDER=local owns no cloud resources - nothing to create."` `local` is one
-kind cluster on the operator's machine (`scripts/cluster-up-local.sh`), reaches
-no cloud API and has neither a region nor a cloud node type.
+On `PROVIDER=local` it MUST **ignore** all three rather than refuse them.
+`local` is one kind cluster on the operator's machine
+(`scripts/cluster-up-local.sh`), reaches no cloud API and has neither a region
+nor a cloud node type, so there is nothing for them to describe. They are
+commonly left exported in a shell while switching targets, and refusing would
+make `PROVIDER=local make up` fail over values it does not read.
+`scripts/lib/region.sh` discards them the same way.
 
 `NODE_COUNT` being a positive integer is additionally checked in the Makefile
 itself, in the existing `Makefile:9-12` idiom, so a typo fails before any
@@ -209,15 +211,58 @@ aws_region = contains(["account", "account-state"], local.raw_class)
   ? local.account_region : local.project_region
 ```
 
-`scripts/lib/region.sh` splits into `LAB_ACCOUNT_REGION` (constant, never
-derived) and `LAB_PROJECT_REGION`. Roughly 95 `--region "$LAB_REGION"` call
-sites across 22 scripts MUST be audited individually — each is account-scoped,
-project-scoped, or inert because the service is global.
+**`REGION` means the provider's region.** On `aws` it is the AWS region; on
+`civo` and `hetzner` it is that cloud's own region or location and their
+AWS-side resources stay in the account region regardless; `local` accepts none.
+So `aws_region` is account-region unless the target is `aws`:
+
+```hcl
+aws_region = (contains(["account", "account-state"], local.raw_class)
+  || local.provider_name != "aws"
+  || local.region_input == "") ? local.account_region : local.region_input
+```
+
+`scripts/lib/region.sh` gains `LAB_ACCOUNT_REGION` — a constant, never derived —
+and **`LAB_REGION` keeps its name** while gaining a provider-aware value.
+Measured on this branch: of 84 `LAB_REGION` occurrences in `scripts/`, only
+**10 are account-scoped**, in four files — `account-state-down.sh` (7),
+`account-state-up.sh` (1), `secret-encrypt.sh` (1), `secret-decrypt.sh` (1).
+Those move to `LAB_ACCOUNT_REGION`; the other 66 need no edit. Renaming the
+common case would be churn for its own sake.
+
+Two sites MUST NOT be changed by a mechanical pass:
+
+- **`account-down.sh:32,38`** look account-scoped from the file name but are
+  project-scoped: they drive the guard that refuses to tear down the account
+  layer while a project still holds state. Pointed at the account region, that
+  guard silently finds nothing for a project elsewhere and `account-down`
+  proceeds.
+- **`cluster-down.sh:196`** is not a `--region` flag. It interpolates the
+  region into an IAM path Karpenter mints,
+  `--path-prefix "/karpenter/$LAB_REGION/$CLUSTER_NAME/"`. IAM is global, so
+  treating it as inert is wrong; it must follow the project region.
 
 `gitops/values.yaml:7` needs the `--set region=` chain ADR 0024 deleted
 restored in three places: `scripts/argo-up.sh`, `gitops/bootstrap/values.yaml`
 and `gitops/bootstrap/templates/root-application.yaml`. Six golden files bake
-the literal and MUST fail loudly until updated.
+the literal.
+
+**That restoration belongs with the KMS migration, not with the region
+split.** The value feeds the AWS Load Balancer Controller and the
+`ClusterSecretStore`, both of which read AWS in the *project's AWS region* —
+which is `eu-west-1` for every provider until the AWS catalogue widens.
+Restoring the chain earlier would add a knob that can only ever be set to the
+value it already has, and six golden files would churn for no behaviour
+change.
+
+**AWS keeps one region until §3.6 lands.** The catalogue lists only
+`eu-west-1` for `aws`, so the gate refuses any other in a second rather than
+letting it fail deep inside `persistent-up`. `AWS-031` warns exactly against
+the alternative: "a partially-solved multi-region path is worse than none: it
+fails deep inside `persistent-up` on an SSM `SecureString` create rather than
+at validation time, which is precisely how the previous attempt decayed
+unnoticed." Civo and Hetzner regions open immediately, because changing them
+moves no AWS resource.
 
 ### 3.6 The KMS migration
 
@@ -286,9 +331,17 @@ Changing `REGION` migrates nothing. Terraform state is keyed by path, not
 region: pointed at a new region it finds nothing, builds a second platform, and
 leaves the first billing and invisible to state.
 
-`require_valid_node_config` MUST therefore refuse a region change while the
-project's state bucket holds resources, naming what to destroy first. It
-reuses the `count_resources` shape already in `persistent-down.sh:53-81`.
+**The check cannot live in the offline gate of §3.2**, which is
+credential-free by design; deciding this needs AWS access to look at buckets.
+It goes in `scripts/state-up.sh`, the one place that creates the bucket:
+refuse when `<project>-<other-region>-tf-state` exists and holds objects,
+naming what to destroy first. It reuses the `count_resources` shape already in
+`persistent-down.sh:53-81`.
+
+Because §3.11 puts the region in the bucket name, the rest is **self-detecting**:
+a different region means a different bucket, so terragrunt cannot silently
+build a second platform against a backend that does not exist — it fails
+closed. The guard only has to cover the one command that would create it.
 
 This converts a silently doubled cloud bill into an actionable error, at the
 cost of one `make full-down` before a region move.
@@ -350,8 +403,28 @@ Both project buckets therefore take the region:
 
 | Today | Becomes |
 |---|---|
-| `<project>-tf-state` | `<project>-<region>-tf-state` |
-| `<project>-postgres-backups` | `<project>-<region>-postgres-backups` |
+| `<project>-tf-state` | `<project>-<provider-region>-tf-state` |
+| `<project>-postgres-backups` | `<project>-<provider-region>-postgres-backups` |
+
+**The region in the name is the *provider's*, lowercased — not the AWS
+region.** The bucket is an AWS resource and lives in the project's AWS
+region, but its name records whose state it holds. Using the AWS region
+would leave two Civo regions sharing one bucket and one set of state keys:
+a run in `FRA1` after a run in `LON1` would read a network id that exists
+only in `LON1`, fail to find it through a `FRA1`-scoped provider, and plan a
+fresh create — **orphaning the `LON1` network while reporting success**. The
+same applies to Hetzner between `nbg1` and `hel1`.
+
+| Provider | `REGION` | Bucket |
+|---|---|---|
+| `aws` | `eu-west-1` | `vk-lab-platform-eu-west-1-tf-state` |
+| `civo` | `LON1` | `vk-civo-lab-lon1-tf-state` |
+| `civo` | `FRA1` | `vk-civo-lab-fra1-tf-state` |
+| `hetzner` | `hel1` | `vk-hetzner-lab-hel1-tf-state` |
+
+This also makes §3.7's guard live immediately rather than dormant: it loops
+the *provider's* regions, so it protects Civo and Hetzner now instead of
+waiting for the AWS catalogue to widen.
 
 **The region goes before the suffix, not after, and that is load-bearing.**
 `lab-role` grants `arn:aws:s3:::*-tf-state` and `arn:aws:s3:::*-postgres-backups`
@@ -495,6 +568,54 @@ default region.
 
 Every other sweep is project-scoped and follows its own project's region:
 `verify-no-leaks.sh`, `force-clean-ci.sh`, `status.sh`.
+
+### 5.2 One project in two regions at once — deferred to its own spec
+
+This spec lets a project **choose** its region. It does not let one project
+**occupy two at once**, and the operator has asked for that as a follow-up
+after the KMS migration.
+
+Per-region SSM paths are necessary but **not sufficient**. Measured
+2026-09-21: all 22 SSM parameters are `/<project>/…` with no region, and they
+fall into three groups that need different treatment, so a blanket region
+prefix would be wrong:
+
+| Group | Examples | Treatment |
+|---|---|---|
+| Region-varying | `persistent-civo/network/id`, `cluster-civo/k8s/*`, `persistent-hetzner/*`, `cluster/eks/node_subnet_id`, `persistent/vpc/vpc_id`, `bootstrap/acm/certificate_arn` | MUST gain the region |
+| Region-invariant | `persistent/postgres/app_password`, `persistent/grafana/admin_password`, `persistent/argocd/admin_password_bcrypt` | MUST NOT — one credential per project, whatever region it runs in |
+| Needs a decision | `bootstrap/route53/*`, `bootstrap/rolesanywhere/*` | see below |
+
+Three other collisions have to be solved in the same spec, and two are harder
+than SSM:
+
+- **The Route 53 zone.** One `<subdomain>.<root-domain>` per project. Two
+  regions both create it. Either each region takes its own subdomain — which
+  changes every URL — or one zone is shared and its records are region-scoped,
+  which means deciding who owns the zone's lifecycle.
+- **The Roles Anywhere chain becomes per project per region** (operator
+  decision, 2026-09-21). It is not only a naming collision: Roles Anywhere is
+  a **regional** service — `arn:aws:rolesanywhere:<region>:…` — so a project
+  spanning two regions needs an anchor and a profile in each, whatever they
+  are called. Today HETZ-018 names them `<project>-<provider>-workload-ca` and
+  `<project>-<provider>`, which collide.
+
+  **The IAM roles stay global and stay one set.** `<project>-ra-<consumer>` is
+  an IAM resource, and IAM is not regional; minting four more per region would
+  be duplication with no isolation gained. What changes is their trust
+  policies, which condition on `aws:SourceArn` and must accept **every**
+  region's anchor rather than one.
+
+  **The CA stays one per project.** The committed certificate is material, not
+  an AWS resource: the same certificate can be registered as an anchor in each
+  region. A second CA would mean a second ceremony and a second private key to
+  hold, for no security gain.
+- **The backups bucket** is already region-namespaced by §3.11, so it is done.
+
+Until that spec lands, two regions in parallel means **two projects** —
+`PROJECT_NAME` and `SUBDOMAIN` already namespace everything, and that works
+today with no new code. §3.7's guard refuses the same-project case, which is
+the correct behaviour rather than a limitation to work around.
 
 ### 5.2 Other risks
 

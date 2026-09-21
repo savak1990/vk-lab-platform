@@ -20,3 +20,8 @@ variable "ssm_layer" {
   type        = string
   default     = "persistent-civo"
 }
+
+variable "provider_region" {
+  description = "The provider's own region, lowercased - namespaces this project's buckets so two regions never share one. Not where the bucket lives; that is the AWS provider's region."
+  type        = string
+}

@@ -26,7 +26,7 @@ if [ -f terragrunt.hcl.orig ]; then
   rm -rf .terragrunt-cache terraform.tfstate terraform.tfstate.backup
 fi
 
-if aws s3api head-bucket --bucket "$BUCKET" --region "$LAB_REGION" >/dev/null 2>&1; then
+if aws s3api head-bucket --bucket "$BUCKET" --region "$LAB_ACCOUNT_REGION" >/dev/null 2>&1; then
   echo "Account state bucket s3://$BUCKET already exists - applying terraform/live/account/state normally."
   terragrunt apply -auto-approve -input=false
   exit 0

@@ -7,9 +7,20 @@ locals {
   # name instead of the personal lab's.
   project = get_env("PROJECT_NAME", "vk-lab-platform")
 
-  # The platform targets exactly one region. Deliberately a constant, not an
-  # env var: a second region was never made to work and is not supported.
-  aws_region = "eu-west-1"
+  # The account layer never moves: its KMS key, lab-role, OIDC provider and
+  # own state bucket all live here, and deriving this is what ADR 0024
+  # prohibits - unchanged for this layer.
+  account_region = "eu-west-1"
+
+  provider_name = get_env("PROVIDER", "aws")
+  region_input  = get_env("REGION", "")
+
+  # REGION is the provider's region, validated before terragrunt runs. Only
+  # the aws target moves its AWS resources; civo and hetzner keep theirs in
+  # the account region whatever their own region is (ADR 0039).
+  aws_region = (contains(["account", "account-state"], local.raw_class)
+    || local.provider_name != "aws"
+  || local.region_input == "") ? local.account_region : local.region_input
 
   # The account layer's own state (the shared lab-role/kms/github-oidc/
   # eks-access-identity units) must never live in any one project's own
@@ -31,7 +42,16 @@ locals {
   # "account-state" (that layer's own bucket, top-level so it's never
   # inside the tree account-down.sh's `terragrunt run --all destroy` walks)
   # both route to the account-global bucket, never a project's own.
-  state_bucket = contains(["account", "account-state"], local.raw_class) ? local.account_state_bucket : "${local.project}-tf-state"
+  state_bucket = contains(["account", "account-state"], local.raw_class) ? local.account_state_bucket : "${local.project}-${local.provider_region}-tf-state"
+
+  # The provider's own region, lowercased: what namespaces this project's
+  # state. The bucket is an AWS resource living in aws_region, but its name
+  # says whose state it holds - two Civo regions sharing one state would let
+  # the second orphan the first's network.
+  provider_region = lower(
+    local.provider_name == "civo" ? local.civo_region : (
+    local.provider_name == "hetzner" ? local.hcloud_location : local.aws_region)
+  )
 
   # Used by the eks unit for node group placement, pinning it to one fixed
   # AZ. Retained EBS volumes are AZ-bound, so this pin is what lets them
@@ -47,9 +67,7 @@ locals {
   # constitution's tag vocabulary is disposable, so it maps back to that.
   lifecycle_class = lookup({ account = "bootstrap", "account-state" = "bootstrap", cluster = "disposable", "cluster-civo" = "disposable", "cluster-hetzner" = "disposable", "persistent-civo" = "persistent", "persistent-hetzner" = "persistent" }, local.raw_class, local.raw_class)
 
-  # The Civo target runs in exactly one region, for the same reason aws_region
-  # is a constant: a second region was never made to work and is not supported.
-  civo_region = "LON1"
+  civo_region = local.provider_name == "civo" && local.region_input != "" ? local.region_input : "LON1"
 
   # Civo stacks get a civo provider in addition to aws - their units still
   # write SSM parameters, so both providers are needed in the same unit. The
@@ -61,11 +79,9 @@ locals {
   # renders the empty string and its provider.tf stays byte-identical.
   civo_provider = local.civo_stack ? "\nprovider \"civo\" {\n  region = \"${local.civo_region}\"\n}" : ""
 
-  # The Hetzner target runs in exactly one location, for the same reason
-  # aws_region and civo_region are constants. Also declared in
-  # scripts/lib/region.sh - Terraform and shell each need their own copy since
-  # one isn't reachable from the other; never derive this, keep both literal.
-  hcloud_location = "nbg1"
+  # Also declared in scripts/lib/region.sh - Terraform and shell each need
+  # their own copy, since neither can read the other's.
+  hcloud_location = local.provider_name == "hetzner" && local.region_input != "" ? local.region_input : "nbg1"
 
   # Hetzner stacks get an hcloud provider in addition to aws, for the same
   # reason Civo stacks get theirs. The token is read from HCLOUD_TOKEN by the

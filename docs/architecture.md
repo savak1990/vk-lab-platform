@@ -663,7 +663,7 @@ The Terraform persistent layer creates and owns:
   - `lab.<root-domain>`
   - `*.lab.<root-domain>`
 
-Both are Persistent-lifecycle: they survive `make down` and EKS destruction/recreation.
+Both are Bootstrap-lifecycle: they survive `make down`, `make persistent-down` and EKS destruction/recreation, and are destroyed only by `make bootstrap-down`. The certificate is DNS-validated against the zone and is useless without it, so the pair shares one lifecycle class; splitting them would let one be destroyed while the other survived.
 
 The ACM certificate must be created in the same AWS region as the NLB that uses it (§11), and should use DNS validation against the delegated `lab.<root-domain>` hosted zone rather than email validation.
 

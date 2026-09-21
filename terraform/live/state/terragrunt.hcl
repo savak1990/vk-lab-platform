@@ -4,16 +4,18 @@
 
 include "root" {
   path = find_in_parent_folders("root.hcl")
+  # Needed to read state_bucket below.
+  expose = true
 }
 
 terraform {
   source = "${get_repo_root()}/terraform/modules/terraform-state"
 }
 
-locals {
-  project = get_env("PROJECT_NAME", "vk-lab-platform")
-}
-
 inputs = {
-  bucket_name = "${local.project}-tf-state"
+  # The same local every other unit's backend resolves to, rather than a
+  # second copy of the naming rule: a bucket created under one name and
+  # written to under another fails only at the migration step, after the
+  # first name already exists.
+  bucket_name = include.root.locals.state_bucket
 }
