@@ -405,9 +405,6 @@ configure_test_kubeconfig() {
   fi
   local cluster token
   configure_kubeconfig "$kubeconfig"
-  if [ "$PROVIDER" = "local" ]; then
-    KUBECONFIG="${kubeconfig:-${KUBECONFIG:-}}" require_local_context || return 1
-  fi
   cluster="$(kubectl ${kcfg[@]:+"${kcfg[@]}"} config view -o jsonpath="{.contexts[?(@.name==\"$admin_context\")].context.cluster}")"
   if [ -z "$cluster" ]; then
     echo "configure_test_kubeconfig: kubeconfig has no context $admin_context" >&2

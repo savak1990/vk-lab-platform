@@ -18,11 +18,6 @@ const (
 	postgresNamespace = "cnpg-system"
 	envoyNamespace    = "envoy"
 	gatewayName       = "platform-gateway"
-
-	// Grafana's root_url names this port on the target that has no hostname,
-	// so any absolute redirect it sends names it too. A forward on any other
-	// port would take those redirects somewhere this suite never opened.
-	gatewayLocalPort = 8080
 )
 
 // Environment abstracts *how* a test reaches a service, so service test
@@ -85,13 +80,14 @@ func (e *ClusterEnvironment) ServiceURL(service string) string {
 		return "https://" + hostname
 	}
 
-	// A prefix of "/" would otherwise give every caller a doubled slash.
+	// Argo CD's prefix is "/", and callers append their own path to this.
 	return fmt.Sprintf("http://127.0.0.1:%d%s", e.forwardGateway(), strings.TrimSuffix(pathPrefix, "/"))
 }
 
 // forwardGateway opens one port-forward to the Envoy Gateway pod and reuses
-// it. Every service without a hostname shares it: a second forward would
-// bind the same pinned local port and fail.
+// it, so every service without a hostname shares a single tunnel. The local
+// port is not pinned: Grafana builds its redirects from the request host and
+// its assets from a relative base, so nothing outside the tunnel names it.
 func (e *ClusterEnvironment) forwardGateway() int {
 	if e.gatewayPort != 0 {
 		return e.gatewayPort
@@ -107,9 +103,9 @@ func (e *ClusterEnvironment) forwardGateway() int {
 		panic(fmt.Sprintf("framework: finding a ready gateway pod: %v", err))
 	}
 
-	bound, stopCh, err := PortForward(e.restConfig, e.clientset, envoyNamespace, podName, targetPort, gatewayLocalPort)
+	bound, stopCh, err := PortForward(e.restConfig, e.clientset, envoyNamespace, podName, targetPort, 0)
 	if err != nil {
-		panic(fmt.Sprintf("framework: port-forwarding to the gateway on %d - is another port-forward holding it? %v", gatewayLocalPort, err))
+		panic(fmt.Sprintf("framework: port-forwarding to the gateway: %v", err))
 	}
 	e.portForwards = append(e.portForwards, stopCh)
 	e.gatewayPort = bound

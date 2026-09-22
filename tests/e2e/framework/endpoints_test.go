@@ -76,7 +76,7 @@ func TestResolveHTTPRouteFallsBackToPathPrefix(t *testing.T) {
 }
 
 // Argo CD owns "/" on the target with no hostname, and callers append their
-// own path to what ServiceURL returns.
+// own path to what ServiceURL returns, so the prefix must not carry one too.
 func TestRootPrefixTrimsToEmpty(t *testing.T) {
 	client := dynamicFor(route("argocd", "argocd", nil, "/"))
 
@@ -85,7 +85,7 @@ func TestRootPrefixTrimsToEmpty(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if got := strings.TrimSuffix(prefix, "/") + "/healthz"; got != "/healthz" {
-		t.Errorf("got %q, want /healthz - a doubled slash would reach nothing", got)
+		t.Errorf("got %q, want /healthz", got)
 	}
 }
 
