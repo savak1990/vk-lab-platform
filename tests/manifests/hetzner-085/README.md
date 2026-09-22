@@ -56,9 +56,16 @@ sed -i '' \
    Long-lived (`sleep infinity`) — proves the positive path:
    `kubectl exec hetzner-085-positive -c aws-cli -- aws sts get-caller-identity`
    succeeds, identity ARN `assumed-role/vk-hetzner-lab-ra-eso/...`, and
-   `kubectl exec hetzner-085-positive -c aws-cli -- aws ssm get-parameter
-   --name /vk-hetzner-lab/bootstrap/route53/fqdn` returns the fqdn. The
-   second call also proves IPv4 egress to SSM from a Hetzner node.
+   `kubectl exec hetzner-085-positive -n external-secrets -c aws-cli -- aws
+   ssm get-parameter --name /vk-hetzner-lab/persistent/postgres/app_password
+   --with-decryption` returns the parameter.
+
+   The parameter matters. The `ra-eso` role's inline `consumer` policy grants
+   `ssm:GetParameter` on exactly the two parameters the ExternalSecrets read,
+   and on nothing else, so a read of any other name is denied however healthy
+   the chain is. This one is a `SecureString`, so the call also exercises the
+   role's `kms:Decrypt` grant, and answering at all proves IPv4 egress from a
+   Hetzner node to both SSM and KMS.
 2. `kubectl apply -f /tmp/hetzner-085-scratch/wrong-ca-issuer.yaml`
    Wait for its Certificate to be `Ready`:
    `kubectl get certificate hetzner-085-wrong-ca -n external-secrets -w`

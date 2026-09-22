@@ -189,3 +189,16 @@ values entry; the render check then fails until the set is reverted too.
   and `argo-up` had passed `postgres.backup.enabled=false`. Two cycles
   running makes this consistent rather than a one-off, so it is a
   configuration contradiction to find, not a flake to wait out.
+- 2026-09-22 — observed on HETZ-085's cycle. The `lab-postgres` Cluster
+  reached `Cluster in healthy state` with one instance and one bound 20Gi
+  `hcloud-volumes` PVC, and `kubectl get application -n argocd` listed ten
+  Applications with no `barman-cloud-plugin` among them — which is the
+  expected shape when `argo-up` passes `postgres.backup.enabled=false`, and
+  confirms directly that the plugin `backup_teardown` asks for is not
+  installed on this target. That is the missing half of the contradiction
+  recorded above: `backup_teardown` is ungated for every provider except
+  `local` (`scripts/argo-down.sh:137-139` → `scripts/lib/provider.sh:468-526`)
+  and never consults `postgres.backup.enabled`, so it applies a
+  `method: plugin` Backup against a cluster that has no plugin. One guard in
+  `backup_teardown` is the whole fix; it belongs to this spec, not to the one
+  whose cycle found it.
