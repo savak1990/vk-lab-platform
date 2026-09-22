@@ -10,12 +10,16 @@ name: lifecycle-test
 # that is what lets two of them be added without starting two runs that cancel
 # each other's validation. `ci:lifecycle` with no selector runs every provider.
 #
-# `ci:hetzner` and `ci:local` name jobs that do not exist yet, and pr-gate
-# rejects a run that selects one rather than let the selector do nothing. A run
-# on a subset says loudly which clouds it never touched.
+# `ci:hetzner` names a job that does not exist yet, and pr-gate rejects a run
+# that selects it rather than let the selector do nothing. A run on a subset
+# says loudly which targets it never touched.
 #
-# The heavy half is opt-in because both providers together cost roughly 55
-# minutes and a little under a dollar. Adding `ci:lifecycle` starts the run
+# `ci:local` runs the platform on kind, on the runner itself. It reaches no
+# cloud, costs nothing and needs no credential, so it joins the default rather
+# than waiting to be asked for.
+#
+# The heavy half is opt-in because the two cloud providers together cost
+# roughly 55 minutes and a little under a dollar. Adding `ci:lifecycle` starts the run
 # against the pull request's current head commit; removing and re-adding it is
 # the re-run handle, and the selectors decide what that re-run covers.
 #
@@ -91,7 +95,7 @@ jobs:
           # Providers with a job behind them. Selecting one of the others is an
           # explicit request the gate refuses out loud, so the default must
           # never reach for them - it would refuse the commonest case of all.
-          AVAILABLE="aws civo"
+          AVAILABLE="aws civo local"
 
           has() {
             printf '%s' "${LABELS:-[]}" | jq -e --arg x "$1" 'any(.[]?; . == $x)' > /dev/null
@@ -574,6 +578,76 @@ jobs:
       production_tls: false
       target_revision: ${{ github.event.pull_request.head.sha || github.ref_name }}
 
+  # The platform on kind, on the runner itself. Not a caller of
+  # lifecycle-provider.yml: that workflow puts up, test and down on three
+  # runners, which a cloud cluster outlives and a kind cluster does not - it
+  # dies with the job that created it. So one job, and teardown is a step.
+  kind-integration:
+    needs: [changes, validate-terraform, validate-gitops, validate-yaml,
+            validate-actions, validate-secrets, validate-repo]
+    permissions:
+      contents: read
+    # Same gate as the cloud jobs, including the fork guard. No credential is
+    # issued here, but the runner still executes workloads this pull request
+    # controls, which is the abuse this guard exists for.
+    if: >-
+      !cancelled() &&
+      !contains(needs.*.result, 'failure') &&
+      !contains(needs.*.result, 'cancelled') &&
+      needs.changes.outputs.docs_only != 'true' &&
+      needs.changes.outputs.run_local == 'true' &&
+      !contains(github.event.pull_request.labels.*.name, 'ci:skip-lifecycle') &&
+      (github.event_name == 'workflow_dispatch' ||
+       github.event.pull_request.head.repo.full_name == github.repository)
+    # Per pull request, and cancellable - unlike the cloud jobs, which must
+    # never lose a teardown to a cancellation. Nothing here outlives the runner.
+    concurrency:
+      group: kind-integration-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      PROVIDER: local
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Set up the lab toolchain
+        uses: ./.github/actions/setup-lab-tools
+        with:
+          # The cheapest arm: it skips the Civo CLI, and nothing here reaches
+          # AWS either. `full` is for helm and htpasswd, which argo-up.sh
+          # requires outright on this target.
+          provider: aws
+          scope: full
+          kind: true
+          argocd: true
+
+      - name: Create the cluster and reconcile the platform
+        run: make up
+        env:
+          # The root Application syncs from this checkout, but its children
+          # fetch from git. Left unset they would reconcile main while the root
+          # reflects the pull request - a green run against the wrong content.
+          TARGET_REVISION: ${{ github.event.pull_request.head.sha || github.ref_name }}
+          # The default 900s was measured on a laptop with a warm image cache.
+          # A runner pulls every image cold on 4 vCPU.
+          LOCAL_CHILDREN_WATCH_SECONDS: "1800"
+
+      - name: Run the E2E suite
+        run: make test
+
+      # A kind cluster dies with the runner, so this leaks nothing if it never
+      # runs. It stays because it is the only coverage cluster-down-local.sh
+      # gets, and separate from the suite so a teardown fault cannot hide a
+      # test fault. `make down` on this target takes no CONFIRM_DESTROY.
+      - name: Delete the cluster
+        if: always()
+        run: make down
+
   # The single required status check on main. Every other job feeds it, and it
   # always reports - a required check that stays pending blocks a merge forever
   # (constitution §11).
@@ -588,6 +662,7 @@ jobs:
       - validate-repo
       - lifecycle-aws
       - lifecycle-civo
+      - kind-integration
     if: always()
     permissions:
       contents: read
@@ -609,16 +684,17 @@ jobs:
           R_REPO: ${{ needs.validate-repo.result }}
           LIFECYCLE_AWS: ${{ needs.lifecycle-aws.result }}
           LIFECYCLE_CIVO: ${{ needs.lifecycle-civo.result }}
+          KIND_INTEGRATION: ${{ needs.kind-integration.result }}
           EVENT_NAME: ${{ github.event_name }}
           HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
           TRIGGERED: ${{ needs.changes.outputs.triggered }}
           WANTS_SKIP: ${{ contains(github.event.pull_request.labels.*.name, 'ci:skip-lifecycle') }}
           WANTS_AWS: ${{ needs.changes.outputs.run_aws }}
           WANTS_CIVO: ${{ needs.changes.outputs.run_civo }}
-          # No job exists for these yet. Named here so the gate can say
-          # so out loud rather than let the selector do nothing.
-          WANTS_HETZNER: ${{ needs.changes.outputs.run_hetzner }}
           WANTS_LOCAL: ${{ needs.changes.outputs.run_local }}
+          # No job exists for this one yet. Named here so the gate can say so
+          # out loud rather than let the selector do nothing.
+          WANTS_HETZNER: ${{ needs.changes.outputs.run_hetzner }}
         run: |
           set -euo pipefail
 
@@ -675,16 +751,17 @@ jobs:
           echo "static validation passed."
 
           if [ "$EVENT_NAME" != "pull_request" ]; then
-            if [ "$LIFECYCLE_AWS" != "success" ] || [ "$LIFECYCLE_CIVO" != "success" ]; then
-              echo "::error::lifecycle did not pass (aws=$LIFECYCLE_AWS civo=$LIFECYCLE_CIVO)."
+            if [ "$LIFECYCLE_AWS" != "success" ] || [ "$LIFECYCLE_CIVO" != "success" ] \
+               || [ "$KIND_INTEGRATION" != "success" ]; then
+              echo "::error::lifecycle did not pass (aws=$LIFECYCLE_AWS civo=$LIFECYCLE_CIVO local=$KIND_INTEGRATION)."
               exit 1
             fi
-            echo "lifecycle passed on both providers."
+            echo "lifecycle passed on every provider."
             exit 0
           fi
 
           if [ "$HEAD_REPO" != "$GITHUB_REPOSITORY" ]; then
-            echo "::error::this pull request comes from a fork. The lifecycle check needs AWS and Civo credentials, which a fork never receives - a maintainer must re-run it from a branch in this repository."
+            echo "::error::this pull request comes from a fork. The lifecycle check needs AWS and Civo credentials, and runs the pull request's own workloads on a runner - neither is given to a fork, so a maintainer must re-run it from a branch in this repository."
             exit 1
           fi
 
@@ -699,13 +776,11 @@ jobs:
           fi
 
           # A provider label with no job behind it would otherwise do nothing at
-          # all, which is worse than refusing it.
-          for pair in "hetzner:$WANTS_HETZNER" "local:$WANTS_LOCAL"; do
-            if [ "${pair#*:}" = "true" ]; then
-              echo "::error::'ci:${pair%%:*}' was requested, but no ${pair%%:*} lifecycle job exists yet. Remove the label."
-              exit 1
-            fi
-          done
+          # all, which is worse than refusing it. hetzner is the last one.
+          if [ "$WANTS_HETZNER" = "true" ]; then
+            echo "::error::'ci:hetzner' was requested, but no hetzner lifecycle job exists yet. Remove the label."
+            exit 1
+          fi
 
           # The backtick is passed as an argument rather than written into the
           # format string: shellcheck reads a backtick inside quotes as a
@@ -747,7 +822,7 @@ jobs:
               echo "no infrastructure change - the lifecycle check is not required for this pull request."
               exit 0
             fi
-            echo "::error::this pull request changes infrastructure, so it needs the lifecycle check. Add 'ci:lifecycle' to start it - on its own it runs every provider, and with 'ci:aws' or 'ci:civo' it runs only those."
+            echo "::error::this pull request changes infrastructure, so it needs the lifecycle check. Add 'ci:lifecycle' to start it - on its own it runs every provider, and with 'ci:aws', 'ci:civo' or 'ci:local' it runs only those."
             exit 1
           fi
 
@@ -756,7 +831,8 @@ jobs:
           # report "skipped", and only one of the two is acceptable.
           GATE=0
           OMITTED=""
-          for triple in "aws:$LIFECYCLE_AWS:$WANTS_AWS" "civo:$LIFECYCLE_CIVO:$WANTS_CIVO"; do
+          for triple in "aws:$LIFECYCLE_AWS:$WANTS_AWS" "civo:$LIFECYCLE_CIVO:$WANTS_CIVO" \
+                        "local:$KIND_INTEGRATION:$WANTS_LOCAL"; do
             name="${triple%%:*}"
             rest="${triple#*:}"
             result="${rest%%:*}"
