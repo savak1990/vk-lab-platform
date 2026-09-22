@@ -51,6 +51,9 @@ observability:
       prometheusStorage: 1Gi
       # Unused here - alertmanager is disabled on this target.
       alertmanagerStorage: 256Mi
+      # Only retention. Loki's reject_old_samples_max_age stays at 168h on
+      # every target: it bounds how stale an arriving line may be, so tying
+      # it to this would drop real logs after a laptop suspend.
       lokiRetention: 6h
       lokiStorage: 1Gi
 

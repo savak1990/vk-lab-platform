@@ -148,14 +148,15 @@ Application__argocd__kube-prometheus-stack Application__argocd__metrics-server \
 ServiceMonitor__argocd__argocd PodMonitor__cnpg-system__cnpg-postgres \
 ServiceMonitor__envoy__envoy-gateway PodMonitor__envoy__envoy-proxy \
 ConfigMap__observability__dashboard-cnpg \
-PrometheusRule__observability__observability-alerts"
+PrometheusRule__observability__observability-alerts \
+Application__argocd__loki Application__argocd__alloy"
 FORBIDDEN_KINDS_LOCAL="StorageClass VolumeSnapshotClass VolumeSnapshotContent VolumeSnapshot \
 ClusterSecretStore ExternalSecret NodePool EC2NodeClass \
 ObjectStore ScheduledBackup"
 FORBIDDEN_KINDS_CIVO="StorageClass VolumeSnapshotClass VolumeSnapshotContent VolumeSnapshot \
 NodePool EC2NodeClass"
 FORBIDDEN_APPLICATIONS_LOCAL="aws-load-balancer-controller cert-manager ebs-csi-driver karpenter \
-loki alloy external-snapshotter external-snapshotter-crds \
+external-snapshotter external-snapshotter-crds \
 external-dns barman-cloud-plugin"
 FORBIDDEN_APPLICATIONS_CIVO="aws-load-balancer-controller ebs-csi-driver karpenter \
 external-snapshotter external-snapshotter-crds"
@@ -309,6 +310,9 @@ verify_object_set() {
         '.prometheus.prometheusSpec.retention=6h' \
         '.prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.resources.requests.storage=1Gi' \
         '.alertmanager.enabled=false' || return 1
+      assert_helm_values "$target" loki "$dir" \
+        '.loki.limits_config.retention_period=6h' \
+        '.singleBinary.persistence.size=1Gi' || return 1
     fi
     local karpenter_rule="$dir/PrometheusRule__observability__observability-alerts.yaml"
     if [ -e "$karpenter_rule" ]; then
