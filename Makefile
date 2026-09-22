@@ -1,4 +1,4 @@
-.PHONY: up down full-up full-down platform-up platform-down state-up state-down status clusters require-valid-project-name require-valid-node-config account-up account-down bootstrap-up bootstrap-down secret-encrypt secret-decrypt secrets-check node-config-check scripts-check generate-secrets ca-init ssh-key-init persistent-up persistent-down clear-cache cluster-up cluster-down kubeconfig node-ssh test-kubeconfig test-kubeconfig-isolated argo-up argo-down test
+.PHONY: up down full-up full-down platform-up platform-down state-up state-down status clusters require-valid-project-name require-valid-node-config account-up account-down bootstrap-up bootstrap-down secret-encrypt secret-decrypt secrets-check node-config-check scripts-check generate-secrets ca-init ssh-key-init persistent-up persistent-down clear-cache cluster-up cluster-down kubeconfig node-ssh test-kubeconfig test-kubeconfig-isolated argo-up argo-down test go-check
 
 .NOTPARALLEL:
 
@@ -299,11 +299,21 @@ test-kubeconfig:
 ## for a civo cluster on the Let's Encrypt staging issuer (CIVO-070/140).
 ## Usage: make test | make test-postgres | make test-grafana | make test-argocd
 E2E_TLS_FLAG := $(if $(filter 1 true,$(E2E_INSECURE_TLS)),--insecure-skip-tls-verify,)
+## The suite package only. ./tests/e2e/... would hand --context to the
+## framework's own test binary too, which does not define it.
 test: test-kubeconfig-isolated
-	KUBECONFIG=$(LAB_TEST_KUBECONFIG) go test ./tests/e2e/... -v -args --context=$(E2E_CONTEXT) $(E2E_TLS_FLAG) --ginkgo.v
+	KUBECONFIG=$(LAB_TEST_KUBECONFIG) go test ./tests/e2e -v -args --context=$(E2E_CONTEXT) $(E2E_TLS_FLAG) --ginkgo.v
 
 test-%: test-kubeconfig-isolated
-	KUBECONFIG=$(LAB_TEST_KUBECONFIG) go test ./tests/e2e/... -v -args --context=$(E2E_CONTEXT) $(E2E_TLS_FLAG) --ginkgo.label-filter=$* --ginkgo.v
+	KUBECONFIG=$(LAB_TEST_KUBECONFIG) go test ./tests/e2e -v -args --context=$(E2E_CONTEXT) $(E2E_TLS_FLAG) --ginkgo.label-filter=$* --ginkgo.v
+
+## Compiles and vets every Go package, and runs the E2E framework's own
+## offline tests. Needs no cluster and no credentials.
+## Usage: make go-check
+go-check:
+	go vet ./...
+	go test ./tests/e2e/framework/...
+	@echo "GO-CHECK: the Go layer is valid."
 
 ## Internal: the same read-only identity as test-kubeconfig, written to
 ## $(LAB_TEST_KUBECONFIG) instead of your own kubeconfig.

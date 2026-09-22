@@ -483,6 +483,14 @@ jobs:
       # pr-gate-check now run, rather than as four steps of their own.
       - run: make scripts-check
 
+      # Nothing else compiles Go, so until now the E2E suite could fail to
+      # build with every check green.
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - run: make go-check
+
   # Both providers at once, each an independent up -> test -> down chain.
   #
   # Two explicit jobs rather than one matrix job. A matrix would name its legs

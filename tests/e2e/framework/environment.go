@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"strings"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/dynamic"
@@ -12,17 +13,23 @@ import (
 )
 
 const (
-	envoyGatewayNamespace = "argocd"
-	grafanaNamespace      = "observability"
-	postgresNamespace     = "cnpg-system"
+	argocdNamespace   = "argocd"
+	grafanaNamespace  = "observability"
+	postgresNamespace = "cnpg-system"
+	envoyNamespace    = "envoy"
+	gatewayName       = "platform-gateway"
+
+	// Grafana's root_url names this port on the target that has no hostname,
+	// so any absolute redirect it sends names it too. A forward on any other
+	// port would take those redirects somewhere this suite never opened.
+	gatewayLocalPort = 8080
 )
 
 // Environment abstracts *how* a test reaches a service, so service test
 // files can express assertions once and run unmodified against a kind
-// cluster or a real EKS/Civo cluster. Only ClusterEnvironment exists today; a kind
-// implementation is expected later (spec 024, blocked on `make kind-up`
-// not existing yet) and should satisfy this same interface without any
-// call site needing to branch on which one is in use.
+// cluster or a real EKS/Civo cluster. One implementation serves both: it
+// asks the cluster how each service is addressed rather than being told,
+// so no call site branches on which kind of cluster it runs against.
 type Environment interface {
 	KubernetesClient() kubernetes.Interface
 	ServiceURL(service string) string
@@ -30,17 +37,18 @@ type Environment interface {
 	Close()
 }
 
-// ClusterEnvironment reaches services via their public HTTPRoute hostname
-// (Grafana, Argo CD) or via a port-forward to their ClusterIP Service
-// (Postgres, which has no external endpoint).
+// ClusterEnvironment reaches a service by its HTTPRoute hostname where the
+// route declares one, and otherwise through a port-forward to the gateway.
+// Postgres has no route either way and is always forwarded.
 type ClusterEnvironment struct {
 	clientset    kubernetes.Interface
 	dynamic      dynamic.Interface
 	restConfig   *rest.Config
 	portForwards []chan struct{}
+	gatewayPort  int
 }
 
-// Close stops every port-forward opened by PostgresDSN. Call once from
+// Close stops every port-forward this environment opened. Call once from
 // AfterSuite - each forward otherwise leaks its goroutine and SPDY
 // connection for the life of the test binary.
 func (e *ClusterEnvironment) Close() {
@@ -57,22 +65,55 @@ func (e *ClusterEnvironment) KubernetesClient() kubernetes.Interface {
 	return e.clientset
 }
 
-// ServiceURL resolves "grafana" or "argocd" to their public HTTPS hostname
-// via the Gateway API HTTPRoute Argo CD already manages for them.
+// ServiceURL resolves "grafana" or "argocd" to a base URL, from the Gateway
+// API HTTPRoute Argo CD manages for it. A route with a hostname is public
+// HTTPS; a route with only a path prefix is reached through the gateway.
 func (e *ClusterEnvironment) ServiceURL(service string) string {
 	ns, ok := map[string]string{
 		"grafana": grafanaNamespace,
-		"argocd":  envoyGatewayNamespace,
+		"argocd":  argocdNamespace,
 	}[service]
 	if !ok {
 		panic(fmt.Sprintf("framework: unknown service %q", service))
 	}
 
-	hostname, err := ResolveHTTPRouteHostname(context.Background(), e.dynamic, ns, service)
+	hostname, pathPrefix, err := ResolveHTTPRoute(context.Background(), e.dynamic, ns, service)
 	if err != nil {
 		panic(fmt.Sprintf("framework: resolving %s URL: %v", service, err))
 	}
-	return "https://" + hostname
+	if hostname != "" {
+		return "https://" + hostname
+	}
+
+	// A prefix of "/" would otherwise give every caller a doubled slash.
+	return fmt.Sprintf("http://127.0.0.1:%d%s", e.forwardGateway(), strings.TrimSuffix(pathPrefix, "/"))
+}
+
+// forwardGateway opens one port-forward to the Envoy Gateway pod and reuses
+// it. Every service without a hostname shares it: a second forward would
+// bind the same pinned local port and fail.
+func (e *ClusterEnvironment) forwardGateway() int {
+	if e.gatewayPort != 0 {
+		return e.gatewayPort
+	}
+	ctx := context.Background()
+
+	selector, targetPort, err := GatewayServicePort(ctx, e.clientset, envoyNamespace, gatewayName, 80)
+	if err != nil {
+		panic(fmt.Sprintf("framework: resolving the gateway Service: %v", err))
+	}
+	podName, err := FirstReadyPod(ctx, e.clientset, envoyNamespace, selector)
+	if err != nil {
+		panic(fmt.Sprintf("framework: finding a ready gateway pod: %v", err))
+	}
+
+	bound, stopCh, err := PortForward(e.restConfig, e.clientset, envoyNamespace, podName, targetPort, gatewayLocalPort)
+	if err != nil {
+		panic(fmt.Sprintf("framework: port-forwarding to the gateway on %d - is another port-forward holding it? %v", gatewayLocalPort, err))
+	}
+	e.portForwards = append(e.portForwards, stopCh)
+	e.gatewayPort = bound
+	return bound
 }
 
 // PostgresDSN opens a port-forward to the named CNPG cluster's primary
@@ -98,7 +139,7 @@ func (e *ClusterEnvironment) PostgresDSN(cluster string) string {
 		panic(fmt.Sprintf("framework: finding ready pod for %s-rw: %v", cluster, err))
 	}
 
-	localPort, stopCh, err := PortForward(e.restConfig, e.clientset, postgresNamespace, podName, 5432)
+	localPort, stopCh, err := PortForward(e.restConfig, e.clientset, postgresNamespace, podName, 5432, 0)
 	if err != nil {
 		panic(fmt.Sprintf("framework: port-forwarding to %s: %v", podName, err))
 	}
