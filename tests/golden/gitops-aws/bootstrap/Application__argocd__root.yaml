@@ -47,6 +47,8 @@ spec:
           value: ""
         - name: envoyGateway.firewallId
           value: ""
+        - name: envoyGateway.location
+          value: ""
         - name: externalDns.txtOwnerId
           value: ""
         - name: tls.issuer

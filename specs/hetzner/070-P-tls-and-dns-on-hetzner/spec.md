@@ -34,11 +34,19 @@ on DNS propagation before every issuance.
 
 ## 2. Scope and non-goals
 
-In scope: verifying the hoisted TLS and DNS components on `target: hetzner`,
-the ExternalDNS behaviour with a new LB address, the TLS Secret round-trip
-under the hetzner SSM path, and the `wait_for_dns` timings. Not in scope:
-the identity chain (HETZ-085), the LB itself (HETZ-060), the AWS and Civo
-targets.
+In scope: the TLS Secret round-trip under the hetzner SSM path, the
+ExternalDNS behaviour with a new LB address, the measured `wait_for_dns`
+timings, and the switch to `letsencrypt-prod`. Not in scope: the identity
+chain (HETZ-085), the LB itself (HETZ-060), the AWS and Civo targets.
+
+**Narrowed by HETZ-060 (2026-09-22).** The HTTPS:443 listener and the
+ExternalDNS records were both going to arrive here. Neither could wait:
+every HTTPRoute the Gateway enables names a `sectionName`, two of them
+`https`, and a route whose listener is missing is never Accepted, which
+stalls the root sync behind its health check. So HETZ-060 shipped both
+listeners, and because ExternalDNS sources `gateway-httproute`, the DNS
+records with them. What is left here is the persistence and the
+measurements, not the plumbing.
 
 ## 3. Current state / evidence
 
@@ -51,22 +59,23 @@ targets.
 ## 4. Design and contracts
 
 - No new template. The hetzner render must contain `ClusterIssuer letsencrypt-staging`, `letsencrypt-prod`, `Certificate envoy/platform-public` with `dnsNames: [hz.<root>, *.hz.<root>]`, the redirect `HTTPRoute`, and `Certificate cert-manager/cert-manager`. `gitops-render-check.sh` requires them for hetzner (HETZ-050 set).
-- Gateway HTTPS:443 listener (added here to the hetzner block of `gateway.yaml`): `hostname: "*.{{ .Values.envoyGateway.fqdn }}"`, `tls.mode: Terminate`, `certificateRefs: [platform-public-tls]`; `cert-manager.io/issue-temporary-certificate: "true"` on the Certificate stays, so the listener programs before the first order completes.
-- ExternalDNS: `domainFilters: [hz.<root>]`, `txtOwnerId: vk-hetzner-lab`, `policy: sync`, `--interval 1m`. Route 53 record TTL is ExternalDNS's default 300 s. After `make up` the A record moves to the new LB IP within one interval plus the TTL, so the first `wait_for_dns` window (60 s, non-fatal) usually reports "not yet resolved"; this spec measures the real time and sets `HETZNER_ARGO_UP_DNS_WATCH_SECONDS` to the measured value plus margin if it is under 5 min.
+- The Gateway HTTPS:443 listener landed in HETZ-060, sharing Civo's `platform.envoyListeners` arm rather than gaining a hetzner one. It therefore carries **no** `hostname: "*.{{ .Values.envoyGateway.fqdn }}"`, which this bullet previously promised: the certificate is a wildcard and every HTTPRoute carries its own hostnames, so the listener needs no host constraint. This is what Civo has run since CIVO-070. `cert-manager.io/issue-temporary-certificate: "true"` on the Certificate stays, so the listener programs before the first order completes.
+- ExternalDNS: `domainFilters: [hz.<root>]`, `txtOwnerId: vk-hetzner-lab`, `policy: sync`, `--interval 1m`. Route 53 record TTL is ExternalDNS's default 300 s. After `make up` the A record moves to the new LB IP within one interval plus the TTL, so the first `wait_for_dns` window (60 s, non-fatal) usually reports "not yet resolved"; this spec measures the real time and sets `HETZNER_ARGO_UP_DNS_WATCH_SECONDS` to the measured value plus margin if it is under 5 min. HETZ-060 set the initial default to 300 s; this spec replaces that guess with the measurement.
 - Because DNS-01 needs no application record, issuance and DNS are independent: a fresh cluster obtains the certificate from SSM (round-trip) or orders one through TXT records while the A records are still stale. HTTP-01 is not configured on hetzner and never will be.
 - Lab uses `letsencrypt-prod`; CI uses `letsencrypt-staging` with `E2E_INSECURE_TLS=1` (HETZ-140), identical to Civo.
 - `argo-down` exports the Secret before the cascade; `argo-up` imports it before the root install; the Secret name `platform-public-tls` in namespace `envoy` is unchanged, so cert-manager adopts it and reissues only when `dnsNames` differ.
 
 ## 5. Files/components affected
 
-`gitops/templates/platform/shared/envoy-gateway/gateway.yaml` (hetzner
-HTTPS listener), `scripts/argo-up.sh` (DNS watch default for hetzner),
-`scripts/gitops-render-check.sh` (required TLS objects for hetzner).
-Everything else is consumed as-is.
+`scripts/argo-up.sh` (the measured DNS watch default for hetzner),
+`scripts/lib/provider.sh` and `scripts/argo-down.sh` (the TLS Secret
+export and import on the hetzner SSM path). `gateway.yaml` and
+`gitops-render-check.sh` were changed by HETZ-060. Everything else is
+consumed as-is.
 
 ## 6. Implementation steps
 
-1. Add the HTTPS listener to the hetzner block. Run `make gitops-check`.
+1. Confirm HETZ-060's render is unchanged: `make gitops-check`. The HTTPS listener itself landed there.
 2. Run `PROVIDER=hetzner TLS_ISSUER=letsencrypt-staging make up`. Watch `kubectl get challenge -A`: `type: DNS-01`, `state: valid`. `Certificate platform-public` Ready. Record the time from Service IP to Ready.
 3. Watch Route 53: `aws route53 list-resource-record-sets --hosted-zone-id <id>` shows `argo.hz.<root>` A = LB IP and the `TXT` owner record with `vk-hetzner-lab`. Record the time from LB IP to record update.
 4. Run `make down` then `make up`. `kubectl get order -A` is empty; the serial is unchanged; the A record moves to the new IP; measure the delay and confirm `curl https://argo.hz.<root>/` succeeds once it moves.
@@ -123,3 +132,48 @@ wrong. Data risk: none.
 
 - 2026-09-11 — created as DRAFT.
 - 2026-09-11 — reviewed and approved by the user; promoted to READY.
+- 2026-09-22 — narrowed by HETZ-060. The HTTPS listener and ExternalDNS
+  arrived there instead, for the reason in §2. §4's promised
+  `hostname: "*.<fqdn>"` on the listener is deliberately absent: hetzner
+  shares Civo's listener arm, and a per-target arm to add one constraint
+  that a wildcard certificate and per-route hostnames already cover is
+  duplication, not precision. §5 and §6 step 1 are corrected.
+
+- 2026-09-22 — two findings from HETZ-060's live cycle, both narrowing this
+  spec's remaining work.
+
+  **The SSM round-trip already works on this target, and §8's "no new Order"
+  criterion needs a condition attached.** `argo-up` restored
+  `platform-public-tls` from SSM before the root install and reported the
+  stored certificate's not-after date, so the mechanism HETZ-016 parametrised
+  is live on hetzner with no further code. But the run passed
+  `TLS_ISSUER=letsencrypt-staging` over a Secret issued by
+  `letsencrypt-prod`, and cert-manager said exactly what that costs:
+
+  ```
+  Ready=False: Issuing certificate as Secret was previously issued by
+    "ClusterIssuer.cert-manager.io/letsencrypt-prod"
+  ```
+
+  A full DNS-01 order followed and held the root sync for about ten of
+  `argo-up`'s sixteen minutes. So the criterion holds only when the issuer is
+  unchanged between cycles; state that, rather than leaving a future run to
+  discover it. Alternating issuers costs a reissue **every** cycle, because
+  `argo-down` exports whichever certificate is current - this teardown stored
+  the staging one, so the next default `letsencrypt-prod` bring-up will
+  reissue again.
+
+  **The exported chain is 7713 characters.** §3 records Civo's prod chain at
+  7390 against SSM Advanced's 8192-character limit. The staging chain is
+  longer and leaves roughly 480 characters of headroom. Worth measuring the
+  prod chain on this target too, and deciding whether the margin is
+  acceptable before a chain change consumes it.
+
+  One transient worth knowing about on a rebuilt project: the first DNS-01
+  attempt failed its self-check with
+  `SERVFAIL` querying the zone's SOA through cluster DNS, because the run had
+  recreated the Route 53 zone minutes earlier and the delegation had not
+  propagated to the nodes' resolver. The TXT record was already correct in
+  Route 53 and public resolvers answered it. cert-manager's own retry cleared
+  it with no intervention. Not a defect, but it explains a multi-minute
+  stall that looks like one.

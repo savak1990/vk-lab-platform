@@ -14,7 +14,7 @@ spec:
     name: envoy-proxy-config
     namespace: envoy
 {{- end }}
-{{- if has .Values.target (list "aws" "civo" "local") }}
+{{- if has .Values.target (list "aws" "civo" "hetzner" "local") }}
 ---
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: EnvoyProxy

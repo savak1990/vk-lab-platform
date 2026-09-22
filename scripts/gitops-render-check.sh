@@ -170,13 +170,17 @@ Namespace__cluster__e2e ServiceAccount__e2e__e2e-test"
 FORBIDDEN_OBJECTS_CIVO="ServiceMonitor__kube-system__karpenter \
 ConfigMap__observability__dashboard-karpenter-capacity"
 # The civo set, less the two features hetzner does not have yet, plus the CSI
-# driver. The whole Gateway API surface - GatewayClass, EnvoyProxy, Gateway,
-# every HTTPRoute, and the BackendTrafficPolicy that targets one - arrives with
-# the load balancer (HETZ-060) and is forbidden until then: a route no Gateway
-# accepts never reports healthy, and the root sync stalls behind it.
+# driver and the Gateway API surface. EnvoyProxy and Gateway are asserted here
+# rather than only in the forbidden sets: nothing else proves the load balancer
+# annotations render, and a route whose listener is missing is never Accepted,
+# which stalls the root sync behind its health check.
 # cluster-autoscaler arrives with HETZ-170.
 # StorageClass is allowed, unlike civo: the hcloud CSI chart ships its own.
 REQUIRED_OBJECTS_HETZNER="Application__argocd__hcloud-csi \
+GatewayClass__cluster__envoy-gateway EnvoyProxy__envoy__envoy-proxy-config \
+Gateway__envoy__platform-gateway HTTPRoute__envoy__https-redirect \
+HTTPRoute__argocd__argocd HTTPRoute__observability__grafana \
+BackendTrafficPolicy__observability__grafana-traffic-policy \
 Application__argocd__cert-manager \
 ClusterIssuer__cluster__hetzner-workload-ca Certificate__external-secrets__eso \
 Certificate__kube-system__external-dns Certificate__cert-manager__cert-manager \
@@ -199,11 +203,7 @@ FORBIDDEN_KINDS_HETZNER="VolumeSnapshotClass VolumeSnapshotContent VolumeSnapsho
 NodePool EC2NodeClass"
 FORBIDDEN_APPLICATIONS_HETZNER="aws-load-balancer-controller ebs-csi-driver karpenter \
 external-snapshotter external-snapshotter-crds metrics-server"
-FORBIDDEN_OBJECTS_HETZNER="GatewayClass__cluster__envoy-gateway \
-HTTPRoute__envoy__https-redirect HTTPRoute__argocd__argocd \
-HTTPRoute__observability__grafana \
-BackendTrafficPolicy__observability__grafana-traffic-policy \
-ServiceMonitor__kube-system__karpenter \
+FORBIDDEN_OBJECTS_HETZNER="ServiceMonitor__kube-system__karpenter \
 ConfigMap__observability__dashboard-karpenter-capacity"
 
 # An Application's helm values are one YAML string, so they need a second

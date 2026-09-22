@@ -47,6 +47,8 @@ spec:
           value: {{ .Values.envoyGateway.reservedIp | quote }}
         - name: envoyGateway.firewallId
           value: {{ .Values.envoyGateway.firewallId | quote }}
+        - name: envoyGateway.location
+          value: {{ .Values.envoyGateway.location | quote }}
         - name: externalDns.txtOwnerId
           value: {{ .Values.externalDns.txtOwnerId | quote }}
         - name: tls.issuer

@@ -190,7 +190,9 @@ local_resolve_inputs() {
 
 # Ten names is exactly the get-parameters cap, so this is one call and reuses
 # the aws-side ssm_output lookup. An eleventh name needs the batching loop
-# civo_resolve_inputs carries - HETZ-060 and HETZ-170 will each add one.
+# civo_resolve_inputs carries - enabling backups or the autoscaler will add
+# one. The load balancer's location is not one of them: it comes from the
+# REGION operator input, which no Terraform layer owns.
 #
 # No reserved IP and no backup bucket: this target has neither. No firewall or
 # ssh key id either, because nothing reads them until those two specs land.
@@ -285,39 +287,44 @@ dns_status() {
   done
 }
 
-civo_wait_for_lb_ip() {
+wait_for_lb_ip() {
   local watch_seconds="${CIVO_ARGO_UP_LB_WATCH_SECONDS:-300}"
   local poll_interval="${ARGO_UP_POLL_INTERVAL:-5}"
   local elapsed=0 svc_ip=""
   while [ "$elapsed" -lt "$watch_seconds" ]; do
     svc_ip="$(kubectl get svc -n envoy -l gateway.envoyproxy.io/owning-gateway-name=platform-gateway \
       -o jsonpath='{.items[0].status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)"
-    if [ -n "$svc_ip" ] && [ "$svc_ip" = "$RESERVED_IP" ]; then
-      echo "ARGO-UP: Envoy Service LB has the reserved IP ($RESERVED_IP)."
+    if [ -n "$svc_ip" ] && { [ -z "${RESERVED_IP:-}" ] || [ "$svc_ip" = "$RESERVED_IP" ]; }; then
+      echo "ARGO-UP: Envoy Service LB address is ${svc_ip}${RESERVED_IP:+ (the reserved IP)}."
       return 0
     fi
     sleep "$poll_interval"
     elapsed=$((elapsed + poll_interval))
   done
-  echo "ARGO-UP: timed out after ${watch_seconds}s waiting for Envoy Service LB to get reserved IP $RESERVED_IP - last observed: ${svc_ip:-none}." >&2
+  echo "ARGO-UP: timed out after ${watch_seconds}s waiting for Envoy Service LB${RESERVED_IP:+ to get reserved IP $RESERVED_IP} - last observed: ${svc_ip:-none}." >&2
   return 1
 }
 
-civo_wait_for_dns() {
-  local watch_seconds="${CIVO_ARGO_UP_DNS_WATCH_SECONDS:-60}"
+wait_for_dns() {
+  local watch_seconds
+  if [ "$PROVIDER" = hetzner ]; then
+    watch_seconds="${HETZNER_ARGO_UP_DNS_WATCH_SECONDS:-300}"
+  else
+    watch_seconds="${CIVO_ARGO_UP_DNS_WATCH_SECONDS:-60}"
+  fi
   local poll_interval="${ARGO_UP_POLL_INTERVAL:-5}"
   local elapsed=0 svc_ip="" dig_ip="" all_resolved="" i
   while [ "$elapsed" -lt "$watch_seconds" ]; do
     svc_ip="$(kubectl get svc -n envoy -l gateway.envoyproxy.io/owning-gateway-name=platform-gateway \
       -o jsonpath='{.items[0].status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)"
-    [ -z "$svc_ip" ] && svc_ip="$RESERVED_IP"
+    [ -z "$svc_ip" ] && svc_ip="${RESERVED_IP:-}"
     all_resolved=true
     for i in "${!DNS_HOST_FQDNS[@]}"; do
       dig_ip="$(dig +short "${DNS_HOST_FQDNS[$i]}" 2>/dev/null | tail -n1 || true)"
       { [ -n "$dig_ip" ] && [ -n "$svc_ip" ] && [ "$dig_ip" = "$svc_ip" ]; } || all_resolved=false
     done
     if [ "$all_resolved" = true ]; then
-      echo "ARGO-UP: DNS resolved (${DNS_HOST_LABELS[*]} -> match Envoy Service/reserved IP)."
+      echo "ARGO-UP: DNS resolved (${DNS_HOST_LABELS[*]} -> ${svc_ip})."
       echo "ARGO-UP: root Synced/Healthy and DNS resolved - platform ready."
       return 0
     fi
@@ -412,12 +419,9 @@ EXISTING_STATUS="$(kubectl get application root -n argocd \
 if [ "$EXISTING_STATUS" = "Synced/Healthy" ] && [ "$PROVIDER" != local ]; then
   echo "ARGO-UP: root Application already Synced/Healthy - checking DNS."
   case "$PROVIDER" in
-    civo)
-      civo_wait_for_lb_ip || exit 1
-      civo_wait_for_dns
-      ;;
-    hetzner)
-      echo "ARGO-UP: root Synced/Healthy - this target has no gateway or DNS record until HETZ-060."
+    civo|hetzner)
+      wait_for_lb_ip || exit 1
+      wait_for_dns
       ;;
     aws)
       aws_wait_for_dns
@@ -725,6 +729,8 @@ local_install_root_application() {
 
 # The civo installer less the values this target has no source for: no
 # reserved IP, no LB firewall id, and no backup bucket until HETZ-115/120.
+# REGION rather than HCLOUD_LOCATION: region.sh is sourced before provider.sh
+# canonicalises the case, and the hcloud API wants it lowercase.
 hetzner_install_root_application() {
   helm upgrade --install root-application "$REPO_ROOT/gitops/bootstrap" \
     --namespace argocd \
@@ -735,6 +741,7 @@ hetzner_install_root_application() {
     --set targetRevision="$TARGET_REVISION" \
     --set postgres.storageSize="$POSTGRES_STORAGE_SIZE" \
     --set envoyGateway.fqdn="$LAB_FQDN" \
+    --set envoyGateway.location="$REGION" \
     --set externalDns.txtOwnerId="$PROJECT_NAME" \
     --set awsIdentity.rolesAnywhere.trustAnchorArn="$TRUST_ANCHOR_ARN" \
     --set awsIdentity.rolesAnywhere.profileArn="$PROFILE_ARN" \
@@ -764,9 +771,9 @@ if [ "$PROVIDER" != local ]; then
   echo "ARGO-UP: root Synced/Healthy - waiting for external-dns to publish records."
 fi
 case "$PROVIDER" in
-  civo)
-    civo_wait_for_lb_ip || exit 1
-    civo_wait_for_dns
+  civo|hetzner)
+    wait_for_lb_ip || exit 1
+    wait_for_dns
     ;;
   local)
     # No load balancer and no DNS to wait for, but root reports Healthy as soon
@@ -784,11 +791,6 @@ case "$PROVIDER" in
     echo "    8080:80"
     echo "ARGO-UP: Argo CD is then http://localhost:8080 - admin / '$LOCAL_ARGOCD_PASSWORD'."
     echo "ARGO-UP: Grafana is http://localhost:8080/grafana - admin / '$LOCAL_GRAFANA_PASSWORD'."
-    ;;
-  hetzner)
-    # EnvoyProxy and Gateway do not render for this target yet, so there is no
-    # Service to carry a load balancer address and no record to resolve.
-    echo "ARGO-UP: root Synced/Healthy - platform ready. No gateway, load balancer or DNS record on this target until HETZ-060."
     ;;
   aws)
     aws_wait_for_dns
