@@ -1,7 +1,7 @@
 ---
 id: "SHARED-023"
 status: "DONE"
-updated: "2026-09-17"
+updated: "2026-09-22"
 ---
 # 022 — Go E2E Test Framework
 
@@ -37,6 +37,19 @@ Excludes: the workflows/Makefile targets that create the cluster this suite runs
    }
    ```
    with a `kind` implementation (using `kubectl port-forward`-equivalent tunneling, or direct `ClusterIP` access from within the cluster's network reach) and an `aws` implementation (real ingress hostname, real Postgres connection details). Service test files MUST express assertions against this interface only — never branch on "am I running against kind or aws" inside a test body.
+
+   **Amended 2026-09-22 (LOCAL-024a).** One implementation satisfies this
+   requirement on every target, and two are no longer required. The clause that
+   matters — a test body MUST NOT branch on which kind of cluster it runs
+   against — is unchanged and is what this requirement exists for.
+
+   The implementation MUST derive how a service is reached from the cluster
+   rather than from an input naming the environment. Today that means reading
+   the service's `HTTPRoute`: a route that declares a hostname is reached at
+   that hostname over HTTPS, and a route that declares only a path prefix is
+   reached through a port-forward to the gateway, at that prefix. An input
+   naming the environment can disagree with the cluster it is pointed at; the
+   route cannot.
 4. The framework MUST accept an explicit Kubernetes context (or equivalent explicit cluster-selection mechanism) and MUST fail fast if none is supplied — a run MUST NOT silently default to whatever context happens to be current in the invoking shell's kubeconfig, so a test run can never accidentally target an unrelated cluster.
 5. Tests MUST NOT install Postgres, Kafka, Grafana, or any other platform service themselves — Argo CD owns installation (constitution §6); this suite only verifies what Argo has already reconciled.
 6. Readiness checks MUST use Gomega `Eventually()` with a sensible timeout/poll interval, never an arbitrary `sleep`. If a service is already healthy when a check begins, the check MUST proceed immediately rather than waiting out a fixed poll interval regardless of actual state.
@@ -50,7 +63,7 @@ Excludes: the workflows/Makefile targets that create the cluster this suite runs
 
 - Keep `framework/environment.go`'s `Environment` interface small and grow it only when a real test needs a new capability — resist adding methods speculatively. `PostgresDSN` is a deliberate exception (Postgres is this spec's first stateful-service check), not a pattern to repeat: before writing Kafka's test, reconsider whether a single bespoke method per data store (`PostgresDSN`, then a future `KafkaBootstrapServers`, etc.) is still the right shape, or whether a general `ConnectionInfo(service string) map[string]string` avoids growing one accessor per service.
 - `framework/diagnostics.go` is worth building early: on any test failure, dump the relevant pod's recent logs and events before the test exits, since a failed `Eventually()` with no diagnostic output is the single most common source of wasted CI-debugging time.
-- For the `kind` `Environment` implementation, prefer talking to services via their in-cluster `ClusterIP` address from a test-runner pod (or the GitHub Actions runner's direct network reach into the kind cluster) over spawning `kubectl port-forward` subprocesses per test where practical — the port-forward helper (`portforward.go`) is still useful for genuinely external-only access patterns and for local developer use.
+- ~~For the `kind` `Environment` implementation, prefer talking to services via their in-cluster `ClusterIP` address from a test-runner pod (or the GitHub Actions runner's direct network reach into the kind cluster) over spawning `kubectl port-forward` subprocesses per test where practical.~~ Superseded 2026-09-22: a kind node's network is not reachable from the host on macOS, so a `ClusterIP` address works on a Linux runner and nowhere else. The framework forwards instead, once per run and shared by every service without a hostname — not per test. The helper is `portforward.go`, and it resolves the gateway Service's `targetPort` first, because a forward addresses a pod and no port translation happens for it.
 - Structure the suite so `go vet`/`golangci-lint` (or whatever the repo eventually settles on for Go) can run as part of spec 019's fast validation once this code exists.
 
 ## Testing / acceptance criteria
@@ -59,4 +72,4 @@ Excludes: the workflows/Makefile targets that create the cluster this suite runs
 - Running the suite against an already-healthy cluster completes the readiness checks immediately, without waiting out a full poll timeout — confirms Requirement 6.
 - Running only `--label-filter=postgres` executes exactly the Postgres checks and none of the others — confirms Requirement 11.
 - The Postgres and Grafana checks each fail meaningfully (not just a generic timeout) when the corresponding service is deliberately broken (e.g., a wrong credential, a stopped pod) — confirms Requirements 7–8 test actual usability, not just presence.
-- The exact same compiled test binary/suite, given a `kind` `Environment` vs. an `aws` `Environment`, produces the same pass/fail semantics for the same underlying service state — confirms Requirement 3's abstraction actually holds, not just that it compiles.
+- The exact same compiled test binary/suite, run against a kind cluster and against a cloud cluster, produces the same pass/fail semantics for the same underlying service state — confirms Requirement 3's abstraction actually holds, not just that it compiles. (Restated 2026-09-22 with R3's amendment: there is one `Environment` implementation, so the comparison is between clusters rather than between implementations.)

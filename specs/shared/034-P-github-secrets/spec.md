@@ -200,7 +200,7 @@ secrets.
 
 **Specs that describe the old flow** — `specs/aws/013-D-secrets/spec.md` (its
 "deterministic KMS-encrypted bootstrap ciphertext flow" bullet),
-`specs/local/022-A-local-dev-mode` (requirements 12–13; ADR 0038 already
+`specs/local/022-D-local-dev-mode` (requirements 12–13; ADR 0038 already
 withdrew that spec's KMS-decrypt path, so `local` no longer reads a
 ciphertext at all), and
 `specs/civo/README.md` if its protocol text names the ciphertext path.
