@@ -470,13 +470,16 @@ ensure_hcloud_ccm() {
   # clusterCIDR is k3s's own default: the control plane passes no --cluster-cidr,
   # so the chart's Flannel-oriented 10.244.0.0/16 would be wrong. Route
   # management stays off because k3s already runs flannel over the private NIC.
+  #
+  # --set-string for the routes flag, not --set: a container env value must be
+  # a string, and plain --set makes it a bool that server-side apply rejects.
   helm upgrade --install hccm hcloud-cloud-controller-manager \
     --repo https://charts.hetzner.cloud \
     --version "$HCCM_CHART_VERSION" \
     --namespace kube-system \
     --set networking.enabled=true \
     --set networking.clusterCIDR=10.42.0.0/16 \
-    --set env.HCLOUD_NETWORK_ROUTES_ENABLED.value="false" \
+    --set-string env.HCLOUD_NETWORK_ROUTES_ENABLED.value=false \
     --wait
 }
 

@@ -162,11 +162,11 @@ Namespace__cluster__e2e ServiceAccount__e2e__e2e-test"
 FORBIDDEN_OBJECTS_CIVO="ServiceMonitor__kube-system__karpenter \
 ConfigMap__observability__dashboard-karpenter-capacity"
 # The civo set, less the two features hetzner does not have yet, plus the CSI
-# driver. EnvoyProxy and Gateway arrive with the load balancer (HETZ-060) and
-# cluster-autoscaler with HETZ-170; GatewayClass already renders here.
+# driver. EnvoyProxy, Gateway and GatewayClass all arrive with the load
+# balancer (HETZ-060), and cluster-autoscaler with HETZ-170.
 # StorageClass is allowed, unlike civo: the hcloud CSI chart ships its own.
 REQUIRED_OBJECTS_HETZNER="Application__argocd__hcloud-csi \
-GatewayClass__cluster__envoy-gateway Application__argocd__cert-manager \
+Application__argocd__cert-manager \
 ClusterIssuer__cluster__hetzner-workload-ca Certificate__external-secrets__eso \
 Certificate__kube-system__external-dns Certificate__cert-manager__cert-manager \
 ClusterSecretStore__cluster__aws-parameter-store \
@@ -190,7 +190,8 @@ FORBIDDEN_KINDS_HETZNER="VolumeSnapshotClass VolumeSnapshotContent VolumeSnapsho
 NodePool EC2NodeClass"
 FORBIDDEN_APPLICATIONS_HETZNER="aws-load-balancer-controller ebs-csi-driver karpenter \
 external-snapshotter external-snapshotter-crds"
-FORBIDDEN_OBJECTS_HETZNER="ServiceMonitor__kube-system__karpenter \
+FORBIDDEN_OBJECTS_HETZNER="GatewayClass__cluster__envoy-gateway \
+ServiceMonitor__kube-system__karpenter \
 ConfigMap__observability__dashboard-karpenter-capacity"
 
 verify_object_set() {
