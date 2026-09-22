@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 # Validates specs/ layout: package folders, NNN-X-name letters vs front-matter
 # status, relative Markdown links, and leftover pre-reorg spec paths.
+#
+# No -e: this reports every problem in the tree in one run, and aborting on
+# the first one would defeat that.
 set -uo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 1
 
 fail=0
 err() { echo "SPECS-CHECK: $*" >&2; fail=1; }

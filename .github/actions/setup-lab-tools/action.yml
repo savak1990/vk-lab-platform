@@ -16,6 +16,12 @@ inputs:
       being a civo job.
     required: false
     default: "false"
+  shellcheck:
+    description: >-
+      Install shellcheck. scripts-check.sh lints every script with it, so the
+      validation job needs it while no lifecycle job does.
+    required: false
+    default: "false"
   scope:
     description: >-
       full installs everything a terragrunt/argo job needs. test installs only
@@ -97,3 +103,17 @@ runs:
         echo "${YQ_SHA256}  yq" | sha256sum -c -
         chmod +x yq
         sudo mv yq /usr/local/bin/yq
+
+    # shellcheck publishes no checksum file, so the digest is pinned here
+    # directly, the same way yq's is.
+    - name: Set up shellcheck
+      if: inputs.shellcheck == 'true'
+      shell: bash
+      run: |
+        SC_VERSION=0.11.0
+        SC_SHA256=8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198
+        SC_TAR="shellcheck-v${SC_VERSION}.linux.x86_64.tar.xz"
+        curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors -o "$SC_TAR" "https://github.com/koalaman/shellcheck/releases/download/v${SC_VERSION}/${SC_TAR}"
+        echo "${SC_SHA256}  ${SC_TAR}" | sha256sum -c -
+        tar -xJf "$SC_TAR" "shellcheck-v${SC_VERSION}/shellcheck"
+        sudo mv "shellcheck-v${SC_VERSION}/shellcheck" /usr/local/bin/shellcheck

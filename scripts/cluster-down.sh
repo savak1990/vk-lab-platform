@@ -141,6 +141,8 @@ else
     --query 'Reservations[].Instances[].InstanceId' --output text 2>/dev/null || true)"
   if [ -n "$LEAKED_INSTANCES" ] && [ "$LEAKED_INSTANCES" != "None" ]; then
     echo "CLUSTER-DOWN: leaked instances, terminating: $LEAKED_INSTANCES" >&2
+    # Unquoted on purpose: --instance-ids takes several ids, and the query
+    # returns them tab-separated in one string that has to word-split.
     # shellcheck disable=SC2086
     aws ec2 terminate-instances --region "$LAB_REGION" --instance-ids $LEAKED_INSTANCES >/dev/null
     LEAK_COUNT=$((LEAK_COUNT + 1))

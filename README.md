@@ -93,7 +93,13 @@ Layer commands can also be run on their own: `state-up`, `state-down`,
 ### Checks
 
 All offline, none need credentials: `make specs-check`, `make gitops-check`,
-`make secrets-check`, `make argo-watch-check`, `make test`.
+`make scripts-check`, `make test`.
+
+`make scripts-check` is the shell layer's gate: `bash -n` parses every script,
+`shellcheck -x -S warning` lints it, and every `tests/scripts/*-test.sh` runs.
+Those tests keep their own targets for running one at a time —
+`make secrets-check`, `make argo-watch-check`, `make node-config-check`,
+`make pr-gate-check`.
 
 ### Environment variables
 

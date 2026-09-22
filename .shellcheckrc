@@ -1,0 +1,5 @@
+# Almost every script sources a sibling under scripts/lib/. Without
+# external-sources shellcheck cannot follow those and repeats "not following"
+# for each one, which buries every real finding.
+shell=bash
+external-sources=true
