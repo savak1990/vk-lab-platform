@@ -30,9 +30,11 @@ see [Running locally on kind](#running-locally-on-kind) and spec LOCAL-022.
 
 `hetzner` (ADR 0036, ADR 0037) is in progress. `make full-up` brings up the
 k3s cluster, the cloud controller manager, the CSI driver, Argo CD, the
-identity chain, Postgres and observability. It has no ingress: this target
-renders no Gateway, no load balancer and no DNS record until spec HETZ-060, so
-reach the platform with `kubectl port-forward` until then.
+identity chain, Postgres, observability and the ingress: an Envoy Gateway
+behind an hcloud `lb11` that forwards to the nodes over the private
+network, with a Let's Encrypt wildcard certificate and Route 53 records
+that follow the load balancer's address (spec HETZ-060). The address is
+new on every `make up`, because this target reserves none.
 
 Measured on 2026-09-22 with the default shape, three `cx33` in `fsn1`: a cold
 `make full-up` from an empty account took 12m50s, and a full teardown took
@@ -227,20 +229,22 @@ a workload that runs out of memory first, `g4p` for one that runs out of CPU.
 |---|---|---|---|---|
 | `aws` | 1 × `t4g.medium` | USD 26.86 | USD 73.00 | **~USD 100** |
 | `civo` | 3 × `g4s.kube.medium` | USD 65.19 | free | **~USD 65** |
-| `hetzner` | 3 × `cx33` | USD 36.27 | — | **~USD 38** |
+| `hetzner` | 3 × `cx33` | USD 36.27 | — | **~USD 49** |
 
 EKS charges USD 0.10 per cluster per hour whatever the node count, which is
 why the smallest AWS lab still costs more than the largest Civo one. Civo
 gives the k3s control plane away. Hetzner sells no managed Kubernetes, so its
 control plane *is* the first of the three nodes and is already counted — see
-`NODE_COUNT` above. Each Hetzner node also carries one primary IPv4 at USD
-0.726 gross per month, which the Hetzner total includes and the per-node table
-above does not.
+`NODE_COUNT` above. Two things the Hetzner total includes and the per-node
+table above does not: one primary IPv4 for each node at USD 0.726 gross per
+month, and the `lb11` at USD 10.27 gross. All Hetzner figures are gross,
+VAT included at 21 percent, read from `GET /v1/pricing` on 2026-09-22.
 
 **Not in those totals**, and unavoidable on any target:
 
 - The load balancer — an AWS NLB, or a Civo load balancer at USD 10.86 per
-  month. Hetzner has none until spec HETZ-060.
+  month. The Hetzner `lb11` is USD 10.27 gross per month, billed hourly,
+  and is counted in the Hetzner total below rather than left out here.
 - Block storage for Postgres — Civo charges USD 0.11 per GB per month.
 - The AWS-side resources every target keeps in `eu-west-1`: the Route 53 zone,
   the state and backup S3 buckets, SSM parameters and the shared KMS key. Tens

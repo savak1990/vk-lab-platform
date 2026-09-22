@@ -123,7 +123,7 @@ claimed both; see §4. HETZ-050 supplies the render sets.
 - The LB targets are the three private IPs; no public NodePort is reachable.
 - `argo-down` removes the LB while the CCM runs; nothing is left for the sweep.
 - The AWS golden diff is empty but for the one new, empty root parameter; the Civo render is identical once comments are stripped (see §5). `argocd app diff root` on both is empty after merge.
-- Cost: one LB11 at 7.49 EUR/month, billed hourly, stops at deletion.
+- Cost: one lb11 at USD 10.27 gross per month (net 8.49, VAT 21 percent), billed hourly, stopping at deletion. `research.md`'s 7.49 came from a press release and is stale; this is what `GET /v1/pricing` returns.
 
 ## 9. Validation
 
