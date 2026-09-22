@@ -1,7 +1,7 @@
 ---
 id: "SHARED-039"
 title: "shellcheck and bash -n join fast validation, so the ten scripts that already claim shellcheck compliance are actually checked"
-status: "READY"
+status: "DONE"
 priority: "P3"
 milestone: "M2"
 type: "implementation"
@@ -14,7 +14,8 @@ depends_on: []
 blocked_by: []
 supersedes: []
 created: "2026-09-20"
-updated: "2026-09-20"
+updated: "2026-09-22"
+completed: "2026-09-22"
 ---
 
 # SHARED-039 — shellcheck and `bash -n` in fast validation
@@ -141,3 +142,61 @@ Non-goals:
 ## 7. Status history
 
 - 2026-09-20 — created as READY from the 2026-09-20 shell-layer review.
+- 2026-09-22 — implemented and closed in its own pull request. `DONE`, folder
+  renamed to `039-D-`.
+
+  **Requirements.** All seven are met. `make scripts-check` runs `bash -n`,
+  then `shellcheck -x -S warning`, then every `tests/scripts/*-test.sh`, over
+  `scripts/*.sh`, `scripts/lib/*.sh` and `tests/scripts/*.sh`. `.shellcheckrc`
+  sets `shell=bash` and `external-sources=true`. `validate-repo` installs
+  shellcheck 0.11.0, checksum-verified, through `setup-lab-tools`'s new
+  `shellcheck` input. `specs-check.sh` now states why it runs without `-e`.
+
+  **The first real run returned eight findings, not the larger number §5
+  anticipated.** Each was decided on evidence:
+
+  - `generate-secrets.sh:60,120` — `value=test` read as the `test` command.
+    Quoted; behaviour unchanged.
+  - `specs-check.sh:5` — `cd` without `|| exit`. Fixed.
+  - `argo-up.sh` `PRIOR_OPERATION_STARTED_AT` — read by `argo_watch_root` in a
+    sourced sibling. Suppressed, consumer named.
+  - `require-persistent-secrets.sh` `REPO_ROOT` — read by `secret_path` in the
+    sourced `secret-scope.sh`. Same.
+  - `region.sh` `LAB_PROVIDER_REGION` — eleven readers across the scripts that
+    source it. Same. The directive sits in front of the `case`, not inside a
+    branch; shellcheck rejects the latter (SC1124).
+  - `region.sh` `HCLOUD_NETWORK_ZONE` — no reader in shell, and Terraform's
+    `hcloud-network` module carries its own `eu-central` default. Kept anyway:
+    HETZ-025 §3 names it as a contract of this file.
+  - `state-down.sh` `REPO_ROOT` — genuinely dead. Deleted.
+
+  §5's worry about nine near-identical suppressions did not arise:
+  `provider.sh`'s `${kcfg[@]:+"${kcfg[@]}"}` bash-3.2 guards are not flagged at
+  `-S warning`.
+
+  `cluster-down.sh:105`'s pre-existing `SC2086` suppression had no reason
+  comment, which §4.5 required checking. It has one now.
+
+  **Acceptance criteria.**
+
+  1. `make scripts-check` exits 0 on the tree. Green.
+  2. `bash -n` gates the lint stage. A scratch copy of `status.sh` with an
+     unmatched `if` failed at stage 1 — `syntax error: unexpected end of file`
+     — and shellcheck never ran.
+  3. `validate-repo` shows `scripts-check` in its step list, and the target
+     prints `SCRIPTS-CHECK: shellcheck 0.11.0` before linting.
+  4. `.shellcheckrc` is picked up: shellcheck follows sourced siblings, which
+     SC1094 diagnostics during development confirmed directly.
+  5. `make -n` across four providers and sixteen targets, 173 lines, is
+     identical to `origin/main` once the checkout path inside `KUBECONFIG` is
+     normalized — that path is an artifact of rendering from two directories,
+     not a behaviour change.
+  6. `make specs-check` and `make gitops-check` green.
+
+  **One change beyond the spec's letter,** recorded rather than hidden:
+  `validate-repo`'s four separate steps (`secrets-check`, `argo-watch-check`,
+  `node-config-check`, `pr-gate-check`) collapse into the one
+  `make scripts-check` that now runs all four through its glob. Requirement 3
+  makes the duplication pointless. The four `make` targets stay for running one
+  at a time locally, and `README.md` says so. The cost is four step names lost
+  from the run graph; `scripts-check` names the failing test in its output.
