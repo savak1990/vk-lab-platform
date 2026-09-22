@@ -25,9 +25,8 @@ Actions, not just a workstation.
 
 The four targets below are not equally far along: `aws` is complete, `civo`
 (ADR 0027) is complete through its first milestone, and `local` (ADR 0038)
-brings up Argo CD and the operators but still gates off Postgres, the
-Gateway and observability until spec LOCAL-050 — see
-[Running locally on kind](#running-locally-on-kind).
+brings up Argo CD, the operators, the Gateway, Postgres and observability —
+see [Running locally on kind](#running-locally-on-kind) and spec LOCAL-022.
 
 `hetzner` (ADR 0036, ADR 0037) is in progress. `make full-up` brings up the
 k3s cluster, the cloud controller manager, the CSI driver, Argo CD, the
@@ -95,6 +94,23 @@ Compositions, which change no individual command's own guards:
 Layer commands can also be run on their own: `state-up`, `state-down`,
 `cluster-up`, `cluster-down`, `argo-up`, `argo-down`.
 
+What the table does not say about each layer:
+
+- **Account** lives in its own state bucket, so no project's `bootstrap-down`
+  can reach it. It applies in `eu-west-1` like every other layer, which is what
+  keeps the shared KMS key reachable (ADR 0024).
+- **Bootstrap** takes `CONFIRM_DESTROY=<PROJECT_NAME>` to destroy. The shared
+  role has no per-project IAM scoping, so this guard is the only one.
+- **Persistent** generates any missing password and never overwrites one that
+  exists. `root-domain` is the exception: it names a real external domain, so
+  `bootstrap-up` requires it to exist already.
+- **Disposable** is `cluster-up` then `argo-up`, and `argo-down` then
+  `cluster-down`. Argo CD's cascade must finish before the cluster goes (ADR
+  0012).
+
+`docs/architecture.md` sections 22–23 have the full startup and shutdown
+sequence.
+
 ### Setup, secrets and inspection
 
 | Command | Does |
@@ -158,8 +174,8 @@ copy of each cloud's catalogue.
 | `hetzner` | `hel1` | `cx23` `cx33` `cpx32` `cpx42` |
 | `hetzner` | `fsn1` | `cx23` `cx33` `cx43` `cpx32` `cpx42` |
 
-Node types are listed per region because availability differs: `cx43` can be
-ordered in `nbg1` but not `hel1`. All four Civo sizes sell in all four Civo
+Node types are listed per region because availability differs: `cx43` sells in
+`nbg1` and `fsn1` but not `hel1`. All four Civo sizes sell in all four Civo
 regions, checked against `civo size ls` per region on 2026-09-22.
 
 Some of the Hetzner and Civo types are above the lab's cost ceiling on a
@@ -263,37 +279,53 @@ to 5. A three-node lab plus a two-node CI run is exactly that limit, so
 ### Running locally on kind
 
 `PROVIDER=local` runs the same `gitops/` content on a kind cluster on your own
-machine. It makes no cloud API call of any kind and needs no credentials.
+machine. It makes no cloud API call and needs no credentials.
 
 ```sh
-PROVIDER=local make up          # kind create cluster + Argo CD + the platform
-PROVIDER=local make argo-up     # re-run after editing gitops/ - see below
-PROVIDER=local make down        # deletes the cluster and everything in it
-PROVIDER=local make kubeconfig  # adds the kind-vk-local-lab context to ~/.kube/config
+PROVIDER=local make up       # ~8 min: kind, Argo CD, then the platform
+PROVIDER=local make argo-up  # re-sync after you edit gitops/ - see below
+PROVIDER=local make down     # ~1 min: deletes the cluster and all its data
 ```
 
 Needs `docker`, `kind`, `helm`, `kubectl` and the `argocd` CLI. Bootstrap and
-Persistent own no cloud resources here, so they are no-ops and `make full-up`
-does the same as `make up`.
+Persistent own no cloud resources here, so `make full-up` does the same as
+`make up`.
 
-**The point of it is the edit loop.** The root Application syncs from your
-working tree, so editing anything under `gitops/` and re-running
-`PROVIDER=local make argo-up` reconciles that change with **no commit and no
-push**. That is why `syncPolicy.automated` is omitted on this target, and why
-re-running `argo-up` here never takes the idempotency short-circuit the other
-targets do.
+**What runs.** Argo CD, Envoy Gateway, PostgreSQL, Prometheus, Grafana, Loki,
+Alloy and metrics-server — the same charts the cloud targets use, at laptop
+scale.
 
-**What it is not.** Local data is throwaway — no persistence guarantee, no
-destroy/recreate proof, no backups. There is no load balancer, DNS or TLS;
-reach the cluster with `kubectl port-forward`. Argo CD's admin password is the
-literal `test`, because nothing on this target is real. A green local run is
-never a substitute for the `aws`-target lifecycle test.
+**How to reach it.** `make up` prints one `kubectl port-forward` command that
+serves every component on one port, by path: `/` is Argo CD and `/grafana` is
+Grafana, both `admin` / `test`. A port-forward cannot present a Host header, so
+this target matches routes by path where the cloud targets match by hostname.
 
-**What renders today.** Argo CD, plus the Envoy Gateway, CloudNativePG operator
-and External Secrets Applications. Postgres, the Gateway itself, path-based
-routes and the observability stack are still gated off for this target and land
-in spec LOCAL-050. See [`specs/local/`](specs/local/) and
-[`docs/adr/0038-local-target-on-the-provider-command-surface.md`](docs/adr/0038-local-target-on-the-provider-command-surface.md).
+**The edit loop is the point.** The root Application syncs from your working
+tree. Edit anything under `gitops/`, run `PROVIDER=local make argo-up`, and the
+change reconciles with **no commit and no push**. That is why
+`syncPolicy.automated` is omitted on this target.
+
+**Where the data goes.** Grafana keeps no volume. Prometheus and Loki take 1Gi
+each and PostgreSQL 5Gi, all on `standard` — kind's own local-path provisioner,
+which hands out a directory inside the node container instead of a disk:
+
+```
+/var/local-path-provisioner/pvc-<id>_<namespace>_<claim>
+```
+
+That directory enforces no size, so the limits that hold are the 6h retention
+windows and Prometheus's `retentionSize`, not the claims. All three volumes
+together measured under 100 MB.
+
+`make down` deletes the node container, and every directory in it goes too: a
+measured teardown left no cluster, no container and no Docker volume. Docker
+does not give that space back to macOS by itself — `docker system prune` does.
+
+**What it is not.** Throwaway data: no persistence guarantee, no
+destroy/recreate proof, no backups. No load balancer, no DNS, no TLS.
+Alertmanager and External Secrets stay off — [`specs/local/`](specs/local/)
+names every omission. A green local run is never a substitute for the `aws`
+lifecycle test.
 
 ### Running more than one lab
 
@@ -483,55 +515,8 @@ flight cancels its lifecycle job rather than queueing it. Nothing has been
 created at that point so nothing leaks, but `pr-gate` goes red — re-add the
 label once a run finishes.
 
-- **Account** — the shared secrets KMS key (`alias/lab-secrets`), the
-  shared `lab-role` every project's GitHub Actions run assumes (scoped by
-  naming convention, not per-project), the GitHub OIDC provider, and
-  `eks-access-identity`. Applied once per AWS account, in its own dedicated
-  state bucket so no project's `bootstrap-down` can ever affect it.
-  Destroying it (`account-down`) affects every project in the account at
-  once — expected to run essentially never. Applies in the platform's single
-  region, `eu-west-1`, the same one every project's own layers use, so the
-  shared KMS key is always reachable from them (ADR 0024).
-- **Bootstrap** — this project's own state bucket, plus the delegated
-  `lab.<root-domain>` DNS zone (and its parent-zone NS delegation) and its
-  ACM certificate. Destroying it (`bootstrap-down`) requires
-  `CONFIRM_DESTROY=<PROJECT_NAME>` to match exactly — the shared role has
-  no per-project IAM scoping to fall back on, so this is the only guard.
-- **Persistent** — the VPC and Secrets Manager. Survives `make down`. See
-  [`terraform/live/persistent/README.md`](terraform/live/persistent/README.md)
-  for required configuration (the `PROJECT_NAME` env var).
-  `persistent-up` auto-generates any missing password
-  (`postgres-app-password`, `grafana-admin-password`,
-  `argocd-admin-password`) — it never overwrites one that already exists.
-  `root-domain` is the one exception: it's a real external domain, so it's
-  only filled in from `$ROOT_DOMAIN` when set, and otherwise must already
-  exist under `secrets/<project>/root-domain.enc`
-  (`make secret-encrypt NAME=root-domain VALUE=<domain> SCOPE=global`) — `bootstrap-up`
-  is what actually requires/decrypts it, since Route53 lives there now.
-- **Disposable** — EKS, Karpenter, Argo CD, and everything it manages
-  (Postgres, Kafka, Envoy Gateway, NLB, observability). Created by
-  `make up` (`cluster-up` then `argo-up` under the hood), destroyed by
-  `make down` (`argo-down` then `cluster-down` — Argo's cascade must
-  finish before the cluster comes down, see ADR 0012). This is the layer
-  meant to be torn down and recreated routinely to control cost.
-
-Other targets:
-
-```bash
-make kubeconfig                            # switches YOUR kubectl context to the disposable cluster
-                                           # (every other target uses .kube/<project>.config instead,
-                                           #  so a bring-up never moves your context - ADR 0034)
-make clear-cache                               # clears .terragrunt-cache after switching PROJECT_NAME/SUBDOMAIN
-make secret-encrypt NAME=<name> VALUE=<value>  # encrypts one secrets/<project>/<name>.enc
-make secret-decrypt NAME=<name>                # prints one secret's plaintext to stdout
-PROJECT_NAME=vk-lab-ci ROOT_DOMAIN=<domain> make generate-secrets  # throwaway CI secrets (fixed "test" passwords)
-```
-
-See `docs/architecture.md` sections 22–23 for the full startup and
-shutdown sequence.
-
 ## Next step
 
 Read `docs/architecture.md` and `specs/shared/000-D-constitution/spec.md` before
-writing a new spec under `specs/`. See [`specs/`](specs/) for what's
-already implemented (001–016, 024) and what's next.
+you write a new spec under `specs/`. Each spec folder name carries a status
+letter; [`specs/README.md`](specs/README.md) explains them.

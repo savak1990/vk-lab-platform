@@ -1,4 +1,4 @@
-{{- if ne .Values.target "local" }}
+{{- $o := ternary .Values.observability.profile.local .Values.observability.profile.default (eq .Values.target "local") }}
 # Metrics backbone. Tracing (Tempo/OTel Collector) is deliberately not
 # deployed - no trace producer exists in this platform-only repo yet.
 apiVersion: argoproj.io/v1alpha1
@@ -31,8 +31,8 @@ spec:
             serviceMonitorSelectorNilUsesHelmValues: false
             podMonitorSelectorNilUsesHelmValues: false
             ruleSelectorNilUsesHelmValues: false
-            retention: 7d
-            retentionSize: "8GB"
+            retention: {{ $o.prometheusRetention }}
+            retentionSize: "{{ $o.prometheusRetentionSize }}"
             # Chart default is {} (Retain); without this, `make down` orphans
             # the bound volume every cycle, since the PVC survives the
             # StatefulSet's deletion and never triggers the Delete reclaim.
@@ -68,8 +68,13 @@ spec:
                   accessModes: ["ReadWriteOnce"]
                   resources:
                     requests:
-                      storage: 10Gi
+                      storage: {{ $o.prometheusStorage }}
         alertmanager:
+          {{- if eq .Values.target "local" }}
+          # Nothing pages anyone from a laptop. The PrometheusRule still
+          # evaluates, and a firing alert still shows in Prometheus's own UI.
+          enabled: false
+          {{- end }}
           alertmanagerSpec:
             # Same orphaned-volume reasoning as prometheusSpec above.
             persistentVolumeClaimRetentionPolicy:
@@ -99,8 +104,27 @@ spec:
                   accessModes: ["ReadWriteOnce"]
                   resources:
                     requests:
-                      storage: 1Gi
+                      storage: {{ $o.alertmanagerStorage }}
         grafana:
+          {{- if eq .Values.target "local" }}
+          # The route hands /grafana over unrewritten, so Grafana must know it
+          # lives there. The port is the one the bring-up banner tells the
+          # operator to forward.
+          grafana.ini:
+            server:
+              root_url: http://localhost:8080/grafana
+              serve_from_sub_path: true
+          # The prefix moves every path, including these two. The chart's own
+          # ServiceMonitor would keep scraping /metrics and get a redirect to
+          # an address only the operator's port-forward can reach; the probe
+          # would take that same redirect for health, since 3xx passes.
+          serviceMonitor:
+            path: /grafana/metrics
+          readinessProbe:
+            httpGet:
+              path: /grafana/api/health
+              port: 3000
+          {{- end }}
           # No volume at all. A bare PVC here is the one Argo creates itself,
           # and on a late-binding StorageClass it stays Pending until a pod
           # consumes it - which Argo reads as Progressing, so a sync that
@@ -201,4 +225,3 @@ spec:
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true
-{{- end }}

@@ -1,4 +1,3 @@
-{{- if ne .Values.target "local" }}
 # Log-collection DaemonSet -> Loki. Wave 2, after loki.yaml (wave 1) so the
 # Service it writes to already exists.
 apiVersion: argoproj.io/v1alpha1
@@ -90,4 +89,3 @@ spec:
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true
-{{- end }}

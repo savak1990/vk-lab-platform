@@ -32,6 +32,30 @@ observability:
   kubeletInsecureTls: true
   metricsServer:
     enabled: true
+  # Retention windows and volume sizes. local is sized for one working
+  # session, not a day - the cluster is deleted whole, so nothing outlives
+  # it. Resource requests stay out of here on purpose: they are measured,
+  # and a request below real usage buys eviction, not headroom.
+  profile:
+    default:
+      prometheusRetention: 7d
+      prometheusRetentionSize: "8GB"
+      prometheusStorage: 10Gi
+      alertmanagerStorage: 1Gi
+      lokiRetention: 168h
+      lokiStorage: 10Gi
+    local:
+      prometheusRetention: 6h
+      # Held below the claim so the head block and the WAL still fit.
+      prometheusRetentionSize: "500MB"
+      prometheusStorage: 1Gi
+      # Unused here - alertmanager is disabled on this target.
+      alertmanagerStorage: 256Mi
+      # Only retention. Loki's reject_old_samples_max_age stays at 168h on
+      # every target: it bounds how stale an arriving line may be, so tying
+      # it to this would drop real logs after a laptop suspend.
+      lokiRetention: 6h
+      lokiStorage: 1Gi
 
 # podIdentity (EKS Pod Identity) is aws-only; other targets substitute
 # their own workload-identity mechanism.

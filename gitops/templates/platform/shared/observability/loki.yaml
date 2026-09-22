@@ -1,4 +1,4 @@
-{{- if ne .Values.target "local" }}
+{{- $o := ternary .Values.observability.profile.local .Values.observability.profile.default (eq .Values.target "local") }}
 # SingleBinary + filesystem storage - not S3-backed "simple scalable" mode,
 # so this needs zero new Terraform/IAM. Data is lost on `make down`
 # (Delete reclaim); acceptable since this stack's own data is disposable.
@@ -41,7 +41,7 @@ spec:
             retention_enabled: true
             delete_request_store: filesystem
           limits_config:
-            retention_period: 168h
+            retention_period: {{ $o.lokiRetention }}
             reject_old_samples: true
             reject_old_samples_max_age: 168h
         singleBinary:
@@ -70,7 +70,7 @@ spec:
           persistence:
             enabled: true
             storageClass: {{ include "platform.storageClassName" . }}
-            size: 10Gi
+            size: {{ $o.lokiStorage }}
             # Chart default already deletes the PVC with the StatefulSet -
             # pinned explicitly so an upstream default change can't silently
             # orphan the volume on `make down`.
@@ -124,4 +124,3 @@ spec:
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true
-{{- end }}

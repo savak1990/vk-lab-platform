@@ -17,6 +17,10 @@ if ! command -v kind >/dev/null 2>&1; then
   exit 1
 fi
 
+# kind edits the kubeconfig it is pointed at. Without this it reaches for the
+# operator's own, and leaves this target's file naming a cluster that is gone.
+use_isolated_kubeconfig
+
 if ! cluster_exists; then
   echo "kind cluster $CLUSTER_NAME does not exist - nothing to delete."
   exit 0

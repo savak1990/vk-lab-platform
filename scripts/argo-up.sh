@@ -24,6 +24,7 @@ REPO_URL="${REPO_URL:-https://github.com/savak1990/vk-lab-platform}"
 # local target only. Fixed and publicly known on purpose, like
 # FIXED_TEST_PASSWORDS: the cluster is throwaway and holds nothing real.
 LOCAL_ARGOCD_PASSWORD="${LOCAL_ARGOCD_PASSWORD:-test}"
+LOCAL_GRAFANA_PASSWORD="${LOCAL_GRAFANA_PASSWORD:-test}"
 # Comma-separated; cpu limit is a node-count cap, not a vCPU budget - keep
 # it in sync with the instance types' vCPU count when overriding either.
 # spot is general workload capacity (several arm64 families/sizes, so a
@@ -339,6 +340,21 @@ ensure_ca_secret() {
       --key=/dev/stdin \
       --namespace cert-manager \
       --dry-run=client -o yaml \
+    | kubectl label --local -f - app.kubernetes.io/managed-by=argo-up -o yaml \
+    | kubectl apply -f -
+}
+
+# External Secrets stays excluded on this target, so the credential Grafana's
+# chart expects is created here instead, in the same untracked bootstrap class
+# as the workload CA secret above.
+ensure_grafana_admin_secret() {
+  kubectl create namespace observability \
+    --dry-run=client -o yaml | kubectl apply -f -
+  kubectl create secret generic grafana-admin-credentials \
+    --from-literal=admin-user=admin \
+    --from-literal=admin-password="$LOCAL_GRAFANA_PASSWORD" \
+    --namespace observability \
+    --dry-run=client -o yaml \
     | kubectl label --local -f - app.kubernetes.io/managed-by=argo-up -o yaml \
     | kubectl apply -f -
 }
@@ -695,6 +711,7 @@ local_wait_for_children() {
 }
 
 local_install_root_application() {
+  ensure_grafana_admin_secret
   helm upgrade --install root-application "$REPO_ROOT/gitops/bootstrap" \
     --namespace argocd \
     --server-side=true --force-conflicts \
@@ -766,6 +783,7 @@ case "$PROVIDER" in
     echo "    svc/\$(kubectl get svc -n envoy -l gateway.envoyproxy.io/owning-gateway-name=platform-gateway -o jsonpath='{.items[0].metadata.name}') \\"
     echo "    8080:80"
     echo "ARGO-UP: Argo CD is then http://localhost:8080 - admin / '$LOCAL_ARGOCD_PASSWORD'."
+    echo "ARGO-UP: Grafana is http://localhost:8080/grafana - admin / '$LOCAL_GRAFANA_PASSWORD'."
     ;;
   hetzner)
     # EnvoyProxy and Gateway do not render for this target yet, so there is no
