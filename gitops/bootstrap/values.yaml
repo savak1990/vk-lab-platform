@@ -7,9 +7,10 @@ repoURL: https://github.com/savak1990/vk-lab-platform
 targetRevision: main
 
 # storageSize/karpenter below are operator-configurable via env vars on
-# scripts/argo-up.sh - defaults here match gitops/values.yaml.
+# scripts/argo-up.sh - defaults here match gitops/values.yaml. Only a hand
+# install of this chart ever reads them; argo-up always passes its own.
 postgres:
-  storageSize: 10Gi
+  storageSize: 20Gi
   backup:
     enabled: false
     bucket: ""
