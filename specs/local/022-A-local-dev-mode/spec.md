@@ -1,7 +1,7 @@
 ---
 id: "LOCAL-022"
 status: "IN_PROGRESS"
-updated: "2026-09-21"
+updated: "2026-09-22"
 ---
 # 022 — Local Development Mode (kind)
 
@@ -76,8 +76,12 @@ integration, which is spec 024's job.
    disabled.
 7. Local Postgres data MUST be fully throwaway: no persistent-lifecycle class,
    no destroy/recreate persistence proof, no object-store backup. The cluster
-   MUST use kind's default StorageClass, referenced by name and never defined
-   by a template this repository owns. Reclaim semantics MUST be `Delete` — the
+   MUST use kind's default StorageClass, referenced by name (`standard`) and
+   never defined by a template this repository owns. `platform.storageClassName`
+   MUST carry a `local` arm rather than falling through to
+   `.Values.storage.className`: that fall-through is `else`, not `eq "aws"`, so
+   without an arm the target silently inherits the AWS-only class and every
+   claim stays Pending. Reclaim semantics MUST be `Delete` — the
    deliberate inverse of spec 005's `aws`-target `Retain` requirement.
 8. No cloud load balancer, DNS zone or certificate MUST be used for this
    target. Access MUST be via `kubectl port-forward` to Envoy Gateway's
@@ -133,6 +137,18 @@ integration, which is spec 024's job.
     in `gitops/values.yaml` or in the bring-up script's overrides. Any
     component omitted for `local` MUST be named explicitly in this spec or in
     the values file's comments, never silently dropped.
+
+    **Postgres, as implemented.** One instance, `250m` CPU and `256Mi` memory
+    requested and no limits — the same numbers every other target uses, which
+    are already laptop-scale. Only the volume differs: `argo-up` defaults
+    `POSTGRES_STORAGE_SIZE` to `5Gi` here against `20Gi` elsewhere, because
+    kind's provisioner carves it out of the workstation's own disk. No values
+    key expresses the instance count or the requests, and none is added: a key
+    whose value never differs is configuration for nothing.
+
+    `enablePDB: false` MUST reach this target. CloudNativePG creates a
+    PodDisruptionBudget even for a single instance, and that budget blocks a
+    node from ever draining.
 16. Fast validation (spec 019) MUST render the chart for `target=local`, and
     the structural contract in `scripts/gitops-render-check.sh` MUST be updated
     in the same change as any render change. That contract is what makes a
