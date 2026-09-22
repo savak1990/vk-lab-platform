@@ -43,21 +43,21 @@ on:
       # civo, nbg1 on hetzner. aws refuses a value here: its region is fixed
       # at eu-west-1, and the offline gate says so in the job's first seconds.
       region:
-        description: "region (civo/hetzner only, blank = default)"
+        description: "region (civo/hetzner only)"
         type: string
         default: ""
-      # Blank uses the provider's default - g4s.kube.medium on civo, t4g.medium
-      # on aws. A free string rather than a choice: valid types differ per
+      # Blank uses the provider's default - g4s.kube.medium on civo, cx33 on
+      # hetzner, t4g.medium on aws. A free string rather than a choice: valid types differ per
       # provider and per region, GitHub has no dependent dropdowns, and one
       # flat list could not say that cx43 sells in nbg1 but not in hel1.
       node_type:
-        description: "node_type (blank = default)"
+        description: "node_type"
         type: string
         default: ""
-      # Blank uses the provider's default - 3 on civo, 1 on aws. Counts the
-      # cluster's own nodes; Karpenter workload capacity is separate.
+      # Blank uses the provider's default - 3 on civo and hetzner, 1 on aws.
+      # Counts the cluster's own nodes; Karpenter capacity is separate.
       node_count:
-        description: "node_count (blank = default)"
+        description: "node_count"
         type: string
         default: ""
       target:

@@ -249,7 +249,7 @@ composite target already does.
   those defaults live. Give a custom project its own subdomain.
 - **`region`** / **`node_type`** / **`node_count`** — leave blank for the
   provider's default (`LON1`/`g4s.kube.medium`/`3` on Civo,
-  `eu-west-1`/`t4g.medium`/`1` on AWS). They are free strings, not dropdowns:
+  `nbg1`/`cx33`/`3` on Hetzner, `eu-west-1`/`t4g.medium`/`1` on AWS). They are free strings, not dropdowns:
   which node types sell depends on the provider *and* the region, and GitHub
   has no dependent dropdown. `make` refuses a bad combination offline in the
   job's first seconds. **`region` applies to Civo and Hetzner only** — on AWS
