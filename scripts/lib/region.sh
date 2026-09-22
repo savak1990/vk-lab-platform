@@ -31,7 +31,7 @@ fi
 if [ "${PROVIDER:-}" = "hetzner" ] && [ -n "${REGION:-}" ]; then
   HCLOUD_LOCATION="$REGION"
 else
-  HCLOUD_LOCATION="nbg1"
+  HCLOUD_LOCATION="fsn1"
 fi
 
 # Not derived from REGION: every location the catalogue allows is in this
