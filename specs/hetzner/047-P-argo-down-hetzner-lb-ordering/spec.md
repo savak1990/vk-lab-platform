@@ -237,3 +237,32 @@ path to persistent state.
   alone, and the spike's load-balancer item renumbered from 4 to 3. The
   LB-before-cascade ordering, the `wait_for_lb_gone` contract and the PVC
   wait are unaffected — they are CCM-level and bootstrap-agnostic.
+- 2026-09-22 — measured on the first full Hetzner teardown (HETZ-045's live
+  cycle, three `cx33` in `fsn1`), and it gives this spec a second, larger job
+  than the load-balancer ordering it was written for.
+
+  **`make full-down` does not complete on this target, and cannot today.**
+  `argo-down` deletes the PVCs, then waits `ARGO_DOWN_PVC_WAIT_TIMEOUT`
+  (default `180s`) for each PV to go. The hcloud CSI driver needs longer than
+  that to detach and delete the volume behind a PV, so the wait timed out three
+  times in one run. `argo-down` warns and continues, as designed.
+  `cluster-down` then finds the volume that outlived the cluster, deletes it,
+  and exits 2 - which is correct and deliberate, "a bug to fix, not a condition
+  to silence". But `make` stops a chained target on a non-zero exit, so
+  `persistent-down` and `bootstrap-down` never ran. The Route 53 zone, the
+  backups bucket, the hcloud network and the SSH key were all still up
+  afterwards, and had to be destroyed by hand.
+
+  Two separate problems, and the second is the one that matters:
+  1. The 180 s budget is too short for this CSI. It is already tunable by
+     environment variable, so the fix is a number, not code. Measure the real
+     detach-and-delete time before choosing it rather than doubling blindly.
+  2. Even with a correct budget, any leak at all stops `full-down` two layers
+     early. That is the designed behaviour of the sweep and must not be
+     softened. What it means is that `full-down` is not a one-shot on a target
+     whose volumes are deleted asynchronously, and either the ordering or the
+     operator documentation has to say so. `README.md` now does.
+
+  Timing from the same run, for whoever sizes the budgets: cold `make full-up`
+  12m50s, `full-down` 14m14s before it halted, and 6m01s more for the two
+  abandoned layers.

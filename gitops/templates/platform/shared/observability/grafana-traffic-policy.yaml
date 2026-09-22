@@ -1,4 +1,4 @@
-{{- if ne .Values.target "local" }}
+{{- if and (ne .Values.target "local") (eq (include "platform.gatewayEnabled" .) "true") }}
 # Kept off the argocd HTTPRoute deliberately - testing traffic policy here
 # shouldn't risk destabilizing the UI used to watch Argo's own sync status.
 apiVersion: gateway.envoyproxy.io/v1alpha1

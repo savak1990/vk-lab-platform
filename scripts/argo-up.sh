@@ -16,6 +16,9 @@ source "$REPO_ROOT/scripts/lib/argo-watch.sh"
 # change the context the operator is working in.
 use_isolated_kubeconfig
 ARGOCD_CHART_VERSION="${ARGOCD_CHART_VERSION:-10.4.0}"
+# hetzner only. Installed by this script rather than by Argo CD, because
+# Argo needs the cluster DNS that only this controller unblocks.
+HCCM_CHART_VERSION="${HCCM_CHART_VERSION:-1.37.0}"
 TARGET_REVISION="${TARGET_REVISION:-main}"
 REPO_URL="${REPO_URL:-https://github.com/savak1990/vk-lab-platform}"
 # local target only. Fixed and publicly known on purpose, like
@@ -184,8 +187,56 @@ local_resolve_inputs() {
   require_local_context
 }
 
+# Ten names is exactly the get-parameters cap, so this is one call and reuses
+# the aws-side ssm_output lookup. An eleventh name needs the batching loop
+# civo_resolve_inputs carries - HETZ-060 and HETZ-170 will each add one.
+#
+# No reserved IP and no backup bucket: this target has neither. No firewall or
+# ssh key id either, because nothing reads them until those two specs land.
+hetzner_resolve_inputs() {
+  hcloud_token
+  local ssm_names=(
+    "/$PROJECT_NAME/bootstrap/route53/fqdn"
+    "/$PROJECT_NAME/bootstrap/route53/zone_id"
+    "/$PROJECT_NAME/persistent/argocd/admin_password_bcrypt"
+    "/$PROJECT_NAME/persistent-hetzner/network/network_id"
+    "/$PROJECT_NAME/bootstrap/rolesanywhere/trust_anchor_arn"
+    "/$PROJECT_NAME/bootstrap/rolesanywhere/profile_arn"
+    "/$PROJECT_NAME/bootstrap/rolesanywhere/role_arn/eso"
+    "/$PROJECT_NAME/bootstrap/rolesanywhere/role_arn/external-dns"
+    "/$PROJECT_NAME/bootstrap/rolesanywhere/role_arn/cert-manager"
+    "/$PROJECT_NAME/bootstrap/rolesanywhere/role_arn/pgbackup"
+  )
+  SSM_BATCH_NAMES=()
+  SSM_BATCH_VALUES=()
+  while IFS=$'\t' read -r name value; do
+    SSM_BATCH_NAMES+=("$name")
+    SSM_BATCH_VALUES+=("$value")
+  done < <(aws ssm get-parameters --region "$LAB_REGION" --with-decryption \
+    --names "${ssm_names[@]}" --query 'Parameters[].[Name,Value]' --output text)
+
+  LAB_FQDN="$(ssm_output "/$PROJECT_NAME/bootstrap/route53/fqdn")"
+  ROUTE53_ZONE_ID="$(ssm_output "/$PROJECT_NAME/bootstrap/route53/zone_id")"
+  ADMIN_PASSWORD_BCRYPT_HASH="$(ssm_output "/$PROJECT_NAME/persistent/argocd/admin_password_bcrypt")"
+  HCLOUD_NETWORK_ID="$(ssm_output "/$PROJECT_NAME/persistent-hetzner/network/network_id")"
+  TRUST_ANCHOR_ARN="$(ssm_output "/$PROJECT_NAME/bootstrap/rolesanywhere/trust_anchor_arn")"
+  PROFILE_ARN="$(ssm_output "/$PROJECT_NAME/bootstrap/rolesanywhere/profile_arn")"
+  ESO_ROLE_ARN="$(ssm_output "/$PROJECT_NAME/bootstrap/rolesanywhere/role_arn/eso")"
+  EXTERNAL_DNS_ROLE_ARN="$(ssm_output "/$PROJECT_NAME/bootstrap/rolesanywhere/role_arn/external-dns")"
+  CERT_MANAGER_ROLE_ARN="$(ssm_output "/$PROJECT_NAME/bootstrap/rolesanywhere/role_arn/cert-manager")"
+  PGBACKUP_ROLE_ARN="$(ssm_output "/$PROJECT_NAME/bootstrap/rolesanywhere/role_arn/pgbackup")"
+  # Empty rather than unset: the shared backup machinery reads these outside
+  # any provider branch, under set -u. No bucket exists on this target until
+  # HETZ-115/120 add one.
+  BACKUP_BUCKET=""
+  BACKUP_SERVER_NAME=""
+  RECOVER_SERVER_NAME=""
+  configure_kubeconfig "$KUBECONFIG"
+}
+
 case "$PROVIDER" in
   civo) civo_resolve_inputs ;;
+  hetzner) hetzner_resolve_inputs ;;
   local) local_resolve_inputs ;;
   aws) aws_resolve_inputs ;;
   *) echo "ARGO-UP: no input resolver for PROVIDER=$PROVIDER." >&2; exit 1 ;;
@@ -349,6 +400,9 @@ if [ "$EXISTING_STATUS" = "Synced/Healthy" ] && [ "$PROVIDER" != local ]; then
       civo_wait_for_lb_ip || exit 1
       civo_wait_for_dns
       ;;
+    hetzner)
+      echo "ARGO-UP: root Synced/Healthy - this target has no gateway or DNS record until HETZ-060."
+      ;;
     aws)
       aws_wait_for_dns
       echo "ARGO-UP: root Synced/Healthy and DNS resolved - platform ready."
@@ -398,6 +452,69 @@ install_argocd() {
     ${antiaffinity_args[@]:+"${antiaffinity_args[@]}"} \
     --wait
 }
+
+# The kubelet taints every new node node.cloudprovider.kubernetes.io/uninitialized
+# and k3s's CoreDNS does not tolerate it, so cluster DNS stays Pending until a
+# cloud controller manager matches each node to its server and clears the taint.
+# Argo CD needs cluster DNS to reach its own repository server, which is why
+# this is installed by the script and not by Argo (ADR 0036, ADR 0037).
+#
+# The token reaches the cluster through a pipe, never a temp file.
+ensure_hcloud_ccm() {
+  echo "ARGO-UP: installing the hcloud cloud controller manager (chart $HCCM_CHART_VERSION)."
+  kubectl create secret generic hcloud -n kube-system \
+    --from-literal=token="$HCLOUD_TOKEN" \
+    --from-literal=network="$HCLOUD_NETWORK_ID" \
+    --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+
+  # clusterCIDR is k3s's own default: the control plane passes no --cluster-cidr,
+  # so the chart's Flannel-oriented 10.244.0.0/16 would be wrong. Route
+  # management stays off because k3s already runs flannel over the private NIC.
+  #
+  # --set-string for the routes flag, not --set: a container env value must be
+  # a string, and plain --set makes it a bool that server-side apply rejects.
+  helm upgrade --install hccm hcloud-cloud-controller-manager \
+    --repo https://charts.hetzner.cloud \
+    --version "$HCCM_CHART_VERSION" \
+    --namespace kube-system \
+    --set networking.enabled=true \
+    --set networking.clusterCIDR=10.42.0.0/16 \
+    --set-string env.HCLOUD_NETWORK_ROUTES_ENABLED.value=false \
+    --wait
+}
+
+# The one gate here that fails by hanging rather than erroring, so it prints
+# what it was waiting on. Ready is not enough: a node stays Ready while still
+# tainted, and CoreDNS stays Pending until the taint clears.
+wait_for_nodes_initialized() {
+  local budget="${HETZNER_ARGO_UP_CCM_WATCH_SECONDS:-180}"
+  local interval="${ARGO_UP_POLL_INTERVAL:-5}"
+  local waited=0 tainted providerless
+  while [ "$waited" -lt "$budget" ]; do
+    tainted="$(kubectl get nodes \
+      -o jsonpath='{range .items[*]}{.spec.taints[?(@.key=="node.cloudprovider.kubernetes.io/uninitialized")].key}{end}' 2>/dev/null || true)"
+    providerless="$(kubectl get nodes -o json 2>/dev/null \
+      | jq -r '[.items[] | select((.spec.providerID // "") | startswith("hcloud://") | not)] | length' 2>/dev/null || echo 1)"
+    if [ -z "$tainted" ] && [ "$providerless" = 0 ]; then
+      if kubectl wait --for=condition=Available deployment/coredns \
+        -n kube-system --timeout=30s >/dev/null 2>&1; then
+        echo "ARGO-UP: every node is cloud-initialized and cluster DNS is up."
+        return 0
+      fi
+    fi
+    sleep "$interval"
+    waited=$((waited + interval))
+  done
+  echo "ARGO-UP: nodes were still uninitialized after ${budget}s - the cloud controller manager never matched them to their servers." >&2
+  kubectl get nodes -o wide >&2 || true
+  kubectl logs -n kube-system -l app.kubernetes.io/name=hcloud-cloud-controller-manager --tail=50 >&2 || true
+  return 1
+}
+
+if [ "$PROVIDER" = hetzner ]; then
+  ensure_hcloud_ccm
+  wait_for_nodes_initialized || exit 1
+fi
 
 install_argocd
 
@@ -589,8 +706,34 @@ local_install_root_application() {
   local_sync_root
 }
 
+# The civo installer less the values this target has no source for: no
+# reserved IP, no LB firewall id, and no backup bucket until HETZ-115/120.
+hetzner_install_root_application() {
+  helm upgrade --install root-application "$REPO_ROOT/gitops/bootstrap" \
+    --namespace argocd \
+    --server-side=true --force-conflicts \
+    --set target=hetzner \
+    --set project="$PROJECT_NAME" \
+    --set repoURL="$REPO_URL" \
+    --set targetRevision="$TARGET_REVISION" \
+    --set postgres.storageSize="$POSTGRES_STORAGE_SIZE" \
+    --set envoyGateway.fqdn="$LAB_FQDN" \
+    --set externalDns.txtOwnerId="$PROJECT_NAME" \
+    --set awsIdentity.rolesAnywhere.trustAnchorArn="$TRUST_ANCHOR_ARN" \
+    --set awsIdentity.rolesAnywhere.profileArn="$PROFILE_ARN" \
+    --set awsIdentity.rolesAnywhere.roleArns.eso="$ESO_ROLE_ARN" \
+    --set awsIdentity.rolesAnywhere.roleArns.external-dns="$EXTERNAL_DNS_ROLE_ARN" \
+    --set awsIdentity.rolesAnywhere.roleArns.cert-manager="$CERT_MANAGER_ROLE_ARN" \
+    --set awsIdentity.rolesAnywhere.roleArns.pgbackup="$PGBACKUP_ROLE_ARN" \
+    --set postgres.backup.enabled=false \
+    --set tls.issuer="${TLS_ISSUER:-letsencrypt-prod}" \
+    --set tls.acmeEmail="${TLS_ACME_EMAIL:-}" \
+    --set tls.hostedZoneId="$ROUTE53_ZONE_ID"
+}
+
 case "$PROVIDER" in
   civo) civo_install_root_application ;;
+  hetzner) hetzner_install_root_application ;;
   local) local_install_root_application ;;
   aws) aws_install_root_application ;;
   *) echo "ARGO-UP: no root Application installer for PROVIDER=$PROVIDER." >&2; exit 1 ;;
@@ -624,6 +767,11 @@ case "$PROVIDER" in
     echo "    8080:80"
     echo "ARGO-UP: Argo CD is then http://localhost:8080 - admin / '$LOCAL_ARGOCD_PASSWORD'."
     ;;
+  hetzner)
+    # EnvoyProxy and Gateway do not render for this target yet, so there is no
+    # Service to carry a load balancer address and no record to resolve.
+    echo "ARGO-UP: root Synced/Healthy - platform ready. No gateway, load balancer or DNS record on this target until HETZ-060."
+    ;;
   aws)
     aws_wait_for_dns
     echo "ARGO-UP: root Synced/Healthy and DNS resolved - platform ready."
@@ -633,7 +781,9 @@ case "$PROVIDER" in
     exit 1
     ;;
 esac
-# Writes to SSM and prunes S3; the local target has neither and takes no backups.
-if [ "$PROVIDER" != local ]; then
+# Writes to SSM and prunes S3. Keyed on the bucket rather than on the provider:
+# local and hetzner both take no backups and mint no server name, and
+# put-parameter rejects the empty value that would then be written.
+if [ -n "${BACKUP_BUCKET:-}" ]; then
   backup_publish_server_name
 fi

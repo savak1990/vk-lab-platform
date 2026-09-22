@@ -1,4 +1,4 @@
-{{- if has .Values.target (list "aws" "civo" "hetzner" "local") }}
+{{- if (eq (include "platform.gatewayEnabled" .) "true") }}
 apiVersion: gateway.networking.k8s.io/v1
 kind: GatewayClass
 metadata:

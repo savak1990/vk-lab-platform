@@ -67,8 +67,30 @@ unverified until measured on a live cluster.
 Whether metrics-server is deployed. The civo value is unverified until
 measured on a live cluster.
 */}}
+{{/*
+k3s ships its own metrics-server as a packaged addon in kube-system, under the
+same name this Application uses, so rendering it here makes Argo fight the k3s
+supervisor over one Deployment and the child never reports Synced. Disabled on
+hetzner for the same reason civo's StorageClass is only referenced, never
+defined: the distribution owns that object.
+*/}}
+
+{{/*
+Whether this target has a Gateway for Gateway API objects to attach to. False
+on hetzner until HETZ-060 supplies the EnvoyProxy and Gateway: an HTTPRoute
+with no Gateway is never Accepted, so Argo's health check on it never finishes
+and the whole root sync stalls behind it, and a GatewayClass whose
+parametersRef names a missing EnvoyProxy is rejected outright.
+Emits "true"/"false" as a string, so compare it - a bare if takes "false".
+*/}}
+{{- define "platform.gatewayEnabled" -}}
+{{- ne .Values.target "hetzner" -}}
+{{- end -}}
+
 {{- define "platform.metricsServerEnabled" -}}
-{{- if eq .Values.target "civo" -}}true{{- else -}}{{ .Values.observability.metricsServer.enabled }}{{- end -}}
+{{- if eq .Values.target "civo" -}}true
+{{- else if eq .Values.target "hetzner" -}}false
+{{- else -}}{{ .Values.observability.metricsServer.enabled }}{{- end -}}
 {{- end -}}
 
 {{/*
