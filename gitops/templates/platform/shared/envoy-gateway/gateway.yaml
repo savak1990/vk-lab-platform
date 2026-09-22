@@ -1,9 +1,4 @@
-{{/* hetzner is absent until HETZ-060 adds the EnvoyProxy and Gateway arms
-below: a GatewayClass whose parametersRef names an EnvoyProxy that does not
-render is rejected by the controller, and Argo counts that as a failed sync,
-which stalls every later wave - the issuers, certificates and the Roles
-Anywhere secrets that external-secrets and external-dns wait on. */}}
-{{- if has .Values.target (list "aws" "civo" "local") }}
+{{- if (eq (include "platform.gatewayEnabled" .) "true") }}
 apiVersion: gateway.networking.k8s.io/v1
 kind: GatewayClass
 metadata:

@@ -1,4 +1,4 @@
-{{- if (eq (include "platform.selfManaged" .) "true") }}
+{{- if and (eq (include "platform.selfManaged" .) "true") (eq (include "platform.gatewayEnabled" .) "true") }}
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:

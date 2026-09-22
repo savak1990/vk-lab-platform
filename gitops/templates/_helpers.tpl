@@ -67,6 +67,18 @@ unverified until measured on a live cluster.
 Whether metrics-server is deployed. The civo value is unverified until
 measured on a live cluster.
 */}}
+{{/*
+Whether this target has a Gateway for Gateway API objects to attach to. False
+on hetzner until HETZ-060 supplies the EnvoyProxy and Gateway: an HTTPRoute
+with no Gateway is never Accepted, so Argo's health check on it never finishes
+and the whole root sync stalls behind it, and a GatewayClass whose
+parametersRef names a missing EnvoyProxy is rejected outright.
+Emits "true"/"false" as a string, so compare it - a bare if takes "false".
+*/}}
+{{- define "platform.gatewayEnabled" -}}
+{{- ne .Values.target "hetzner" -}}
+{{- end -}}
+
 {{- define "platform.metricsServerEnabled" -}}
 {{- if eq .Values.target "civo" -}}true{{- else -}}{{ .Values.observability.metricsServer.enabled }}{{- end -}}
 {{- end -}}

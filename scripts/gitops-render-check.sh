@@ -162,8 +162,11 @@ Namespace__cluster__e2e ServiceAccount__e2e__e2e-test"
 FORBIDDEN_OBJECTS_CIVO="ServiceMonitor__kube-system__karpenter \
 ConfigMap__observability__dashboard-karpenter-capacity"
 # The civo set, less the two features hetzner does not have yet, plus the CSI
-# driver. EnvoyProxy, Gateway and GatewayClass all arrive with the load
-# balancer (HETZ-060), and cluster-autoscaler with HETZ-170.
+# driver. The whole Gateway API surface - GatewayClass, EnvoyProxy, Gateway,
+# every HTTPRoute, and the BackendTrafficPolicy that targets one - arrives with
+# the load balancer (HETZ-060) and is forbidden until then: a route no Gateway
+# accepts never reports healthy, and the root sync stalls behind it.
+# cluster-autoscaler arrives with HETZ-170.
 # StorageClass is allowed, unlike civo: the hcloud CSI chart ships its own.
 REQUIRED_OBJECTS_HETZNER="Application__argocd__hcloud-csi \
 Application__argocd__cert-manager \
@@ -172,17 +175,15 @@ Certificate__kube-system__external-dns Certificate__cert-manager__cert-manager \
 ClusterSecretStore__cluster__aws-parameter-store \
 ExternalSecret__cnpg-system__lab-postgres-app Application__argocd__external-dns \
 ClusterIssuer__cluster__letsencrypt-staging ClusterIssuer__cluster__letsencrypt-prod \
-Certificate__envoy__platform-public HTTPRoute__envoy__https-redirect \
-HTTPRoute__argocd__argocd \
+Certificate__envoy__platform-public \
 Cluster__cnpg-system__lab-postgres Certificate__cnpg-system__pgbackup \
 ConfigMap__cnpg-system__pgbackup-aws-config \
 ObjectStore__cnpg-system__lab-postgres-backups \
 ScheduledBackup__cnpg-system__lab-postgres \
 Application__argocd__barman-cloud-plugin \
 Application__argocd__kube-prometheus-stack Application__argocd__loki \
-Application__argocd__alloy HTTPRoute__observability__grafana \
+Application__argocd__alloy \
 ExternalSecret__observability__grafana-admin-credentials \
-BackendTrafficPolicy__observability__grafana-traffic-policy \
 RoleBinding__observability__e2e-test-readonly \
 PodMonitor__cnpg-system__cnpg-postgres ServiceMonitor__argocd__argocd \
 Namespace__cluster__e2e ServiceAccount__e2e__e2e-test"
@@ -191,6 +192,9 @@ NodePool EC2NodeClass"
 FORBIDDEN_APPLICATIONS_HETZNER="aws-load-balancer-controller ebs-csi-driver karpenter \
 external-snapshotter external-snapshotter-crds"
 FORBIDDEN_OBJECTS_HETZNER="GatewayClass__cluster__envoy-gateway \
+HTTPRoute__envoy__https-redirect HTTPRoute__argocd__argocd \
+HTTPRoute__observability__grafana \
+BackendTrafficPolicy__observability__grafana-traffic-policy \
 ServiceMonitor__kube-system__karpenter \
 ConfigMap__observability__dashboard-karpenter-capacity"
 
