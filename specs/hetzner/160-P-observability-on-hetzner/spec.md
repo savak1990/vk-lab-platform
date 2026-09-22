@@ -216,3 +216,25 @@ Revert the values. Argo prunes. Volumes are deleted with the PVCs.
   false on hetzner and `kubeletInsecureTls` is tried as `false` first.
   `depends_on` moves from HETZ-037 to HETZ-045. Dashboards, volumes, the
   10 GB floor, retention and sizing are unchanged.
+
+- 2026-09-22 — HETZ-060 clears part of §8's first criterion early. "Grafana
+  reachable through HTTPS (after HETZ-070)" no longer waits for HETZ-070:
+  that spec was narrowed because the Gateway's HTTPS listener and the
+  ExternalDNS records both had to land with the load balancer. Measured on
+  the live cycle, `https://grafana.hz.<root>/` through the hcloud load
+  balancer returned 302 to Grafana's own login page, which is the reachable
+  answer for an unauthenticated request. The `grafana` HTTPRoute and the
+  `grafana-traffic-policy` BackendTrafficPolicy both render and are Accepted,
+  and both moved from the forbidden to the required set in
+  `gitops-render-check.sh`.
+
+  What stays open here is unchanged: the control-plane scrapes
+  (`kubeControllerManager`, `kubeScheduler`, `kubeEtcd`, `kubeProxy` are
+  disabled chart-wide with no per-target gate), the control-plane IP relay,
+  and the dashboards those scrapes populate.
+
+  Also observed, and useful for §4's sizing paragraph: on three `cx33` the
+  observability claims bound as three 10Gi `hcloud-volumes` PVCs - Prometheus,
+  Alertmanager and Loki - with Grafana taking none, so the volume count is
+  three rather than the four §3 predicts. Alertmanager's 1Gi request was
+  rounded up to Hetzner's 10Gi floor, which is the behaviour §4 expected.
