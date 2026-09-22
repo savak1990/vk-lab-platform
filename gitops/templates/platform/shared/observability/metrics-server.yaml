@@ -1,4 +1,4 @@
-{{- if and (ne .Values.target "local") (eq (include "platform.metricsServerEnabled" .) "true") }}
+{{- if eq (include "platform.metricsServerEnabled" .) "true" }}
 # Serves metrics.k8s.io (kubectl top / HPA) - not bundled in kube-prometheus-
 # stack, which only brings kube-state-metrics + node-exporter. Argo-managed
 # like the rest of the platform's controllers, not a Terraform-provisioned addon.

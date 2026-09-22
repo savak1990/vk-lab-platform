@@ -1,4 +1,4 @@
-{{- if ne .Values.target "local" }}
+{{- $o := ternary .Values.observability.profile.local .Values.observability.profile.default (eq .Values.target "local") }}
 # Metrics backbone. Tracing (Tempo/OTel Collector) is deliberately not
 # deployed - no trace producer exists in this platform-only repo yet.
 apiVersion: argoproj.io/v1alpha1
@@ -31,8 +31,8 @@ spec:
             serviceMonitorSelectorNilUsesHelmValues: false
             podMonitorSelectorNilUsesHelmValues: false
             ruleSelectorNilUsesHelmValues: false
-            retention: 7d
-            retentionSize: "8GB"
+            retention: {{ $o.prometheusRetention }}
+            retentionSize: "{{ $o.prometheusRetentionSize }}"
             # Chart default is {} (Retain); without this, `make down` orphans
             # the bound volume every cycle, since the PVC survives the
             # StatefulSet's deletion and never triggers the Delete reclaim.
@@ -68,8 +68,13 @@ spec:
                   accessModes: ["ReadWriteOnce"]
                   resources:
                     requests:
-                      storage: 10Gi
+                      storage: {{ $o.prometheusStorage }}
         alertmanager:
+          {{- if eq .Values.target "local" }}
+          # Nothing pages anyone from a laptop. The PrometheusRule still
+          # evaluates, and a firing alert still shows in Prometheus's own UI.
+          enabled: false
+          {{- end }}
           alertmanagerSpec:
             # Same orphaned-volume reasoning as prometheusSpec above.
             persistentVolumeClaimRetentionPolicy:
@@ -99,7 +104,7 @@ spec:
                   accessModes: ["ReadWriteOnce"]
                   resources:
                     requests:
-                      storage: 1Gi
+                      storage: {{ $o.alertmanagerStorage }}
         grafana:
           # No volume at all. A bare PVC here is the one Argo creates itself,
           # and on a late-binding StorageClass it stays Pending until a pod
@@ -201,4 +206,3 @@ spec:
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true
-{{- end }}

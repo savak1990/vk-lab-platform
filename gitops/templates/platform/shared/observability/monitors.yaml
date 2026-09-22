@@ -1,4 +1,3 @@
-{{- if ne .Values.target "local" }}
 # ServiceMonitor/PodMonitor objects for components whose own Applications
 # sync at an earlier wave than kube-prometheus-stack's CRD install
 # (karpenter -4, cnpg-operator -1, external-secrets -2) - defined here
@@ -116,5 +115,4 @@ spec:
   endpoints:
     - port: http
       interval: 30s
-{{- end }}
 {{- end }}

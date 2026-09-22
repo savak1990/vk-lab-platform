@@ -1,4 +1,3 @@
-{{- if ne .Values.target "local" }}
 # Vendored dashboards, picked up by the Grafana sidecar via the
 # grafana_dashboard label (chart default: enabled, searchNamespace: ALL) -
 # not manually imported through the UI, so they survive `make down`/`make up`
@@ -88,4 +87,3 @@ data:
         }
       ]
     }
-{{- end }}
