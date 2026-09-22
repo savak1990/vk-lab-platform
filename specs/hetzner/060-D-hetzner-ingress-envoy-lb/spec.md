@@ -190,3 +190,59 @@ Service. No data risk.
   Outstanding: every acceptance criterion that needs a cluster. The live cycle
   is deliberately not folded into this entry, because it is also the evidence
   HETZ-047, HETZ-085 and HETZ-115 are waiting on.
+
+- 2026-09-22 — live cycle on three `cx33` in `fsn1`, `TARGET_REVISION=hetz-060-ingress`.
+  Every acceptance criterion that needs a cluster is now met.
+
+  | Criterion | Measured |
+  |---|---|
+  | address within 60 s | **17 s** (Service 13:59:14Z, address 13:59:31Z) |
+  | port 80 | **301** to `https://argo.hz.<root>/` |
+  | port 443 | **200** at Argo CD; Grafana 302 to its own login |
+  | targets on private IPs | three, all `use_private_ip=true` |
+  | no public NodePort | `curl <node-public-ip>:30261` → refused |
+  | type and location | `lb11` in `fsn1`, from the `REGION` input |
+  | `argo-down` removes it | gone **1 s** after the Service |
+  | sweep after teardown | eight categories clean |
+
+  Both listeners programmed on the first sync, `Accepted` and `ResolvedRefs`
+  true, and all three HTTPRoutes attached with no stall. The §12 risk about
+  the https listener having no Secret did not fire, but not because it was
+  wrong: `argo-up` restored `platform-public-tls` from SSM before the root
+  install, so the Secret already existed. The risk stands for a project with
+  no stored certificate.
+
+  Two of the three load balancer targets report `unhealthy`, and that is
+  correct rather than a fault. The Service is `externalTrafficPolicy: Local`
+  and Envoy runs one replica, so only the node hosting it answers the health
+  check. All three are registered on their private addresses, which is what
+  §8 asks. The trade-off is worth stating: losing that node drops ingress
+  until Kubernetes reschedules, the same exposure Civo carries.
+
+  Confirmed live, as §6 step 4 was corrected to predict: the load balancer
+  does have an IPv6 (`2a01:4f8:c01e:399f::1`). `ipv6-disabled` suppresses it
+  in the Service status only.
+
+  Whole-cycle timings, for whoever sizes budgets: `bootstrap-up` 5m06s,
+  `persistent-up` 3m10s, `cluster-up` 4m10s, `argo-up` 16m31s; teardown
+  `argo-down` 7m31s, `cluster-down` 1m16s, `persistent-down` 0m31s,
+  `bootstrap-down` 2m09s, total 11m27s. Roughly 10 minutes of `argo-up` and
+  6 minutes of `argo-down` were avoidable and are explained in HETZ-070 §14
+  and HETZ-047 §14; a clean cycle is about 19 minutes up and 5 down.
+
+  One defect this PR introduced and fixed in the same cycle: external-dns
+  published two A values per name, the public address and the load balancer's
+  private `10.0.1.1`, so about half of all DNS answers were unroutable.
+  `disable-private-ingress` was missing from the annotation arm although
+  `research.md:46` lists it. Proven on the same cluster: the Gateway dropped
+  to one address 42 s after the sync, external-dns rewrote the records 33 s
+  later, and both names then resolved to the public address alone. `argo-up`'s
+  DNS wait had passed anyway, because it reads one answer and round-robin
+  handed it the public one - luck, not correctness, and the reason to fix the
+  record rather than the wait.
+
+  Two unrelated notes from the same run, neither owned here. `make full-down`
+  halts at `cluster-down`'s leak exit; this cycle ran the phases separately
+  on purpose, so the 11m27s total is the real figure rather than a truncated
+  one. And `argo-down`'s load balancer message says "NLB", which is AWS
+  wording on this target - cosmetic, recorded in HETZ-047.

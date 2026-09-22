@@ -138,3 +138,42 @@ wrong. Data risk: none.
   shares Civo's listener arm, and a per-target arm to add one constraint
   that a wildcard certificate and per-route hostnames already cover is
   duplication, not precision. §5 and §6 step 1 are corrected.
+
+- 2026-09-22 — two findings from HETZ-060's live cycle, both narrowing this
+  spec's remaining work.
+
+  **The SSM round-trip already works on this target, and §8's "no new Order"
+  criterion needs a condition attached.** `argo-up` restored
+  `platform-public-tls` from SSM before the root install and reported the
+  stored certificate's not-after date, so the mechanism HETZ-016 parametrised
+  is live on hetzner with no further code. But the run passed
+  `TLS_ISSUER=letsencrypt-staging` over a Secret issued by
+  `letsencrypt-prod`, and cert-manager said exactly what that costs:
+
+  ```
+  Ready=False: Issuing certificate as Secret was previously issued by
+    "ClusterIssuer.cert-manager.io/letsencrypt-prod"
+  ```
+
+  A full DNS-01 order followed and held the root sync for about ten of
+  `argo-up`'s sixteen minutes. So the criterion holds only when the issuer is
+  unchanged between cycles; state that, rather than leaving a future run to
+  discover it. Alternating issuers costs a reissue **every** cycle, because
+  `argo-down` exports whichever certificate is current - this teardown stored
+  the staging one, so the next default `letsencrypt-prod` bring-up will
+  reissue again.
+
+  **The exported chain is 7713 characters.** §3 records Civo's prod chain at
+  7390 against SSM Advanced's 8192-character limit. The staging chain is
+  longer and leaves roughly 480 characters of headroom. Worth measuring the
+  prod chain on this target too, and deciding whether the margin is
+  acceptable before a chain change consumes it.
+
+  One transient worth knowing about on a rebuilt project: the first DNS-01
+  attempt failed its self-check with
+  `SERVFAIL` querying the zone's SOA through cluster DNS, because the run had
+  recreated the Route 53 zone minutes earlier and the delegation had not
+  propagated to the nodes' resolver. The TXT record was already correct in
+  Route 53 and public resolvers answered it. cert-manager's own retry cleared
+  it with no intervention. Not a defect, but it explains a multi-minute
+  stall that looks like one.

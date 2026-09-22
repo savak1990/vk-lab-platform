@@ -157,3 +157,29 @@ values entry; the render check then fails until the set is reverted too.
 - 2026-09-11 — created as DRAFT.
 - 2026-09-11 — reviewed and approved by the user; promoted to READY.
 - 2026-09-19 — cost line re-based on the fixed `cx33` pair; CAX is gone.
+
+- 2026-09-22 — observed during HETZ-060's live cycle, not investigated:
+  **Postgres backups are half-enabled on this target.** `argo-up` passes
+  `postgres.backup.enabled=false`, yet `argo-down` reported
+  `ContinuousArchiving=True` on the live cluster and its pre-teardown backup
+  failed immediately:
+
+  ```
+  ARGO-DOWN: backup phase: failed (0s/600s)
+  ARGO-DOWN: WARNING - the pre-teardown Postgres backup did not complete
+  ARGO-DOWN: WARNING - ContinuousArchiving=True.
+  ```
+
+  So archiving was running while the backup path did not work. `backup_teardown`
+  handled it exactly as designed - warned, explained the consequence for
+  recovery, and continued rather than blocking the teardown - which is why
+  this is a note and not an incident.
+
+  Determining whether archiving should be on at all here, and why the backup
+  failed, belongs to this spec and HETZ-120. It was left alone deliberately:
+  chasing it mid-teardown would have cost a rebuild, and the evidence
+  disappears as the cascade proceeds.
+
+  Evidence that this spec's own criteria are close: three `hcloud-volumes`
+  PVCs bound at 10Gi each (Prometheus, Alertmanager, Loki) with provisioner
+  `csi.hetzner.cloud`, and every volume gone after teardown.

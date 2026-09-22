@@ -289,3 +289,59 @@ path to persistent state.
   `cluster-down`'s sweep — including the name-prefix pass HETZ-060 adds — never
   runs at all, because `make` stops the chain. Measure that wait on the first
   HETZ-060 cycle before deciding whether it needs reordering.
+
+- 2026-09-22 — **the PVC-budget entry above is wrong about the cause, and the
+  second teardown proves it.** That entry concluded "the fix is a number, not
+  code - measure the real detach-and-delete time". The measurement says
+  otherwise: no number works.
+
+  What the run showed, in order, from `argo-down`'s own log:
+
+  ```
+  applications remaining: cnpg-operator, envoy-gateway, external-secrets, hcloud-csi, root
+  applications remaining: none          <- the cascade deleted hcloud-csi here
+  cascade complete.
+  waiting for PV pvc-15b81032-... (backing volume) to finish deleting...
+  error: timed out waiting for the condition ... 180s
+  ```
+
+  The cascade removes the `hcloud-csi` Application, and only then does the PV
+  wait begin. A PV with a `Delete` reclaim needs a live CSI controller to do
+  the deleting, so by the time the wait starts there is nobody left to
+  perform it. `argo-down` spent six minutes waiting for an event that could
+  not occur.
+
+  Measured directly against the Hetzner API rather than inferred: both volumes
+  were **detached** within the wait and stayed present, unchanged, for over
+  four minutes. They disappeared at 14:25:22Z, four seconds after
+  `cluster-down` ran `hcloud volume delete` on them at 14:25:18Z. Nothing
+  else deleted them, and nothing else was going to.
+
+  `research.md` recorded this same trap from the feasibility spike - "the
+  PV's `Delete` reclaim needs a live CSI controller" - and the note was read
+  as being about server deletion rather than about the Argo cascade.
+
+  So this spec's work changes shape. Raising `ARGO_DOWN_PVC_WAIT_TIMEOUT`
+  buys nothing; the ordering has to change, so that either the PVCs are
+  deleted and their volumes confirmed gone **before** the cascade prunes
+  `hcloud-csi`, or that Application is excluded from the cascade the way the
+  CCM release already is (HETZ-045, decisions.md §3). The second is the
+  closer parallel: the CSI driver is in the same class as the cloud
+  controller manager - a controller whose own resources outlive the objects
+  that Argo owns.
+
+  Until then the sweep is the safety net and behaves correctly: it deleted
+  the surviving volume and exited non-zero so the condition surfaced.
+
+  Two smaller items from the same run. `argo-down`'s Route 53 record wait
+  (`:203-237`), newly load-bearing now that HETZ-060 lets external-dns
+  publish, cleared two records in under 10 s against its 180 s budget and
+  needs no change. And the load balancer block's messages name "NLB" and
+  "aws-load-balancer-controller", which read wrongly on a Hetzner teardown -
+  cosmetic, and cheap to fix when this spec touches that block.
+
+  For the record, this spec's own premise is now exercised: `argo-down`
+  deleted the Gateway, the Service went within one poll, and the hcloud load
+  balancer was gone **1 s** later, with nothing left for the sweep. The
+  window `wait_for_lb_gone()` closes is therefore small in the happy case -
+  its value is the slow case, which this run did not produce.
