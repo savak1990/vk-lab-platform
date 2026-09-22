@@ -190,7 +190,7 @@ Namespace__cluster__e2e ServiceAccount__e2e__e2e-test"
 FORBIDDEN_KINDS_HETZNER="VolumeSnapshotClass VolumeSnapshotContent VolumeSnapshot \
 NodePool EC2NodeClass"
 FORBIDDEN_APPLICATIONS_HETZNER="aws-load-balancer-controller ebs-csi-driver karpenter \
-external-snapshotter external-snapshotter-crds"
+external-snapshotter external-snapshotter-crds metrics-server"
 FORBIDDEN_OBJECTS_HETZNER="GatewayClass__cluster__envoy-gateway \
 HTTPRoute__envoy__https-redirect HTTPRoute__argocd__argocd \
 HTTPRoute__observability__grafana \
