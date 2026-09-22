@@ -1,7 +1,7 @@
 ---
 id: "HETZ-050"
 title: "GitOps baseline for target=hetzner: CSI Application, storage class, values defaults, render check, golden diffs"
-status: "IN_REVIEW"
+status: "DONE"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -15,7 +15,7 @@ blocked_by: []
 supersedes: []
 created: "2026-09-11"
 updated: "2026-09-22"
-completed: ""
+completed: "2026-09-22"
 ---
 
 # HETZ-050 — GitOps baseline for the Hetzner target
@@ -129,8 +129,11 @@ data risk.
 - 2026-09-20 — adds the `platform-critical` PriorityClass, the soft
   `role=worker` affinity and CNPG `enablePDB: false` (decisions.md §3,
   "Schedulable control plane").
-- 2026-09-22 — implemented; status `IN_REVIEW`, folder renamed to
-  `050-A-gitops-hetzner-target-baseline`. Seven contracts in §3, §4 and §6 were
+- 2026-09-22 — implemented and merged as #65; folder renamed to
+  `050-D-gitops-hetzner-target-baseline`. The status was set to `IN_REVIEW` in
+  that pull request and moved to `DONE` immediately afterwards, when the
+  protocol stopped using `IN_REVIEW` at all; no work changed hands between the
+  two. Seven contracts in §3, §4 and §6 were
   wrong or already satisfied, and are corrected here rather than followed.
   - **Sync wave `-5`, not `-3`.** §4 justified `-3` as "below every existing
     wave", which is false: the tree carries `-6`, `-5` and `-4`. The wave that

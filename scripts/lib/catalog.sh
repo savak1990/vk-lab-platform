@@ -20,10 +20,19 @@
 #   t4g.medium (3 ENIs x 6 IPs); fewer ENIs cannot hold this platform.
 #   m6g/m7g/m8g medium are all 1 vCPU and dearer per GiB than t4g.medium.
 #
-#   civo, USD/month, civo/research.md:29, recorded 2026-09-07
-#     g4s.kube.medium  2 vCPU / 4 GiB  21.73   default
-#   Excluded: g4s.kube.large 43.45 over ceiling; xsmall/small too small to
-#   hold the platform - a Medium's measured allocatable is already 2308 MiB.
+#   civo, USD/month, https://www.civo.com/pricing, 2026-09-22
+#     g4s.kube.medium  2 vCPU /  4 GiB  21.73   default
+#     g4s.kube.large   4 vCPU /  8 GiB  43.45
+#     g4m.kube.small   2 vCPU / 16 GiB  78.21   memory without more cores
+#     g4p.kube.small   4 vCPU / 16 GiB  86.91
+#   Excluded: xsmall and small are too small to hold the platform - a Medium's
+#   measured allocatable is already 2308 MiB. Every g4c starts at 8 vCPU, and
+#   every step above g4p.kube.small doubles both dimensions at once.
+#   The three entries above the ceiling are here for the same reason the
+#   Hetzner ones below are: a CI run is minutes, not a month, and a shape that
+#   can hold one more workload is worth more than a monthly figure suggests.
+#   Every one of the four is orderable in all four Civo regions, checked
+#   against `civo size ls` per region on 2026-09-22.
 #
 #   hetzner, EUR/month gross, Hetzner API, 2026-09-21
 #     cx23   2 vCPU /  4 GiB    7.85
@@ -98,7 +107,7 @@ catalog_regions() {
 catalog_node_types() {
   case "$1:$2" in
     aws:eu-west-1) echo "t4g.medium t4g.large m6g.large" ;;
-    civo:LON1 | civo:NYC1 | civo:FRA1 | civo:MUM1) echo "g4s.kube.medium" ;;
+    civo:LON1 | civo:NYC1 | civo:FRA1 | civo:MUM1) echo "g4s.kube.medium g4s.kube.large g4m.kube.small g4p.kube.small" ;;
     hetzner:nbg1) echo "cx23 cx33 cx43 cx53 cpx32 cpx42" ;;
     hetzner:hel1) echo "cx23 cx33 cpx32 cpx42" ;;
     hetzner:fsn1) echo "cx23 cx33 cx43 cpx32 cpx42" ;;

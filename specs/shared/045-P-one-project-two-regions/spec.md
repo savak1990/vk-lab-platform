@@ -31,7 +31,7 @@ The operator's words, 2026-09-21: *"civo and hetzner must support simultaneous
 runs … today we have to always shutdown cluster in one region in order to
 start in another region."*
 
-**This is a naming problem, not a region problem.** [SHARED-044](../044-A-node-and-region-inputs/spec.md)
+**This is a naming problem, not a region problem.** [SHARED-044](../044-D-node-and-region-inputs/spec.md)
 already made `REGION` a validated input and put the provider's region into
 both S3 bucket names. What remains is everything else a project names once.
 

@@ -35,18 +35,17 @@ Never renumber them. Numbers step by ten. Insert later work into the gaps
 | `READY` | Approved for development; no active blocker. An implementer may start only when every `depends_on` is `DONE` (checked at session start) |
 | `IN_PROGRESS` | An authorized implementer started the bounded work |
 | `BLOCKED` | Needs a named decision, capability, prerequisite, or unfinished hard dependency; `blocked_by` names it |
-| `IN_REVIEW` | Implementation and checks complete; the pull request is open and awaiting review |
-| `DONE` | Acceptance criteria and gates passed, evidence recorded, reviewed and integrated |
+| `DONE` | The spec's scope is implemented, the evidence gathered so far is recorded, and the implementing pull request is open. An acceptance criterion still waiting on a live run is recorded as outstanding rather than holding the status back |
 | `DEFERRED` | Postponed by a recorded decision; may return to `READY` |
 | `SUPERSEDED` | Replaced by another spec or ADR; the replacement is named |
 | `CANCELLED` | Abandoned; rationale kept |
 
 Each status maps to a folder letter; see `../README.md`.
 
-Flow: `DRAFT → READY → IN_PROGRESS → IN_REVIEW → DONE`.
+Flow: `DRAFT → READY → IN_PROGRESS → DONE`.
 `BLOCKED` may interrupt anywhere. It returns to `READY` or `IN_PROGRESS`.
-A review failure returns the spec to `IN_PROGRESS`. Reopening `DONE` needs a
-recorded reason.
+A review failure returns the spec to `IN_PROGRESS`, which is what makes it safe
+to set `DONE` before the merge. Reopening `DONE` needs a recorded reason.
 
 Priority:
 
@@ -73,9 +72,8 @@ verified in this environment.
 3. Set `status: "IN_PROGRESS"` and `updated`. Add a status-history line.
 4. Implement only the spec's scope. Do not touch AWS behavior unless the spec says so. Run the AWS regression gate that the spec names.
 5. Run the validation section. Record the commands and results (no secrets) under "Execution evidence".
-6. Open a pull request mapped to the spec ID and set `IN_REVIEW`. `main` is
-   protected; a direct push is not possible. Go to step 7 after the merge.
-7. When the change is on `main` and the gates pass, set `DONE` and `completed`. Record in the status history whether a pull request was used. Re-check the direct dependents' `blocked_by`.
+6. Open a pull request mapped to the spec ID. `main` is protected; a direct push is not possible.
+7. In that same pull request set `DONE` and `completed`, rename the folder to its `D` letter, and record the evidence. Do not wait for the merge, and do not wait for the pull request's own CI result. A pull request whose only change is a status flip MUST NOT be opened. Re-check the direct dependents' `blocked_by`.
 8. Update the index table below if the status, priority, or dependencies changed.
 
 ## Index

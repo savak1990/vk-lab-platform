@@ -24,7 +24,7 @@ Specs are grouped by execution target. Each spec is a folder with a `spec.md`.
 | Letter | Meaning | `status:` values |
 |---|---|---|
 | `D` | done | `DONE` |
-| `A` | active | `IN_PROGRESS`, `IN_REVIEW` |
+| `A` | active | `IN_PROGRESS` |
 | `P` | planned | `DRAFT`, `READY`, `BLOCKED` |
 | `Z` | closed, not done | `DEFERRED`, `SUPERSEDED`, `CANCELLED` |
 

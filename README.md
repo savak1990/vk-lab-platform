@@ -129,23 +129,28 @@ copy of each cloud's catalogue.
 | `PROVIDER` | `REGION` | `NODE_TYPE` allowed there |
 |---|---|---|
 | `aws` | fixed at `eu-west-1`, not an input | `t4g.medium`, `t4g.large`, `m6g.large` |
-| `civo` | `LON1` `NYC1` `FRA1` `MUM1` | `g4s.kube.medium` |
+| `civo` | `LON1` `NYC1` `FRA1` `MUM1` | `g4s.kube.medium` `g4s.kube.large` `g4m.kube.small` `g4p.kube.small` |
 | `hetzner` | `nbg1` | `cx23` `cx33` `cx43` `cx53` `cpx32` `cpx42` |
 | `hetzner` | `hel1` | `cx23` `cx33` `cpx32` `cpx42` |
 | `hetzner` | `fsn1` | nothing orderable as of 2026-09-21 |
 
 Node types are listed per region because availability differs: `cx43` can be
-ordered in `nbg1` but not `hel1`. The larger Hetzner types are above the lab's
-cost ceiling on a monthly basis and are allowed anyway, because the Hetzner
-limit is on server count rather than spend, and a CI run that lives 25 minutes
-costs cents at any of these prices.
+ordered in `nbg1` but not `hel1`. All four Civo sizes sell in all four Civo
+regions, checked against `civo size ls` per region on 2026-09-22.
+
+Some of the Hetzner and Civo types are above the lab's cost ceiling on a
+monthly basis and are allowed anyway. The Hetzner limit is on server count
+rather than spend, so when it binds, fewer and bigger is the only shape that
+fits. And a run that lives 25 minutes costs cents at any of these prices — the
+monthly figure is the wrong metric for a cluster destroyed before the hour is
+out.
 
 ### Approximate cost
 
 Prices below are per node per month. They come from `scripts/lib/catalog.sh`,
 which records each figure with its source and date — the AWS Pricing API and
-the Hetzner API on 2026-09-21, Civo from `specs/civo/research.md` on
-2026-09-07. AWS and Civo are USD on demand; Hetzner is EUR gross.
+the Hetzner API on 2026-09-21, Civo from <https://www.civo.com/pricing> on
+2026-09-22. AWS and Civo are USD on demand; Hetzner is EUR gross.
 
 | `PROVIDER` | `NODE_TYPE` | vCPU / RAM | Per node, per month |
 |---|---|---|---|
@@ -153,6 +158,9 @@ the Hetzner API on 2026-09-21, Civo from `specs/civo/research.md` on
 | `aws` | `t4g.large` | 2 / 8 GiB | USD 53.73 |
 | `aws` | `m6g.large` | 2 / 8 GiB | USD 62.78 |
 | `civo` | `g4s.kube.medium` *(default)* | 2 / 4 GiB | USD 21.73 |
+| `civo` | `g4s.kube.large` | 4 / 8 GiB | USD 43.45 |
+| `civo` | `g4m.kube.small` | 2 / 16 GiB | USD 78.21 |
+| `civo` | `g4p.kube.small` | 4 / 16 GiB | USD 86.91 |
 | `hetzner` | `cx23` | 2 / 4 GiB | EUR 7.85 |
 | `hetzner` | `cx33` *(default)* | 4 / 8 GiB | EUR 12.09 |
 | `hetzner` | `cx43` | 8 / 16 GiB | EUR 22.37 |
@@ -163,6 +171,12 @@ the Hetzner API on 2026-09-21, Civo from `specs/civo/research.md` on
 `m6g.large` costs 17% more than `t4g.large` for identical specs and is kept on
 purpose: `t4g` is burstable and throttles to a 20% baseline once its CPU
 credits run out. It is insurance, never the default.
+
+Civo's ladder reads differently. `g4s.kube.large` doubles both dimensions for
+double the price, so cost per unit is flat. Above it the two axes separate:
+`g4m.kube.small` buys four times the memory of the default without adding a
+core, and `g4p.kube.small` buys the same memory with four cores. Pick `g4m` for
+a workload that runs out of memory first, `g4p` for one that runs out of CPU.
 
 **A lab left running for a month**, at each provider's default shape:
 

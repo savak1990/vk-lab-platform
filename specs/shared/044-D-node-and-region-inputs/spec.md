@@ -1,7 +1,7 @@
 ---
 id: "SHARED-044"
 title: "NODE_COUNT, NODE_TYPE and REGION as validated operator inputs on every provider"
-status: "IN_REVIEW"
+status: "DONE"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -14,7 +14,7 @@ depends_on: []
 blocked_by: []
 created: "2026-09-21"
 updated: "2026-09-22"
-completed: ""
+completed: "2026-09-22"
 ---
 
 # SHARED-044 — node count, node type and region as operator inputs
@@ -101,7 +101,7 @@ combinations that cannot be created.
 | Provider | Region | Node types allowed there |
 |---|---|---|
 | `aws` | `eu-west-1` *(fixed - `REGION` is refused on this provider, ADR 0040)* | `t4g.medium` *(default)*, `t4g.large`, `m6g.large` |
-| `civo` | `LON1` *(default)*, `NYC1`, `FRA1`, `MUM1` | `g4s.kube.medium` *(default)* |
+| `civo` | `LON1` *(default)*, `NYC1`, `FRA1`, `MUM1` | `g4s.kube.medium` *(default)*, `g4s.kube.large`, `g4m.kube.small`, `g4p.kube.small` |
 | `hetzner` | `nbg1` *(default)* | `cx23`, `cx33` *(default)*, `cx43` |
 | `hetzner` | `hel1` | `cx23`, `cx33` — **not** `cx43` |
 | `hetzner` | `fsn1` | none orderable as of 2026-09-21 |
@@ -125,11 +125,22 @@ Hetzner, while on AWS nothing under $27 has more than 4 GiB.
 | Provider | Ceiling | Evidence |
 |---|---|---|
 | `hetzner` | €25 | `cx43` (8 vCPU/16 GiB) fits at €22.37 |
-| `civo` | $27 | `g4s.kube.medium` $21.73; `Large` $43.45 is out |
+| `civo` | $27 | `g4s.kube.medium` $21.73 is the only entry under it |
 | `aws` | ~$63 | `t4g.medium` $26.86 is the only option under $27 |
 
 Every entry MUST carry its price, the date and the source as a comment. A cost
 ceiling nobody can audit is not a guardrail.
+
+The ceiling is a default-selection rule, not a wall. Three Hetzner entries and
+three Civo ones sit above their provider's ceiling deliberately, for two
+reasons the monthly price hides: the Hetzner account limit is on server count
+rather than spend, so fewer-and-bigger is sometimes the only shape that fits,
+and a lifecycle run is minutes rather than a month. The default on every
+provider stays under the ceiling.
+
+`scripts/lib/catalog.sh` is authoritative, not this table. The rows here are
+what the spec specified; later specs widened them — HETZ-175 for the Hetzner
+`fsn1` and `cpx*` entries, and this spec's own closing change for Civo.
 
 `m6g.large` ($62.78) costs 17% more than `t4g.large` ($53.73) for identical
 specs and is present for exactly one reason: `t4g` is burstable and throttles
@@ -369,12 +380,20 @@ implementation**.
 right-sizing half. `CIVO-175` is not an equivalent — its §2 says changing the
 pool SKU "is a separate one-line change once decided".
 
-### 3.10 CI
+### 3.10 CI — DESCOPED (2026-09-22)
 
-`.github/workflows/lifecycle-provider.yml` gains the three inputs. Hetzner CI
-runs `NODE_COUNT=2` — one control plane and one worker, 11.56 GiB allocatable
-against the platform's 6.38 GiB measured working set — leaving 3 for the lab
-against the 5-server account limit.
+Specified as: `.github/workflows/lifecycle-provider.yml` gains the three
+inputs, and Hetzner CI runs `NODE_COUNT=2` — one control plane and one worker,
+11.56 GiB allocatable against the platform's 6.38 GiB measured working set —
+leaving 3 for the lab against the 5-server account limit.
+
+Not implemented, and deliberately so. `lifecycle-provider.yml` is called only
+by `lifecycle-test.yml`, whose two legs are `aws` and `civo`, each with a fixed
+project and subdomain and no reason to vary its node shape. Three inputs no
+caller passes are dead surface. The Hetzner CI leg that needs `NODE_COUNT=2`
+arrives with [HETZ-140](../../hetzner/140-P-ci-workflow-hetzner/spec.md), which
+owns the Hetzner workflow surface; the 3 + 2 sizing argument above is the
+input to that spec, and it stands as written.
 
 HETZ-170's autoscaler leaves M1 as a consequence: at 3 + 2 there is no room
 under the cap for it.
@@ -622,3 +641,38 @@ the correct behaviour rather than a limitation to work around.
   bound to `alias/lab-secrets`, not two; ACM is not a region blocker; ACM's
   lifecycle class is Bootstrap in code and Persistent in three documents; and
   `lab-role` hardcodes `eu-west-1` in one Resource element.
+
+- 2026-09-21 — PR 1 (#48, `a55d599`): the catalogue, the gate, the Terraform
+  variables and their validations.
+- 2026-09-21 — PR 2 (#51): the region split, region-namespaced bucket names,
+  the region-change guard, and §3.8's two defects.
+- 2026-09-21 — PR 3 (`cc5c500`): ADR 0040. `REGION` is refused on `aws`, the
+  KMS migration of §3.6 is cancelled, and the two conditionals that could no
+  longer vary were collapsed. `make node-config-check` added.
+- 2026-09-22 — PR 4 (#61): `lab.yml` offers the three inputs, and `README.md`
+  gained the per-node and whole-lab cost tables.
+- 2026-09-22 — closing change: the Civo catalogue gained `g4s.kube.large`,
+  `g4m.kube.small` and `g4p.kube.small`, checked against `civo size ls` in all
+  four Civo regions and priced from <https://www.civo.com/pricing>, both on
+  2026-09-22. §3.10 descoped, see above. Status `DONE`, folder renamed to
+  `044-D-`.
+
+  **Outstanding live validation.** Four of §4's criteria are not proven and are
+  recorded here rather than held against the status:
+
+  - **Hetzner 3 + 2.** No run has had a 3-node lab and a 2-node CI cluster up
+    at once. Proof: `hcloud server list` showing 5 servers at peak with no
+    account-limit error.
+  - **Bucket migration.** `bootstrap-down` then a fresh `bootstrap-up` on the
+    Hetzner project, ending with state in `vk-hetzner-lab-eu-west-1-tf-state`
+    and no region-free bucket left for any project.
+  - **A real `lab.yml` dispatch.** One run with the three inputs blank, to
+    confirm it behaves exactly as before, and one with a bad combination, to
+    confirm it fails in the gate rather than in a cloud call.
+  - **Two regions at once.** Two projects, one in `eu-west-1` and one
+    elsewhere, both Healthy at the same time, each passing its own
+    `verify-no-leaks`.
+
+  Everything offline is proven: `make node-config-check` covers the gate's
+  accept and refuse sets, and `make specs-check`, `make gitops-check` and
+  `make secrets-check` are green.
