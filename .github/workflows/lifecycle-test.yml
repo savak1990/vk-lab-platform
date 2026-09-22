@@ -347,6 +347,7 @@ jobs:
           helm template gitops/ \
             --set target=hetzner \
             --set envoyGateway.fqdn=lab.example.com \
+            --set envoyGateway.location=fsn1 \
             > rendered-hetzner.yaml
 
       - name: Install kubeconform

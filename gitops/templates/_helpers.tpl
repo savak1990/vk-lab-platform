@@ -76,15 +76,16 @@ defined: the distribution owns that object.
 */}}
 
 {{/*
-Whether this target has a Gateway for Gateway API objects to attach to. False
-on hetzner until HETZ-060 supplies the EnvoyProxy and Gateway: an HTTPRoute
-with no Gateway is never Accepted, so Argo's health check on it never finishes
-and the whole root sync stalls behind it, and a GatewayClass whose
-parametersRef names a missing EnvoyProxy is rejected outright.
+Whether this target has a Gateway for Gateway API objects to attach to. True
+everywhere today. Kept because the answer is a property of the target, not a
+constant: a target without an EnvoyProxy and Gateway must render no Gateway
+API object at all, since an HTTPRoute that is never Accepted stalls the whole
+root sync behind its health check, and a GatewayClass whose parametersRef
+names a missing EnvoyProxy is rejected outright.
 Emits "true"/"false" as a string, so compare it - a bare if takes "false".
 */}}
 {{- define "platform.gatewayEnabled" -}}
-{{- ne .Values.target "hetzner" -}}
+{{- true -}}
 {{- end -}}
 
 {{- define "platform.metricsServerEnabled" -}}
@@ -124,6 +125,24 @@ annotations:
   kubernetes.civo.com/firewall-id: {{ .Values.envoyGateway.firewallId | quote }}
   kubernetes.civo.com/ipv4-address: {{ .Values.envoyGateway.reservedIp | quote }}
   kubernetes.civo.com/loadbalancer-algorithm: round_robin
+{{- else if eq .Values.target "hetzner" -}}
+type: LoadBalancer
+annotations:
+  # Immutable - changing it deletes and recreates the load balancer, which
+  # gets a new public IPv4. Carried from the REGION operator input.
+  load-balancer.hetzner.cloud/location: {{ .Values.envoyGateway.location | quote }}
+  load-balancer.hetzner.cloud/type: lb11
+  # Without this the load balancer is named an opaque hash. The cloud
+  # controller manager applies no labels either, so this name is the only
+  # thing the teardown leak sweep can match it on.
+  load-balancer.hetzner.cloud/name: {{ printf "%s-ingress" .Values.project | quote }}
+  # Reaches the nodes over the private network, which Hetzner firewalls do
+  # not filter, so no public NodePort rule is needed - the reverse of civo.
+  load-balancer.hetzner.cloud/use-private-ip: "true"
+  # Keeps external-dns to a single A record. The load balancer still gets an
+  # IPv6; this only suppresses it in the Service ingress status.
+  load-balancer.hetzner.cloud/ipv6-disabled: "true"
+  load-balancer.hetzner.cloud/algorithm-type: round_robin
 {{- else if eq .Values.target "local" -}}
 # Stated rather than left to the CRD default of LoadBalancer: kind has no
 # load-balancer implementation, so that default never gets an address, the
@@ -147,15 +166,15 @@ The Gateway's listeners. Callers supply the listeners key and indent by 4.
   allowedRoutes:
     namespaces:
       from: All
-{{- else if eq .Values.target "civo" -}}
+{{- else if has .Values.target (list "civo" "hetzner") -}}
 - name: http
   protocol: HTTP
   port: 80
   allowedRoutes:
     namespaces:
       from: All
-# Civo has no NLB terminating TLS upstream (unlike aws) - Envoy holds
-# the certificate itself and terminates TLS directly.
+# Neither civo nor hetzner has an NLB terminating TLS upstream (unlike aws) -
+# Envoy holds the certificate itself and terminates TLS directly.
 - name: https
   protocol: HTTPS
   port: 443

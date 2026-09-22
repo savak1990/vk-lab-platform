@@ -135,6 +135,21 @@ elif [ "$PROVIDER" = "hetzner" ]; then
     done
     LEAK_COUNT=$((LEAK_COUNT + 1))
   done
+
+  # The cloud controller manager labels nothing it creates, so the loop above
+  # cannot see the load balancer behind the Envoy Service. Its name annotation
+  # gives it a "<project>-" prefix instead; without one its Hetzner name is an
+  # opaque hash. An orphaned load balancer outlives every server and bills
+  # until deleted, so this runs even when the labelled pass found nothing.
+  LEAKED_LBS="$(hcloud_cli load-balancer list -o json \
+    | jq -r '(. // [])[].name' | grep -- "^${PROJECT_NAME}-" || true)"
+  if [ -n "$LEAKED_LBS" ]; then
+    echo "CLUSTER-DOWN: leaked Hetzner load balancer(s), deleting: $LEAKED_LBS" >&2
+    for name in $LEAKED_LBS; do
+      hcloud_cli load-balancer delete "$name" >/dev/null 2>&1 || true
+    done
+    LEAK_COUNT=$((LEAK_COUNT + 1))
+  fi
 else
   LEAKED_INSTANCES="$(aws ec2 describe-instances --region "$LAB_REGION" \
     --filters "Name=tag:Project,Values=$PROJECT_NAME" "Name=tag:Lifecycle,Values=disposable" "Name=instance-state-name,Values=running,pending,stopping,stopped" \

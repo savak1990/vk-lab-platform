@@ -149,11 +149,14 @@ karpenter:
 # HTTPRoutes' hostnames are built from this, not a literal domain string.
 # reservedIp/firewallId are Civo-target equivalents of acmCertificateArn/
 # nlbSubnetIds - Terraform-derived values the Civo Gateway LB needs.
+# location is the Hetzner one: the hcloud location the load balancer is
+# created in, from the REGION operator input rather than from Terraform.
 envoyGateway:
   acmCertificateArn: ""
   nlbSubnetIds: ""
   reservedIp: ""
   firewallId: ""
+  location: ""
   fqdn: ""
 
 # txtOwnerId is external-dns's TXT-registry ownership marker - stable across
