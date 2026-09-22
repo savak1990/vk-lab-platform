@@ -199,9 +199,14 @@ integration, which is spec 024's job.
     `ClusterSecretStore` behind it (Requirement 12 creates the credential
     instead); `grafana-traffic-policy`, the Envoy rate limit and retry budget
     for the Grafana route (rate-limiting a single operator against their own
-    workstation buys nothing); and the `observability` `RoleBinding` for the
-    E2E suite, which has no kind environment yet. Tempo and the OpenTelemetry
-    Collector are absent on every target, not only this one.
+    workstation buys nothing). Tempo and the OpenTelemetry Collector are absent
+    on every target, not only this one.
+
+    The `observability` `RoleBinding` for the E2E suite was omitted here until
+    2026-09-22, when the suite gained a kind environment. It now renders on
+    every target, and this target alone adds one in `envoy`: it is the only one
+    that reaches the gateway through a port-forward, and `pods/portforward` is
+    granted per namespace.
 16. Fast validation (spec 019) MUST render the chart for `target=local`, and
     the structural contract in `scripts/gitops-render-check.sh` MUST be updated
     in the same change as any render change. That contract is what makes a
