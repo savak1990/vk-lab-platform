@@ -239,7 +239,7 @@ composite target already does.
 ### Running a lifecycle target from GitHub Actions
 
 `lab.yml` is dispatched by hand (Actions → **lab** → *Run workflow*) and maps
-1:1 onto a `make` target. Four inputs shape the run:
+1:1 onto a `make` target. These inputs shape the run:
 
 - **`provider`** — `aws` or `civo`. Selects the whole stack, exactly like
   `PROVIDER=` locally.
@@ -247,6 +247,14 @@ composite target already does.
   own default (`vk-lab-platform`/`lab`, or `vk-civo-lab`/`civo`). A blank input
   is omitted rather than exported empty, so the Makefile stays the single place
   those defaults live. Give a custom project its own subdomain.
+- **`region`** / **`node_type`** / **`node_count`** — leave blank for the
+  provider's default (`LON1`/`g4s.kube.medium`/`3` on Civo,
+  `eu-west-1`/`t4g.medium`/`1` on AWS). They are free strings, not dropdowns:
+  which node types sell depends on the provider *and* the region, and GitHub
+  has no dependent dropdown. `make` refuses a bad combination offline in the
+  job's first seconds. **`region` applies to Civo and Hetzner only** — on AWS
+  the region is fixed at `eu-west-1` and a value here is refused, not ignored
+  (ADR 0040).
 - **`production_tls`** — Civo only, ignored on AWS. Ticked orders a real
   Let's Encrypt certificate. Untick it for a throwaway project: the production
   duplicate-certificate quota is shared with the personal lab, and the staging

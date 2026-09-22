@@ -11,7 +11,10 @@ name: lab
 # no remapping, no per-target gating; whatever safety behavior a given target's
 # script already has (persistent-down/bootstrap-down/account-down's
 # CONFIRM_DESTROY check) is unaffected by this workflow, just wired through from
-# confirm_destroy below.
+# confirm_destroy below. `region`, `node_type` and `node_count` size the
+# cluster; they are free strings because what is valid depends on the provider
+# and on the region, and the offline gate refuses a bad combination in the
+# job's first seconds rather than deep inside an apply.
 on:
   workflow_dispatch:
     inputs:
@@ -34,6 +37,27 @@ on:
       # another project already owns, before any apply.
       subdomain:
         description: "subdomain (blank = default)"
+        type: string
+        default: ""
+      # civo and hetzner only. Blank uses the provider's default - LON1 on
+      # civo, nbg1 on hetzner. aws refuses a value here: its region is fixed
+      # at eu-west-1, and the offline gate says so in the job's first seconds.
+      region:
+        description: "region (civo/hetzner only, blank = default)"
+        type: string
+        default: ""
+      # Blank uses the provider's default - g4s.kube.medium on civo, t4g.medium
+      # on aws. A free string rather than a choice: valid types differ per
+      # provider and per region, GitHub has no dependent dropdowns, and one
+      # flat list could not say that cx43 sells in nbg1 but not in hel1.
+      node_type:
+        description: "node_type (blank = default)"
+        type: string
+        default: ""
+      # Blank uses the provider's default - 3 on civo, 1 on aws. Counts the
+      # cluster's own nodes; Karpenter workload capacity is separate.
+      node_count:
+        description: "node_count (blank = default)"
         type: string
         default: ""
       target:
@@ -97,6 +121,9 @@ jobs:
           IN_PROVIDER: ${{ inputs.provider }}
           IN_PROJECT_NAME: ${{ inputs.project_name }}
           IN_SUBDOMAIN: ${{ inputs.subdomain }}
+          IN_REGION: ${{ inputs.region }}
+          IN_NODE_TYPE: ${{ inputs.node_type }}
+          IN_NODE_COUNT: ${{ inputs.node_count }}
         run: |
           set -euo pipefail
           case "$IN_PROVIDER:$IN_PROJECT_NAME" in
@@ -108,6 +135,9 @@ jobs:
           echo "PROVIDER=$IN_PROVIDER" >> "$GITHUB_ENV"
           [ -n "$IN_PROJECT_NAME" ] && echo "PROJECT_NAME=$IN_PROJECT_NAME" >> "$GITHUB_ENV"
           [ -n "$IN_SUBDOMAIN" ] && echo "SUBDOMAIN=$IN_SUBDOMAIN" >> "$GITHUB_ENV"
+          [ -n "$IN_REGION" ] && echo "REGION=$IN_REGION" >> "$GITHUB_ENV"
+          [ -n "$IN_NODE_TYPE" ] && echo "NODE_TYPE=$IN_NODE_TYPE" >> "$GITHUB_ENV"
+          [ -n "$IN_NODE_COUNT" ] && echo "NODE_COUNT=$IN_NODE_COUNT" >> "$GITHUB_ENV"
           exit 0
 
       # The test job below does not fire for target `test` - it only follows an
@@ -194,11 +224,13 @@ jobs:
           IN_PROVIDER: ${{ inputs.provider }}
           IN_PROJECT_NAME: ${{ inputs.project_name }}
           IN_SUBDOMAIN: ${{ inputs.subdomain }}
+          IN_REGION: ${{ inputs.region }}
         run: |
           set -euo pipefail
           echo "PROVIDER=$IN_PROVIDER" >> "$GITHUB_ENV"
           [ -n "$IN_PROJECT_NAME" ] && echo "PROJECT_NAME=$IN_PROJECT_NAME" >> "$GITHUB_ENV"
           [ -n "$IN_SUBDOMAIN" ] && echo "SUBDOMAIN=$IN_SUBDOMAIN" >> "$GITHUB_ENV"
+          [ -n "$IN_REGION" ] && echo "REGION=$IN_REGION" >> "$GITHUB_ENV"
           exit 0
 
       - uses: actions/setup-go@v5
