@@ -139,19 +139,32 @@ hcloud_list_names() {
 # The cloud controller manager labels nothing it creates, so the name
 # annotation's project prefix is the only thing a sweep can match on.
 wait_for_lb_gone() {
-  local deadline remaining
+  local deadline listed remaining="" answered=no
+  hcloud_token
   deadline=$(( $(date +%s) + ${HETZNER_LB_GONE_SECONDS:-180} ))
   while [ "$(date +%s)" -lt "$deadline" ]; do
-    remaining="$(hcloud_cli load-balancer list -o json \
-      | jq -r '(. // [])[].name' | grep -- "^${PROJECT_NAME}-" || true)"
-    if [ -z "$remaining" ]; then
-      echo "ARGO-DOWN: hcloud load balancer confirmed gone."
-      return 0
+    # An unanswered API call prints nothing, which would otherwise read as an
+    # empty list and report a billing object gone while it is still running.
+    if listed="$(hcloud_cli load-balancer list -o json 2>/dev/null)"; then
+      answered=yes
+      remaining="$(printf '%s' "$listed" | jq -r '(. // [])[].name' | grep -- "^${PROJECT_NAME}-" || true)"
+      if [ -z "$remaining" ]; then
+        echo "ARGO-DOWN: hcloud load balancer confirmed gone."
+        return 0
+      fi
+    else
+      answered=no
+      echo "ARGO-DOWN: the hcloud API did not answer; retrying." >&2
     fi
     sleep "${POLL_INTERVAL:-5}"
   done
-  echo "ARGO-DOWN: load balancer(s) still present after ${HETZNER_LB_GONE_SECONDS:-180}s: $remaining" >&2
-  echo "ARGO-DOWN: they bill until deleted; check 'hcloud load-balancer list' before retrying." >&2
+  if [ "$answered" = no ]; then
+    echo "ARGO-DOWN: the hcloud API never answered within ${HETZNER_LB_GONE_SECONDS:-180}s, so whether a" >&2
+    echo "ARGO-DOWN: load balancer survives is unknown; check 'hcloud load-balancer list' before retrying." >&2
+  else
+    echo "ARGO-DOWN: load balancer(s) still present after ${HETZNER_LB_GONE_SECONDS:-180}s: $remaining" >&2
+    echo "ARGO-DOWN: they bill until deleted; delete them by hand before retrying." >&2
+  fi
   return 1
 }
 

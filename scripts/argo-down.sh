@@ -279,9 +279,13 @@ release_orphaned_hooks
 # instead of pruning them, so the CSI controller stays alive to delete the
 # volumes whose PVs the wait after the cascade polls for.
 if [ "$PROVIDER" = hetzner ] && kubectl get application hcloud-csi -n argocd >/dev/null 2>&1; then
-  kubectl patch application hcloud-csi -n argocd --type=merge \
-    -p '{"metadata":{"finalizers":null}}' >/dev/null
-  echo "ARGO-DOWN: hcloud-csi released from the cascade; its controller outlives it."
+  if kubectl patch application hcloud-csi -n argocd --type=merge \
+    -p '{"metadata":{"finalizers":null}}' >/dev/null; then
+    echo "ARGO-DOWN: hcloud-csi released from the cascade; its controller outlives it."
+  else
+    echo "ARGO-DOWN: WARNING - could not release hcloud-csi from the cascade; the volume" >&2
+    echo "ARGO-DOWN: waits below can time out, and cluster-down's sweep catches what is left." >&2
+  fi
 fi
 
 # Recorded before the cascade starts: once the PVC is gone the CSI driver
