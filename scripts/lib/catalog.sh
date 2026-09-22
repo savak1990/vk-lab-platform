@@ -67,8 +67,9 @@
 # unorderable for weeks is, and an allowlist with nothing orderable in it
 # is worse than an expensive one.
 #
-# fsn1 stays empty regardless: HETZ-020's real creates found nothing there
-# on 2026-09-21, and a flag is not evidence against a failed create.
+# fsn1 was listed as having nothing orderable until HETZ-175's create-call
+# probes found it sells five types. It is the default because every real
+# cycle since has run there; nothing material separates the three.
 #
 # m6g.large costs 17% more than t4g.large for identical specs and exists
 # for one reason: t4g is burstable and throttles to 20% baseline once CPU
@@ -122,7 +123,7 @@ catalog_default_region() {
   case "$1" in
     aws) echo "eu-west-1" ;;
     civo) echo "LON1" ;;
-    hetzner) echo "nbg1" ;;
+    hetzner) echo "fsn1" ;;
     *) echo "" ;;
   esac
 }

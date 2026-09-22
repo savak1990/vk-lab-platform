@@ -40,7 +40,7 @@ on:
         type: string
         default: ""
       # civo and hetzner only. Blank uses the provider's default - LON1 on
-      # civo, nbg1 on hetzner. aws refuses a value here: its region is fixed
+      # civo, fsn1 on hetzner. aws refuses a value here: its region is fixed
       # at eu-west-1, and the offline gate says so in the job's first seconds.
       region:
         description: "region (civo/hetzner only)"

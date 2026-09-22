@@ -141,7 +141,7 @@ Those tests keep their own targets for running one at a time —
 | `PROVIDER` | `aws` | `aws` `civo` `hetzner` `local` |
 | `PROJECT_NAME` | per provider | lowercase letters, digits and hyphens, at most 23 characters |
 | `SUBDOMAIN` | per provider | must differ per project |
-| `REGION` | `LON1` / `nbg1` | `civo` and `hetzner` only, see below; matched case-insensitively. Refused on `aws` |
+| `REGION` | `LON1` / `fsn1` | `civo` and `hetzner` only, see below; matched case-insensitively. Refused on `aws` |
 | `NODE_TYPE` | `t4g.medium` / `g4s.kube.medium` / `cx33` | see below |
 | `NODE_COUNT` | `1` / `3` / `3` | a positive integer |
 | `CONFIRM_DESTROY` | unset | must equal `PROJECT_NAME`, on guarded targets |
@@ -394,7 +394,7 @@ composite target already does.
   those defaults live. Give a custom project its own subdomain.
 - **`region`** / **`node_type`** / **`node_count`** — leave blank for the
   provider's default (`LON1`/`g4s.kube.medium`/`3` on Civo,
-  `nbg1`/`cx33`/`3` on Hetzner, `eu-west-1`/`t4g.medium`/`1` on AWS). They are free strings, not dropdowns:
+  `fsn1`/`cx33`/`3` on Hetzner, `eu-west-1`/`t4g.medium`/`1` on AWS). They are free strings, not dropdowns:
   which node types sell depends on the provider *and* the region, and GitHub
   has no dependent dropdown. `make` refuses a bad combination offline in the
   job's first seconds. **`region` applies to Civo and Hetzner only** — on AWS

@@ -79,7 +79,7 @@ locals {
 
   # Also declared in scripts/lib/region.sh - Terraform and shell each need
   # their own copy, since neither can read the other's.
-  hcloud_location = local.provider_name == "hetzner" && local.region_input != "" ? local.region_input : "nbg1"
+  hcloud_location = local.provider_name == "hetzner" && local.region_input != "" ? local.region_input : "fsn1"
 
   # Hetzner stacks get an hcloud provider in addition to aws, for the same
   # reason Civo stacks get theirs. The token is read from HCLOUD_TOKEN by the

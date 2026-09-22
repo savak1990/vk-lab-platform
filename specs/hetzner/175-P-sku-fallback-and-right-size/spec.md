@@ -121,3 +121,16 @@ reverted with one values commit.
 - 2026-09-11 — reviewed and approved by the user; promoted to READY.
 - 2026-09-19 — kubeadm wording.
 - 2026-09-22 — create-call probes across every Hetzner location disproved `server_types.available` and separated the two error codes; recorded in §3, and §12 now flags the §4 probe design as unsound. `scripts/lib/catalog.sh` corrected: fsn1 was listed as having nothing orderable and in fact sells `cx23 cx33 cx43 cpx32 cpx42`. `research.md` corrected in the same change, where the fsn1 row and the proposed replacement probe field came from.
+- 2026-09-22 — the Hetzner default location moved `nbg1` → `fsn1`, in six
+  places that each carried it independently: `Makefile`, `scripts/lib/region.sh`,
+  `catalog_default_region`, `terraform/live/root.hcl`, the `cluster-hetzner/k8s`
+  terragrunt input and `hcloud-nodes`'s variable default. The reason is this
+  spec's own earlier finding: the catalogue recorded fsn1 as having nothing
+  orderable, create-call probes proved it sells five types, and every real
+  cycle since has run there. The comment above `catalog_node_types` still
+  asserted the old, disproved claim and is corrected in the same change.
+  The state bucket name carries the region, so the change is safe by an
+  existing guard rather than by luck: `scripts/state-up.sh:41-62` refuses a
+  project that already holds state in another location and prints the
+  teardown command. This does not advance the SKU fallback or the
+  right-sizing work, so the spec stays `READY`.

@@ -38,7 +38,7 @@ export REGION ?= LON1
 export NODE_TYPE ?= g4s.kube.medium
 export NODE_COUNT ?= 3
 else ifeq ($(PROVIDER),hetzner)
-export REGION ?= nbg1
+export REGION ?= fsn1
 export NODE_TYPE ?= cx33
 export NODE_COUNT ?= 3
 else ifeq ($(PROVIDER),local)
