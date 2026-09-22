@@ -379,8 +379,8 @@ hetzner_node_diagnostics() {
 }
 
 # On AWS, eks-test-identity maps to the read-only role through its EKS access
-# entry. Civo has no IAM to map a read-only identity, so the E2E suite gets a
-# short-lived token for the e2e-test ServiceAccount, minted as cluster-admin.
+# entry. Every other target has no IAM to map a read-only identity to, so the
+# E2E suite gets a short-lived token for the e2e-test ServiceAccount instead.
 configure_test_kubeconfig() {
   local kubeconfig="${1:-}"
   local kcfg=()
@@ -390,7 +390,7 @@ configure_test_kubeconfig() {
     echo "configure_test_kubeconfig: PROVIDER=hetzner is implemented in HETZ-130" >&2
     return 1
   fi
-  if [ "$PROVIDER" != "civo" ]; then
+  if [ "$PROVIDER" != "civo" ] && [ "$PROVIDER" != "local" ]; then
     aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$LAB_REGION" --alias "${CLUSTER_NAME}-test" \
       --role-arn "$(aws iam get-role --role-name eks-test-identity --query Role.Arn --output text)" \
       ${kcfg[@]:+"${kcfg[@]}"} >/dev/null || return 1
@@ -399,8 +399,15 @@ configure_test_kubeconfig() {
   fi
 
   local admin_context="${PROJECT_NAME}-civo" test_context="${PROJECT_NAME}-civo-test"
+  if [ "$PROVIDER" = "local" ]; then
+    admin_context="kind-${CLUSTER_NAME}"
+    test_context="${PROJECT_NAME}-local-test"
+  fi
   local cluster token
   configure_kubeconfig "$kubeconfig"
+  if [ "$PROVIDER" = "local" ]; then
+    KUBECONFIG="${kubeconfig:-${KUBECONFIG:-}}" require_local_context || return 1
+  fi
   cluster="$(kubectl ${kcfg[@]:+"${kcfg[@]}"} config view -o jsonpath="{.contexts[?(@.name==\"$admin_context\")].context.cluster}")"
   if [ -z "$cluster" ]; then
     echo "configure_test_kubeconfig: kubeconfig has no context $admin_context" >&2

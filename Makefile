@@ -280,13 +280,13 @@ argo-up:
 ## Switches your own kubectl context to the disposable cluster as the E2E
 ## suite's read-only identity (rbac/e2e-test-readonly.yaml), never
 ## cluster-admin. On aws, eks-test-identity maps to that role via its EKS
-## access entry (terraform/modules/eks/main.tf). On civo, which has no IAM, it
-## mints a 1h token for the e2e/e2e-test ServiceAccount as cluster-admin.
+## access entry (terraform/modules/eks/main.tf). On civo and local, which have
+## no IAM, it mints a 1h token for the e2e/e2e-test ServiceAccount.
 ## A distinct context name ($(E2E_CONTEXT)), so the cluster-admin entry is
 ## never overwritten. `make test` does NOT use this target - it builds the same
 ## read-only identity in $(LAB_TEST_KUBECONFIG) and leaves your context alone.
 ## Usage: make test-kubeconfig
-E2E_CONTEXT := $(if $(filter civo,$(PROVIDER)),$(PROJECT_NAME)-civo-test,$(PROJECT_NAME)-eks-test)
+E2E_CONTEXT := $(if $(filter aws,$(PROVIDER)),$(PROJECT_NAME)-eks-test,$(PROJECT_NAME)-$(PROVIDER)-test)
 test-kubeconfig:
 	@bash -c 'source scripts/lib/region.sh; source scripts/lib/provider.sh; configure_test_kubeconfig'
 
