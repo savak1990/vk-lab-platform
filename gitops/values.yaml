@@ -70,18 +70,21 @@ postgres:
     schedule: "0 0 3 * * *"
     retention: "2d"
     # aws gets credentials from Pod Identity and runs the upstream multi-arch
-    # sidecar; civo needs aws_signing_helper added for Roles Anywhere.
+    # sidecar. The self-managed targets reach AWS through Roles Anywhere, which
+    # needs aws_signing_helper in the image, so they share one build - aliased
+    # rather than copied, because a duplicated digest drifts on the next bump.
     sidecarImages:
       aws:
         registry: ghcr.io
         repository: cloudnative-pg/plugin-barman-cloud-sidecar
         tag: v0.15.0
         digest: sha256:06c78deca670525daa35fb1e5323159092785d11cf87b86217bdd5c679a41a84
-      civo:
+      civo: &rolesAnywhereSidecar
         registry: ghcr.io
         repository: savak1990/vk-lab-platform/cnpg-barman-sidecar
         tag: d4e116cf91f4db0e39da7785c469a295cd1798f7
         digest: sha256:25332843178ff9560b176f7c6c22006c1b361cb249bae7f52728d733f7d98cda
+      hetzner: *rolesAnywhereSidecar
   # Pins Postgres off spot (AZ-pinned PVC + interruption risk). aws-only:
   # Helm deep-merges values, so the shared Cluster template gates this on
   # target rather than relying on a per-target override.

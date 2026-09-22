@@ -1,7 +1,7 @@
 ---
 id: "HETZ-050"
 title: "GitOps baseline for target=hetzner: CSI Application, storage class, values defaults, render check, golden diffs"
-status: "READY"
+status: "IN_REVIEW"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -14,7 +14,7 @@ depends_on: ["HETZ-016", "CIVO-050"]
 blocked_by: []
 supersedes: []
 created: "2026-09-11"
-updated: "2026-09-20"
+updated: "2026-09-22"
 completed: ""
 ---
 
@@ -49,8 +49,8 @@ observability values (HETZ-160).
 
 ## 4. Design and contracts
 
-- `platform/hetzner/csi/application.yaml`: Argo `Application hcloud-csi`, gated `{{- if eq .Values.target "hetzner" }}`, chart `hcloud-csi` from `https://charts.hetzner.cloud`, version pinned, namespace `kube-system`, `syncOptions: [ServerSideApply=true, CreateNamespace=false]`, `sync-wave: "-3"`. Values: `controller.hcloudToken.existingSecret.name: hcloud`, `node.hcloudToken.existingSecret.name: hcloud`, `storageClasses[0]: {name: hcloud-volumes, defaultStorageClass: true, reclaimPolicy: Delete}`. No `hcloud-volumes-retain` in M1: persistence is logical dumps (ADR 0031); a Retain class would only create leaked volumes.
-- Wave `-3` is below every existing wave and is hetzner-only, so no other target's ordering changes. CNPG and observability PVCs bind only after the CSI controller runs; a PVC that renders before the driver is Pending, not failed, and the root retry budget (constitution, Argo conventions) covers the window.
+- `platform/hetzner/csi/application.yaml`: Argo `Application hcloud-csi`, gated `{{- if eq .Values.target "hetzner" }}`, chart `hcloud-csi` from `https://charts.hetzner.cloud`, version pinned, namespace `kube-system`, `syncOptions: [ServerSideApply=true]`, `sync-wave: "-5"`. Values: `storageClasses[0]: {name: hcloud-volumes, defaultStorageClass: true, reclaimPolicy: Delete}`, and `controller.volumeExtraLabels` carrying `project`, `scope`, `lifecycle` and `managed_by`. The token values the earlier draft listed are the chart's own defaults (`hcloud`/`token`, `controller` only - there is no `node.hcloudToken`), so they are inherited, not restated. No `hcloud-volumes-retain` in M1: persistence is logical dumps (ADR 0031); a Retain class would only create leaked volumes.
+- Wave `-5` is the wave `aws/ebs-csi/application.yaml` already uses, and for the same reason: Argo deletes in reverse wave order, and a CSI driver must outlive the PV, PVC and VolumeAttachment objects its own controllers created, which no wave can order against it. An early-deleted driver leaves finalizers uncleared and volumes undeleted. On creation the direction is harmless either way - CNPG and observability PVCs bind only after the CSI controller runs; a PVC that renders before the driver is Pending, not failed, and the root retry budget (constitution, Argo conventions) covers the window.
 - `platform.storageClassName`: hetzner → `hcloud-volumes`. Keep the literal in the helper, as for civo, because the name is the chart's default and is referenced, never defined, by shared templates.
 - `gitops/values.yaml` documents the hetzner values `argo-up` sets: `storage.className` unused on hetzner (helper wins), `capacity.spotAvoidance: false`, `postgres.nodeSelector: {}` (set through `--set-json`; Helm deep-merges maps), `awsIdentity.mode: rolesAnywhere`, `externalDns.txtOwnerId`, `envoyGateway.location: nbg1`. The chart defaults stay AWS-equivalent.
 - `gitops-render-check.sh`: add `REQUIRED_OBJECTS_HETZNER` = the civo required set minus civo-only names plus `Application__argocd__hcloud-csi`; `FORBIDDEN_KINDS_HETZNER` = `VolumeSnapshotClass VolumeSnapshotContent VolumeSnapshot EC2NodeClass NodePool` (no `StorageClass`, the CSI chart defines one but it renders inside the chart, not in our tree; the check must still assert no `kubernetes.civo.com/` string appears in the hetzner render); `FORBIDDEN_APPLICATIONS_HETZNER` = `aws-load-balancer-controller ebs-csi-driver karpenter snapshot-controller`. Loop over `civo hetzner local`.
@@ -80,7 +80,7 @@ is HETZ-045's acceptance criterion.
 ## 8. Acceptance criteria
 
 - `make gitops-check` passes with empty diffs for aws and civo.
-- `helm template --set target=hetzner` renders `Application hcloud-csi` at wave `-3` and the full non-AWS baseline; it renders no alb-controller, ebs-csi, karpenter, snapshot controller, `kubernetes.civo.com` annotation, or `civo-volume` reference.
+- `helm template --set target=hetzner` renders `Application hcloud-csi` at wave `-5` and the full non-AWS baseline; it renders no alb-controller, ebs-csi, karpenter, snapshot controller, `kubernetes.civo.com` annotation, or `civo-volume` reference.
 - `--set target=gcp` fails.
 - `kubeconform -strict` passes for the hetzner render.
 
@@ -112,8 +112,8 @@ data risk.
 
 ## 13. Definition of done
 
-- [ ] Golden diffs empty for aws and civo
-- [ ] Hetzner render validated offline
+- [x] Golden diffs empty for aws and civo
+- [x] Hetzner render validated offline
 - [ ] Index updated; status `DONE`
 
 ## 14. Execution evidence and status history
@@ -129,3 +129,73 @@ data risk.
 - 2026-09-20 — adds the `platform-critical` PriorityClass, the soft
   `role=worker` affinity and CNPG `enablePDB: false` (decisions.md §3,
   "Schedulable control plane").
+- 2026-09-22 — implemented; status `IN_REVIEW`, folder renamed to
+  `050-A-gitops-hetzner-target-baseline`. Seven contracts in §3, §4 and §6 were
+  wrong or already satisfied, and are corrected here rather than followed.
+  - **Sync wave `-5`, not `-3`.** §4 justified `-3` as "below every existing
+    wave", which is false: the tree carries `-6`, `-5` and `-4`. The wave that
+    matters is a teardown property, and `aws/ebs-csi/application.yaml:13` is
+    already at `-5` for the reason that transfers exactly — the attacher must
+    clear VolumeAttachment finalizers and the provisioner must delete the
+    released volume, and no wave orders controller-created dependents against
+    their driver, only being last does. The two CSI drivers now share a wave.
+  - **`node.hcloudToken` does not exist.** The chart declares `hcloudToken`
+    under `controller` only; §4's `node.hcloudToken.existingSecret.name` would
+    have been a silently ignored no-op. The node plugin performs mount
+    operations and needs no API token.
+  - **The chart's defaults already are §4's values.** `hcloudToken.existingSecret`
+    defaults to `hcloud`/`token`, which is what `argo-up` creates (HETZ-045),
+    and `storageClasses[0]` already defaults to `hcloud-volumes`,
+    `defaultStorageClass: true`, `reclaimPolicy: Delete`. Only `storageClasses`
+    is restated, because `reclaimPolicy` is immutable and a chart default that
+    flipped to `Retain` would leak volumes silently; a changed token-secret
+    default would crash-loop the controller, which is loud enough.
+  - **`controller.volumeExtraLabels` added, which §4 does not mention.** A
+    dynamically provisioned volume would otherwise carry no labels at all, and
+    HETZ-040's post-destroy sweep selects on `project=`, so a leaked volume
+    would have been invisible to the one check meant to catch it.
+  - **`postgres.backup.sidecarImages` had no `hetzner` key**, so with backups
+    enabled the barman plugin rendered `sidecarImage.tag:
+    "%!s(<nil>)@%!s(<nil>)"` and two empty fields rather than failing. Both
+    self-managed targets reach AWS through Roles Anywhere and need the same
+    `aws_signing_helper` build, so `hetzner` is a YAML alias of `civo` rather
+    than a copied digest that would drift at the next bump. The render check
+    now runs `verify_backup_render` for every non-local target, which is what
+    makes a future missing key fail instead of rendering empty.
+  - **`REQUIRED_OBJECTS_HETZNER` was a three-item stub** against a 44-object
+    render, so adding hetzner to the loop alone would have asserted almost
+    nothing. It is now the civo set less `EnvoyProxy` and `Gateway`
+    (HETZ-060) and `cluster-autoscaler` with its ServiceMonitor (HETZ-170),
+    plus `Application/hcloud-csi`. The cross-target leak grep, previously
+    civo-only, now also runs for hetzner and additionally rejects
+    `civo-volume` and `kubernetes.civo.com`, which is §8's second criterion.
+  - **§6 step 1 and step 4 were already satisfied or unexecutable.**
+    `platform.storageClassName` gained its hetzner arm in HETZ-016, so no
+    helper change was needed. There is no `gitops/README.md`; the target
+    contract lives in `_helpers.tpl:6-9` and the Hetzner Argo flow is already
+    described at `docs/civo-high-level-design.md:50`.
+  Verified offline: `make gitops-check` green with empty aws and civo golden
+  diffs, `kubeconform -strict` 44/44 valid on the hetzner render,
+  `--set target=gcp` fails, `shellcheck` and `bash -n` clean. Each new
+  assertion was proved to fail when the thing it guards was removed: the CSI
+  Application, the `sidecarImages.hetzner` key, and an injected `civo-volume`
+  or `kubernetes.civo.com` string.
+- 2026-09-22 — three items deliberately left out of this spec, with reasons.
+  - The `platform-critical` PriorityClass, the `role=worker` node affinity and
+    CNPG `enablePDB: false` move to **HETZ-160**. `role = "worker"` at
+    `terraform/modules/hcloud-nodes/main.tf:103` is an hcloud *server* label
+    and the k3s install passes no `--node-label`, so the affinity as written
+    matches zero Kubernetes nodes. Neither preemption order nor a soft
+    affinity is observable in a helm render, and §9 is offline-only, so
+    shipping them here would edit templates shared with aws and civo behind no
+    check. HETZ-160 installs the heavy pods and can see where they land.
+  - Hetzner renders a `GatewayClass` whose `parametersRef` points at an
+    `EnvoyProxy` that never renders, because `gateway.yaml:17` gates
+    `EnvoyProxy` and `Gateway` on `aws|civo|local` and
+    `platform.envoyServiceSpec` and `platform.envoyListeners` have no hetzner
+    arm. §2 assigns the load balancer to **HETZ-060**; opening the gate without
+    those arms yields an empty service spec.
+  - §14's 2026-09-20 note that the render check must assert no `local-path`
+    StorageClass survives is not executable here. It is a property of k3s
+    started with `--disable=local-storage`, invisible to a helm render, and
+    belongs to HETZ-045's live acceptance or HETZ-130.
