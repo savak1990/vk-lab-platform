@@ -1,0 +1,21 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: hetzner-085-wrong-cn
+  namespace: external-secrets
+spec:
+  commonName: "vk-hetzner-lab-hetzner-nobody"
+  subject:
+    organizations: ["vk-hetzner-lab"]
+  usages: ["digital signature"]
+  isCA: false
+  duration: 24h
+  renewBefore: 8h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  secretName: hetzner-085-wrong-cn-cert
+  issuerRef:
+    name: hetzner-workload-ca
+    kind: ClusterIssuer
