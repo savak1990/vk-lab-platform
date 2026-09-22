@@ -63,6 +63,7 @@ expect pass   civo    fra1
 expect refuse civo    nbg1
 expect pass   hetzner ""
 expect pass   hetzner hel1
+expect pass   hetzner fsn1
 expect refuse hetzner LON1
 
 # local owns no cloud resources and ignores all three inputs.
