@@ -193,6 +193,41 @@ report_remaining() {
 echo "ARGO-DOWN: deleting HTTPRoutes to trigger ExternalDNS record cleanup..."
 kubectl delete httproute -A --all >/dev/null 2>&1 || true
 
+# The Service behind the cloud load balancer is a controller side effect,
+# not an Argo-applied resource - the cascade below doesn't wait on it before
+# killing the controller that deletes it. Trigger and wait here instead.
+lb_svc_before="$(kubectl get svc -n envoy -o jsonpath='{range .items[?(@.spec.type=="LoadBalancer")]}{.metadata.name} {end}' 2>/dev/null || true)"
+if [ -n "$lb_svc_before" ]; then
+  echo "ARGO-DOWN: deleting Gateway to trigger load balancer teardown (Service: $lb_svc_before)..."
+  kubectl delete gateway platform-gateway -n envoy --ignore-not-found >/dev/null 2>&1 || true
+
+  LB_WAIT_TIMEOUT="${ARGO_DOWN_LB_TIMEOUT:-300}"
+  lb_elapsed=0
+  while true; do
+    remaining_svc="$(kubectl get svc -n envoy -o jsonpath='{range .items[?(@.spec.type=="LoadBalancer")]}{.metadata.name} {end}' 2>/dev/null || true)"
+    if [ -z "$remaining_svc" ]; then
+      echo "ARGO-DOWN: Envoy-managed LoadBalancer Service confirmed gone."
+      break
+    fi
+    if [ "$lb_elapsed" -ge "$LB_WAIT_TIMEOUT" ]; then
+      echo "ARGO-DOWN: Envoy-managed LoadBalancer Service ($remaining_svc) still present after ${LB_WAIT_TIMEOUT}s - refusing to proceed." >&2
+      echo "ARGO-DOWN: the cloud load balancer behind it is likely still being torn down; check 'kubectl get svc -n envoy -o yaml' before retrying." >&2
+      exit 1
+    fi
+    echo "ARGO-DOWN: waiting on Envoy-managed LoadBalancer Service ($remaining_svc) to finish deleting... (${lb_elapsed}s/${LB_WAIT_TIMEOUT}s)"
+    sleep "$POLL_INTERVAL"
+    lb_elapsed=$((lb_elapsed + POLL_INTERVAL))
+  done
+
+  # The Service going is not the load balancer going. Only the hcloud API
+  # can say that, and one left behind bills until somebody deletes it.
+  if [ "$PROVIDER" = hetzner ]; then
+    wait_for_lb_gone || exit 1
+  fi
+else
+  echo "ARGO-DOWN: no LoadBalancer Service present in envoy namespace - nothing to wait on."
+fi
+
 # external-dns is not guaranteed to survive the Karpenter node drain below
 # (it is now pinned to node-type: system, but confirm rather than assume -
 # constitution S7: a controller must stay alive until what it manages is
@@ -235,39 +270,19 @@ if [ -z "$ZONE_ID" ] || [ "$ZONE_ID" = "None" ]; then
   fi
 fi
 
-# The Service behind the NLB is a controller side effect, not an
-# Argo-applied resource - the cascade below doesn't wait on it before
-# killing the controller that deletes it. Trigger and wait here instead.
-nlb_svc_before="$(kubectl get svc -n envoy -o jsonpath='{range .items[?(@.spec.type=="LoadBalancer")]}{.metadata.name} {end}' 2>/dev/null || true)"
-if [ -n "$nlb_svc_before" ]; then
-  echo "ARGO-DOWN: deleting Gateway to trigger NLB teardown (Service: $nlb_svc_before)..."
-  kubectl delete gateway platform-gateway -n envoy --ignore-not-found >/dev/null 2>&1 || true
-
-  NLB_WAIT_TIMEOUT="${ARGO_DOWN_NLB_TIMEOUT:-300}"
-  nlb_elapsed=0
-  while true; do
-    remaining_svc="$(kubectl get svc -n envoy -o jsonpath='{range .items[?(@.spec.type=="LoadBalancer")]}{.metadata.name} {end}' 2>/dev/null || true)"
-    if [ -z "$remaining_svc" ]; then
-      echo "ARGO-DOWN: Envoy-managed NLB Service confirmed gone."
-      break
-    fi
-    if [ "$nlb_elapsed" -ge "$NLB_WAIT_TIMEOUT" ]; then
-      echo "ARGO-DOWN: Envoy-managed NLB Service ($remaining_svc) still present after ${NLB_WAIT_TIMEOUT}s - refusing to proceed." >&2
-      echo "ARGO-DOWN: the real AWS NLB is likely still being torn down by aws-load-balancer-controller; check 'kubectl get svc -n envoy -o yaml' before retrying." >&2
-      exit 1
-    fi
-    echo "ARGO-DOWN: waiting on Envoy-managed NLB Service ($remaining_svc) to finish deleting... (${nlb_elapsed}s/${NLB_WAIT_TIMEOUT}s)"
-    sleep "$POLL_INTERVAL"
-    nlb_elapsed=$((nlb_elapsed + POLL_INTERVAL))
-  done
-else
-  echo "ARGO-DOWN: no NLB Service present in envoy namespace - nothing to wait on."
-fi
-
 # Swept once more immediately before the cascade: the waits above take
 # minutes, and a hook left holding this finalizer blocks every deletion
 # finalizer the cascade depends on, root's included.
 release_orphaned_hooks
+
+# Deleting this Application without the Argo finalizer orphans its resources
+# instead of pruning them, so the CSI controller stays alive to delete the
+# volumes whose PVs the wait after the cascade polls for.
+if [ "$PROVIDER" = hetzner ] && kubectl get application hcloud-csi -n argocd >/dev/null 2>&1; then
+  kubectl patch application hcloud-csi -n argocd --type=merge \
+    -p '{"metadata":{"finalizers":null}}' >/dev/null
+  echo "ARGO-DOWN: hcloud-csi released from the cascade; its controller outlives it."
+fi
 
 # Recorded before the cascade starts: once the PVC is gone the CSI driver
 # still needs time to delete the backing volume, and the PV itself is

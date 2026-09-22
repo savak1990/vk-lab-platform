@@ -136,6 +136,25 @@ hcloud_list_names() {
   hcloud_cli "$resource" list -o json -l "$selector" | jq -r '(. // [])[].name'
 }
 
+# The cloud controller manager labels nothing it creates, so the name
+# annotation's project prefix is the only thing a sweep can match on.
+wait_for_lb_gone() {
+  local deadline remaining
+  deadline=$(( $(date +%s) + ${HETZNER_LB_GONE_SECONDS:-180} ))
+  while [ "$(date +%s)" -lt "$deadline" ]; do
+    remaining="$(hcloud_cli load-balancer list -o json \
+      | jq -r '(. // [])[].name' | grep -- "^${PROJECT_NAME}-" || true)"
+    if [ -z "$remaining" ]; then
+      echo "ARGO-DOWN: hcloud load balancer confirmed gone."
+      return 0
+    fi
+    sleep "${POLL_INTERVAL:-5}"
+  done
+  echo "ARGO-DOWN: load balancer(s) still present after ${HETZNER_LB_GONE_SECONDS:-180}s: $remaining" >&2
+  echo "ARGO-DOWN: they bill until deleted; check 'hcloud load-balancer list' before retrying." >&2
+  return 1
+}
+
 # The control plane's public address, published to SSM by the k8s unit. Absent
 # means the stack is down, which is a "no" to every caller, never an error.
 hetzner_cp_ip() {
