@@ -52,6 +52,10 @@ awsIdentity:
 # storageSize is operator-configurable (KARPENTER_INSTANCE_TYPES sibling:
 # POSTGRES_STORAGE_SIZE env var on argo-up.sh) — increase-only, see
 # scripts/argo-up.sh usage comment for why.
+#
+# The local target takes this same single instance at 250m/256Mi, on kind's
+# own storage class, with backups off and its data throwaway. Only the volume
+# is smaller there: argo-up defaults it to 5Gi rather than the 20Gi below.
 postgres:
   storageSize: 20Gi
   # Pinned so an operator chart upgrade never changes the major version under

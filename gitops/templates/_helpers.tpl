@@ -32,12 +32,16 @@ The CSI StorageClass name for the current target. civo uses civo-volume,
 preinstalled and owned by a k3s Addon (a patch to it gets reverted), so
 it must only be referenced here, never defined by a template we own.
 hetzner uses hcloud-volumes, which the CSI driver's own chart ships.
+local uses standard, which kind's own local-path provisioner ships - named
+rather than left to the cluster default, and never defined here either.
 */}}
 {{- define "platform.storageClassName" -}}
 {{- if eq .Values.target "civo" -}}
 civo-volume
 {{- else if eq .Values.target "hetzner" -}}
 hcloud-volumes
+{{- else if eq .Values.target "local" -}}
+standard
 {{- else -}}
 {{- .Values.storage.className -}}
 {{- end -}}

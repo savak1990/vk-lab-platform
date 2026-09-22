@@ -143,9 +143,9 @@ PodMonitor__cnpg-system__cnpg-postgres ServiceMonitor__argocd__argocd \
 Namespace__cluster__e2e ServiceAccount__e2e__e2e-test"
 REQUIRED_OBJECTS_LOCAL="EnvoyProxy__envoy__envoy-proxy-config \
 Gateway__envoy__platform-gateway GatewayClass__cluster__envoy-gateway \
-HTTPRoute__argocd__argocd"
+HTTPRoute__argocd__argocd Cluster__cnpg-system__lab-postgres"
 FORBIDDEN_KINDS_LOCAL="StorageClass VolumeSnapshotClass VolumeSnapshotContent VolumeSnapshot \
-ClusterSecretStore ExternalSecret Cluster NodePool EC2NodeClass \
+ClusterSecretStore ExternalSecret NodePool EC2NodeClass \
 ObjectStore ScheduledBackup"
 FORBIDDEN_KINDS_CIVO="StorageClass VolumeSnapshotClass VolumeSnapshotContent VolumeSnapshot \
 NodePool EC2NodeClass"
@@ -244,7 +244,7 @@ verify_object_set() {
       return 1
     fi
   done
-  if [ "$target" = civo ] || [ "$target" = hetzner ]; then
+  case "$target" in civo | hetzner | local)
     local hits
     local leaks=(-e 'ebs-delete' -e 'karpenter.sh/capacity-type')
     # civo's storage class and provider annotation are as wrong on hetzner as
@@ -260,6 +260,21 @@ verify_object_set() {
       echo "GITOPS-RENDER-CHECK: target=$target renders another target's storage class, spot affinity or provider annotation" >&2
       return 1
     fi
+    if [ "$target" = local ]; then
+      # The grep above only catches the literal ebs-delete. These pin the two
+      # values a kind cluster cannot survive getting wrong.
+      local got
+      got="$(yq '.spec.storage.storageClass' "$dir/Cluster__cnpg-system__lab-postgres.yaml")"
+      if [ "$got" != standard ]; then
+        echo "GITOPS-RENDER-CHECK: target=$target Cluster storageClass is '$got', expected 'standard'" >&2
+        return 1
+      fi
+      got="$(yq '.spec.enablePDB' "$dir/Cluster__cnpg-system__lab-postgres.yaml")"
+      if [ "$got" != false ]; then
+        echo "GITOPS-RENDER-CHECK: target=$target Cluster enablePDB is '$got', expected 'false'" >&2
+        return 1
+      fi
+    fi
     local karpenter_rule="$dir/PrometheusRule__observability__observability-alerts.yaml"
     if [ -e "$karpenter_rule" ]; then
       hits="$(grep -Ev '^[[:space:]]*#' "$karpenter_rule" | grep 'Karpenter' || true)"
@@ -268,7 +283,8 @@ verify_object_set() {
         return 1
       fi
     fi
-  fi
+    ;;
+  esac
 }
 
 STRUCT_OK=true

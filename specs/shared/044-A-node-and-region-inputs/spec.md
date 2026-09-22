@@ -1,7 +1,7 @@
 ---
 id: "SHARED-044"
 title: "NODE_COUNT, NODE_TYPE and REGION as validated operator inputs on every provider"
-status: "IN_PROGRESS"
+status: "IN_REVIEW"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -13,7 +13,7 @@ estimate_confidence: "low"
 depends_on: []
 blocked_by: []
 created: "2026-09-21"
-updated: "2026-09-21"
+updated: "2026-09-22"
 completed: ""
 ---
 
@@ -453,7 +453,14 @@ Once several projects hold live state, renaming a state bucket means migrating
 state that resources depend on, and a mistake there orphans resources nobody
 can destroy.
 
-### 3.12 `lab.yml` workflow inputs
+### 3.12 `lab.yml` workflow inputs — IMPLEMENTED (2026-09-22)
+
+Shipped as specified below. `region`, `node_type` and `node_count` are
+`type: string` with `default: ""`, blank omitted rather than exported empty.
+The lifecycle job receives all three; the `test` job receives `region` only —
+it builds its kubeconfig through the Civo CLI, which is per region, and never
+sizes a node.
+
 
 `.github/workflows/lab.yml` is the operator-facing entry point and MUST expose
 the three values, or they can only be set locally.
@@ -558,57 +565,21 @@ default region.
 Every other sweep is project-scoped and follows its own project's region:
 `verify-no-leaks.sh`, `force-clean-ci.sh`, `status.sh`.
 
-### 5.2 One project in two regions at once — deferred to its own spec
+### 5.2 One project in two regions at once — moved to SHARED-045
 
-This spec lets a project **choose** its Civo region or Hetzner location. It
-does not let one project **occupy two at once**, and the operator has asked
-for that as a follow-up. It no longer concerns AWS at all: ADR 0040 makes two
-AWS regions impossible by construction, so what remains is a naming problem
-on the non-AWS targets, not a region one.
-
-Per-region SSM paths are necessary but **not sufficient**. Measured
-2026-09-21: all 22 SSM parameters are `/<project>/…` with no region, and they
-fall into three groups that need different treatment, so a blanket region
-prefix would be wrong:
-
-| Group | Examples | Treatment |
-|---|---|---|
-| Region-varying | `persistent-civo/network/id`, `cluster-civo/k8s/*`, `persistent-hetzner/*`, `cluster/eks/node_subnet_id`, `persistent/vpc/vpc_id`, `bootstrap/acm/certificate_arn` | MUST gain the region |
-| Region-invariant | `persistent/postgres/app_password`, `persistent/grafana/admin_password`, `persistent/argocd/admin_password_bcrypt` | MUST NOT — one credential per project, whatever region it runs in |
-| Needs a decision | `bootstrap/route53/*`, `bootstrap/rolesanywhere/*` | see below |
-
-Three other collisions have to be solved in the same spec, and two are harder
-than SSM:
-
-- **The Route 53 zone.** One `<subdomain>.<root-domain>` per project. Two
-  regions both create it. Either each region takes its own subdomain — which
-  changes every URL — or one zone is shared and its records are region-scoped,
-  which means deciding who owns the zone's lifecycle.
-- **The Roles Anywhere chain becomes per project per region** (operator
-  decision, 2026-09-21). It is not only a naming collision: Roles Anywhere is
-  a **regional** service — `arn:aws:rolesanywhere:<region>:…` — so a project
-  spanning two regions needs an anchor and a profile in each, whatever they
-  are called. Today HETZ-018 names them `<project>-<provider>-workload-ca` and
-  `<project>-<provider>`, which collide.
-
-  **The IAM roles stay global and stay one set.** `<project>-ra-<consumer>` is
-  an IAM resource, and IAM is not regional; minting four more per region would
-  be duplication with no isolation gained. What changes is their trust
-  policies, which condition on `aws:SourceArn` and must accept **every**
-  region's anchor rather than one.
-
-  **The CA stays one per project.** The committed certificate is material, not
-  an AWS resource: the same certificate can be registered as an anchor in each
-  region. A second CA would mean a second ceremony and a second private key to
-  hold, for no security gain.
-- **The backups bucket** is already region-namespaced by §3.11, so it is done.
+Extracted to [SHARED-045](../045-P-one-project-two-regions/spec.md), which
+holds the whole analysis: the 22 SSM parameters grouped three ways, the
+Route 53 zone, the regionality of Roles Anywhere, and the decisions that the
+IAM roles stay global and the CA stays one per project. It no longer concerns
+AWS at all — ADR 0040 makes two AWS regions impossible by construction, so what
+remains is a naming problem on the non-AWS targets.
 
 Until that spec lands, two regions in parallel means **two projects** —
 `PROJECT_NAME` and `SUBDOMAIN` already namespace everything, and that works
 today with no new code. §3.7's guard refuses the same-project case, which is
 the correct behaviour rather than a limitation to work around.
 
-### 5.2 Other risks
+### 5.3 Other risks
 
 - **Service quotas are per region.** A region never used before starts at AWS
   defaults for VPCs, EIPs, EKS clusters and Graviton vCPUs. Nothing here
