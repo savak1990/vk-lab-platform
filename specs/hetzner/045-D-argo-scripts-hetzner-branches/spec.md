@@ -1,7 +1,7 @@
 ---
 id: "HETZ-045"
 title: "argo-up Hetzner branch: hcloud Secret, CCM helm install, taint wait, root Application, LB/DNS waits"
-status: "IN_REVIEW"
+status: "DONE"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -15,7 +15,7 @@ blocked_by: []
 supersedes: []
 created: "2026-09-11"
 updated: "2026-09-22"
-completed: ""
+completed: "2026-09-22"
 ---
 
 # HETZ-045 — argo-up on Hetzner
@@ -132,7 +132,7 @@ none beyond the dump gate, which fails closed.
 
 - [x] Evidence for hetzner, aws and civo recorded
 - [x] CCM ordering proven on the HETZ-040 cluster
-- [ ] Index updated; status `DONE`
+- [x] Index updated; status `DONE`
 
 ## 14. Execution evidence and status history
 
@@ -320,3 +320,10 @@ none beyond the dump gate, which fails closed.
   load-balancer, primary-ip and firewall all empty; only the persistent network
   and SSH key remain, as they must. No token or private key appeared in any
   transcript.
+- 2026-09-22 — status `DONE`, folder renamed to
+  `045-D-argo-scripts-hetzner-branches`. All three §13 boxes are met: the
+  evidence above, the CCM ordering proven on a real HETZ-040 cluster, and this
+  index update. One inaccuracy is left standing on purpose rather than
+  rewritten: the title still promises "LB/DNS waits", which this spec
+  deliberately does not deliver. There is no Gateway on this target to wait on,
+  and both waits move to HETZ-060 together with `platform.gatewayEnabled`.
