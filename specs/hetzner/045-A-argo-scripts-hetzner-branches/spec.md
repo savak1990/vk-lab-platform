@@ -130,8 +130,8 @@ none beyond the dump gate, which fails closed.
 
 ## 13. Definition of done
 
-- [ ] Evidence for hetzner, aws and civo recorded
-- [ ] CCM ordering proven on the HETZ-040 cluster
+- [x] Evidence for hetzner, aws and civo recorded
+- [x] CCM ordering proven on the HETZ-040 cluster
 - [ ] Index updated; status `DONE`
 
 ## 14. Execution evidence and status history
@@ -227,3 +227,83 @@ none beyond the dump gate, which fails closed.
     reporting on `civo` at six places (`:70,175,195,219,228,261`), so hetzner
     gets degraded watch output. Cosmetic, and a separate diff. `argo-down.sh`
     is HETZ-047's.
+- 2026-09-22 — first live bring-up, `fsn1`, three `cx33`. The ordering this
+  spec exists for held on the first cluster that reached it, and four defects
+  fell out of the run, none of them visible to any offline check.
+  - **The precondition, captured before `argo-up`:** all three nodes carried
+    `node.cloudprovider.kubernetes.io/uninitialized` with an empty
+    `providerID`, CoreDNS was `Pending`, and no StorageClass existed at all.
+    That is the state the CCM-before-Argo ordering is for, and without
+    recording it first the rest would prove nothing.
+  - **After `argo-up`:** every taint cleared, every `providerID` read
+    `hcloud://1669184{96,97,98}`, CoreDNS reached `Running`, and
+    `hcloud-volumes` came up as the only StorageClass and the default. That
+    last part also settles the live assertion HETZ-050 had to defer, since
+    `local-path` is absent under `--disable=local-storage`.
+  - **Defect 1, the routes flag.** `--set env.HCLOUD_NETWORK_ROUTES_ENABLED.value="false"`
+    is what §4 prescribes, and it is wrong: the shell strips the quotes, helm
+    parses a bare `false` as a boolean, and a container env value must be a
+    string. Helm 4 applies server-side, so the API server rejected the whole
+    Deployment - `expected string, got Value:false`. Fixed with `--set-string`.
+  - **Defect 2, the dangling GatewayClass.** `gateway.yaml` gated `EnvoyProxy`
+    and `Gateway` on `aws|civo|local` but rendered the `GatewayClass` for every
+    target, so its `parametersRef` named an object that never renders. The
+    controller rejects that, Argo counts it a failed sync task, and root
+    stalled with its ten retries exhausted. Downstream that meant no
+    `ClusterIssuer`, no `Certificate`, no `cert-manager-ra-cert` and no
+    `eso-ra-cert`: external-secrets and external-dns sat in
+    `ContainerCreating` for nineteen minutes on a missing Secret, and
+    cert-manager's `aws-signing-helper` sidecar crash-looped reading an empty
+    mount with "could not parse PEM data". Four symptoms, one cause, and none
+    of them named a GatewayClass.
+  - **Defect 3, the HTTPRoute with no Gateway.** Removing the GatewayClass
+    unblocked the identity chain, and root then stalled twenty minutes on one
+    resource: `HTTPRoute envoy/https-redirect`, applied, with an empty
+    `.status.parents`. A route is only Accepted by a Gateway, and this target
+    has none, so Argo's health check on it never finished. The tree carried
+    the same mistake in four places, so the condition is now stated once as
+    `platform.gatewayEnabled` and the four files carry it alongside their own
+    gates. HETZ-060 flips it in one place.
+  - **Defect 4, two metrics-servers.** The Application targets
+    `kube-system/metrics-server`, the same namespace and name as the addon k3s
+    ships - the control plane disables `servicelb,traefik,local-storage` but
+    not that one. Argo and the k3s supervisor wrote the same Deployment, it
+    stayed `OutOfSync` permanently, and since root is Healthy only when every
+    child is, **`argo-up` could never have returned 0 on this target**.
+    `platform.metricsServerEnabled` now answers false here, which HETZ-050's
+    own history entry had called for in September.
+  - **Defects 2, 3 and 4 are one theme:** the tree rendered objects for this
+    target whose supporting infrastructure it does not have yet. This spec's
+    plan recorded the dangling GatewayClass and deferred it to HETZ-060 as
+    cosmetic. That judgement was wrong, and only the live run showed it.
+  - **The provisioned-volume labels, which no render can prove.** All four
+    CNPG and observability volumes carry `project=vk-hetzner-lab`, and
+    `hcloud_list_names volume` - the selector HETZ-040's teardown sweep uses -
+    returns all four. Without the `controller.volumeExtraLabels` added in
+    HETZ-050 they would have carried only the chart's own `pv-name` and
+    `pvc-name` labels and been invisible to teardown. The chart also sets its
+    own `managed-by: csi-driver`, so a volume now carries both that and
+    `managed_by: hcloud-csi-driver`; harmless, and the underscore form is the
+    one Terraform uses.
+  - **The rest of the platform came up.** All three ClusterIssuers Ready, all
+    four Roles Anywhere certificates issued, the Let's Encrypt wildcard issued
+    over DNS-01 through Route 53, `grafana-admin-credentials` reporting
+    `SecretSynced True` - so the Roles Anywhere to SSM to ExternalSecret path
+    works on this target - and every Application Healthy with no pod outside
+    `Running`.
+  - **`argo-up` then returned 0** on a clean re-run, taking the fast path and
+    printing the hetzner arm's "no gateway or DNS record until HETZ-060".
+  - **Not exercised live:** the `BACKUP_BUCKET` guard on
+    `backup_publish_server_name`. The fast path exits before that statement,
+    so the fix is reasoned offline only. It is still needed - this target
+    mints no server name and SSM rejects an empty parameter value.
+  - **A correction to an earlier entry.** The claim that no backups bucket
+    exists for this target is wrong. The shared `persistent/backups` unit
+    creates `vk-hetzner-lab-fsn1-postgres-backups` and hetzner's
+    `BACKUP_SSM_LAYER` is `persistent`, so it would be found. What is not
+    wired is CNPG backups on this target, which is HETZ-115 and HETZ-120.
+    Enabling them here would need an eleventh SSM name and so the batching
+    loop.
+  - Operator note: Argo syncs `gitops/` from the GitHub repository, not from
+    the working tree, so testing an unmerged change to that tree needs
+    `TARGET_REVISION=<branch>` on `argo-up`.
