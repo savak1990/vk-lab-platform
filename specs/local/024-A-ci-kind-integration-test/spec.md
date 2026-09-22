@@ -1,7 +1,7 @@
 ---
 id: "LOCAL-024"
-status: "READY"
-updated: "2026-09-17"
+status: "IN_PROGRESS"
+updated: "2026-09-22"
 ---
 # 023 — CI Kind Integration Test
 

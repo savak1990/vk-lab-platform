@@ -13,9 +13,9 @@ import (
 
 // PortForward opens a port-forward to remotePort on the given pod and
 // returns the local port it was bound to, plus a channel to close to tear
-// it down. Used for services with no external hostname (Postgres) — Grafana
-// and Argo CD are reached via their public HTTPRoute hostname instead.
-func PortForward(restConfig *rest.Config, clientset kubernetes.Interface, namespace, podName string, remotePort int) (int, chan struct{}, error) {
+// it down. localPort 0 takes any free port; a caller pins one only when
+// something outside the tunnel already names it.
+func PortForward(restConfig *rest.Config, clientset kubernetes.Interface, namespace, podName string, remotePort, localPort int) (int, chan struct{}, error) {
 	req := clientset.CoreV1().RESTClient().Post().
 		Resource("pods").
 		Namespace(namespace).
@@ -30,7 +30,7 @@ func PortForward(restConfig *rest.Config, clientset kubernetes.Interface, namesp
 
 	stopCh := make(chan struct{}, 1)
 	readyCh := make(chan struct{})
-	ports := []string{fmt.Sprintf("0:%d", remotePort)}
+	ports := []string{fmt.Sprintf("%d:%d", localPort, remotePort)}
 
 	fw, err := portforward.New(dialer, ports, stopCh, readyCh, nil, nil)
 	if err != nil {
@@ -52,11 +52,11 @@ func PortForward(restConfig *rest.Config, clientset kubernetes.Interface, namesp
 		return 0, nil, fmt.Errorf("framework: reading forwarded port: %w", err)
 	}
 
-	localPort, err := strconv.Atoi(strconv.FormatUint(uint64(forwarded[0].Local), 10))
+	bound, err := strconv.Atoi(strconv.FormatUint(uint64(forwarded[0].Local), 10))
 	if err != nil {
 		close(stopCh)
 		return 0, nil, fmt.Errorf("framework: parsing forwarded local port: %w", err)
 	}
 
-	return localPort, stopCh, nil
+	return bound, stopCh, nil
 }

@@ -150,7 +150,10 @@ ServiceMonitor__envoy__envoy-gateway PodMonitor__envoy__envoy-proxy \
 ConfigMap__observability__dashboard-cnpg \
 PrometheusRule__observability__observability-alerts \
 Application__argocd__loki Application__argocd__alloy \
-HTTPRoute__observability__grafana"
+HTTPRoute__observability__grafana \
+Namespace__cluster__e2e ServiceAccount__e2e__e2e-test \
+RoleBinding__observability__e2e-test-readonly \
+RoleBinding__envoy__e2e-test-readonly"
 FORBIDDEN_KINDS_LOCAL="StorageClass VolumeSnapshotClass VolumeSnapshotContent VolumeSnapshot \
 ClusterSecretStore ExternalSecret NodePool EC2NodeClass \
 ObjectStore ScheduledBackup"
@@ -162,13 +165,12 @@ external-dns barman-cloud-plugin"
 FORBIDDEN_APPLICATIONS_CIVO="aws-load-balancer-controller ebs-csi-driver karpenter \
 external-snapshotter external-snapshotter-crds"
 FORBIDDEN_OBJECTS_LOCAL="BackendTrafficPolicy__observability__grafana-traffic-policy \
-RoleBinding__observability__e2e-test-readonly \
 ExternalSecret__observability__grafana-admin-credentials \
 ServiceMonitor__kube-system__karpenter \
-ConfigMap__observability__dashboard-karpenter-capacity \
-Namespace__cluster__e2e ServiceAccount__e2e__e2e-test"
-FORBIDDEN_OBJECTS_CIVO="ServiceMonitor__kube-system__karpenter \
 ConfigMap__observability__dashboard-karpenter-capacity"
+FORBIDDEN_OBJECTS_CIVO="ServiceMonitor__kube-system__karpenter \
+ConfigMap__observability__dashboard-karpenter-capacity \
+RoleBinding__envoy__e2e-test-readonly"
 # The civo set, less the two features hetzner does not have yet, plus the CSI
 # driver and the Gateway API surface. EnvoyProxy and Gateway are asserted here
 # rather than only in the forbidden sets: nothing else proves the load balancer
@@ -204,7 +206,8 @@ NodePool EC2NodeClass"
 FORBIDDEN_APPLICATIONS_HETZNER="aws-load-balancer-controller ebs-csi-driver karpenter \
 external-snapshotter external-snapshotter-crds metrics-server"
 FORBIDDEN_OBJECTS_HETZNER="ServiceMonitor__kube-system__karpenter \
-ConfigMap__observability__dashboard-karpenter-capacity"
+ConfigMap__observability__dashboard-karpenter-capacity \
+RoleBinding__envoy__e2e-test-readonly"
 
 # An Application's helm values are one YAML string, so they need a second
 # parse. Each argument is <yq-path>=<expected>.

@@ -1,7 +1,7 @@
 # Read-only access for the E2E suite (tests/e2e), never cluster-admin. One
 # ClusterRole bound per namespace: a namespace grants nothing for a kind it
 # has none of, so the minor over-grant costs nothing real.
-{{- if (eq (include "platform.selfManaged" .) "true") }}
+{{- if (eq (include "platform.e2eTestUsesServiceAccount" .) "true") }}
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -60,14 +60,29 @@ roleRef:
   name: e2e-test-readonly
   apiGroup: rbac.authorization.k8s.io
 ---
-{{- if ne .Values.target "local" }}
-# Stays gated: the observability namespace only exists once
-# kube-prometheus-stack's Application creates it.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: e2e-test-readonly
   namespace: observability
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+subjects:
+  {{- include "platform.e2eTestSubject" . | nindent 2 }}
+roleRef:
+  kind: ClusterRole
+  name: e2e-test-readonly
+  apiGroup: rbac.authorization.k8s.io
+{{- if eq .Values.target "local" }}
+---
+# Only this target reaches the gateway through a port-forward, and
+# pods/portforward is granted per namespace.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: e2e-test-readonly
+  namespace: envoy
   annotations:
     argocd.argoproj.io/sync-wave: "2"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true

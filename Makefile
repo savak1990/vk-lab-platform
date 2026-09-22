@@ -1,4 +1,4 @@
-.PHONY: up down full-up full-down platform-up platform-down state-up state-down status clusters require-valid-project-name require-valid-node-config account-up account-down bootstrap-up bootstrap-down secret-encrypt secret-decrypt secrets-check node-config-check scripts-check generate-secrets ca-init ssh-key-init persistent-up persistent-down clear-cache cluster-up cluster-down kubeconfig node-ssh test-kubeconfig test-kubeconfig-isolated argo-up argo-down test
+.PHONY: up down full-up full-down platform-up platform-down state-up state-down status clusters require-valid-project-name require-valid-node-config account-up account-down bootstrap-up bootstrap-down secret-encrypt secret-decrypt secrets-check node-config-check scripts-check generate-secrets ca-init ssh-key-init persistent-up persistent-down clear-cache cluster-up cluster-down kubeconfig node-ssh test-kubeconfig test-kubeconfig-isolated argo-up argo-down test go-check forward-up forward-down
 
 .NOTPARALLEL:
 
@@ -249,8 +249,9 @@ endif
 ## civo CLI has no way to name the context directly). On local, exports the
 ## kind cluster's context (kind-$(PROJECT_NAME)) - a bring-up leaves it out of
 ## your kubeconfig entirely, so run this once to get a context to switch to.
-## Note for local: `kind delete cluster` removes that context again on teardown
-## and leaves current-context unset, so reselect your own afterwards.
+## Note for local: teardown works through $(LAB_KUBECONFIG), so a context this
+## target adds here outlives the cluster - delete it yourself, or skip this
+## target entirely and use `make forward-up`, which needs no context at all.
 ## This target and test-kubeconfig are the only two that write ~/.kube/config
 ## or change your current context. up/down/argo-up/argo-down/cluster-down/
 ## status/test all work through $(LAB_KUBECONFIG) instead, so a bring-up never
@@ -280,13 +281,13 @@ argo-up:
 ## Switches your own kubectl context to the disposable cluster as the E2E
 ## suite's read-only identity (rbac/e2e-test-readonly.yaml), never
 ## cluster-admin. On aws, eks-test-identity maps to that role via its EKS
-## access entry (terraform/modules/eks/main.tf). On civo, which has no IAM, it
-## mints a 1h token for the e2e/e2e-test ServiceAccount as cluster-admin.
+## access entry (terraform/modules/eks/main.tf). On civo and local, which have
+## no IAM, it mints a 1h token for the e2e/e2e-test ServiceAccount.
 ## A distinct context name ($(E2E_CONTEXT)), so the cluster-admin entry is
 ## never overwritten. `make test` does NOT use this target - it builds the same
 ## read-only identity in $(LAB_TEST_KUBECONFIG) and leaves your context alone.
 ## Usage: make test-kubeconfig
-E2E_CONTEXT := $(if $(filter civo,$(PROVIDER)),$(PROJECT_NAME)-civo-test,$(PROJECT_NAME)-eks-test)
+E2E_CONTEXT := $(if $(filter aws,$(PROVIDER)),$(PROJECT_NAME)-eks-test,$(PROJECT_NAME)-$(PROVIDER)-test)
 test-kubeconfig:
 	@bash -c 'source scripts/lib/region.sh; source scripts/lib/provider.sh; configure_test_kubeconfig'
 
@@ -299,11 +300,34 @@ test-kubeconfig:
 ## for a civo cluster on the Let's Encrypt staging issuer (CIVO-070/140).
 ## Usage: make test | make test-postgres | make test-grafana | make test-argocd
 E2E_TLS_FLAG := $(if $(filter 1 true,$(E2E_INSECURE_TLS)),--insecure-skip-tls-verify,)
+## The suite package only. ./tests/e2e/... would hand --context to the
+## framework's own test binary too, which does not define it.
 test: test-kubeconfig-isolated
-	KUBECONFIG=$(LAB_TEST_KUBECONFIG) go test ./tests/e2e/... -v -args --context=$(E2E_CONTEXT) $(E2E_TLS_FLAG) --ginkgo.v
+	KUBECONFIG=$(LAB_TEST_KUBECONFIG) go test ./tests/e2e -v -args --context=$(E2E_CONTEXT) $(E2E_TLS_FLAG) --ginkgo.v
 
 test-%: test-kubeconfig-isolated
-	KUBECONFIG=$(LAB_TEST_KUBECONFIG) go test ./tests/e2e/... -v -args --context=$(E2E_CONTEXT) $(E2E_TLS_FLAG) --ginkgo.label-filter=$* --ginkgo.v
+	KUBECONFIG=$(LAB_TEST_KUBECONFIG) go test ./tests/e2e -v -args --context=$(E2E_CONTEXT) $(E2E_TLS_FLAG) --ginkgo.label-filter=$* --ginkgo.v
+
+## Forwards the gateway to localhost in the background so Argo CD and Grafana
+## open in a browser. Works through $(LAB_KUBECONFIG), so it neither reads nor
+## changes your own kubectl context - `make kubeconfig` is not needed first.
+## LOCAL_PORT overrides the default 8080. local only: the others are on DNS.
+## Usage: PROVIDER=local make forward-up
+forward-up:
+	./scripts/forward-up-local.sh
+
+## Stops the forward `make forward-up` started. Safe when nothing is up.
+## Usage: PROVIDER=local make forward-down
+forward-down:
+	./scripts/forward-down-local.sh
+
+## Compiles and vets every Go package, and runs the E2E framework's own
+## offline tests. Needs no cluster and no credentials.
+## Usage: make go-check
+go-check:
+	go vet ./...
+	go test ./tests/e2e/framework/...
+	@echo "GO-CHECK: the Go layer is valid."
 
 ## Internal: the same read-only identity as test-kubeconfig, written to
 ## $(LAB_TEST_KUBECONFIG) instead of your own kubeconfig.

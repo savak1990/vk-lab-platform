@@ -1,7 +1,8 @@
 ---
 id: "LOCAL-022"
-status: "IN_PROGRESS"
+status: "DONE"
 updated: "2026-09-22"
+completed: "2026-09-22"
 ---
 # 022 — Local Development Mode (kind)
 
@@ -199,9 +200,14 @@ integration, which is spec 024's job.
     `ClusterSecretStore` behind it (Requirement 12 creates the credential
     instead); `grafana-traffic-policy`, the Envoy rate limit and retry budget
     for the Grafana route (rate-limiting a single operator against their own
-    workstation buys nothing); and the `observability` `RoleBinding` for the
-    E2E suite, which has no kind environment yet. Tempo and the OpenTelemetry
-    Collector are absent on every target, not only this one.
+    workstation buys nothing). Tempo and the OpenTelemetry Collector are absent
+    on every target, not only this one.
+
+    The `observability` `RoleBinding` for the E2E suite was omitted here until
+    2026-09-22, when the suite gained a kind environment. It now renders on
+    every target, and this target alone adds one in `envoy`: it is the only one
+    that reaches the gateway through a port-forward, and `pods/portforward` is
+    granted per namespace.
 16. Fast validation (spec 019) MUST render the chart for `target=local`, and
     the structural contract in `scripts/gitops-render-check.sh` MUST be updated
     in the same change as any render change. That contract is what makes a
@@ -264,3 +270,74 @@ integration, which is spec 024's job.
   lifecycle command fails with an explicit refusal, proving Requirement 4.
 - A passing `local` run is explicitly not accepted as satisfying constitution
   §11's full lifecycle test or §12's Definition of Done for any real target.
+
+## Execution evidence and status history
+
+Dates are the merge dates of the pull requests that carried each change.
+
+- 2026-09-17 — moved into `specs/local/` with a status letter, rewritten on
+  ADR 0038, which supersedes ADR 0006.
+- 2026-09-21 — LOCAL-010/015/030 (#46). The skeleton lands: `PROVIDER=local`
+  on the shared command surface, kind bring-up and teardown, and eighteen
+  `ne local` gates to be revisited component by component.
+- 2026-09-21 — LOCAL-045 (#47). `argo-up`/`argo-down` gain local arms and sync
+  from the working tree.
+- 2026-09-21 — LOCAL-050a (#52). The Gateway renders on ClusterIP, with Argo CD
+  behind it. Routes match by path, because a port-forward cannot present the
+  Host header hostname matching needs.
+- 2026-09-22 — LOCAL-050b (#62). PostgreSQL renders. `platform.storageClassName`
+  gains a local arm returning `standard`; its fall-through looked right and
+  was not.
+- 2026-09-22 — LOCAL-050c (#69). Observability renders, and the last nine gates
+  that were not deliberate omissions come off. Two defects the render check
+  could not see were found on a live cluster: `serve_from_sub_path` moved
+  Grafana's `/metrics` and `/api/health` with the UI, and a 3xx passes an
+  httpGet probe, so the readiness probe had been passing without reaching the
+  health endpoint. Teardown was editing the operator's own kubeconfig.
+- 2026-09-22 — LOCAL-024a. The E2E suite gains a kind environment, which
+  closes Requirement 15's last named omission. DONE.
+
+### Acceptance criteria, as measured
+
+Unless stated otherwise, every command below ran with `AWS_PROFILE` naming a
+profile that does not exist and both AWS credential files at `/dev/null`.
+
+| Criterion | Result |
+|---|---|
+| `make gitops-check`, local object set and aws golden | pass |
+| `PROVIDER=local make up`, no AWS credentials | exit 0 in **496s**, all 8 Applications Synced/Healthy |
+| `gitops/` edit reconciles with no commit and no push | pass (LOCAL-050c, 91s) |
+| `/` returns Argo CD and `/grafana` returns Grafana, assets included | pass — `<title>Argo CD</title>`; `<base href="/grafana/">`, relative |
+| `PROVIDER=local make down` leaves no kind cluster | exit 0 in **40s**, `No kind clusters found`, 0 containers, 0 volumes of this cluster's |
+| A non-local context is refused | `require_local_context: refusing to act - context server 'https://...eks.amazonaws.com' is not a local kind cluster`, exit 1 |
+| A local run is not accepted for constitution §11 or §12 | stated in `README.md` and in this spec's Scope |
+
+### The E2E suite on kind
+
+`PROVIDER=local make test` — **4 of 4 specs passed in 6s**, as the restricted
+identity rather than as cluster-admin. `make test-argocd`, `test-grafana` and
+`test-postgres` ran 1, 1 and 2 specs.
+
+The identity is `system:serviceaccount:e2e:e2e-test`, holding a 1h token:
+
+```
+create pods -n argocd                            no
+delete secrets -n observability                  no
+get secrets -n kube-system                       no
+create clusterrolebindings                       no
+get nodes                                        no
+get secrets -n observability                     yes
+list httproutes -n argocd                        yes
+get clusters.postgresql.cnpg.io -n cnpg-system   yes
+create pods --subresource=portforward -n envoy   yes
+```
+
+That last grant is why this target alone carries a `RoleBinding` in `envoy`.
+
+### Outstanding
+
+- The kind CI job is LOCAL-024b. Until it lands, this evidence is gathered by
+  hand rather than on every pull request.
+- `.kube/<project>-test.config` is left naming the deleted cluster after
+  `make down`. It is rewritten before every use, and civo behaves the same
+  way, so it is recorded here rather than fixed.

@@ -204,13 +204,22 @@ The Gateway's listeners. Callers supply the listeners key and indent by 4.
 {{- end -}}
 
 {{/*
+Whether the E2E suite authenticates as a ServiceAccount. Only aws has an
+identity provider to map a Group to; every other target mints a token instead.
+Emits "true"/"false" as a string, so compare it - a bare if takes "false".
+*/}}
+{{- define "platform.e2eTestUsesServiceAccount" -}}
+{{- ne .Values.target "aws" -}}
+{{- end -}}
+
+{{/*
 The E2E suite's RBAC subject. aws maps eks-test-identity to a Group via its
-EKS access entry; a self-managed target has no IAM, so the suite uses a
+EKS access entry; every other target has no IAM to map, so the suite uses a
 ServiceAccount token.
 A ServiceAccount subject is in the core group and must not set apiGroup.
 */}}
 {{- define "platform.e2eTestSubject" -}}
-{{- if (eq (include "platform.selfManaged" .) "true") -}}
+{{- if (eq (include "platform.e2eTestUsesServiceAccount" .) "true") -}}
 - kind: ServiceAccount
   name: e2e-test
   namespace: e2e
