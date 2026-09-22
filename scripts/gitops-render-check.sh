@@ -317,7 +317,7 @@ verify_object_set() {
         '.loki.limits_config.retention_period=6h' \
         '.singleBinary.persistence.size=1Gi' || return 1
       assert_helm_values "$target" kube-prometheus-stack "$dir" \
-        '.grafana."grafana.ini".server.root_url=http://localhost:8080/grafana' \
+        '.grafana."grafana.ini".server.root_url=http://localhost:9000/grafana' \
         '.grafana."grafana.ini".server.serve_from_sub_path=true' \
         '.grafana.serviceMonitor.path=/grafana/metrics' \
         '.grafana.readinessProbe.httpGet.path=/grafana/api/health' || return 1

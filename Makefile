@@ -1,4 +1,4 @@
-.PHONY: up down full-up full-down platform-up platform-down state-up state-down status clusters require-valid-project-name require-valid-node-config account-up account-down bootstrap-up bootstrap-down secret-encrypt secret-decrypt secrets-check node-config-check scripts-check generate-secrets ca-init ssh-key-init persistent-up persistent-down clear-cache cluster-up cluster-down kubeconfig node-ssh test-kubeconfig test-kubeconfig-isolated argo-up argo-down test go-check listen unlisten
+.PHONY: up down full-up full-down platform-up platform-down state-up state-down status clusters require-valid-project-name require-valid-node-config account-up account-down bootstrap-up bootstrap-down secret-encrypt secret-decrypt secrets-check node-config-check scripts-check generate-secrets ca-init ssh-key-init persistent-up persistent-down clear-cache cluster-up cluster-down kubeconfig node-ssh test-kubeconfig test-kubeconfig-isolated argo-up argo-down test go-check forward-up forward-down
 
 .NOTPARALLEL:
 
@@ -251,7 +251,7 @@ endif
 ## your kubeconfig entirely, so run this once to get a context to switch to.
 ## Note for local: teardown works through $(LAB_KUBECONFIG), so a context this
 ## target adds here outlives the cluster - delete it yourself, or skip this
-## target entirely and use `make listen`, which needs no context at all.
+## target entirely and use `make forward-up`, which needs no context at all.
 ## This target and test-kubeconfig are the only two that write ~/.kube/config
 ## or change your current context. up/down/argo-up/argo-down/cluster-down/
 ## status/test all work through $(LAB_KUBECONFIG) instead, so a bring-up never
@@ -311,15 +311,15 @@ test-%: test-kubeconfig-isolated
 ## Forwards the gateway to localhost in the background so Argo CD and Grafana
 ## open in a browser. Works through $(LAB_KUBECONFIG), so it neither reads nor
 ## changes your own kubectl context - `make kubeconfig` is not needed first.
-## LOCAL_PORT overrides the port. local only: every other target is on DNS.
-## Usage: PROVIDER=local make listen
-listen:
-	./scripts/listen-local.sh
+## LOCAL_PORT overrides the default 9000. local only: the others are on DNS.
+## Usage: PROVIDER=local make forward-up
+forward-up:
+	./scripts/forward-up-local.sh
 
-## Stops the forward `make listen` started. Safe to run when nothing is up.
-## Usage: PROVIDER=local make unlisten
-unlisten:
-	./scripts/unlisten-local.sh
+## Stops the forward `make forward-up` started. Safe when nothing is up.
+## Usage: PROVIDER=local make forward-down
+forward-down:
+	./scripts/forward-down-local.sh
 
 ## Compiles and vets every Go package, and runs the E2E framework's own
 ## offline tests. Needs no cluster and no credentials.

@@ -112,7 +112,7 @@ spec:
           # operator to forward.
           grafana.ini:
             server:
-              root_url: http://localhost:8080/grafana
+              root_url: http://localhost:9000/grafana
               serve_from_sub_path: true
           # The prefix moves every path, including these two. The chart's own
           # ServiceMonitor would keep scraping /metrics and get a redirect to

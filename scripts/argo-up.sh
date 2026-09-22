@@ -783,11 +783,11 @@ case "$PROVIDER" in
     # with the platform still starting.
     local_wait_for_children || exit 1
     echo "ARGO-UP: root and every child Synced/Healthy - platform ready."
-    echo "ARGO-UP: 'make listen' forwards the gateway, and every component is"
-    echo "ARGO-UP: then on its own path behind one port:"
-    echo "ARGO-UP:   Argo CD  http://localhost:8080          admin / '$LOCAL_ARGOCD_PASSWORD'"
-    echo "ARGO-UP:   Grafana  http://localhost:8080/grafana  admin / '$LOCAL_GRAFANA_PASSWORD'"
-    echo "ARGO-UP: 'make unlisten' stops it."
+    echo "ARGO-UP: 'make forward-up' forwards the gateway, and every component"
+    echo "ARGO-UP: is then on its own path behind one port:"
+    echo "ARGO-UP:   Argo CD  http://localhost:9000          admin / '$LOCAL_ARGOCD_PASSWORD'"
+    echo "ARGO-UP:   Grafana  http://localhost:9000/grafana  admin / '$LOCAL_GRAFANA_PASSWORD'"
+    echo "ARGO-UP: 'make forward-down' stops it."
     ;;
   aws)
     aws_wait_for_dns
