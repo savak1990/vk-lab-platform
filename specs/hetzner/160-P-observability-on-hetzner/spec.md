@@ -238,3 +238,11 @@ Revert the values. Argo prunes. Volumes are deleted with the PVCs.
   Alertmanager and Loki - with Grafana taking none, so the volume count is
   three rather than the four §3 predicts. Alertmanager's 1Gi request was
   rounded up to Hetzner's 10Gi floor, which is the behaviour §4 expected.
+- 2026-09-22 — observed on HETZ-085's cycle, three `cx33` in `fsn1`. The PVC
+  count is three, not the four §3 predicts, and this is now the second cycle
+  to show it: `prometheus`, `alertmanager` and `loki` each bind one 10Gi
+  `hcloud-volumes` claim, and Grafana binds none. Alertmanager's 1Gi request
+  is rounded up to Hetzner's 10Gi floor as expected, so the floor costs two
+  extra volumes' worth of storage on every bring-up, not one. Nothing here
+  touches the control-plane scrapes, which stay disabled chart-wide with no
+  per-target gate.
