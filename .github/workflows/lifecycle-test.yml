@@ -459,13 +459,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # gitops-render-check.sh pipes the render through yq; nothing here runs
-      # terraform or terragrunt.
+      # gitops-render-check.sh pipes the render through yq and scripts-check.sh
+      # lints with shellcheck; nothing here runs terraform or terragrunt.
       - name: Set up the lab toolchain
         uses: ./.github/actions/setup-lab-tools
         with:
           scope: test
           yq: "true"
+          shellcheck: "true"
 
       - uses: azure/setup-helm@v4
         with:
@@ -475,13 +476,10 @@ jobs:
 
       - run: make specs-check
 
-      - run: make secrets-check
-
-      - run: make argo-watch-check
-
-      - run: make node-config-check
-
-      - run: make pr-gate-check
+      # Parses every script, lints it, and runs every tests/scripts/*-test.sh -
+      # which is where secrets-check, argo-watch-check, node-config-check and
+      # pr-gate-check now run, rather than as four steps of their own.
+      - run: make scripts-check
 
   # Both providers at once, each an independent up -> test -> down chain.
   #
