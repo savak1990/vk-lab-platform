@@ -31,8 +31,13 @@ SPOT_KARPENTER_INSTANCE_TYPES="${SPOT_KARPENTER_INSTANCE_TYPES:-t4g.medium,t4g.l
 SPOT_KARPENTER_CPU_LIMIT="${SPOT_KARPENTER_CPU_LIMIT:-4}"
 ON_DEMAND_KARPENTER_INSTANCE_TYPES="${ON_DEMAND_KARPENTER_INSTANCE_TYPES:-t4g.medium,t4g.large,m6g.medium,m6g.large,m7g.medium,m7g.large}"
 ON_DEMAND_KARPENTER_CPU_LIMIT="${ON_DEMAND_KARPENTER_CPU_LIMIT:-4}"
-# Increase-only: Kubernetes rejects a PVC shrink.
-POSTGRES_STORAGE_SIZE="${POSTGRES_STORAGE_SIZE:-20Gi}"
+# Increase-only: Kubernetes rejects a PVC shrink. The local default is smaller
+# because kind's provisioner carves it out of the laptop's own disk.
+if [ "$PROVIDER" = local ]; then
+  POSTGRES_STORAGE_SIZE="${POSTGRES_STORAGE_SIZE:-5Gi}"
+else
+  POSTGRES_STORAGE_SIZE="${POSTGRES_STORAGE_SIZE:-20Gi}"
+fi
 # Never set below 2: recovery reads the previous generation while
 # the current one is still building its own first base backup.
 POSTGRES_BACKUP_KEEP_GENERATIONS="${POSTGRES_BACKUP_KEEP_GENERATIONS:-2}"
