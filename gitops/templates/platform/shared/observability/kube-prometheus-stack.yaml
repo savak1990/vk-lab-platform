@@ -114,6 +114,16 @@ spec:
             server:
               root_url: http://localhost:8080/grafana
               serve_from_sub_path: true
+          # The prefix moves every path, including these two. The chart's own
+          # ServiceMonitor would keep scraping /metrics and get a redirect to
+          # an address only the operator's port-forward can reach; the probe
+          # would take that same redirect for health, since 3xx passes.
+          serviceMonitor:
+            path: /grafana/metrics
+          readinessProbe:
+            httpGet:
+              path: /grafana/api/health
+              port: 3000
           {{- end }}
           # No volume at all. A bare PVC here is the one Argo creates itself,
           # and on a late-binding StorageClass it stays Pending until a pod

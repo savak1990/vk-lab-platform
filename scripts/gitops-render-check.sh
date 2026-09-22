@@ -315,7 +315,9 @@ verify_object_set() {
         '.singleBinary.persistence.size=1Gi' || return 1
       assert_helm_values "$target" kube-prometheus-stack "$dir" \
         '.grafana."grafana.ini".server.root_url=http://localhost:8080/grafana' \
-        '.grafana."grafana.ini".server.serve_from_sub_path=true' || return 1
+        '.grafana."grafana.ini".server.serve_from_sub_path=true' \
+        '.grafana.serviceMonitor.path=/grafana/metrics' \
+        '.grafana.readinessProbe.httpGet.path=/grafana/api/health' || return 1
       # A port-forward presents no matching Host header, so a hostname here
       # would route nothing. The prefix must also agree with root_url above.
       local route="$dir/HTTPRoute__observability__grafana.yaml"

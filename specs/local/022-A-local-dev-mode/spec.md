@@ -111,6 +111,14 @@ integration, which is spec 024's job.
     operator to forward — the two are one setting split across two files, and
     the render check pins both ends so they cannot drift apart.
 
+    `serve_from_sub_path` moves **every** path, not only the UI. Grafana's
+    `ServiceMonitor` path and its readiness probe MUST be moved under the
+    prefix with it. Left alone, both receive a 301 to an absolute URL naming
+    the operator's forwarded port: Prometheus reports the Grafana target
+    `down`, and the probe passes on the redirect without ever reaching the
+    health endpoint, which makes it vacuous rather than merely misrouted.
+    Both were observed on a live kind cluster.
+
     **Argo CD takes the root prefix.** `server.rootpath` moves its API and its
     redirects, but the UI keeps `<base href="/">`, so every relative asset
     resolves to the root and returns 404; `server.basehref` does not change
