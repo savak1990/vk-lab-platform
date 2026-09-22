@@ -378,6 +378,12 @@ argo-watch-check:
 pr-gate-check:
 	@./tests/scripts/pr-gate-test.sh
 
+## Reads argo-up.sh and asserts every provider dispatch names every supported
+## provider, so no target can reach a `*)` mid-bring-up. Needs no cloud.
+## Usage: make argo-up-dispatch-check
+argo-up-dispatch-check:
+	@./tests/scripts/argo-up-dispatch-test.sh
+
 ## Generates throwaway secrets/$(PROJECT_NAME)/ files for a CI/test
 ## environment: root-domain from ROOT_DOMAIN and fixed, publicly-known
 ## passwords ("test"). Never use this for the personal lab - persistent-up

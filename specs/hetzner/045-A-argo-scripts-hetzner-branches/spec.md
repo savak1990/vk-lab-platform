@@ -1,7 +1,7 @@
 ---
 id: "HETZ-045"
 title: "argo-up Hetzner branch: hcloud Secret, CCM helm install, taint wait, root Application, LB/DNS waits"
-status: "READY"
+status: "IN_REVIEW"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -14,7 +14,7 @@ depends_on: ["HETZ-016", "HETZ-040", "HETZ-050"]
 blocked_by: []
 supersedes: []
 created: "2026-09-11"
-updated: "2026-09-20"
+updated: "2026-09-22"
 completed: ""
 ---
 
@@ -151,3 +151,79 @@ none beyond the dump gate, which fails closed.
   flannel's VXLAN rather than Cilium's; the Cilium chart pin is gone; and the
   autoscaler Secrets that follow `wait_for_nodes_initialized` belong to
   HETZ-170 now that HETZ-165 is retired.
+- 2026-09-22 — implemented offline; status `IN_REVIEW`, folder renamed to
+  `045-A-argo-scripts-hetzner-branches`. **The live cycle has not run**, so §13
+  stays open: this entry records the code, not its acceptance.
+  - **§3's central claim is false.** It asserts that after HETZ-016 the
+    non-aws branches read `[ "$PROVIDER" != aws ]` and the functions carry no
+    `civo_` prefix. Neither happened. The guards are named-provider by
+    deliberate choice — `argo-up.sh:194-198` and `:322-329` both carry a
+    comment explaining that `local` must not inherit the AWS call — and
+    `civo_resolve_inputs`, `civo_wait_for_lb_ip`, `civo_wait_for_dns` and
+    `civo_install_root_application` all still carry the prefix. This spec was
+    therefore written against a generalised surface that does not exist. The
+    implementation follows the shape actually in the tree: `hetzner_*`
+    siblings plus a named arm in each `case`.
+  - **Every §3 and §4 line citation was stale**, by 50 to 85 lines. HETZ-016
+    and four later merges moved them.
+  - **Four dispatch points, not the two §4 implies.** `PROVIDER=hetzner` hit a
+    `*)` arm and exited 1 at the input resolver, the fast-path DNS wait, the
+    root Application installer and the final DNS wait.
+    `tests/scripts/argo-up-dispatch-test.sh` now pins the invariant, and run
+    against the pre-merge script it reports exactly those four.
+  - **No `wait_for_lb_ip` and no DNS wait, deliberately.** §4 asks for a
+    generalised `wait_for_lb_ip`, but
+    `gitops/templates/platform/shared/envoy-gateway/gateway.yaml:17` gates
+    `EnvoyProxy` and `Gateway` on `aws|civo|local`, so this target renders a
+    `GatewayClass` and nothing else: no Service to carry a load balancer
+    address and no record to resolve. A wait against an object that does not
+    render passes vacuously, which is the defect HETZ-050 had just removed
+    from `REQUIRED_OBJECTS_HETZNER`. Both switches get an arm that says so and
+    returns 0. §2 already assigns the load balancer to HETZ-060, which is
+    where the wait belongs, together with the hetzner arms of
+    `platform.envoyServiceSpec` and `platform.envoyListeners`.
+  - **`scripts/lib/versions.sh` does not exist**, so §5's instruction to pin
+    the CCM chart "next to the Argo CD chart version" resolves to
+    `argo-up.sh:18`, inline, beside `ARGOCD_CHART_VERSION`. One constant does
+    not earn a new file.
+  - **The chart's defaults already satisfy two of §4's `--set` values**:
+    `env.HCLOUD_TOKEN` reads Secret `hcloud` key `token` and
+    `networking.network` reads key `network`. Only `networking.enabled`,
+    `clusterCIDR` and `HCLOUD_NETWORK_ROUTES_ENABLED` are set. `clusterCIDR`
+    is `10.42.0.0/16` because the control plane passes no `--cluster-cidr`
+    (`control-plane.yaml.tftpl:37-51`) and so takes k3s's own default, not the
+    chart's Flannel-oriented `10.244.0.0/16` — the chart default would have
+    been silently wrong.
+  - **A latent failure at the last step of every hetzner run.**
+    `backup_publish_server_name` ran for every target but `local`, and calls
+    `put-parameter --value "$BACKUP_SERVER_NAME"`. This target mints no server
+    name, and SSM rejects an empty value, so a bring-up that had otherwise
+    fully succeeded would have exited non-zero at its final statement. The
+    guard is now keyed on a non-empty `BACKUP_BUCKET`, which is the condition
+    that actually decides whether there is anything to record or prune.
+    Behavior for aws, civo and local is unchanged. (An earlier reading of this
+    defect blamed an empty `BACKUP_SSM_LAYER`; that was wrong —
+    `provider.sh:36` gives hetzner the layer `persistent`, and the empty one at
+    `:27` belongs to `local`.)
+  - **Nine SSM names plus the network id is exactly ten**, the
+    `get-parameters` cap, so `hetzner_resolve_inputs` makes one call and reuses
+    the aws-side `ssm_output` lookup rather than copying civo's batching loop.
+    A comment records the ceiling: an eleventh name needs that loop, and
+    HETZ-060 and HETZ-170 will each add one.
+  - **`firewall_id`, `ssh_key_id` and `envoyGateway.location` are not read or
+    passed**, though §4 lists them. Each would cost a default in
+    `gitops/bootstrap/values.yaml`, an unconditional `| quote`'d entry in
+    `root-application.yaml` and a key in `gitops/values.yaml`, to carry a value
+    nothing consumes until HETZ-060 and HETZ-170.
+  - **Backups are off on this target** (`postgres.backup.enabled=false`). There
+    is no `persistent-hetzner/backups` unit; HETZ-115 and HETZ-120 own it.
+  - Verified offline: `bash -n` clean; `shellcheck` findings byte-identical to
+    `origin/main` (no new warnings); `make -n argo-up` and `make -n status`
+    identical to `origin/main` for aws, civo and local; `make gitops-check` and
+    `make specs-check` green; the new dispatch test passes and was proved to
+    fail both with a hetzner arm removed and against the pre-merge script.
+  - Not touched, recorded here so it is not mistaken for an oversight:
+    `scripts/lib/argo-watch.sh` gates its per-node and load-balancer progress
+    reporting on `civo` at six places (`:70,175,195,219,228,261`), so hetzner
+    gets degraded watch output. Cosmetic, and a separate diff. `argo-down.sh`
+    is HETZ-047's.

@@ -114,7 +114,7 @@ data risk.
 
 - [x] Golden diffs empty for aws and civo
 - [x] Hetzner render validated offline
-- [ ] Index updated; status `DONE`
+- [x] Index updated; status `DONE`
 
 ## 14. Execution evidence and status history
 

@@ -444,8 +444,9 @@ jobs:
   # against the committed golden baseline, specs-check verifies the specs/
   # layout and its links, secrets-check exercises secret-encrypt/decrypt
   # path resolution against a fake aws, node-config-check pins which
-  # PROVIDER/REGION pairs the offline gate accepts, and pr-gate-check runs
-  # pr-gate's own decision step against label and job-result combinations.
+  # PROVIDER/REGION pairs the offline gate accepts, pr-gate-check runs
+  # pr-gate's own decision step against label and job-result combinations, and
+  # argo-up-dispatch-check asserts no target can fall through a provider case.
   # All run with no AWS credentials at all, which is what lets them sit in
   # fast validation.
   validate-repo:
@@ -480,6 +481,8 @@ jobs:
       # which is where secrets-check, argo-watch-check, node-config-check and
       # pr-gate-check now run, rather than as four steps of their own.
       - run: make scripts-check
+
+      - run: make argo-up-dispatch-check
 
   # Both providers at once, each an independent up -> test -> down chain.
   #
