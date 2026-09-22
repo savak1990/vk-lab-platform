@@ -25,9 +25,8 @@ Actions, not just a workstation.
 
 The four targets below are not equally far along: `aws` is complete, `civo`
 (ADR 0027) is complete through its first milestone, and `local` (ADR 0038)
-brings up Argo CD and the operators but still gates off Postgres, the
-Gateway and observability until spec LOCAL-050 — see
-[Running locally on kind](#running-locally-on-kind).
+brings up Argo CD, the operators, the Gateway, Postgres and observability —
+see [Running locally on kind](#running-locally-on-kind) and spec LOCAL-022.
 
 `hetzner` (ADR 0036, ADR 0037) is in progress. `make full-up` brings up the
 k3s cluster, the cloud controller manager, the CSI driver, Argo CD, the
@@ -292,7 +291,7 @@ never a substitute for the `aws`-target lifecycle test.
 **What renders today.** Argo CD, plus the Envoy Gateway, CloudNativePG operator
 and External Secrets Applications. Postgres, the Gateway itself, path-based
 routes and the observability stack are still gated off for this target and land
-in spec LOCAL-050. See [`specs/local/`](specs/local/) and
+in spec LOCAL-022. See [`specs/local/`](specs/local/) and
 [`docs/adr/0038-local-target-on-the-provider-command-surface.md`](docs/adr/0038-local-target-on-the-provider-command-surface.md).
 
 ### Running more than one lab

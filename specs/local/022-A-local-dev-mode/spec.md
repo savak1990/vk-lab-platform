@@ -92,7 +92,7 @@ integration, which is spec 024's job.
    `<pending>` indefinitely on kind, which has no cloud load-balancer
    implementation, and no MetalLB or `cloud-provider-kind` substitute is used
    (ADR 0006 alternative d, carried forward by ADR 0038).
-10. The `local` target's `HTTPRoute`s MUST match by **path** (`/argocd`,
+10. The `local` target's `HTTPRoute`s MUST match by **path** (`/` for Argo CD,
     `/grafana`) and MUST omit `hostnames` entirely. Every other target MUST
     continue matching by hostname. This is a permanent, accepted divergence in
     route-matching *kind*: a forward to `localhost:PORT` cannot present the
@@ -100,9 +100,16 @@ integration, which is spec 024's job.
 
     A `URLRewrite` filter stripping the prefix MUST NOT be used. Instead, a
     component that can serve itself from a subpath gets its own prefix and
-    receives it unrewritten — Grafana through `GF_SERVER_ROOT_URL` and
-    `serve_from_sub_path`. A component that cannot MUST take the root prefix
+    receives it unrewritten. A component that cannot MUST take the root prefix
     rather than be forced under one.
+
+    **Grafana, as implemented.** `grafana.ini`'s `server.root_url` and
+    `server.serve_from_sub_path`, set in the chart's values rather than through
+    the equivalent `GF_SERVER_ROOT_URL` environment variable, because every
+    other Grafana setting is already expressed there. `root_url` MUST name the
+    same prefix the route matches, and the port the bring-up banner tells the
+    operator to forward — the two are one setting split across two files, and
+    the render check pins both ends so they cannot drift apart.
 
     **Argo CD takes the root prefix.** `server.rootpath` moves its API and its
     redirects, but the UI keeps `<base href="/">`, so every relative asset
@@ -115,7 +122,10 @@ integration, which is spec 024's job.
 
     (Amended 2026-09-21. As first written this requirement mandated the
     `URLRewrite` filter; the first amendment replaced it with `rootpath`,
-    which the live test then disproved.)
+    which the live test then disproved. Amended again 2026-09-22: the path
+    list said `/argocd` while the paragraph below it, added by the same
+    amendment, gives Argo CD the root — and the acceptance criterion said
+    `/argo`. Three spellings, one implementation. The list now matches it.)
 11. The `local` target MUST use plain HTTP. No cert-manager issuer and no TLS
     termination at Envoy MUST be configured for it.
 12. Bring-up MUST create the Kubernetes `Secret` objects the platform needs
@@ -149,12 +159,54 @@ integration, which is spec 024's job.
     `enablePDB: false` MUST reach this target. CloudNativePG creates a
     PodDisruptionBudget even for a single instance, and that budget blocks a
     node from ever draining.
+
+    **Observability, as implemented.** Retention windows and volume sizes live
+    in `gitops/values.yaml` under `observability.profile`, which has a
+    `default` arm and a `local` arm selected by target. `local` holds **6h**
+    of Prometheus series on a **1Gi** claim and **6h** of Loki logs on another
+    **1Gi** claim — 2Gi in total. The cluster is deleted whole at the end of a
+    session, so a longer window costs disk and buys nothing.
+
+    Prometheus's `retentionSize` MUST stay below its claim, so the head block
+    and the write-ahead log still fit. It is also the bound that actually
+    holds: `standard` is backed by `rancher.io/local-path`, which hands out a
+    directory on the node and enforces no size at all, so the claim is nominal
+    and the retention settings are not.
+
+    Loki's `reject_old_samples_max_age` MUST NOT follow `retention_period`
+    down. It bounds how stale an *arriving* line may be, not how long a stored
+    one is kept; at 6h a suspended workstation or a pod whose logs backfill
+    after a restart would have real logs rejected.
+
+    **Resource requests are deliberately not target-varied.** They were
+    measured on live clusters, and the comments recording those measurements
+    say so. A request set below real usage hides the footprint from the
+    scheduler and buys eviction, not headroom. Any change here MUST come from
+    a measurement on kind, not from halving a cloud number.
+
+    **Omitted for `local`, named here as this requirement demands:**
+    Alertmanager (`alertmanager.enabled: false` — nothing pages anyone from a
+    laptop; the `PrometheusRule` still evaluates and a firing alert still
+    shows in Prometheus's own UI); the Grafana `ExternalSecret` and the
+    `ClusterSecretStore` behind it (Requirement 12 creates the credential
+    instead); `grafana-traffic-policy`, the Envoy rate limit and retry budget
+    for the Grafana route (rate-limiting a single operator against their own
+    workstation buys nothing); and the `observability` `RoleBinding` for the
+    E2E suite, which has no kind environment yet. Tempo and the OpenTelemetry
+    Collector are absent on every target, not only this one.
 16. Fast validation (spec 019) MUST render the chart for `target=local`, and
     the structural contract in `scripts/gitops-render-check.sh` MUST be updated
     in the same change as any render change. That contract is what makes a
     silent regression fail.
 17. The `aws` golden render MUST stay byte-identical throughout. That diff is
     the regression guard for the three real targets.
+
+    One narrow exception, added rather than taken silently: a **comment inside
+    a rendered manifest** that a change makes factually false MUST be removed,
+    even though that moves the baseline. Such a diff MUST be comment-line
+    deletions only, and the commit that makes it MUST say so. No object, field
+    or value may move under this exception. (Added 2026-09-22, when un-gating
+    the Grafana route falsified a comment reading "Stays gated".)
 
 ## Implementation hints
 
@@ -167,8 +219,12 @@ integration, which is spec 024's job.
   `volumeBindingMode: WaitForFirstConsumer` already — measured on kind 0.33.0,
   node image v1.37.0. Requirement 7 needs no reclaim-policy override, only the
   name.
-- `platform.metricsServerEnabled` needs a local arm — kind ships no
-  metrics-server, so the observability stack's own must be enabled.
+- ~~`platform.metricsServerEnabled` needs a local arm.~~ It does not: the
+  helper's fall-through reads `observability.metricsServer.enabled`, which is
+  already `true`, and `platform.kubeletInsecureTls` falls through to `true` as
+  well, which is what kind's self-signed kubelet certificates need. Verified by
+  render before any arm was written. Unlike `platform.storageClassName`, whose
+  identical-looking fall-through was wrong, this one reaches the right value.
 - `gateway.yaml` is today a single `if aws … else if civo` chain that
   duplicates the `EnvoyProxy` and `Gateway` wholesale. Adding a third copy is
   the wrong move; factor the shared parts before adding the local arm.
@@ -192,7 +248,8 @@ integration, which is spec 024's job.
   proving Requirement 14. Re-running on an already-healthy cluster must not
   take the idempotency fast path: that re-sync is the loop.
 - `kubectl port-forward` to Envoy Gateway's Service, followed by plain-HTTP
-  requests to `/argo` and `/grafana` on that port, succeeds.
+  requests to `/` (Argo CD) and `/grafana` on that port, succeeds — and
+  Grafana's own assets load, not only its root document.
 - `PROVIDER=local make down` leaves no kind cluster behind, proving
   Requirement 7.
 - Pointing the isolated kubeconfig at a non-local cluster and running a local
