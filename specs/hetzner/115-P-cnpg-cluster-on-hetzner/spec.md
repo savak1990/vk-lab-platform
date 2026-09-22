@@ -183,3 +183,9 @@ values entry; the render check then fails until the set is reverted too.
   Evidence that this spec's own criteria are close: three `hcloud-volumes`
   PVCs bound at 10Gi each (Prometheus, Alertmanager, Loki) with provisioner
   `csi.hetzner.cloud`, and every volume gone after teardown.
+
+- 2026-09-22 — reproduced on HETZ-047's cycle, with the same shape: the
+  pre-teardown backup failed immediately while `ContinuousArchiving=True`
+  and `argo-up` had passed `postgres.backup.enabled=false`. Two cycles
+  running makes this consistent rather than a one-off, so it is a
+  configuration contradiction to find, not a flake to wait out.

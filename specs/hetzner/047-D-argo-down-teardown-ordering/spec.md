@@ -474,3 +474,77 @@ path to persistent state.
   so, and nothing is destroyed. Watch
   `kubectl get deploy -n kube-system hcloud-csi-controller` across
   `applications remaining: none` first, before anything else in the cycle.
+
+- 2026-09-22 — live cycle on three `cx33` in `fsn1`,
+  `TARGET_REVISION=hetz-047-teardown-ordering`. **Both halves are proven, and
+  the sweep is clean for the first time on this target.**
+
+  The decisive observation, from a 5 s poll running beside `argo-down`:
+
+  ```
+  [100s] apps=[external-secrets,hcloud-csi,root]  pvs=4  csi controller Running
+  [106s] apps=[none]                              pvs=2  csi controller Running
+  [111s] apps=[none]                              pvs=1  csi controller Running
+  [123s] apps=[none]                              pvs=0  csi controller Running
+  ```
+
+  Every Application is gone at 106 s, `hcloud-csi` included, and
+  `hcloud-csi-controller` plus all three node pods are still `Running`. Argo
+  deleted the finalizer-less Application without pruning its resources,
+  exactly as the design read. The PV count is the second half of the proof:
+  four volumes deleted in 17 s by a controller that, before this change, was
+  already dead when the wait began. Last cycle the same four sat untouched
+  for over four minutes and went only when `cluster-down` deleted them.
+
+  Consequences, in `argo-down`'s own log: both PVC waits printed "nothing to
+  wait on", the single PV wait returned with **no warning**, and
+  `cluster-down` reported `no leaked disposable-lifecycle resources found`
+  and exited 0. That last line has never appeared on this target before.
+
+  | Criterion | Measured |
+  |---|---|
+  | load balancer gone before the cascade | confirmed against the hcloud API, not the Service object |
+  | `hcloud-csi` controller alive after `applications remaining: none` | yes, with all three node pods |
+  | no PVC left in `cnpg-system` or `observability` | none; the PV wait returned 0 |
+  | `cluster-down` sweep | zero leaks, exit 0 |
+  | eight resource categories after teardown | all clean, Route 53 zone gone |
+  | `helm status hccm -n kube-system` | `deployed` throughout |
+
+  **The `make full-down` criterion, stated precisely.** The command ran
+  `clear-cache`, `argo-down` and `cluster-down` and reached `persistent-down`,
+  which refused with `set CONFIRM_DESTROY=vk-hetzner-lab to confirm`. That is
+  the persistent layer's own confirmation guard, not a failure, and the run
+  script had not exported it. The blocker this spec exists to remove —
+  `cluster-down` exiting non-zero over a leaked volume and halting the chain
+  two layers early — **did not occur**. `persistent-down` and
+  `bootstrap-down` then both completed, rc=0. So all four layers tore down;
+  they took two invocations because of a missing operator confirmation, not
+  because of ordering.
+
+  Two branches of `wait_for_lb_gone()` were exercised directly against the
+  live API rather than left to a future run. With no load balancer present it
+  returned 0 in **1 s** — the no-op a retry or a pre-deleted Service sees.
+  With a token the API rejects, it printed "the hcloud API did not answer"
+  three times and returned **1**, rather than reading an empty response as an
+  empty list. That false pass was real in the first draft of this function
+  and is the same defect class as the label selector corrected above: a check
+  that cannot fail is not a check.
+
+  Timings. Bring-up 17m21s total — `bootstrap-up` 4m17s, `persistent-up`
+  3m10s, `cluster-up` 2m35s, `argo-up` **7m18s**. That last figure is 9
+  minutes below the HETZ-060 cycle for one reason, and it confirms
+  HETZ-070's finding: the issuer matched the certificate stored in SSM, so no
+  DNS-01 reissue ran. Teardown: `argo-down` and `cluster-down` together
+  5m27s against 8m47s last cycle, then `persistent-down` 2m33s and
+  `bootstrap-down` 3m35s.
+
+  One number worth keeping. The Route 53 record wait took 20–25 s from its
+  new position below the load balancer block, against under 10 s from its old
+  one. Both are far inside the 180 s budget, so the reorder is not
+  implicated — but the figure is now measured rather than assumed.
+
+  Reproduced, and not chased: the Postgres pre-teardown backup failed again
+  while `ContinuousArchiving=True` and `postgres.backup.enabled=false`. Two
+  cycles running makes it consistent rather than a one-off, which is useful
+  to HETZ-115.
+

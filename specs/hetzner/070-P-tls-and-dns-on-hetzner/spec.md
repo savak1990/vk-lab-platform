@@ -177,3 +177,13 @@ wrong. Data risk: none.
   Route 53 and public resolvers answered it. cert-manager's own retry cleared
   it with no intervention. Not a defect, but it explains a multi-minute
   stall that looks like one.
+
+- 2026-09-22 — HETZ-047's cycle measures what the issuer finding above
+  costs. The stored certificate and `TLS_ISSUER` matched this time, so no
+  DNS-01 order ran and `argo-up` took **7m18s** against 16m31s on the
+  HETZ-060 cycle. About 9 minutes of a bring-up, every time the issuer
+  changes between cycles.
+
+  The certificate now in SSM is the **staging** one again. A default
+  `make full-up` under `letsencrypt-prod` will reissue and pay that 9
+  minutes.
