@@ -421,6 +421,17 @@ For non-trivial work:
 7. Run validation.
 8. Fix failures before declaring completion.
 9. Record material architecture decisions as ADRs.
+10. Close the spec in the same pull request.
+
+The pull request that finishes a spec MUST carry that spec to `DONE` in the
+same change: front-matter `status` and `completed`, the folder's `D` letter,
+the index row, and the evidence gathered so far. The flip does not wait for
+the merge, and it does not wait for that pull request's own CI result. A pull
+request whose only change is a spec status MUST NOT be opened. An acceptance
+criterion still waiting on a live run is recorded as outstanding in the spec's
+evidence section rather than holding the status back; a review failure returns
+the spec to `IN_PROGRESS`. The full protocol is `specs/civo/README.md`
+(Status protocol).
 
 Do not silently change architecture requirements to make implementation easier.
 

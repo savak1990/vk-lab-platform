@@ -10,7 +10,7 @@ err() { echo "SPECS-CHECK: $*" >&2; fail=1; }
 letter_for() {
   case "$1" in
     DONE) echo D ;;
-    IN_PROGRESS|IN_REVIEW) echo A ;;
+    IN_PROGRESS) echo A ;;
     DRAFT|READY|BLOCKED) echo P ;;
     DEFERRED|SUPERSEDED|CANCELLED) echo Z ;;
     *) echo "?" ;;
@@ -42,7 +42,11 @@ for d in specs/*/[0-9]*; do
   status=$(printf '%s\n' "$fm" | sed -n 's/^status: *"\{0,1\}\([A-Z_]*\)"\{0,1\} *$/\1/p')
   [[ -n "$id" ]] || err "$f: front matter has no id"
   want=$(letter_for "$status")
-  [[ "$want" == "$letter" ]] || err "$d: letter $letter does not match status '${status}'"
+  if [[ "$status" == "IN_REVIEW" ]]; then
+    err "$d: IN_REVIEW is retired - the pull request that finishes a spec sets DONE"
+  elif [[ "$want" != "$letter" ]]; then
+    err "$d: letter $letter does not match status '${status}'"
+  fi
 done
 
 while IFS= read -r f; do
