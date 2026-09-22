@@ -1,7 +1,7 @@
 ---
 id: "SHARED-044"
 title: "NODE_COUNT, NODE_TYPE and REGION as validated operator inputs on every provider"
-status: "IN_PROGRESS"
+status: "IN_REVIEW"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -13,7 +13,7 @@ estimate_confidence: "low"
 depends_on: []
 blocked_by: []
 created: "2026-09-21"
-updated: "2026-09-21"
+updated: "2026-09-22"
 completed: ""
 ---
 
@@ -453,7 +453,14 @@ Once several projects hold live state, renaming a state bucket means migrating
 state that resources depend on, and a mistake there orphans resources nobody
 can destroy.
 
-### 3.12 `lab.yml` workflow inputs
+### 3.12 `lab.yml` workflow inputs — IMPLEMENTED (2026-09-22)
+
+Shipped as specified below. `region`, `node_type` and `node_count` are
+`type: string` with `default: ""`, blank omitted rather than exported empty.
+The lifecycle job receives all three; the `test` job receives `region` only —
+it builds its kubeconfig through the Civo CLI, which is per region, and never
+sizes a node.
+
 
 `.github/workflows/lab.yml` is the operator-facing entry point and MUST expose
 the three values, or they can only be set locally.
