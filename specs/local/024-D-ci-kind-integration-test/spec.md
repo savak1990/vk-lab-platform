@@ -1,9 +1,10 @@
 ---
 id: "LOCAL-024"
-status: "IN_PROGRESS"
+status: "DONE"
 updated: "2026-09-22"
+completed: "2026-09-22"
 ---
-# 023 — CI Kind Integration Test
+# 024 — CI Kind Integration Test
 
 **Complexity:** Medium
 **Risk:** Medium — no AWS resources involved, but it runs PR-controlled workloads (GitOps content) on GitHub-hosted runner compute, so it needs the same fork-safety posture as the AWS-touching workflows.
@@ -24,8 +25,8 @@ Excludes: `minikube`, which ADR 0038 dropped from spec 022 entirely — kind is 
 ## Requirements
 
 1. This job MUST reuse spec 022's `PROVIDER=local make up` unchanged — it MUST NOT introduce a second, divergent way to create the cluster or install Argo CD on kind.
-2. The CI job MUST call the same `make` targets a developer runs rather than re-implementing any of their logic in workflow YAML — it stays a thin wrapper (mirrors spec 016's "thin wrapper" requirement for `lab.yml`). `make test` MUST gain a `local` arm: `configure_test_kubeconfig` today returns 1 for any provider but `aws` and `civo`, so the suite cannot reach a kind cluster without one. A `make test-<service>` target MUST exist for each service that already has a Ginkgo label (spec 023) — do not add one ahead of the corresponding test file landing.
-3. The root Argo Application applied during this test MUST point its `targetRevision` at the pull request's exact commit SHA, not `main` — this is what lets the test validate the PR's actual GitOps content rather than whatever is already on `main`.
+2. The CI job MUST call the same `make` targets a developer runs rather than re-implementing any of their logic in workflow YAML — it stays a thin wrapper (mirrors spec 016's "thin wrapper" requirement for `lab.yml`). `make test` MUST gain a `local` arm: `configure_test_kubeconfig` today returns 1 for any provider but `aws` and `civo`, so the suite cannot reach a kind cluster without one. A `make test-<service>` target MUST exist for each service that already has a Ginkgo label (spec 023) — do not add one ahead of the corresponding test file landing. **Satisfied ahead of this spec, 2026-09-22 (LOCAL-024a).** The `local` arm shipped with the E2E kind environment, so the sentence above is stale on its facts: only `hetzner` still returns 1 (`scripts/lib/provider.sh:389-391`). The suite authenticates as the `e2e/e2e-test` ServiceAccount through a minted token, not as kind's admin. This spec adds no Makefile or script change at all — it is workflow YAML and one composite action.
+3. The root Argo Application applied during this test MUST point its `targetRevision` at the pull request's exact commit SHA, not `main` — this is what lets the test validate the PR's actual GitOps content rather than whatever is already on `main`. **Mechanism recorded 2026-09-22, as this spec's implementation hint asks.** It is split, and the split is easy to miss. The root Application on this target carries no automated sync, so `argo-up.sh` syncs it with `argocd app sync root --local` — from the **working tree**, which on a runner is the pull request's checkout. Its child Applications are ordinary repository consumers and carry `repoURL` + `targetRevision`. The job therefore sets `TARGET_REVISION` to the head SHA as well: left unset, the children would reconcile `main` while the root reflected the pull request, and the run would be green against content nobody proposed.
 4. Tests MUST NOT install Postgres, Kafka, Grafana, or any other platform service themselves. Argo CD MUST be the sole installer, reconciling from the GitOps bootstrap exactly as it does for the `aws` target.
 5. This spec MUST maintain an explicit, current list of AWS-specific integrations it cannot faithfully test — at minimum: NLB, Route 53, ACM, EBS/EFS CSI, Pod Identity, AWS Secrets Manager integration. Any test that would require one of these MUST be skipped here (via spec 023's Ginkgo labels or environment-specific test selection) and left to spec 020 instead — never faked or approximated with a kind-only substitute that could mask a real AWS-side regression.
 6. This job MUST run only in a trusted GitHub context (the same posture as spec 020's full-lifecycle test, constitution §11/architecture.md §30) — even though it touches no AWS resources, it still executes PR-controlled workloads on GitHub-hosted runner compute, which is exactly the abuse vector (e.g. cryptomining via a malicious Kubernetes workload) those existing restrictions exist to prevent. It MUST NOT run via `pull_request_target` on untrusted PR code.
@@ -48,3 +49,66 @@ Excludes: `minikube`, which ADR 0038 dropped from spec 022 entirely — kind is 
 - A fork-originated, untrusted pull request does not trigger this workflow or gain access to any credential it might otherwise need — confirmed by inspecting the workflow's trigger/permissions configuration and observing a fork PR's run (or non-run).
 - Pushing a second commit to an open PR cancels the first `kind-integration.yml` run in favor of the new one (Requirement 7) — confirmed by observing the workflow run history for that PR.
 - Deliberately triggering a check this spec has flagged as AWS-only (Requirement 5, e.g. a Pod Identity assertion) is confirmed absent from this workflow's test selection — it only runs in spec 020.
+
+## Execution evidence and status history
+
+- 2026-09-22 — LOCAL-024a. The E2E suite gains a kind environment and
+  `PROVIDER=local make test` works, which satisfies Requirement 2 before this
+  spec is built. See the note on that requirement.
+- 2026-09-22 — LOCAL-024b. The `kind-integration` job. DONE.
+
+### What was built, and the one design decision in it
+
+This job is **not** a caller of `lifecycle-provider.yml`, and that is the only
+real decision here. That reusable workflow puts `up`, `test` and `down` on
+three separate runners, which is right for a cloud cluster and impossible for a
+kind one: the cluster dies with the job that created it. So `kind-integration`
+is one inline job, and teardown is an `if: always()` **step**.
+
+The spec's own hint anticipated this (Requirement 6's bullet). It leaks nothing
+either way — a kind cluster cannot outlive its runner. `make down` stays
+because it is the only coverage `scripts/cluster-down-local.sh` will ever get,
+and it is a separate step so that a teardown fault cannot hide a test fault.
+`make down` on this target takes no `CONFIRM_DESTROY`.
+
+The job is judged by `pr-gate` as a **lifecycle** result, not a validation one,
+so the `expected 6 validation results` literal does not move; the results loop
+gains a third entry instead.
+
+`local` joined `AVAILABLE`, so `ci:lifecycle` with no selector now runs three
+targets. What had kept that default at two was cost, and a kind run spends
+neither money nor a cloud quota, so the argument does not reach it. `ci:hetzner`
+is now the only refused selector. ADR 0035 carries a dated amendment.
+
+### Requirement 5 — what this job still cannot test
+
+Unchanged and still current. NLB, Route 53, ACM, EBS/EFS CSI, EKS Pod Identity
+and AWS Secrets Manager integration have no kind equivalent. None is faked
+here; all remain spec 020's. On this target the gateway is a `ClusterIP`
+reached through a port-forward, storage is `rancher.io/local-path`, and the
+Postgres backup surface is gated off entirely.
+
+### Acceptance criteria, as measured
+
+| Criterion | Result |
+|---|---|
+| `make scripts-check` (`pr-gate-test.sh`, 38 cases) | pass — the 17 that had to change were watched failing first |
+| `actionlint`, every workflow and action | clean; it caught an SC2066 one-element loop left by the refusal list shrinking |
+| kind and argocd checksum pipelines | run against the real downloads, both `OK`; a tampered binary is refused |
+| Pins match the measured local toolchain | kind 0.33.0, argocd 3.5.3 — the versions spec 022 was measured on |
+| Pinning kind pins the Kubernetes version too | confirmed: 0.33.0 embeds `kindest/node:v1.37.0` as its default, which is what spec 022 measured. No `KIND_NODE_IMAGE` is set, and none is needed |
+| Fork safety (acceptance 3) | the `if:` requires `head.repo.full_name == github.repository`; no credential is issued to this job at all |
+| Requirement 7, `cancel-in-progress: true` | set, per pull request rather than a shared group |
+
+**Outstanding, pending the first live run on this pull request.** The pull
+request that adds this job can run it, but not by itself: `.github/` is on the
+`infra` path list, which makes the lifecycle check **required** rather than
+makes the job **start**. Starting it still takes the `ci:lifecycle` label, like
+any other lifecycle run.
+
+| Criterion | Status |
+|---|---|
+| The job reaches a healthy platform and a green suite on a runner | outstanding |
+| Cold-cache bring-up time against the 1800s children budget | outstanding — 496s was a laptop with a warm cache |
+| A deliberate `gitops/` break fails the job on that break, not on a timeout (acceptance 2) | outstanding |
+| A second commit cancels the first run (acceptance 4) | outstanding |
