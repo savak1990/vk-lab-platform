@@ -307,3 +307,16 @@ none beyond the dump gate, which fails closed.
   - Operator note: Argo syncs `gitops/` from the GitHub repository, not from
     the working tree, so testing an unmerged change to that tree needs
     `TARGET_REVISION=<branch>` on `argo-up`.
+- 2026-09-22 — teardown, same cycle. `argo-down` needed no change for this
+  target: it skipped the load-balancer wait with "no NLB Service present in
+  envoy namespace", drained every Application through the foreground cascade
+  and removed Argo CD. It warned that two PVs had not finished deleting inside
+  its 180 s budget and said the sweep would catch them, which is what happened.
+  `cluster-down` destroyed 9 + 2 resources, found one surviving Hetzner volume,
+  deleted it, and exited 2 rather than absorbing it. That is the designed
+  behaviour and it is also the strongest evidence for HETZ-050's
+  `volumeExtraLabels`: the sweep selects on `project=`, so an unlabelled volume
+  would have outlived the cluster unseen. Final check: server, volume,
+  load-balancer, primary-ip and firewall all empty; only the persistent network
+  and SSH key remain, as they must. No token or private key appeared in any
+  transcript.
