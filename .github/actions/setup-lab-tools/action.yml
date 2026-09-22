@@ -22,6 +22,19 @@ inputs:
       validation job needs it while no lifecycle job does.
     required: false
     default: "false"
+  kind:
+    description: >-
+      Install kind. Only the local target creates a cluster with it, and the
+      pin also pins the node image: kind picks the one it was built against.
+    required: false
+    default: "false"
+  argocd:
+    description: >-
+      Install the Argo CD CLI. The local target's root Application carries no
+      automated sync, so argo-up.sh syncs it with `argocd app sync --local` and
+      requires the CLI outright.
+    required: false
+    default: "false"
   scope:
     description: >-
       full installs everything a terragrunt/argo job needs. test installs only
@@ -103,6 +116,30 @@ runs:
         echo "${YQ_SHA256}  yq" | sha256sum -c -
         chmod +x yq
         sudo mv yq /usr/local/bin/yq
+
+    # Pinned to the version the local target was measured on, so a CI run and
+    # a laptop run create the same cluster.
+    - name: Set up kind
+      if: inputs.kind == 'true'
+      shell: bash
+      run: |
+        KIND_VERSION=0.33.0
+        curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors -o kind "https://github.com/kubernetes-sigs/kind/releases/download/v${KIND_VERSION}/kind-linux-amd64"
+        curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors -o kind.sha256sum "https://github.com/kubernetes-sigs/kind/releases/download/v${KIND_VERSION}/kind-linux-amd64.sha256sum"
+        awk '{print $1 "  kind"}' kind.sha256sum | sha256sum -c -
+        chmod +x kind
+        sudo mv kind /usr/local/bin/kind
+
+    - name: Set up the Argo CD CLI
+      if: inputs.argocd == 'true'
+      shell: bash
+      run: |
+        ARGOCD_VERSION=3.5.3
+        curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors -o argocd "https://github.com/argoproj/argo-cd/releases/download/v${ARGOCD_VERSION}/argocd-linux-amd64"
+        curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors -o cli_checksums.txt "https://github.com/argoproj/argo-cd/releases/download/v${ARGOCD_VERSION}/cli_checksums.txt"
+        grep ' argocd-linux-amd64$' cli_checksums.txt | awk '{print $1 "  argocd"}' | sha256sum -c -
+        chmod +x argocd
+        sudo mv argocd /usr/local/bin/argocd
 
     # shellcheck publishes no checksum file, so the digest is pinned here
     # directly, the same way yq's is.

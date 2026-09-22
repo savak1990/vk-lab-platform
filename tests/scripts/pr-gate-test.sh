@@ -35,7 +35,7 @@ run() {
       INFRA_FILES=gitops/values.yaml \
       R_TERRAFORM=success R_GITOPS=success R_YAML=success \
       R_ACTIONS=success R_SECRETS=success R_REPO=success \
-      LIFECYCLE_AWS=skipped LIFECYCLE_CIVO=skipped \
+      LIFECYCLE_AWS=skipped LIFECYCLE_CIVO=skipped KIND_INTEGRATION=skipped \
       EVENT_NAME=pull_request \
       HEAD_REPO=owner/repo GITHUB_REPOSITORY=owner/repo \
       TRIGGERED=false WANTS_SKIP=false WANTS_AWS=false WANTS_CIVO=false \
@@ -67,19 +67,19 @@ run "a selector alone starts nothing" 1 "needs the lifecycle check" \
 
 # --- ci:lifecycle, with and without selectors -------------------------------
 
-run "ci:lifecycle alone runs every provider" 0 "civo: came up" \
-  TRIGGERED=true WANTS_AWS=true WANTS_CIVO=true \
-  LIFECYCLE_AWS=success LIFECYCLE_CIVO=success
+run "ci:lifecycle alone runs every provider" 0 "local: came up" \
+  TRIGGERED=true WANTS_AWS=true WANTS_CIVO=true WANTS_LOCAL=true \
+  LIFECYCLE_AWS=success LIFECYCLE_CIVO=success KIND_INTEGRATION=success
 run "ci:lifecycle alone, aws fails" 1 "the aws lifecycle did not pass" \
-  TRIGGERED=true WANTS_AWS=true WANTS_CIVO=true \
-  LIFECYCLE_AWS=failure LIFECYCLE_CIVO=success
-run "ci:lifecycle + ci:civo runs civo only" 0 "Not exercised: aws" \
+  TRIGGERED=true WANTS_AWS=true WANTS_CIVO=true WANTS_LOCAL=true \
+  LIFECYCLE_AWS=failure LIFECYCLE_CIVO=success KIND_INTEGRATION=success
+run "ci:lifecycle + ci:civo runs civo only" 0 "Not exercised: aws local" \
   TRIGGERED=true WANTS_CIVO=true LIFECYCLE_CIVO=success
 run "ci:lifecycle + ci:civo, civo fails" 1 "the civo lifecycle did not pass" \
   TRIGGERED=true WANTS_CIVO=true LIFECYCLE_CIVO=failure
-run "ci:lifecycle + ci:aws runs aws only" 0 "Not exercised: civo" \
+run "ci:lifecycle + ci:aws runs aws only" 0 "Not exercised: civo local" \
   TRIGGERED=true WANTS_AWS=true LIFECYCLE_AWS=success
-run "ci:lifecycle + both selectors" 0 "aws: came up" \
+run "ci:lifecycle + both selectors" 0 "Not exercised: local" \
   TRIGGERED=true WANTS_AWS=true WANTS_CIVO=true \
   LIFECYCLE_AWS=success LIFECYCLE_CIVO=success
 # The case result-inference could not tell apart from an unlabelled pull
@@ -95,7 +95,15 @@ run "ci:lifecycle + ci:aws on a non-infrastructure change, aws fails" 1 "the aws
 
 run "ci:lifecycle + ci:hetzner, which has no job" 1 "no hetzner lifecycle job exists" \
   TRIGGERED=true WANTS_HETZNER=true
-run "ci:lifecycle + ci:local, which has no job" 1 "no local lifecycle job exists" \
+
+# --- the kind job, which costs nothing and so is judged like the clouds -----
+
+run "ci:lifecycle + ci:local runs kind only" 0 "Not exercised: aws civo" \
+  TRIGGERED=true WANTS_LOCAL=true KIND_INTEGRATION=success
+run "ci:lifecycle + ci:local, kind fails" 1 "the local lifecycle did not pass" \
+  TRIGGERED=true WANTS_LOCAL=true KIND_INTEGRATION=failure
+# The same state an unlabelled pull request reports, and only one may merge.
+run "kind selected but its job never ran" 1 "the local lifecycle did not pass" \
   TRIGGERED=true WANTS_LOCAL=true
 
 # --- the waiver -------------------------------------------------------------
@@ -113,7 +121,11 @@ run "skip label alone" 0 "WAIVED" \
 run "a failed validate job" 1 "validate-gitops did not pass" \
   R_GITOPS=failure
 run "workflow_dispatch runs every provider" 0 "lifecycle passed" \
-  EVENT_NAME=workflow_dispatch LIFECYCLE_AWS=success LIFECYCLE_CIVO=success
+  EVENT_NAME=workflow_dispatch LIFECYCLE_AWS=success LIFECYCLE_CIVO=success \
+  KIND_INTEGRATION=success
+run "workflow_dispatch, kind fails" 1 "lifecycle did not pass" \
+  EVENT_NAME=workflow_dispatch LIFECYCLE_AWS=success LIFECYCLE_CIVO=success \
+  KIND_INTEGRATION=failure
 
 # --- the label step in `changes`, which decides what pr-gate is given -------
 
@@ -148,14 +160,24 @@ ALL_OFF='run_aws=false
 run_civo=false
 run_hetzner=false
 run_local=false'
-# Every provider that HAS A JOB. hetzner and local stay false unless a label
-# names them, because the gate refuses a provider with no job - defaulting to
-# them would refuse the commonest case of all.
+# Every provider that HAS A JOB. Only hetzner stays false unless a label
+# names it, because the gate refuses a provider with no job - defaulting to it
+# would refuse the commonest case of all.
 AVAILABLE_ON='run_aws=true
 run_civo=true
 run_hetzner=false
-run_local=false'
+run_local=true'
 CIVO_ONLY='run_aws=false
+run_civo=true
+run_hetzner=false
+run_local=false'
+LOCAL_ONLY='run_aws=false
+run_civo=false
+run_hetzner=false
+run_local=true'
+# Naming every cloud explicitly is not the same as naming nothing: the default
+# reaches for local too, two selectors ask for exactly what they name.
+CLOUDS_ONLY='run_aws=true
 run_civo=true
 run_hetzner=false
 run_local=false'
@@ -165,7 +187,8 @@ labels "a selector alone is inert" "$ALL_OFF" '["ci:aws"]'
 labels "two selectors alone are inert" "$ALL_OFF" '["ci:aws","ci:civo"]'
 labels "ci:lifecycle alone selects the providers that have jobs" "$AVAILABLE_ON" '["ci:lifecycle"]'
 labels "ci:lifecycle + ci:civo selects civo" "$CIVO_ONLY" '["ci:lifecycle","ci:civo"]'
-labels "ci:lifecycle + two selectors" "$AVAILABLE_ON" '["ci:lifecycle","ci:aws","ci:civo"]'
+labels "ci:lifecycle + ci:local selects local" "$LOCAL_ONLY" '["ci:lifecycle","ci:local"]'
+labels "ci:lifecycle + two selectors" "$CLOUDS_ONLY" '["ci:lifecycle","ci:aws","ci:civo"]'
 # Naming a provider with no job is an explicit request, and stays visible so
 # the gate can refuse it. Only the default avoids reaching for these.
 labels "ci:lifecycle + ci:hetzner keeps the request visible" 'run_aws=false
@@ -209,12 +232,15 @@ compose() {
   run "composed: $name" "$want_rc" "$want_text" "${env_args[@]}" "$@"
 }
 
-compose "ci:lifecycle alone, both providers pass" 0 "civo: came up" \
-  '["ci:lifecycle"]' LIFECYCLE_AWS=success LIFECYCLE_CIVO=success
-compose "ci:lifecycle + ci:civo runs civo only" 0 "Not exercised: aws" \
+compose "ci:lifecycle alone, every provider passes" 0 "local: came up" \
+  '["ci:lifecycle"]' LIFECYCLE_AWS=success LIFECYCLE_CIVO=success \
+  KIND_INTEGRATION=success
+compose "ci:lifecycle + ci:civo runs civo only" 0 "Not exercised: aws local" \
   '["ci:lifecycle","ci:civo"]' LIFECYCLE_CIVO=success
-compose "ci:lifecycle + ci:aws runs aws only" 0 "Not exercised: civo" \
+compose "ci:lifecycle + ci:aws runs aws only" 0 "Not exercised: civo local" \
   '["ci:lifecycle","ci:aws"]' LIFECYCLE_AWS=success
+compose "ci:lifecycle + ci:local runs kind only" 0 "Not exercised: aws civo" \
+  '["ci:lifecycle","ci:local"]' KIND_INTEGRATION=success
 compose "ci:lifecycle + ci:hetzner is refused" 1 "no hetzner lifecycle job exists" \
   '["ci:lifecycle","ci:hetzner"]'
 compose "no label at all" 1 "needs the lifecycle check" '[]'

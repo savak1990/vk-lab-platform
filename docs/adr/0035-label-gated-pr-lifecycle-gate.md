@@ -340,6 +340,25 @@ signature of a bring-up that died early, a populated one is something in use.
 - `lab.yml` still has no cleanup-on-failure step. A failed manual dispatch still
   leaves infrastructure standing; the guarantee added here covers CI runs only.
 
+## Amendment: `ci:local` gained its job (2026-09-22)
+
+`kind-integration` now runs the platform on kind, so `ci:local` selects a job
+rather than being refused. Two properties above move with it, and one does not:
+
+- The refusal list holds `ci:hetzner` alone. The rule is unchanged — a selector
+  with no job behind it is still refused rather than ignored.
+- `local` joined the default set, so `ci:lifecycle` with no selector now runs
+  three targets. The reasoning that kept the default narrow was cost: an
+  unwanted cloud run spends money and roughly 25 minutes. A kind run spends
+  neither, so the argument does not reach it.
+- `pr-gate` still reads `(requested, result)` per target and infers nothing.
+  The kind job is judged there exactly like a cloud one.
+
+The teardown guarantee is the one place this target differs. The cloud jobs put
+`down` in its own job because a step-level `always()` does not survive the
+runner being torn down. A kind cluster cannot outlive that runner, so there is
+nothing left to leak and teardown is a step.
+
 ## Related
 
 - ADR 0026 (this ADR reverses its `workflow_dispatch`-only premise, repairs the
