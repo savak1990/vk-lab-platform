@@ -140,6 +140,60 @@ cost ceiling on a monthly basis and are allowed anyway, because the Hetzner
 limit is on server count rather than spend, and a CI run that lives 25 minutes
 costs cents at any of these prices.
 
+### Approximate cost
+
+Prices below are per node per month. They come from `scripts/lib/catalog.sh`,
+which records each figure with its source and date — the AWS Pricing API and
+the Hetzner API on 2026-09-21, Civo from `specs/civo/research.md` on
+2026-09-07. AWS and Civo are USD on demand; Hetzner is EUR gross.
+
+| `PROVIDER` | `NODE_TYPE` | vCPU / RAM | Per node, per month |
+|---|---|---|---|
+| `aws` | `t4g.medium` *(default)* | 2 / 4 GiB | USD 26.86 |
+| `aws` | `t4g.large` | 2 / 8 GiB | USD 53.73 |
+| `aws` | `m6g.large` | 2 / 8 GiB | USD 62.78 |
+| `civo` | `g4s.kube.medium` *(default)* | 2 / 4 GiB | USD 21.73 |
+| `hetzner` | `cx23` | 2 / 4 GiB | EUR 7.85 |
+| `hetzner` | `cx33` *(default)* | 4 / 8 GiB | EUR 12.09 |
+| `hetzner` | `cx43` | 8 / 16 GiB | EUR 22.37 |
+| `hetzner` | `cx53` | 16 / 32 GiB | EUR 42.34 |
+| `hetzner` | `cpx32` | 4 / 8 GiB | EUR 50.81 |
+| `hetzner` | `cpx42` | 8 / 16 GiB | EUR 99.21 |
+
+`m6g.large` costs 17% more than `t4g.large` for identical specs and is kept on
+purpose: `t4g` is burstable and throttles to a 20% baseline once its CPU
+credits run out. It is insurance, never the default.
+
+**A lab left running for a month**, at each provider's default shape:
+
+| `PROVIDER` | Default shape | Nodes | Control plane | Total |
+|---|---|---|---|---|
+| `aws` | 1 × `t4g.medium` | USD 26.86 | USD 73.00 | **~USD 100** |
+| `civo` | 3 × `g4s.kube.medium` | USD 65.19 | free | **~USD 65** |
+| `hetzner` | 3 × `cx33` | EUR 36.27 | — | **~EUR 36** |
+
+EKS charges USD 0.10 per cluster per hour whatever the node count, which is
+why the smallest AWS lab still costs more than the largest Civo one. Civo
+gives the k3s control plane away. Hetzner sells no managed Kubernetes, so its
+control plane *is* the first of the three nodes and is already counted — see
+`NODE_COUNT` above.
+
+**Not in those totals**, and unavoidable on any target:
+
+- The load balancer — an AWS NLB, a Civo load balancer at USD 10.86 per month,
+  or a Hetzner one. Plus one IPv4 per Hetzner node at EUR 0.50 per month.
+- Block storage for Postgres — Civo charges USD 0.11 per GB per month.
+- The AWS-side resources every target keeps in `eu-west-1`: the Route 53 zone,
+  the state and backup S3 buckets, SSM parameters and the shared KMS key. Tens
+  of cents per month, and they survive `make down` by design.
+- Karpenter workload capacity on AWS, capped at roughly two medium nodes.
+
+**The monthly figure is the wrong one to plan against.** This platform is
+built to be destroyed: `make down` removes everything disposable and leaves
+only the cheap persistent tail. The measured number that matters is the
+lifecycle run — about 55 minutes across both clouds for a little under one US
+dollar.
+
 ### Worked examples
 
 ```sh
