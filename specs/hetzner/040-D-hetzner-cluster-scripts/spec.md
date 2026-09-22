@@ -1,7 +1,7 @@
 ---
 id: "HETZ-040"
 title: "Cluster scripts for Hetzner: hcloud helpers, SSH helper, kubeconfig fetch, node-Ready wait, existence proof, node-ssh, label-based leak sweep"
-status: "IN_REVIEW"
+status: "DONE"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -14,8 +14,8 @@ depends_on: ["HETZ-017", "HETZ-030"]
 blocked_by: []
 supersedes: []
 created: "2026-09-11"
-updated: "2026-09-20"
-completed: ""
+updated: "2026-09-22"
+completed: "2026-09-22"
 ---
 
 # HETZ-040 — Cluster scripts for Hetzner
@@ -146,10 +146,10 @@ the persistent units, because they live in a separate stack directory.
 
 ## 13. Definition of done
 
-- [ ] Acceptance criteria evidence recorded for hetzner
-- [ ] `make -n` identity for aws and civo recorded
-- [ ] `shellcheck` shows no new warnings
-- [ ] Index updated; status `DONE`
+- [x] Acceptance criteria evidence recorded for hetzner
+- [x] `make -n` identity for aws and civo recorded
+- [x] `shellcheck` shows no new warnings
+- [x] Index updated; status `DONE`
 
 ## 14. Execution evidence and status history
 
@@ -194,3 +194,14 @@ the persistent units, because they live in a separate stack directory.
   layer is a server, volume, load balancer, primary IP or firewall. HETZ-120
   adds persistent volumes on this target, and must narrow the volume leg of
   the sweep before it does.
+- 2026-09-22 — merged as `7771dc9` (PR #56) and closed. The operator ran the
+  live Hetzner cluster cycle after the merge and accepted the result; this
+  entry records that attestation, not evidence collected in the session that
+  wrote it. The offline half of §13 is evidenced in the body of `99a96d7`:
+  `make -n cluster-up cluster-down status` byte-identical to the pre-change
+  baseline on both `aws` and `civo`, and `shellcheck` plus `bash -n` clean on
+  every touched script. Two items in this spec are deliberately left for their
+  own tickets: the `local-path`-versus-`hcloud-volumes` default-class check is
+  a live k3s property that belongs to HETZ-045's acceptance, and the volume leg
+  of the post-destroy sweep must be narrowed by HETZ-120 before persistent
+  volumes exist on this target.
