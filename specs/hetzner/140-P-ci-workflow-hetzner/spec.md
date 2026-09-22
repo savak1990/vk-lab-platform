@@ -157,3 +157,16 @@ Revert the workflow.
 - 2026-09-11 — reviewed and approved by the user; promoted to READY.
 - 2026-09-19 — depends on HETZ-047 (argo-down LB ordering).
 - 2026-09-20 — the token ciphertext is `secrets/hetzner-token.enc`.
+
+- 2026-09-22 — found while HETZ-047 traced the teardown, and it belongs
+  here. `scripts/verify-no-leaks.sh:17-23` accepts only `aws` and `civo`,
+  and exits 2 on anything else. `.github/workflows/lifecycle-provider.yml`
+  calls it with the provider input, so a Hetzner lifecycle run has **no
+  post-teardown leak check at all**. The local sweep in `cluster-down` is
+  not a substitute: it deletes what it finds, and CI needs an independent
+  reader that only reports.
+
+  HETZ-047's `wait_for_lb_gone()` shows the shape the Hetzner arm needs.
+  A label selector cannot be used, because the cloud controller manager
+  labels nothing it creates; match load balancers on the `$PROJECT_NAME-`
+  name prefix and everything else on `project=$PROJECT_NAME`.

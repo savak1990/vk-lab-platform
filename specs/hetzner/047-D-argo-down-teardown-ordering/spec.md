@@ -1,7 +1,7 @@
 ---
 id: "HETZ-047"
-title: "argo-down Hetzner branch: Envoy Service and LB removed before the cascade; CCM release never uninstalled"
-status: "READY"
+title: "argo-down teardown ordering: the load balancer confirmed gone, and the CSI driver kept alive through the cascade"
+status: "DONE"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -14,8 +14,8 @@ depends_on: ["HETZ-045", "HETZ-020"]
 blocked_by: []
 supersedes: []
 created: "2026-09-19"
-updated: "2026-09-20"
-completed: ""
+updated: "2026-09-22"
+completed: "2026-09-22"
 ---
 
 # HETZ-047 — argo-down on Hetzner
@@ -109,21 +109,68 @@ does not touch that guard.
     the CCM observes the Service's deletion before Envoy Gateway's own
     controller Pod is itself pruned in a later wave.
   - `wait_for_lb_gone()` in `scripts/lib/provider.sh`: poll `hcloud
-    load-balancer list -l "project=${PROJECT_NAME}" -o json` every
-    `$POLL_INTERVAL` until the result is `[]`, bounded by
+    load-balancer list -o json`, with **no label selector**, and match
+    the names against `^${PROJECT_NAME}-`. Bounded by
     `HETZNER_LB_GONE_SECONDS` (default 180). On timeout, print the
-    surviving LB names from the last poll and exit 1 — the same
-    "surface, don't absorb" shape the DNS and NLB waits already use.
+    surviving names from the last poll and return 1; the caller exits 1
+    — the same "surface, don't absorb" shape the DNS wait already uses.
+  - **Corrected.** This bullet said `-l "project=${PROJECT_NAME}"`, and
+    that selector cannot work. The cloud controller manager applies no
+    labels to a load balancer it creates, which is exactly why HETZ-060
+    gave `cluster-down`'s sweep its own unlabelled pass. A labelled poll
+    returns `[]` on the first iteration whatever the true state, so the
+    wait would have passed instantly and proved nothing — the same
+    unfalsifiable shape §14 entry 5 caught twice before.
+  - Do not route the poll through `hcloud_list_names`; that helper
+    hardcodes `project=` into its selector.
   - A run where the Envoy Service is already gone (a retry, or a cluster
-    that never got past `argo-up`) sees `hcloud load-balancer list`
-    return `[]` on the first poll — a no-op, not a special case.
-- The Route 53 wait (`:144-171`) is unchanged and unconditional on
-  provider; it runs after the hetzner block above, in its existing
-  position. The cascade (`:230-247`) is unchanged.
-- PVC wait (`:249-273`): its `[ "$PROVIDER" = civo ]` guard widening to
-  `!= aws` is HETZ-016's generalisation, not new work here; this spec
-  relies on that guard existing by the time this branch runs and adds no
-  code of its own to it.
+    that never got past `argo-up`) matches no name on the first poll — a
+    no-op, not a special case.
+- The Route 53 wait is unchanged in content and still unconditional on
+  provider, but the load balancer block moves **above** it, for every
+  provider rather than behind a hetzner branch. §14 entry 6 measured
+  that wait clearing two records in under 10 s against a 180 s budget
+  and concluded it "needs no change"; that measured the *frequency* of a
+  timeout, not its *consequence*. The wait exits 1 on timeout, so an
+  abort there leaves a billing load balancer with live servers and
+  `cluster-down`'s sweep never runs. Route 53 cleanup and load balancer
+  teardown are independent on every target, so one order serves all
+  four and no second branch is introduced.
+- **The CSI driver must outlive the cascade.** The PV wait runs after
+  the cascade block, and the cascade's `kubectl delete --wait` returns
+  only once every child Application is gone — `hcloud-csi` included. A
+  PV with a `Delete` reclaim needs a live CSI controller, so no
+  controller remains to perform it. Before the cascade, on hetzner
+  only, strip the Argo finalizer from that Application:
+
+  ```
+  kubectl patch application hcloud-csi -n argocd --type=merge \
+    -p '{"metadata":{"finalizers":null}}'
+  ```
+
+  Argo then deletes the Application object without pruning its
+  resources, and the controller survives into the wait. The strip must
+  run after the sync-disarm block, or a live `selfHeal` puts the
+  finalizer back. Bring-up is untouched: the Application, its wave `-5`
+  and its `StorageClass` all stay as they are.
+- **Rejected: moving `hcloud-csi` out of Argo**, which §14 entry 6
+  proposed as "the closer parallel" to the CCM. The CCM is an exception
+  for a hard reason — the kubelet taints a new node
+  `node.cloudprovider.kubernetes.io/uninitialized`, k3s CoreDNS does not
+  tolerate that taint, and Argo CD needs cluster DNS to reach its own
+  repository server, so Argo cannot install the controller that makes
+  Argo's own DNS work. No such constraint applies to the CSI driver, and
+  CLAUDE.md puts every Kubernetes controller under Argo CD. Moving one
+  out to fix a teardown-only problem is the larger and the wronger
+  change.
+- The six load balancer messages naming "NLB", and the one naming
+  `aws-load-balancer-controller`, become provider-neutral. §14 entry 6
+  called this cheap to fix while touching that block.
+- The cascade is unchanged.
+- PVC and PV waits: the `!= aws` guard is HETZ-016's generalisation and
+  is unchanged here, as is `ARGO_DOWN_PVC_WAIT_TIMEOUT` at 180s. Both
+  waits stay warning-only. With a live CSI controller they now converge;
+  if they do not, `cluster-down`'s sweep is still the net.
 - `argo-down` never runs `helm uninstall hccm` (or `argocd`
   before the cascade finishes) — the final `helm uninstall` loop at
   `:281-288` names only `root-application` and `argocd`, unchanged by
@@ -134,23 +181,36 @@ does not touch that guard.
 
 ## 5. Files/components affected
 
-`scripts/argo-down.sh`, `scripts/lib/provider.sh` (`wait_for_lb_gone`).
+`scripts/argo-down.sh` — the load balancer block moved above the
+Route 53 wait, its AWS wording made provider-neutral, the
+`wait_for_lb_gone` call added under a hetzner guard, and the
+`hcloud-csi` finalizer strip added before the cascade.
+
+`scripts/lib/provider.sh` — `wait_for_lb_gone()`.
+
+No gitops file changes: the `hcloud-csi` Application, its wave and its
+`StorageClass` are all untouched.
 
 ## 6. Implementation steps
 
-1. Add `wait_for_lb_gone()` to `scripts/lib/provider.sh`.
-2. Add the hetzner branch to `scripts/argo-down.sh`: Gateway + Service
-   delete, then `wait_for_lb_gone`, placed before the existing Route 53
-   wait.
-3. Run `PROVIDER=hetzner make argo-down` against the HETZ-045 baseline
-   with the Envoy Service present; confirm `hcloud load-balancer list`
-   is empty before the cascade's log line and `helm status hccm -n
-   kube-system` stays `deployed` throughout.
-4. Run it again with the Service already deleted by hand; confirm the LB
-   step no-ops.
-5. Point `HETZNER_LB_GONE_SECONDS` at a value shorter than the real wait
-   once, to prove the timeout path prints the surviving LB names and
+1. Add `wait_for_lb_gone()` to `scripts/lib/provider.sh`, matching on
+   the name prefix rather than a label selector.
+2. Move the existing load balancer block above the Route 53 wait, make
+   its wording provider-neutral, and call `wait_for_lb_gone` from it
+   under a hetzner guard.
+3. Add the `hcloud-csi` finalizer strip before the cascade.
+4. **Test the finalizer assumption first.** During the cascade, watch
+   `kubectl get deploy -n kube-system hcloud-csi-controller`. It must
+   still be `Running` after `applications remaining: none`. If it is
+   not, the run reverts to today's behavior and nothing is destroyed.
+5. Confirm the PV wait now returns 0 instead of warning, and that
+   `helm status hccm -n kube-system` stays `deployed` throughout.
+6. Run `argo-down` again with the Service already deleted by hand;
+   confirm the load balancer step no-ops.
+7. Point `HETZNER_LB_GONE_SECONDS` at a value shorter than the real
+   wait once, to prove the timeout path prints the surviving names and
    exits 1.
+8. Run `PROVIDER=hetzner make full-down` end to end.
 
 ## 7. Dependencies and blockers
 
@@ -163,10 +223,20 @@ this spec's own new code (the LB block) does not depend on it at all.
 
 ## 8. Acceptance criteria
 
-- After `PROVIDER=hetzner make argo-down`, `hcloud load-balancer list -l
-  project=$PROJECT_NAME` is `[]` before the cascade's first log line,
-  with timestamps recorded in the run log.
-- No PVC remains in `cnpg-system` or `observability` after the run.
+- After `PROVIDER=hetzner make argo-down`, `hcloud load-balancer list`
+  holds no name starting `$PROJECT_NAME-` before the cascade's first log
+  line, with timestamps recorded in the run log. **Corrected**: this
+  criterion selected on `-l project=$PROJECT_NAME` and was vacuously
+  true, because the cloud controller manager labels nothing.
+- `PROVIDER=hetzner make full-down` completes all four layers. §14
+  entry 4 records "`make full-down` does not complete on this target,
+  and cannot today"; that sentence becoming false is this spec's
+  user-visible outcome, and this is the only criterion that tests the
+  load balancer half and the CSI half together.
+- The `hcloud-csi` controller Deployment is still `Running` after the
+  cascade logs `applications remaining: none`.
+- No PVC remains in `cnpg-system` or `observability` after the run, and
+  the PV wait returns 0 rather than warning.
 - `helm status hccm -n kube-system` reports `deployed` throughout the
   run and after it — `argo-down` never touches the CCM release.
 - `PROVIDER=hetzner make cluster-down`, run immediately after, reports
@@ -345,3 +415,62 @@ path to persistent state.
   balancer was gone **1 s** later, with nothing left for the sweep. The
   window `wait_for_lb_gone()` closes is therefore small in the happy case -
   its value is the slow case, which this run did not produce.
+
+- 2026-09-22 — implemented. The shape the two entries above arrived at is
+  what shipped, with one further correction and one rejection.
+
+  **A fifth false claim, found before any code was written.** §4 and §8
+  criterion 1 both polled `hcloud load-balancer list -l
+  "project=${PROJECT_NAME}"`. The cloud controller manager applies no labels
+  to what it creates — the finding that made HETZ-060 add an unlabelled
+  name-prefix pass to `cluster-down`'s sweep. That selector returns `[]` on
+  the first iteration whatever the true state, so `wait_for_lb_gone()` as
+  specced would have passed instantly and proved nothing, and the criterion
+  measuring it was vacuously true. Both now match `^${PROJECT_NAME}-`. This
+  is the third unfalsifiable criterion this spec has produced; the first two
+  are in entry 5.
+
+  **Entry 6's prescription was rejected, and the reason is architectural.**
+  That entry proposed installing `hcloud-csi` as a helm release, "the way
+  the CCM release already is — the second is the closer parallel". The
+  parallel does not hold. The CCM sits outside Argo because of a hard
+  ordering constraint: the kubelet taints a new node
+  `node.cloudprovider.kubernetes.io/uninitialized`, k3s CoreDNS does not
+  tolerate that taint, and Argo CD needs cluster DNS to reach its own
+  repository server — so Argo cannot install the controller that makes
+  Argo's own DNS work. Nothing equivalent constrains the CSI driver, and
+  CLAUDE.md puts every Kubernetes controller under Argo CD. What shipped
+  instead strips the Argo finalizer from the `hcloud-csi` Application before
+  the cascade, so Argo deletes that object without pruning its resources and
+  the controller survives into the PV wait. Teardown behavior changes;
+  bring-up does not change at all.
+
+  **The Route 53 position was decided rather than inherited.** Entry 6 said
+  that wait "needs no change", having measured it clear two records in under
+  10 s against a 180 s budget. That measured how often it times out, not
+  what a timeout costs. It exits 1, and it ran before the load balancer
+  teardown, so an abort there left a billing load balancer with live servers
+  and no sweep. The block moved above it — for every provider, not behind a
+  hetzner branch, because the two cleanups are independent everywhere and
+  one teardown order across four targets is worth more than a saved test.
+
+  Six messages in that block said "NLB" and one named
+  `aws-load-balancer-controller`, which on this target is `hccm`. All are now
+  provider-neutral, as entry 6 suggested while the block was open.
+  `ARGO_DOWN_NLB_TIMEOUT` became `ARGO_DOWN_LB_TIMEOUT`; nothing outside the
+  script referenced the old name.
+
+  Offline: `shellcheck` clean (one pre-existing SC1091 on a sourced path),
+  `bash -n`, all four script tests, and `make gitops-check` unchanged — no
+  gitops file was touched.
+
+  **Outstanding, and it is the central one.** Every acceptance criterion
+  that needs a cluster is unmet until the live cycle runs. The load balancer
+  half is low risk; the finalizer strip is not, because it rests on Argo
+  deleting a finalizer-less Application without pruning its resources. That
+  reading is corroborated by the codebase already stripping finalizers to
+  change Application deletion behavior, but it is not proven. If it is
+  wrong, the CSI driver is pruned exactly as it is today, the run log says
+  so, and nothing is destroyed. Watch
+  `kubectl get deploy -n kube-system hcloud-csi-controller` across
+  `applications remaining: none` first, before anything else in the cycle.
