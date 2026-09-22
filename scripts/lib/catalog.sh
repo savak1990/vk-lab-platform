@@ -34,7 +34,10 @@
 #   Every one of the four is orderable in all four Civo regions, checked
 #   against `civo size ls` per region on 2026-09-22.
 #
-#   hetzner, EUR/month gross, Hetzner API, 2026-09-21
+#   hetzner, gross (VAT 21%) per month, Hetzner API, 2026-09-21.
+#   GET /v1/pricing reports currency USD for this account, while
+#   Hetzner's public list is EUR; the amounts agree, so only the label
+#   is in doubt (specs/hetzner/research.md).
 #     cx23   2 vCPU /  4 GiB    7.85
 #     cx33   4 vCPU /  8 GiB   12.09   default
 #     cx43   8 vCPU / 16 GiB   22.37

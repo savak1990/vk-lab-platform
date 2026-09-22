@@ -24,10 +24,28 @@ also implemented — the platform can be started/stopped from GitHub
 Actions, not just a workstation.
 
 The four targets below are not equally far along: `aws` is complete, `civo`
-(ADR 0027) is complete through its first milestone, `hetzner` (ADR 0036,
-ADR 0037) is in progress, and `local` (ADR 0038) brings up Argo CD and the
-operators but still gates off Postgres, the Gateway and observability until
-spec LOCAL-050 — see [Running locally on kind](#running-locally-on-kind).
+(ADR 0027) is complete through its first milestone, and `local` (ADR 0038)
+brings up Argo CD and the operators but still gates off Postgres, the
+Gateway and observability until spec LOCAL-050 — see
+[Running locally on kind](#running-locally-on-kind).
+
+`hetzner` (ADR 0036, ADR 0037) is in progress. `make full-up` brings up the
+k3s cluster, the cloud controller manager, the CSI driver, Argo CD, the
+identity chain, Postgres and observability. It has no ingress: this target
+renders no Gateway, no load balancer and no DNS record until spec HETZ-060, so
+reach the platform with `kubectl port-forward` until then.
+
+Measured on 2026-09-22 with the default shape, three `cx33` in `fsn1`: a cold
+`make full-up` from an empty account took 12m50s, and a full teardown took
+about 20 minutes.
+
+`make full-down` does not finish in one run on this target. Argo CD deletes the
+PersistentVolumeClaims, but the CSI driver needs longer than
+`ARGO_DOWN_PVC_WAIT_TIMEOUT` (180s) to detach and delete the volumes behind
+them. `cluster-down` then finds a volume that outlived the cluster, deletes it,
+and exits non-zero on purpose, which stops `make` before `persistent-down` and
+`bootstrap-down` run. Run those two yourself afterwards, or raise
+`ARGO_DOWN_PVC_WAIT_TIMEOUT`. Spec HETZ-047 owns the fix.
 
 ## Usage
 
@@ -138,7 +156,7 @@ copy of each cloud's catalogue.
 | `civo` | `LON1` `NYC1` `FRA1` `MUM1` | `g4s.kube.medium` `g4s.kube.large` `g4m.kube.small` `g4p.kube.small` |
 | `hetzner` | `nbg1` | `cx23` `cx33` `cx43` `cx53` `cpx32` `cpx42` |
 | `hetzner` | `hel1` | `cx23` `cx33` `cpx32` `cpx42` |
-| `hetzner` | `fsn1` | nothing orderable as of 2026-09-21 |
+| `hetzner` | `fsn1` | `cx23` `cx33` `cx43` `cpx32` `cpx42` |
 
 Node types are listed per region because availability differs: `cx43` can be
 ordered in `nbg1` but not `hel1`. All four Civo sizes sell in all four Civo
@@ -156,7 +174,10 @@ out.
 Prices below are per node per month. They come from `scripts/lib/catalog.sh`,
 which records each figure with its source and date — the AWS Pricing API and
 the Hetzner API on 2026-09-21, Civo from <https://www.civo.com/pricing> on
-2026-09-22. AWS and Civo are USD on demand; Hetzner is EUR gross.
+2026-09-22. AWS and Civo are USD on demand. Hetzner is gross, VAT included
+at 21 percent. `GET /v1/pricing` reports `currency: USD` for this account,
+although Hetzner's public price list is in EUR; the amounts agree, so only
+the label is in doubt. See `specs/hetzner/research.md`.
 
 | `PROVIDER` | `NODE_TYPE` | vCPU / RAM | Per node, per month |
 |---|---|---|---|
@@ -167,12 +188,12 @@ the Hetzner API on 2026-09-21, Civo from <https://www.civo.com/pricing> on
 | `civo` | `g4s.kube.large` | 4 / 8 GiB | USD 43.45 |
 | `civo` | `g4m.kube.small` | 2 / 16 GiB | USD 78.21 |
 | `civo` | `g4p.kube.small` | 4 / 16 GiB | USD 86.91 |
-| `hetzner` | `cx23` | 2 / 4 GiB | EUR 7.85 |
-| `hetzner` | `cx33` *(default)* | 4 / 8 GiB | EUR 12.09 |
-| `hetzner` | `cx43` | 8 / 16 GiB | EUR 22.37 |
-| `hetzner` | `cx53` | 16 / 32 GiB | EUR 42.34 |
-| `hetzner` | `cpx32` | 4 / 8 GiB | EUR 50.81 |
-| `hetzner` | `cpx42` | 8 / 16 GiB | EUR 99.21 |
+| `hetzner` | `cx23` | 2 / 4 GiB | USD 7.85 |
+| `hetzner` | `cx33` *(default)* | 4 / 8 GiB | USD 12.09 |
+| `hetzner` | `cx43` | 8 / 16 GiB | USD 22.37 |
+| `hetzner` | `cx53` | 16 / 32 GiB | USD 42.34 |
+| `hetzner` | `cpx32` | 4 / 8 GiB | USD 50.81 |
+| `hetzner` | `cpx42` | 8 / 16 GiB | USD 99.21 |
 
 `m6g.large` costs 17% more than `t4g.large` for identical specs and is kept on
 purpose: `t4g` is burstable and throttles to a 20% baseline once its CPU
@@ -190,18 +211,20 @@ a workload that runs out of memory first, `g4p` for one that runs out of CPU.
 |---|---|---|---|---|
 | `aws` | 1 × `t4g.medium` | USD 26.86 | USD 73.00 | **~USD 100** |
 | `civo` | 3 × `g4s.kube.medium` | USD 65.19 | free | **~USD 65** |
-| `hetzner` | 3 × `cx33` | EUR 36.27 | — | **~EUR 36** |
+| `hetzner` | 3 × `cx33` | USD 36.27 | — | **~USD 38** |
 
 EKS charges USD 0.10 per cluster per hour whatever the node count, which is
 why the smallest AWS lab still costs more than the largest Civo one. Civo
 gives the k3s control plane away. Hetzner sells no managed Kubernetes, so its
 control plane *is* the first of the three nodes and is already counted — see
-`NODE_COUNT` above.
+`NODE_COUNT` above. Each Hetzner node also carries one primary IPv4 at USD
+0.726 gross per month, which the Hetzner total includes and the per-node table
+above does not.
 
 **Not in those totals**, and unavoidable on any target:
 
-- The load balancer — an AWS NLB, a Civo load balancer at USD 10.86 per month,
-  or a Hetzner one. Plus one IPv4 per Hetzner node at EUR 0.50 per month.
+- The load balancer — an AWS NLB, or a Civo load balancer at USD 10.86 per
+  month. Hetzner has none until spec HETZ-060.
 - Block storage for Postgres — Civo charges USD 0.11 per GB per month.
 - The AWS-side resources every target keeps in `eu-west-1`: the Route 53 zone,
   the state and backup S3 buckets, SSM parameters and the shared KMS key. Tens
