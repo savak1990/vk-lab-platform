@@ -287,6 +287,8 @@ machine. It makes no cloud API call and needs no credentials.
 
 ```sh
 PROVIDER=local make up       # ~8 min: kind, Argo CD, then the platform
+PROVIDER=local make listen   # forwards the gateway; open the URLs it prints
+PROVIDER=local make unlisten # stops the forward
 PROVIDER=local make argo-up  # re-sync after you edit gitops/ - see below
 PROVIDER=local make test     # ~10 s: the E2E suite, against this cluster
 PROVIDER=local make down     # ~1 min: deletes the cluster and all its data
@@ -305,9 +307,11 @@ read-only ServiceAccount rather than as admin. `make test-argocd`,
 `make test-grafana` and `make test-postgres` run one service each. The suite
 asks the cluster how to reach a service, so no test knows it is on kind.
 
-**How to reach it.** `make up` prints one `kubectl port-forward` command that
-serves every component on one port, by path: `/` is Argo CD and `/grafana` is
-Grafana, both `admin` / `test`. A port-forward cannot present a Host header, so
+**How to reach it.** `make listen` forwards the gateway in the background and
+prints the URLs: `/` is Argo CD and `/grafana` is Grafana, both `admin` /
+`test`, on one port. `make unlisten` stops it, and `LOCAL_PORT` moves it off
+8080. It works through this repo's own kubeconfig, so it never changes your
+`kubectl` context. A port-forward cannot present a Host header, so
 this target matches routes by path where the cloud targets match by hostname.
 
 **The edit loop is the point.** The root Application syncs from your working

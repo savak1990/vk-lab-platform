@@ -1,4 +1,4 @@
-.PHONY: up down full-up full-down platform-up platform-down state-up state-down status clusters require-valid-project-name require-valid-node-config account-up account-down bootstrap-up bootstrap-down secret-encrypt secret-decrypt secrets-check node-config-check scripts-check generate-secrets ca-init ssh-key-init persistent-up persistent-down clear-cache cluster-up cluster-down kubeconfig node-ssh test-kubeconfig test-kubeconfig-isolated argo-up argo-down test go-check
+.PHONY: up down full-up full-down platform-up platform-down state-up state-down status clusters require-valid-project-name require-valid-node-config account-up account-down bootstrap-up bootstrap-down secret-encrypt secret-decrypt secrets-check node-config-check scripts-check generate-secrets ca-init ssh-key-init persistent-up persistent-down clear-cache cluster-up cluster-down kubeconfig node-ssh test-kubeconfig test-kubeconfig-isolated argo-up argo-down test go-check listen unlisten
 
 .NOTPARALLEL:
 
@@ -249,8 +249,9 @@ endif
 ## civo CLI has no way to name the context directly). On local, exports the
 ## kind cluster's context (kind-$(PROJECT_NAME)) - a bring-up leaves it out of
 ## your kubeconfig entirely, so run this once to get a context to switch to.
-## Note for local: `kind delete cluster` removes that context again on teardown
-## and leaves current-context unset, so reselect your own afterwards.
+## Note for local: teardown works through $(LAB_KUBECONFIG), so a context this
+## target adds here outlives the cluster - delete it yourself, or skip this
+## target entirely and use `make listen`, which needs no context at all.
 ## This target and test-kubeconfig are the only two that write ~/.kube/config
 ## or change your current context. up/down/argo-up/argo-down/cluster-down/
 ## status/test all work through $(LAB_KUBECONFIG) instead, so a bring-up never
@@ -306,6 +307,19 @@ test: test-kubeconfig-isolated
 
 test-%: test-kubeconfig-isolated
 	KUBECONFIG=$(LAB_TEST_KUBECONFIG) go test ./tests/e2e -v -args --context=$(E2E_CONTEXT) $(E2E_TLS_FLAG) --ginkgo.label-filter=$* --ginkgo.v
+
+## Forwards the gateway to localhost in the background so Argo CD and Grafana
+## open in a browser. Works through $(LAB_KUBECONFIG), so it neither reads nor
+## changes your own kubectl context - `make kubeconfig` is not needed first.
+## LOCAL_PORT overrides the port. local only: every other target is on DNS.
+## Usage: PROVIDER=local make listen
+listen:
+	./scripts/listen-local.sh
+
+## Stops the forward `make listen` started. Safe to run when nothing is up.
+## Usage: PROVIDER=local make unlisten
+unlisten:
+	./scripts/unlisten-local.sh
 
 ## Compiles and vets every Go package, and runs the E2E framework's own
 ## offline tests. Needs no cluster and no credentials.

@@ -783,14 +783,11 @@ case "$PROVIDER" in
     # with the platform still starting.
     local_wait_for_children || exit 1
     echo "ARGO-UP: root and every child Synced/Healthy - platform ready."
-    # Envoy's Service name carries a hash, so it is selected by label, the
-    # same way current_nlb_ips does.
-    echo "ARGO-UP: forward the gateway, then reach every component on its own path:"
-    echo "  kubectl port-forward -n envoy \\"
-    echo "    svc/\$(kubectl get svc -n envoy -l gateway.envoyproxy.io/owning-gateway-name=platform-gateway -o jsonpath='{.items[0].metadata.name}') \\"
-    echo "    8080:80"
-    echo "ARGO-UP: Argo CD is then http://localhost:8080 - admin / '$LOCAL_ARGOCD_PASSWORD'."
-    echo "ARGO-UP: Grafana is http://localhost:8080/grafana - admin / '$LOCAL_GRAFANA_PASSWORD'."
+    echo "ARGO-UP: 'make listen' forwards the gateway, and every component is"
+    echo "ARGO-UP: then on its own path behind one port:"
+    echo "ARGO-UP:   Argo CD  http://localhost:8080          admin / '$LOCAL_ARGOCD_PASSWORD'"
+    echo "ARGO-UP:   Grafana  http://localhost:8080/grafana  admin / '$LOCAL_GRAFANA_PASSWORD'"
+    echo "ARGO-UP: 'make unlisten' stops it."
     ;;
   aws)
     aws_wait_for_dns
