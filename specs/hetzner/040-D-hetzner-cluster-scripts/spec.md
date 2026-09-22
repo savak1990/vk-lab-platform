@@ -218,3 +218,18 @@ the persistent units, because they live in a separate stack directory.
   annotation gives the load balancer a `<project>-` prefix, and `cluster-down`
   gains a second pass that matches on it, mirroring the Civo idiom. The
   labelled loop is unchanged and still runs first.
+
+- 2026-09-22 — noted while HETZ-047 read this sweep, not changed here.
+  `cluster-down.sh` has three `exit 1`s and no other failure code: a cluster
+  that exists but is unreachable (`:39`), a root Application still present
+  (`:44`), and leaks found and deleted (`:277`). So "refused to run" and
+  "swept a leak and succeeded" are the same return code, and a caller cannot
+  tell them apart. ADR 0026 makes the third case deliberate — delete
+  immediately, still fail the run — and that part is correct. Only the
+  conflation is the open question, and splitting it is a decision for this
+  spec rather than a teardown-ordering change.
+
+  `LEAK_COUNT` also counts categories, not resources: at most six on this
+  target. It is never decremented, and every delete in the loop is silenced
+  with `|| true`, so a failed delete and a successful one look identical
+  until the next run.

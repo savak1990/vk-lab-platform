@@ -37,16 +37,13 @@ that follow the load balancer's address (spec HETZ-060). The address is
 new on every `make up`, because this target reserves none.
 
 Measured on 2026-09-22 with the default shape, three `cx33` in `fsn1`: a cold
-`make full-up` from an empty account took 12m50s, and a full teardown took
-about 20 minutes.
+`make full-up` from an empty account took 17m21s, and a full teardown 11m35s.
 
-`make full-down` does not finish in one run on this target. Argo CD deletes the
-PersistentVolumeClaims, but the CSI driver needs longer than
-`ARGO_DOWN_PVC_WAIT_TIMEOUT` (180s) to detach and delete the volumes behind
-them. `cluster-down` then finds a volume that outlived the cluster, deletes it,
-and exits non-zero on purpose, which stops `make` before `persistent-down` and
-`bootstrap-down` run. Run those two yourself afterwards, or raise
-`ARGO_DOWN_PVC_WAIT_TIMEOUT`. Spec HETZ-047 owns the fix.
+Two things move those numbers. A bring-up whose `TLS_ISSUER` differs from the
+issuer of the certificate stored in SSM pays a full DNS-01 reissue, about 9
+minutes. And `persistent-down` asks for `CONFIRM_DESTROY=<project>` before it
+destroys the layer that is meant to survive `make down`, so `make full-down`
+stops there unless you export it.
 
 ## Usage
 
