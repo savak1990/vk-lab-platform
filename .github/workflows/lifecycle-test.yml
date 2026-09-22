@@ -482,8 +482,6 @@ jobs:
       # pr-gate-check now run, rather than as four steps of their own.
       - run: make scripts-check
 
-      - run: make argo-up-dispatch-check
-
   # Both providers at once, each an independent up -> test -> down chain.
   #
   # Two explicit jobs rather than one matrix job. A matrix would name its legs
