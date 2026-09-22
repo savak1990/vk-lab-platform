@@ -266,3 +266,26 @@ path to persistent state.
   Timing from the same run, for whoever sizes the budgets: cold `make full-up`
   12m50s, `full-down` 14m14s before it halted, and 6m01s more for the two
   abandoned layers.
+
+- 2026-09-22 — HETZ-060 makes this spec's premise live. Until it merged, this
+  target rendered no Gateway and no Envoy Service, so `argo-down`'s existing
+  provider-generic block (`:238-266`, which selects on
+  `spec.type == LoadBalancer` in namespace `envoy`) always took its else
+  branch and printed "nothing to wait on". Three of this spec's five
+  acceptance criteria were unfalsifiable in that state: 1 and 5 pass trivially
+  against a project that can hold no load balancer, and 4 was failing for the
+  PVC-budget reason above rather than for any load-balancer reason. The first
+  HETZ-060 live cycle is therefore this spec's first real evidence, and what
+  it adds on top is a stronger assertion — `wait_for_lb_gone()` raises the
+  check from "the Service object is gone" to "`hcloud load-balancer list` is
+  empty", closing the window in which the Service disappears before the
+  Hetzner API has finished.
+
+  One failure this spec does not cover, recorded so it is not mistaken for
+  covered: `argo-down`'s Route 53 record wait (`:203-237`) runs *before* the
+  Envoy Service deletion and exits 1 on timeout. It was inert while no
+  ExternalDNS record existed on this target; HETZ-060 makes it load-bearing.
+  An abort there leaves a load balancer whose servers are still running, and
+  `cluster-down`'s sweep — including the name-prefix pass HETZ-060 adds — never
+  runs at all, because `make` stops the chain. Measure that wait on the first
+  HETZ-060 cycle before deciding whether it needs reordering.

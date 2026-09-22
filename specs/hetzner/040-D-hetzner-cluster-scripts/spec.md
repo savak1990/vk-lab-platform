@@ -205,3 +205,16 @@ the persistent units, because they live in a separate stack directory.
   a live k3s property that belongs to HETZ-045's acceptance, and the volume leg
   of the post-destroy sweep must be narrowed by HETZ-120 before persistent
   volumes exist on this target.
+
+- 2026-09-22 — HETZ-060 closes a gap this spec left open. The post-destroy
+  sweep selects every Hetzner resource with `-l project=$PROJECT_NAME`, which
+  the feasibility spike had already shown cannot work for a load balancer: the
+  cloud controller manager applies no labels of its own and names the load
+  balancer an opaque hash (`research.md:268`, "a leak sweep cannot match it by
+  name — HETZ-040 must use labels or enumerate"). Both halves of that sentence
+  were unavailable, so the sweep was silently blind to the one resource the
+  same spike proved outlives every server and bills indefinitely. HETZ-060
+  resolves it from the other end: the `load-balancer.hetzner.cloud/name`
+  annotation gives the load balancer a `<project>-` prefix, and `cluster-down`
+  gains a second pass that matches on it, mirroring the Civo idiom. The
+  labelled loop is unchanged and still runs first.
