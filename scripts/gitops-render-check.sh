@@ -149,7 +149,8 @@ ServiceMonitor__argocd__argocd PodMonitor__cnpg-system__cnpg-postgres \
 ServiceMonitor__envoy__envoy-gateway PodMonitor__envoy__envoy-proxy \
 ConfigMap__observability__dashboard-cnpg \
 PrometheusRule__observability__observability-alerts \
-Application__argocd__loki Application__argocd__alloy"
+Application__argocd__loki Application__argocd__alloy \
+HTTPRoute__observability__grafana"
 FORBIDDEN_KINDS_LOCAL="StorageClass VolumeSnapshotClass VolumeSnapshotContent VolumeSnapshot \
 ClusterSecretStore ExternalSecret NodePool EC2NodeClass \
 ObjectStore ScheduledBackup"
@@ -161,7 +162,6 @@ external-dns barman-cloud-plugin"
 FORBIDDEN_APPLICATIONS_CIVO="aws-load-balancer-controller ebs-csi-driver karpenter \
 external-snapshotter external-snapshotter-crds"
 FORBIDDEN_OBJECTS_LOCAL="BackendTrafficPolicy__observability__grafana-traffic-policy \
-HTTPRoute__observability__grafana \
 RoleBinding__observability__e2e-test-readonly \
 ExternalSecret__observability__grafana-admin-credentials \
 ServiceMonitor__kube-system__karpenter \
@@ -313,6 +313,22 @@ verify_object_set() {
       assert_helm_values "$target" loki "$dir" \
         '.loki.limits_config.retention_period=6h' \
         '.singleBinary.persistence.size=1Gi' || return 1
+      assert_helm_values "$target" kube-prometheus-stack "$dir" \
+        '.grafana."grafana.ini".server.root_url=http://localhost:8080/grafana' \
+        '.grafana."grafana.ini".server.serve_from_sub_path=true' || return 1
+      # A port-forward presents no matching Host header, so a hostname here
+      # would route nothing. The prefix must also agree with root_url above.
+      local route="$dir/HTTPRoute__observability__grafana.yaml"
+      got="$(yq '.spec.hostnames' "$route")"
+      if [ "$got" != null ]; then
+        echo "GITOPS-RENDER-CHECK: target=$target HTTPRoute/grafana sets hostnames '$got', expected none" >&2
+        return 1
+      fi
+      got="$(yq '.spec.rules[0].matches[0].path.value' "$route")"
+      if [ "$got" != /grafana ]; then
+        echo "GITOPS-RENDER-CHECK: target=$target HTTPRoute/grafana path is '$got', expected '/grafana'" >&2
+        return 1
+      fi
     fi
     local karpenter_rule="$dir/PrometheusRule__observability__observability-alerts.yaml"
     if [ -e "$karpenter_rule" ]; then

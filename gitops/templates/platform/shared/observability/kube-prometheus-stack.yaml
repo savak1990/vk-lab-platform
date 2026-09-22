@@ -106,6 +106,15 @@ spec:
                     requests:
                       storage: {{ $o.alertmanagerStorage }}
         grafana:
+          {{- if eq .Values.target "local" }}
+          # The route hands /grafana over unrewritten, so Grafana must know it
+          # lives there. The port is the one the bring-up banner tells the
+          # operator to forward.
+          grafana.ini:
+            server:
+              root_url: http://localhost:8080/grafana
+              serve_from_sub_path: true
+          {{- end }}
           # No volume at all. A bare PVC here is the one Argo creates itself,
           # and on a late-binding StorageClass it stays Pending until a pod
           # consumes it - which Argo reads as Progressing, so a sync that
