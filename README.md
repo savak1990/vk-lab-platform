@@ -288,16 +288,22 @@ machine. It makes no cloud API call and needs no credentials.
 ```sh
 PROVIDER=local make up       # ~8 min: kind, Argo CD, then the platform
 PROVIDER=local make argo-up  # re-sync after you edit gitops/ - see below
+PROVIDER=local make test     # ~10 s: the E2E suite, against this cluster
 PROVIDER=local make down     # ~1 min: deletes the cluster and all its data
 ```
 
-Needs `docker`, `kind`, `helm`, `kubectl` and the `argocd` CLI. Bootstrap and
-Persistent own no cloud resources here, so `make full-up` does the same as
+Needs `docker`, `kind`, `helm`, `kubectl`, `go` and the `argocd` CLI. Bootstrap
+and Persistent own no cloud resources here, so `make full-up` does the same as
 `make up`.
 
 **What runs.** Argo CD, Envoy Gateway, PostgreSQL, Prometheus, Grafana, Loki,
 Alloy and metrics-server — the same charts the cloud targets use, at laptop
 scale.
+
+**Testing it.** `make test` runs the same Go suite the cloud targets run, as a
+read-only ServiceAccount rather than as admin. `make test-argocd`,
+`make test-grafana` and `make test-postgres` run one service each. The suite
+asks the cluster how to reach a service, so no test knows it is on kind.
 
 **How to reach it.** `make up` prints one `kubectl port-forward` command that
 serves every component on one port, by path: `/` is Argo CD and `/grafana` is
