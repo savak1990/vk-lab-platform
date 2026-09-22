@@ -139,9 +139,15 @@ annotations:
   # Reaches the nodes over the private network, which Hetzner firewalls do
   # not filter, so no public NodePort rule is needed - the reverse of civo.
   load-balancer.hetzner.cloud/use-private-ip: "true"
-  # Keeps external-dns to a single A record. The load balancer still gets an
-  # IPv6; this only suppresses it in the Service ingress status.
+  # Both of these keep external-dns to one A record per name, by keeping the
+  # Service ingress status to a single address. Without the second, attaching
+  # the load balancer to the private network also advertises its private
+  # address, external-dns publishes both, and half of all DNS answers point
+  # at an address no client outside the network can reach. Neither annotation
+  # changes how the load balancer reaches the nodes - use-private-ip above
+  # does that, and stays on.
   load-balancer.hetzner.cloud/ipv6-disabled: "true"
+  load-balancer.hetzner.cloud/disable-private-ingress: "true"
   load-balancer.hetzner.cloud/algorithm-type: round_robin
 {{- else if eq .Values.target "local" -}}
 # Stated rather than left to the CRD default of LoadBalancer: kind has no
