@@ -1,4 +1,3 @@
-{{- if ne .Values.target "local" }}
 apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 metadata:
@@ -13,7 +12,7 @@ spec:
   instances: 1
   imageName: {{ .Values.postgres.imageName | quote }}
   priorityClassName: postgres-critical
-  {{- if (eq (include "platform.selfManaged" .) "true") }}
+  {{- if ne .Values.target "aws" }}
   # CNPG creates a PodDisruptionBudget even for a single instance, and that
   # budget blocks a node from ever draining.
   enablePDB: false
@@ -102,4 +101,3 @@ spec:
       # wal_level intentionally not set — CNPG defaults it to "logical" already
       # shared_buffers / max_connections intentionally not set — sized only by
       # the requests above, not by explicit limits
-{{- end }}
