@@ -404,6 +404,8 @@ install_argocd
 # Compared by string below to tell a fresh sync's failure from one already on
 # the object when this run started. Deliberately not a timestamp comparison -
 # RFC3339 arithmetic is not portable across BSD/GNU date.
+# Read by argo_watch_root, which this script sources.
+# shellcheck disable=SC2034
 PRIOR_OPERATION_STARTED_AT="$(kubectl get application root -n argocd \
   -o jsonpath='{.status.operationState.startedAt}' 2>/dev/null || true)"
 

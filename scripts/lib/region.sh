@@ -36,6 +36,9 @@ fi
 
 # Not derived from REGION: every location the catalogue allows is in this
 # zone, and one outside it could not attach to the private network at all.
+# Terraform carries the same default, so nothing here reads this. It stays
+# because the zone is a documented property of the platform's Hetzner network.
+# shellcheck disable=SC2034
 HCLOUD_NETWORK_ZONE="eu-central"
 
 # The provider's own region, lowercased: what namespaces this project's
@@ -43,6 +46,7 @@ HCLOUD_NETWORK_ZONE="eu-central"
 # LAB_REGION, but its NAME says whose state it holds - without that, two
 # Civo regions would share one state and the second run would orphan the
 # first's network while believing it had built cleanly.
+# shellcheck disable=SC2034  # read by the scripts that source this file
 case "${PROVIDER:-aws}" in
   civo) LAB_PROVIDER_REGION="$(printf '%s' "$CIVO_REGION" | tr '[:upper:]' '[:lower:]')" ;;
   hetzner) LAB_PROVIDER_REGION="$HCLOUD_LOCATION" ;;

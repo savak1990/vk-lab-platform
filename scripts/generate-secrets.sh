@@ -57,7 +57,7 @@ generate_password_if_missing() {
   fi
   local value
   if [ "$FIXED_TEST_PASSWORDS" = "true" ]; then
-    value=test
+    value="test"
   else
     value="$(random_password)"
   fi
@@ -117,7 +117,7 @@ generate_bcrypt_if_missing() {
   fi
   local plaintext
   if [ "$FIXED_TEST_PASSWORDS" = "true" ]; then
-    plaintext=test
+    plaintext="test"
   else
     plaintext="$(random_password)"
   fi

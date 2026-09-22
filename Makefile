@@ -1,4 +1,4 @@
-.PHONY: up down full-up full-down platform-up platform-down state-up state-down status clusters require-valid-project-name require-valid-node-config account-up account-down bootstrap-up bootstrap-down secret-encrypt secret-decrypt secrets-check node-config-check generate-secrets ca-init ssh-key-init persistent-up persistent-down clear-cache cluster-up cluster-down kubeconfig node-ssh test-kubeconfig test-kubeconfig-isolated argo-up argo-down test
+.PHONY: up down full-up full-down platform-up platform-down state-up state-down status clusters require-valid-project-name require-valid-node-config account-up account-down bootstrap-up bootstrap-down secret-encrypt secret-decrypt secrets-check node-config-check scripts-check generate-secrets ca-init ssh-key-init persistent-up persistent-down clear-cache cluster-up cluster-down kubeconfig node-ssh test-kubeconfig test-kubeconfig-isolated argo-up argo-down test
 
 .NOTPARALLEL:
 
@@ -416,3 +416,8 @@ gitops-check:
 ## no old spec paths remain. Usage: make specs-check
 specs-check:
 	@./scripts/specs-check.sh
+
+## Parses every script with bash -n, lints it with shellcheck, then runs every
+## tests/scripts/*-test.sh. Usage: make scripts-check
+scripts-check:
+	@./scripts/scripts-check.sh

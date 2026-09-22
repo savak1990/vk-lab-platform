@@ -5,7 +5,6 @@
 # operation and not part of any per-environment lifecycle.
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/region.sh"

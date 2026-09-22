@@ -6,6 +6,8 @@
 # applied.
 set -euo pipefail
 
+# Read by secret_path in the sourced secret-scope.sh.
+# shellcheck disable=SC2034
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/secret-scope.sh"
