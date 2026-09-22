@@ -1,0 +1,101 @@
+{{- if eq .Values.target "hetzner" }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: hcloud-csi
+  namespace: argocd
+  annotations:
+    # Deleted last, because draining a node cannot finish until the attacher
+    # here clears the VolumeAttachment finalizer, and the provisioner here is
+    # what deletes the released Hetzner volume. Its dependents
+    # (PV/PVC/VolumeAttachment) are controller-created, so no wave orders them
+    # against it - only being last does.
+    argocd.argoproj.io/sync-wave: "-5"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://charts.hetzner.cloud
+    chart: hcloud-csi
+    targetRevision: 2.23.0
+    helm:
+      values: |
+        controller:
+          # Without these the volume carries no label, and the teardown leak
+          # sweep selects on project= - an unlabelled volume survives destroy
+          # unseen. managed_by distinguishes these from the Terraform-created
+          # servers, which carry the same first three.
+          volumeExtraLabels:
+            project: {{ .Values.project }}
+            scope: platform
+            lifecycle: disposable
+            managed_by: hcloud-csi-driver
+          resources:
+            hcloudCSIDriver:
+              requests:
+                cpu: 10m
+                memory: 32Mi
+              limits:
+                memory: 64Mi
+            csiAttacher:
+              requests:
+                cpu: 5m
+                memory: 24Mi
+              limits:
+                memory: 48Mi
+            csiResizer:
+              requests:
+                cpu: 5m
+                memory: 24Mi
+              limits:
+                memory: 48Mi
+            csiProvisioner:
+              requests:
+                cpu: 5m
+                memory: 24Mi
+              limits:
+                memory: 48Mi
+            livenessProbe:
+              requests:
+                cpu: 5m
+                memory: 24Mi
+              limits:
+                memory: 48Mi
+        node:
+          resources:
+            hcloudCSIDriver:
+              requests:
+                cpu: 10m
+                memory: 32Mi
+              limits:
+                memory: 64Mi
+            csiNodeDriverRegistrar:
+              requests:
+                cpu: 5m
+                memory: 16Mi
+              limits:
+                memory: 32Mi
+            livenessProbe:
+              requests:
+                cpu: 5m
+                memory: 24Mi
+              limits:
+                memory: 48Mi
+        # Stated rather than inherited: reclaimPolicy is immutable, so a chart
+        # default that flipped to Retain would need the class deleted by hand,
+        # and would leak volumes until someone noticed.
+        storageClasses:
+          - name: hcloud-volumes
+            defaultStorageClass: true
+            reclaimPolicy: Delete
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+{{- end }}

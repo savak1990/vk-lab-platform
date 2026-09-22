@@ -161,11 +161,31 @@ ExternalSecret__observability__grafana-admin-credentials \
 Namespace__cluster__e2e ServiceAccount__e2e__e2e-test"
 FORBIDDEN_OBJECTS_CIVO="ServiceMonitor__kube-system__karpenter \
 ConfigMap__observability__dashboard-karpenter-capacity"
-# The hetzner sets are the contract HETZ-050 renders against; hetzner is not
-# in the render loop below until that spec adds its Applications. StorageClass
-# is allowed here, unlike civo: the hcloud CSI chart ships its own.
+# The civo set, less the two features hetzner does not have yet, plus the CSI
+# driver. EnvoyProxy and Gateway arrive with the load balancer (HETZ-060) and
+# cluster-autoscaler with HETZ-170; GatewayClass already renders here.
+# StorageClass is allowed, unlike civo: the hcloud CSI chart ships its own.
 REQUIRED_OBJECTS_HETZNER="Application__argocd__hcloud-csi \
-ClusterIssuer__cluster__hetzner-workload-ca HTTPRoute__argocd__argocd"
+GatewayClass__cluster__envoy-gateway Application__argocd__cert-manager \
+ClusterIssuer__cluster__hetzner-workload-ca Certificate__external-secrets__eso \
+Certificate__kube-system__external-dns Certificate__cert-manager__cert-manager \
+ClusterSecretStore__cluster__aws-parameter-store \
+ExternalSecret__cnpg-system__lab-postgres-app Application__argocd__external-dns \
+ClusterIssuer__cluster__letsencrypt-staging ClusterIssuer__cluster__letsencrypt-prod \
+Certificate__envoy__platform-public HTTPRoute__envoy__https-redirect \
+HTTPRoute__argocd__argocd \
+Cluster__cnpg-system__lab-postgres Certificate__cnpg-system__pgbackup \
+ConfigMap__cnpg-system__pgbackup-aws-config \
+ObjectStore__cnpg-system__lab-postgres-backups \
+ScheduledBackup__cnpg-system__lab-postgres \
+Application__argocd__barman-cloud-plugin \
+Application__argocd__kube-prometheus-stack Application__argocd__loki \
+Application__argocd__alloy HTTPRoute__observability__grafana \
+ExternalSecret__observability__grafana-admin-credentials \
+BackendTrafficPolicy__observability__grafana-traffic-policy \
+RoleBinding__observability__e2e-test-readonly \
+PodMonitor__cnpg-system__cnpg-postgres ServiceMonitor__argocd__argocd \
+Namespace__cluster__e2e ServiceAccount__e2e__e2e-test"
 FORBIDDEN_KINDS_HETZNER="VolumeSnapshotClass VolumeSnapshotContent VolumeSnapshot \
 NodePool EC2NodeClass"
 FORBIDDEN_APPLICATIONS_HETZNER="aws-load-balancer-controller ebs-csi-driver karpenter \
@@ -224,14 +244,20 @@ verify_object_set() {
       return 1
     fi
   done
-  case "$target" in civo | local)
+  case "$target" in civo | hetzner | local)
     local hits
+    local leaks=(-e 'ebs-delete' -e 'karpenter.sh/capacity-type')
+    # civo's storage class and provider annotation are as wrong on hetzner as
+    # an aws one: either means a civo-only branch was reached by both targets.
+    if [ "$target" = hetzner ]; then
+      leaks+=(-e 'civo-volume' -e 'kubernetes.civo.com')
+    fi
     # grep -q exits as soon as it finds a match, killing the upstream grep with
     # SIGPIPE; under pipefail that turns a real match into a false "no match".
     # Capture matched lines instead so the upstream always runs to completion.
-    hits="$(grep -rhEv '^[[:space:]]*#' "$dir" | grep -e 'ebs-delete' -e 'karpenter.sh/capacity-type' || true)"
+    hits="$(grep -rhEv '^[[:space:]]*#' "$dir" | grep "${leaks[@]}" || true)"
     if [ -n "$hits" ]; then
-      echo "GITOPS-RENDER-CHECK: target=$target renders an aws-only storage class or spot affinity" >&2
+      echo "GITOPS-RENDER-CHECK: target=$target renders another target's storage class, spot affinity or provider annotation" >&2
       return 1
     fi
     if [ "$target" = local ]; then
@@ -261,12 +287,13 @@ verify_object_set() {
   esac
 }
 
-CIVO_LOCAL_OK=true
-for t in civo local; do
+STRUCT_OK=true
+for t in civo hetzner local; do
   # The backup objects render only when the operator-supplied values are
-  # present, so civo is rendered as a real bring-up would set them.
+  # present, so the backup-carrying targets are rendered as a real bring-up
+  # would set them.
   extra_sets=()
-  if [ "$t" = civo ]; then
+  if [ "$t" != local ]; then
     extra_sets=(
       --set postgres.backup.enabled=true
       --set postgres.backup.bucket=render-check-bucket
@@ -274,15 +301,19 @@ for t in civo local; do
     )
   fi
   render_and_normalize "$REPO_ROOT/gitops" "$STRUCT_DIR/$t" "$t" "${extra_sets[@]+"${extra_sets[@]}"}"
-  verify_object_set "$STRUCT_DIR/$t" "$t" || CIVO_LOCAL_OK=false
-  if [ "$t" = civo ]; then
-    verify_backup_render "$STRUCT_DIR/$t" civo savak1990/vk-lab-platform/cnpg-barman-sidecar || CIVO_LOCAL_OK=false
+  verify_object_set "$STRUCT_DIR/$t" "$t" || STRUCT_OK=false
+  # Both self-managed targets reach AWS through Roles Anywhere, so both must
+  # resolve to the sidecar build that carries aws_signing_helper. Without this
+  # a target missing from sidecarImages renders an empty image reference
+  # instead of failing.
+  if [ "$t" != local ]; then
+    verify_backup_render "$STRUCT_DIR/$t" "$t" savak1990/vk-lab-platform/cnpg-barman-sidecar || STRUCT_OK=false
   fi
 done
-if [ "$CIVO_LOCAL_OK" != true ]; then
+if [ "$STRUCT_OK" != true ]; then
   exit 1
 fi
-echo "GITOPS-RENDER-CHECK: civo and local renders have the expected M1 object set."
+echo "GITOPS-RENDER-CHECK: civo, hetzner and local renders have the expected M1 object set."
 
 if [ "$MODE" = "update" ]; then
   rm -rf "$GOLDEN_DIR"
