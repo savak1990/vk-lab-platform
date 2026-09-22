@@ -311,7 +311,7 @@ test-%: test-kubeconfig-isolated
 ## Forwards the gateway to localhost in the background so Argo CD and Grafana
 ## open in a browser. Works through $(LAB_KUBECONFIG), so it neither reads nor
 ## changes your own kubectl context - `make kubeconfig` is not needed first.
-## LOCAL_PORT overrides the default 9000. local only: the others are on DNS.
+## LOCAL_PORT overrides the default 8080. local only: the others are on DNS.
 ## Usage: PROVIDER=local make forward-up
 forward-up:
 	./scripts/forward-up-local.sh

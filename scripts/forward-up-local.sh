@@ -15,7 +15,7 @@ fi
 
 # Grafana's root_url names this port too. The render check pins that end; keep
 # the two the same, or Grafana's own links point at a port nothing forwards.
-LOCAL_PORT="${LOCAL_PORT:-9000}"
+LOCAL_PORT="${LOCAL_PORT:-8080}"
 pidfile="$REPO_ROOT/.kube/$PROJECT_NAME-forward.pid"
 logfile="$REPO_ROOT/.kube/$PROJECT_NAME-forward.log"
 

@@ -286,13 +286,18 @@ to 5. A three-node lab plus a two-node CI run is exactly that limit, so
 machine. It makes no cloud API call and needs no credentials.
 
 ```sh
-PROVIDER=local make up       # ~8 min: kind, Argo CD, then the platform
-PROVIDER=local make forward-up   # forwards the gateway; open the URLs it prints
-PROVIDER=local make forward-down # stops the forward
-PROVIDER=local make argo-up  # re-sync after you edit gitops/ - see below
-PROVIDER=local make test     # ~10 s: the E2E suite, against this cluster
-PROVIDER=local make down     # ~1 min: deletes the cluster and all its data
+PROVIDER=local make up            # ~8 min: kind, Argo CD, then the platform
+PROVIDER=local make forward-up    # opens the gateway on localhost:8080
+PROVIDER=local make argo-up       # re-sync after you edit gitops/ - see below
+PROVIDER=local make test          # ~10 s: the E2E suite, against this cluster
+PROVIDER=local make forward-down  # closes the forward
+PROVIDER=local make down          # ~1 min: deletes the cluster and all its data
 ```
+
+| Open | For | Login |
+|---|---|---|
+| http://localhost:8080 | Argo CD | `admin` / `test` |
+| http://localhost:8080/grafana | Grafana | `admin` / `test` |
 
 Needs `docker`, `kind`, `helm`, `kubectl`, `go` and the `argocd` CLI. Bootstrap
 and Persistent own no cloud resources here, so `make full-up` does the same as
@@ -302,17 +307,17 @@ and Persistent own no cloud resources here, so `make full-up` does the same as
 Alloy and metrics-server — the same charts the cloud targets use, at laptop
 scale.
 
+**How to reach it.** `make forward-up` forwards the gateway in the background,
+so both components answer on one port, by path. It uses this repo's own
+kubeconfig and never changes your `kubectl` context. `LOCAL_PORT=<n>` moves the
+port, and a port another process already holds is refused by name rather than
+half-forwarded. A port-forward cannot present a Host header, so this target
+matches routes by path where the cloud targets match by hostname.
+
 **Testing it.** `make test` runs the same Go suite the cloud targets run, as a
 read-only ServiceAccount rather than as admin. `make test-argocd`,
 `make test-grafana` and `make test-postgres` run one service each. The suite
-asks the cluster how to reach a service, so no test knows it is on kind.
-
-**How to reach it.** `make forward-up` forwards the gateway in the background
-and prints the URLs: `/` is Argo CD and `/grafana` is Grafana, both `admin` /
-`test`, on one port. `make forward-down` stops it, and `LOCAL_PORT` moves it
-off 9000. It works through this repo's own kubeconfig, so it never changes
-your `kubectl` context. A port-forward cannot present a Host header, so
-this target matches routes by path where the cloud targets match by hostname.
+opens its own forward, so `make forward-up` is not needed first.
 
 **The edit loop is the point.** The root Application syncs from your working
 tree. Edit anything under `gitops/`, run `PROVIDER=local make argo-up`, and the
