@@ -355,16 +355,24 @@ none of that reasoning reaches it — and while it was opt-in, a pull request
 with no label got no cluster testing at all. Making it mandatory raises the
 floor rather than the price.
 
-**`ci:lifecycle` is gone, and each cloud's label is its own trigger.**
-`ci:lifecycle-aws`, `ci:lifecycle-civo`, and `ci:lifecycle-hetzner` once that
-job exists. This reverses the trigger/selector split below.
+**The trigger/selector split is gone. One label is one decision.**
+`ci:lifecycle-aws` or `ci:lifecycle-civo` for that cloud alone, `ci:lifecycle`
+for every cloud that has a job, `ci:lifecycle-hetzner` once that job exists.
+`ci:lifecycle` keeps the meaning it always had when carried alone; what it
+loses is the selectors that used to narrow it.
 
-That split existed to stop two selectors starting two runs whose validation
-halves cancelled each other. The cost of removing it is real and is documented
-rather than designed away: each label event starts a run, the cloud jobs are
-serialized per provider rather than cancelled, so **two labels added in two
-edits run the first cloud twice**. The mitigation is a habit — add every label
-in one edit — and the README says so in a callout.
+**Corrected 2026-09-23, after the first shape of this change was measured.**
+That shape had no all-clouds label and told the reader to "add every label in
+one edit". That instruction is impossible to follow: GitHub emits a `labeled`
+webhook **per label**, including from a single API call carrying both, which
+was confirmed against this repository. Two labels always means two runs, and
+because the cloud jobs are serialized per provider rather than cancelled, one
+cloud then runs twice.
+
+A habit cannot fix that, so the label set does: every choice — one cloud, the
+other, or all of them — is reachable with exactly one label, and the README
+says never to add two. The split below is still gone, and with it the question
+of whether a label triggers or merely narrows.
 
 That trade was accepted deliberately. It deletes the `AVAILABLE` list, the
 `SELECTED` fallback, the `TRIGGERED` flag and the inert-selector rule: about 40
