@@ -176,9 +176,10 @@ RoleBinding__envoy__e2e-test-readonly"
 # rather than only in the forbidden sets: nothing else proves the load balancer
 # annotations render, and a route whose listener is missing is never Accepted,
 # which stalls the root sync behind its health check.
-# cluster-autoscaler arrives with HETZ-170.
 # StorageClass is allowed, unlike civo: the hcloud CSI chart ships its own.
 REQUIRED_OBJECTS_HETZNER="Application__argocd__hcloud-csi \
+Application__argocd__cluster-autoscaler \
+ServiceMonitor__kube-system__cluster-autoscaler \
 GatewayClass__cluster__envoy-gateway EnvoyProxy__envoy__envoy-proxy-config \
 Gateway__envoy__platform-gateway HTTPRoute__envoy__https-redirect \
 HTTPRoute__argocd__argocd HTTPRoute__observability__grafana \

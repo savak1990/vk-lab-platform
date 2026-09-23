@@ -116,3 +116,24 @@ spec:
     - port: http
       interval: 30s
 {{- end }}
+{{- if eq .Values.target "hetzner" }}
+---
+# Same reasoning as the civo block above; the two differ only in the provider
+# prefix the chart stamps onto its own name label.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: cluster-autoscaler
+  namespace: kube-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: hetzner-cluster-autoscaler
+      app.kubernetes.io/instance: cluster-autoscaler
+  endpoints:
+    - port: http
+      interval: 30s
+{{- end }}

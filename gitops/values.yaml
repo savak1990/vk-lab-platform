@@ -18,13 +18,18 @@ storage:
 # only meaningful where Karpenter's spot/on-demand distinction exists (aws).
 capacity:
   spotAvoidance: true
-  # civo-only; the cluster autoscaler's node-group bounds. The pool name
-  # "workers" is special to the civo cloud provider - it applies min/max to
-  # every pool in the cluster, which is correct here because there is one.
+  # min/max/pool are civo-only. The pool name "workers" is special to the civo
+  # cloud provider - it applies min/max to every pool in the cluster, which is
+  # correct here because there is one. hetzner states its own bounds in its
+  # Application: a ceiling of four is that target's account limit, not an input.
+  # The three below are hetzner-only, from the operator inputs and SSM.
   autoscaler:
     min: 3
     max: 4
     pool: workers
+    nodeType: ""
+    location: ""
+    sshKeyId: ""
 
 # aws's current defaults; civo overrides both through the
 # platform.kubeletInsecureTls/platform.metricsServerEnabled helpers instead.

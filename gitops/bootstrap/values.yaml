@@ -27,12 +27,15 @@ karpenter:
       ["t4g.medium", "t4g.large", "m6g.medium", "m6g.large", "m7g.medium", "m7g.large"]
     cpuLimit: "4"
 
-# civo-only; must match gitops/values.yaml's capacity.autoscaler block.
+# must match gitops/values.yaml's capacity.autoscaler block.
 capacity:
   autoscaler:
     min: 3
     max: 4
     pool: workers
+    nodeType: ""
+    location: ""
+    sshKeyId: ""
 
 envoyGateway:
   acmCertificateArn: ""

@@ -424,8 +424,11 @@ wait_for_nodes_ready() {
     nodes="$(kubectl get nodes --no-headers 2>/dev/null || true)"
     total="$(printf '%s' "$nodes" | grep -c . || true)"
     ready="$(printf '%s' "$nodes" | awk '$2 ~ /^Ready/' | grep -c . || true)"
-    if [ "$total" -eq "$expected" ] && [ "$ready" -eq "$expected" ]; then
-      echo "CLUSTER-UP: all $expected node(s) Ready."
+    # At least the fixed pool, and every node present Ready. Equality would
+    # never hold once the autoscaler has added one, so a re-run over a scaled
+    # cluster would wait out the whole budget and then fail.
+    if [ "$total" -ge "$expected" ] && [ "$ready" -eq "$total" ]; then
+      echo "CLUSTER-UP: all $total node(s) Ready."
       return 0
     fi
     sleep "$interval"
