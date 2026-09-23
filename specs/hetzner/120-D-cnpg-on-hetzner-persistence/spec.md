@@ -1,7 +1,7 @@
 ---
 id: "HETZ-120"
 title: "CloudNativePG on Hetzner with data surviving make down and make up"
-status: "IN_PROGRESS"
+status: "DONE"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -15,7 +15,7 @@ blocked_by: []
 supersedes: []
 created: "2026-09-11"
 updated: "2026-09-23"
-completed: ""
+completed: "2026-09-23"
 ---
 
 # HETZ-120 — CNPG on Hetzner with persistence
@@ -239,9 +239,14 @@ bucket until `persistent-down`.
 ## 13. Definition of done
 
 - [x] The three wiring points in §5 landed; offline checks green
-- [ ] A cold start plus two down/up cycles with row, schema and timeline
+- [x] A cold start plus two down/up cycles with row, schema and timeline
       evidence, including a row committed seconds before each teardown
-- [ ] Index updated; status `DONE`
+- [x] Index updated; status `DONE`
+
+Not claimed: the "pointer exists but the bucket is empty" path in §12 was not
+exercised, and no e2e assertion covers archiving. Both are named there rather
+than hidden. One unrelated defect was found during this run and is recorded
+below as a finding against HETZ-040.
 
 ## 14. Execution evidence and status history
 
@@ -293,3 +298,80 @@ bucket until `persistent-down`.
   `make gitops-check` (aws golden unchanged, hetzner object set as
   expected) and `make specs-check` all pass. The live evidence in §13 is
   outstanding.
+
+- 2026-09-23 — **executed end to end on a live Hetzner cluster; every
+  acceptance criterion in §8 passed.** Project `vk-hetzner-lab`, location
+  `fsn1`, three `cx33` servers, k3s v1.36.4+k3s1, bucket
+  `vk-hetzner-lab-fsn1-postgres-backups`.
+
+  **Cold start.** No `server_name` pointer existed, so the Cluster took
+  `bootstrap.initdb` — confirmed by reading `.spec.bootstrap`, not inferred
+  from a healthy pod. Generation `lab-postgres-20260923T211038Z` was minted
+  and the pointer written only after root reported healthy.
+  `ContinuousArchiving=True` at `21:19:50Z`. `ScheduledBackup` produced
+  `lab-postgres-20260923211957` (`method: plugin`) in `completed`. Six objects
+  landed, including `base/20260923T211958/data.tar.gz`. PVC `lab-postgres-1`
+  `Bound`, 20Gi, `hcloud-volumes`. All 11 Applications `Synced/Healthy`,
+  `barman-cloud-plugin` among them.
+
+  **Credentials.** The sidecar carries exactly three AWS variables —
+  `AWS_CONFIG_FILE=/projected/aws/config`, `AWS_REGION`,
+  `AWS_DEFAULT_REGION` — and `/projected/aws/config` sets `credential_process`
+  to `aws_signing_helper` against role `vk-hetzner-lab-ra-pgbackup` with a
+  3600s session. `grep -c` for `AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY` over
+  the whole pod spec returns 0. §8 asks for `aws sts get-caller-identity` in
+  the sidecar; that cannot run, because the image ships `aws_signing_helper`
+  and barman's own boto but no `aws` CLI. The substitute evidence is stronger
+  in one respect and weaker in another: objects demonstrably landed in S3
+  under `inheritFromIAMRole: true`, which is impossible without the role
+  resolving, but the role ARN is read from configuration rather than echoed
+  back by STS. Recorded as met by different evidence than the literal wording.
+
+  **Cycle 1 — recovery from a fresh cluster.** Three `cycle0` rows, the last
+  (`FINAL-ROW-BEFORE-TEARDOWN`) at `21:21:23.811Z`, seconds before teardown.
+  `argo-down` forced the WAL switch and the pre-teardown `Backup` reached
+  `completed` in **25s** — that is the measured figure for a 20 GiB volume on
+  a `cx33`, against the 600s `ARGO_DOWN_BACKUP_TIMEOUT`. `cluster-down`
+  reported no leaks. After `make up` the Cluster showed `bootstrap.recovery`
+  with `source: lab-postgres-previous`, `externalClusters[0]` naming
+  `lab-postgres-20260923T211038Z`, archiving to
+  `lab-postgres-20260923T213050Z`. All three rows present including the final
+  one, `ddl_proof_cycle0` recovered, timeline 2.
+
+  **Cycle 2 — recovery from a cluster that was itself recovered.** This is the
+  case the generation-scoped `serverName` exists for. Three `cycle1` rows, the
+  last at `21:38:39.061Z`. After `make up`: recovered from
+  `lab-postgres-20260923T213050Z`, archiving to
+  `lab-postgres-20260923T214905Z`, `ContinuousArchiving=True`. **All six rows
+  across both cycles were present, both `FINAL-ROW-BEFORE-TEARDOWN` rows and
+  both `ddl_proof_*` tables.** Timeline 3.
+
+  **Timeline separation confirmed directly.** Each generation holds its own
+  history file and nothing else: `lab-postgres-20260923T213050Z/wals/00000002.history.gz`
+  and `lab-postgres-20260923T214905Z/wals/00000003.history.gz`. With a constant
+  `serverName` these would have collided in one prefix.
+
+  **Generation pruning ran for the first time on this target.** The first
+  bring-up logged `1 backup generation(s) stored, keeping 2 - nothing to
+  prune`; the second `2 ... nothing to prune`; the third pruned
+  `lab-postgres-20260923T211038Z` and left the current and recovered-from
+  prefixes, which is the bound §4 describes.
+
+  **Re-sync without a teardown changes nothing.** A fourth `make up` on the
+  live platform took the fast path (`root Application already Synced/Healthy`)
+  and did not reinstall the root Application, so no generation was minted:
+  Cluster `serverName` unchanged, SSM pointer unchanged, still two
+  generations, still six rows, postgres container `restartCount` 0.
+
+- 2026-09-23 — **finding against HETZ-040, not fixed here.** The first
+  `make up` of this session failed with
+  `hetzner_kubeconfig: /etc/rancher/k3s/k3s.yaml did not appear on <ip> within 600s.`
+  four seconds after `terragrunt apply` completed — it never waited 600s. The
+  k3s.yaml poll runs on the far side of a single SSH call, so the retry budget
+  covers the file appearing but not sshd answering. On a server created
+  seconds earlier the connection itself fails, and that failure is reported as
+  a k3s timeout. The cluster was healthy throughout: all three nodes `Ready`,
+  k3s.yaml present, cloud-init `done`. Re-running `make up` succeeded
+  immediately and no later bring-up in this session reproduced it, so it needs
+  a slow server create to surface. The message is also actively misleading,
+  which is the more expensive half of the defect.
