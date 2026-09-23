@@ -28,6 +28,10 @@ trap 'rm -f "$KUBECONFIG_TMP"' EXIT
 # offset itself or the age comes out skewed by the operator's local zone.
 age_of() {
   local stamp created_epoch now_epoch delta
+  # GNU date reads an empty string as today at midnight and succeeds, so an
+  # absent timestamp would report a plausible age of however long the day is.
+  # BSD date refuses it, which is why this only ever showed on Linux.
+  [ -n "$1" ] || { echo "-"; return; }
   stamp="$(echo "$1" | sed -E 's/\.[0-9]+//; s/([+-][0-9]{2}):([0-9]{2})$/\1\2/')"
   created_epoch="$(date -j -f "%Y-%m-%dT%H:%M:%S%z" "$stamp" +%s 2>/dev/null \
     || date -d "$1" +%s 2>/dev/null || echo "")"
@@ -101,10 +105,15 @@ list_civo() (
   source "$REPO_ROOT/scripts/lib/region.sh"
 
   command -v civo >/dev/null 2>&1 || { echo "(civo: CLI not installed - skipped)"; return 0; }
-  if ! civo_token >/dev/null 2>&1; then
+  # Stdout is deliberately not suppressed: under Actions the helper emits an
+  # ::add-mask:: line, which is honoured only at the start of a line. Blanked
+  # straight after, because argo_state decrypts again inside $( ), where that
+  # same line would be captured into a column and print the token unmasked.
+  if ! civo_token 2>/dev/null; then
     echo "(civo: token unavailable - skipped)"
     return 0
   fi
+  GITHUB_ACTIONS=""
 
   local region raw name status nodes created found=0
   for region in $(catalog_regions civo); do
@@ -141,10 +150,11 @@ list_hetzner() (
   source "$REPO_ROOT/scripts/lib/region.sh"
 
   command -v hcloud >/dev/null 2>&1 || { echo "(hetzner: CLI not installed - skipped)"; return 0; }
-  if ! hcloud_token >/dev/null 2>&1; then
+  if ! hcloud_token 2>/dev/null; then
     echo "(hetzner: token unavailable - skipped)"
     return 0
   fi
+  GITHUB_ACTIONS=""
 
   local raw project loc status nodes created found=0
   raw="$(hcloud_cli server list -o json 2>/dev/null || true)"

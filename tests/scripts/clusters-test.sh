@@ -94,6 +94,22 @@ echo "fake-token"
 EOF
 chmod +x "$TMP/bin/secret-decrypt.sh"
 
+# GNU date accepts -d '' and answers today at midnight, so an absent timestamp
+# read as an age of however long the day was. BSD date refuses it, so the bug
+# was invisible on a developer's Mac and only ever appeared on a Linux runner.
+# This fake reproduces the GNU answer on either platform.
+mkdir -p "$TMP/gnudate"
+cat > "$TMP/gnudate/date" <<'EOF'
+#!/usr/bin/env bash
+case "${1:-}" in
+  -j) exit 1 ;;
+  -d) [ -n "${2:-}" ] || { echo 1758585600; exit 0; }
+      exit 1 ;;
+esac
+exec /bin/date "$@"
+EOF
+chmod +x "$TMP/gnudate/date"
+
 fail=0
 err() { echo "CLUSTERS-TEST: $*" >&2; fail=1; }
 
@@ -106,15 +122,32 @@ cp "$TMP/bin/secret-decrypt.sh" "$WORK/scripts/secret-decrypt.sh"
 
 # PROVIDER and PROJECT_NAME are exported by the Makefile into every recipe, so
 # the hostile case is the realistic one: they must not steer the sweep.
+#
+# GITHUB_ACTIONS is set because that is where this runs for real, and it changes
+# behaviour: the token helpers emit an ::add-mask:: line only under Actions.
+# Without it the masking path is never exercised and a token can reach a column
+# unnoticed.
 run_case() {
   ( cd "$WORK" && PATH="$1" FAKE_HCLOUD_MODE="$2" \
+      GITHUB_ACTIONS=true \
       PROVIDER=hetzner PROJECT_NAME=vk-hetzner-lab REGION=fsn1 \
       AWS_PROFILE=fake ./scripts/clusters.sh 2>&1 )
+}
+
+# A decrypted token must never end up inside a printed row. ::add-mask:: is
+# honoured only at the start of a line, so a token captured into a column by a
+# $( ) would print in clear text.
+assert_no_token_in_rows() {
+  local label="$1" out="$2"
+  if echo "$out" | grep -vE '^::add-mask::' | grep -q 'fake-token'; then
+    err "$label: a token reached a printed row: $(echo "$out" | grep 'fake-token' | head -1)"
+  fi
 }
 
 # 1 and 3. civo missing from PATH, three hetzner servers in one project.
 out="$(run_case "$BASE_PATH" servers)"; rc=$?
 [ "$rc" -eq 0 ] || err "civo absent: expected rc=0, got $rc: $out"
+assert_no_token_in_rows "civo absent" "$out"
 case "$out" in
   *"(civo: CLI not installed - skipped)"*) ;;
   *) err "civo absent: expected the skip notice, got: $out" ;;
@@ -141,6 +174,7 @@ esac
 # 2. A civo cluster with no created_at still gets a row, with AGE "-".
 out="$(run_case "$TMP/civobin:$BASE_PATH" empty)"; rc=$?
 [ "$rc" -eq 0 ] || err "civo present: expected rc=0, got $rc: $out"
+assert_no_token_in_rows "civo present" "$out"
 cv="$(echo "$out" | awk '$1 == "vk-fake-civo" { print; exit }')"
 if [ -z "$cv" ]; then
   err "civo listing: no row for vk-fake-civo in: $out"
@@ -155,7 +189,19 @@ else
   esac
 fi
 
+# 5. The same absent created_at, against a date that answers -d '' the way GNU
+#    does. This is the case a Linux runner found and a Mac cannot.
+out="$(run_case "$TMP/gnudate:$TMP/civobin:$BASE_PATH" empty)"; rc=$?
+[ "$rc" -eq 0 ] || err "gnu date: expected rc=0, got $rc: $out"
+cv="$(echo "$out" | awk '$1 == "vk-fake-civo" { print; exit }')"
+if [ -z "$cv" ]; then
+  err "gnu date: no row for vk-fake-civo in: $out"
+else
+  [ "$(echo "$cv" | awk '{print $5}')" = "-" ] \
+    || err "gnu date: an absent created_at must not acquire an age: $cv"
+fi
+
 if [ "$fail" -eq 0 ]; then
-  echo "CLUSTERS-TEST: ok - a missing CLI is reported, hetzner servers group by project, civo ages degrade."
+  echo "CLUSTERS-TEST: ok - a missing CLI is reported, hetzner servers group by project, no token reaches a row, and an absent age stays '-' on either date."
 fi
 exit "$fail"

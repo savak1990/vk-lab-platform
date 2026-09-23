@@ -121,6 +121,32 @@ Before this change, `PROVIDER=civo make clusters` ran the EKS listing while
 path and not the listing path. §3.1's unset closes it, and the aws arm exports
 `PROVIDER=aws` for the same reason rather than trusting what it inherited.
 
+### 3.6 Two defects the first CI run found
+
+Both were invisible locally, and both are now pinned by tests that fail without
+their fix.
+
+**An absent timestamp MUST NOT acquire an age.** GNU `date -d ''` succeeds and
+answers today at midnight, so a Civo cluster with no `created_at` reported an
+age of however long the day had been — a fabricated number in the one column an
+operator reads to decide whether something has been billing too long. BSD
+`date` refuses the empty string, so a developer's Mac printed `-` and the bug
+appeared only on a Linux runner. `age_of` now returns `-` before it calls
+`date` at all.
+
+**A decrypted token MUST NOT be able to reach a printed column.** `civo_token`
+emits an `::add-mask::` line under Actions, and `argo_state`'s civo arm
+decrypts again *inside* the `$( )` that fills the ARGO column — so that line was
+captured as the column's value. GitHub honours `::add-mask::` only at the start
+of a line, so printed mid-row it is ignored and the token would have appeared in
+clear text in a public repository's logs. The arm now lets the first mask reach
+the log unsuppressed, then blanks `GITHUB_ACTIONS` so no later decrypt can
+re-emit it.
+
+The second is why this spec's tests set `GITHUB_ACTIONS`. A test that does not
+cannot exercise the masking path at all, and that is precisely how the defect
+survived a green local run.
+
 ## 4. Testing / acceptance criteria
 
 1. `tests/scripts/clusters-test.sh` passes under `make scripts-check`, with no
@@ -138,8 +164,14 @@ path and not the listing path. §3.1's unset closes it, and the aws arm exports
    clusters` produce output identical to `make clusters`.
 7. A live cluster appears in the right arm with a climbing AGE, and is gone
    after `make down`.
+8. With a `date` that answers `-d ''` the way GNU does, an absent `created_at`
+   still yields AGE `-` (§3.6). The test supplies that `date`, so the case is
+   reproducible on a Mac as well as a runner.
+9. No line of output outside an `::add-mask::` directive contains a decrypted
+   token, with `GITHUB_ACTIONS` set (§3.6).
 
-Criteria 1-6 need no cloud resources. Criterion 7 is the only one that does.
+Criteria 1-6, 8 and 9 need no cloud resources. Criterion 7 is the only one that
+does.
 
 ## 5. Risks and deferred work
 
@@ -147,8 +179,9 @@ Criteria 1-6 need no cloud resources. Criterion 7 is the only one that does.
   API object — `argo-watch.sh` reads snake_case `.num_target_nodes` and
   `.instances[].hostname` from it — so the field is very likely present, but the
   CLI's own documented field list omits it. `(.created_at // "")` feeds
-  `age_of ""`, which already prints `-`. Criterion 4 pins that degradation, so
-  the worst case is a missing age, never a crash.
+  `age_of`, which now refuses an empty argument outright (§3.6). Criteria 4 and
+  8 pin that degradation on both `date` implementations, so the worst case is a
+  missing age, never a crash and never a fabricated one.
 - **A non-platform Civo cluster would be listed** (§3.2). Accepted. If the
   account ever holds one, append ` (untagged)` to its STATUS rather than
   dropping the row.
@@ -163,11 +196,17 @@ Criteria 1-6 need no cloud resources. Criterion 7 is the only one that does.
 **Implemented and verified 2026-09-23**, offline plus a live read of an empty
 account.
 
-Criteria 1-4, `make scripts-check`:
+Criteria 1-4, 8 and 9, `make scripts-check`:
 
     SCRIPTS-CHECK: tests/scripts/clusters-test.sh
     CLUSTERS-TEST: ok - a missing CLI is reported, hetzner servers group by
-    project, civo ages degrade.
+    project, no token reaches a row, and an absent age stays '-' on either date.
+
+The first CI run failed here, and earned its keep: it found both §3.6 defects,
+neither of which a Mac can reproduce. Criterion 8's fake `date` was written
+afterwards and verified by reverting the fix — without the guard it reports
+`365d` for a cluster with no timestamp, which is the shape of the original
+failure.
 
 `shellcheck -x -S warning` clean, and the test was picked up by the existing
 `tests/scripts/*-test.sh` glob with no registration.
