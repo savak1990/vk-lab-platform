@@ -340,6 +340,48 @@ signature of a bring-up that died early, a populated one is something in use.
 - `lab.yml` still has no cleanup-on-failure step. A failed manual dispatch still
   leaves infrastructure standing; the guarantee added here covers CI runs only.
 
+## Amendment: kind is mandatory, and each cloud has its own trigger (2026-09-23)
+
+Two changes, and the second reverses the amendment below it.
+
+**kind stopped being selectable.** `kind-integration` now runs on every change
+that is not documentation-only, and `pr-gate` judges it by name beside the
+validate jobs, with documentation as its only allowed reason to skip. The
+validation count moves from 6 to 7.
+
+The reasoning that made the cloud half opt-in was cost. A kind run reaches no
+cloud, needs no credential and takes about 7 minutes of free runner time, so
+none of that reasoning reaches it — and while it was opt-in, a pull request
+with no label got no cluster testing at all. Making it mandatory raises the
+floor rather than the price.
+
+**`ci:lifecycle` is gone, and each cloud's label is its own trigger.**
+`ci:lifecycle-aws`, `ci:lifecycle-civo`, and `ci:lifecycle-hetzner` once that
+job exists. This reverses the trigger/selector split below.
+
+That split existed to stop two selectors starting two runs whose validation
+halves cancelled each other. The cost of removing it is real and is documented
+rather than designed away: each label event starts a run, the cloud jobs are
+serialized per provider rather than cancelled, so **two labels added in two
+edits run the first cloud twice**. The mitigation is a habit — add every label
+in one edit — and the README says so in a callout.
+
+That trade was accepted deliberately. It deletes the `AVAILABLE` list, the
+`SELECTED` fallback, the `TRIGGERED` flag and the inert-selector rule: about 40
+lines, and a class of question ("is this label a trigger or a selector?") that
+had to be answered every time anyone read the gate.
+
+**What did not change.** `pr-gate` still reads `(requested, result)` per cloud
+and never infers a request from a result — a deliberately omitted cloud and an
+unlabelled pull request both report `skipped`, and only one may merge. A label
+with no job behind it is still refused rather than ignored; `ci:lifecycle-hetzner`
+is the last one. The waiver is still loud, and it still waives only the cloud
+half: nothing excuses kind.
+
+**One rule is new.** An infrastructure change needs at least one cloud to have
+run and passed, or the waiver. kind cannot substitute for it, because no load
+balancer, DNS record, certificate or workload identity exists on that target.
+
 ## Amendment: `ci:local` gained its job (2026-09-22)
 
 `kind-integration` now runs the platform on kind, so `ci:local` selects a job
