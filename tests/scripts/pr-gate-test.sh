@@ -35,7 +35,8 @@ run() {
       INFRA_FILES=gitops/values.yaml \
       R_TERRAFORM=success R_GITOPS=success R_YAML=success \
       R_ACTIONS=success R_SECRETS=success R_REPO=success \
-      LIFECYCLE_AWS=skipped LIFECYCLE_CIVO=skipped KIND_INTEGRATION=success \
+      LIFECYCLE_AWS=skipped LIFECYCLE_CIVO=skipped LIFECYCLE_HETZNER=skipped \
+      KIND_INTEGRATION=success \
       EVENT_NAME=pull_request \
       HEAD_REPO=owner/repo GITHUB_REPOSITORY=owner/repo \
       WANTS_SKIP=false WANTS_AWS=false WANTS_CIVO=false WANTS_HETZNER=false \
@@ -95,10 +96,13 @@ run "a requested cloud whose job did not run" 1 "the aws lifecycle did not pass"
 run "a cloud label on a non-infrastructure change, it fails" 1 "the civo lifecycle did not pass" \
   INFRA=false WANTS_CIVO=true LIFECYCLE_CIVO=failure
 
-# --- a label with no job behind it ------------------------------------------
-
-run "ci:lifecycle-hetzner, which has no job" 1 "no hetzner lifecycle job exists" \
-  WANTS_HETZNER=true
+run "ci:lifecycle-hetzner runs hetzner" 0 "hetzner: came up" \
+  WANTS_HETZNER=true LIFECYCLE_HETZNER=success
+run "a failed hetzner lifecycle blocks the merge" 1 "the hetzner lifecycle did not pass" \
+  WANTS_HETZNER=true LIFECYCLE_HETZNER=failure
+# Asked for and never run is a hole, not a pass - the same rule as the others.
+run "hetzner wanted but skipped" 1 "the hetzner lifecycle did not pass" \
+  WANTS_HETZNER=true LIFECYCLE_HETZNER=skipped
 
 # --- the waiver -------------------------------------------------------------
 
@@ -115,11 +119,16 @@ run "the skip label does not waive kind" 1 "kind-integration did not pass" \
 run "a failed validate job" 1 "validate-gitops did not pass" \
   R_GITOPS=failure
 run "workflow_dispatch runs every cloud" 0 "lifecycle passed" \
-  EVENT_NAME=workflow_dispatch LIFECYCLE_AWS=success LIFECYCLE_CIVO=success
+  EVENT_NAME=workflow_dispatch LIFECYCLE_AWS=success LIFECYCLE_CIVO=success \
+  LIFECYCLE_HETZNER=success
+# One cloud short is still short, even on a dispatch.
+run "workflow_dispatch, hetzner fails" 1 "lifecycle did not pass" \
+  EVENT_NAME=workflow_dispatch LIFECYCLE_AWS=success LIFECYCLE_CIVO=success \
+  LIFECYCLE_HETZNER=failure
 # kind is judged before the dispatch branch, so it reports its own failure.
 run "workflow_dispatch, kind fails" 1 "kind-integration did not pass" \
   EVENT_NAME=workflow_dispatch LIFECYCLE_AWS=success LIFECYCLE_CIVO=success \
-  KIND_INTEGRATION=failure
+  LIFECYCLE_HETZNER=success KIND_INTEGRATION=failure
 
 # --- the label step in `changes`, which decides what pr-gate is given -------
 
@@ -159,6 +168,9 @@ run_hetzner=false'
 BOTH_CLOUDS='run_aws=true
 run_civo=true
 run_hetzner=false'
+EVERY_CLOUD='run_aws=true
+run_civo=true
+run_hetzner=true'
 
 labels "no labels" "$ALL_OFF" '[]'
 labels "ci:lifecycle-civo selects civo" "$CIVO_ONLY" '["ci:lifecycle-civo"]'
@@ -167,15 +179,14 @@ labels "both cloud labels select both" "$BOTH_CLOUDS" '["ci:lifecycle-aws","ci:l
 labels "the old ci:lifecycle selects nothing" "$ALL_OFF" '["ci:lifecycle"]'
 # The old selector names are gone too.
 labels "the old ci:civo selects nothing" "$ALL_OFF" '["ci:civo"]'
-# Naming a cloud with no job stays visible so the gate can refuse it.
-labels "ci:lifecycle-hetzner keeps the request visible" 'run_aws=false
+labels "ci:lifecycle-hetzner selects hetzner" 'run_aws=false
 run_civo=false
 run_hetzner=true' '["ci:lifecycle-hetzner"]'
 # Exact string equality, not a substring test: an unrelated label that merely
 # contains a cloud name must not select that cloud.
 labels "an unrelated label is not a label" "$ALL_OFF" '["ci:lifecycle-aws-migration"]'
-# hetzner has a label but no job, so a dispatch must not reach for it.
-labels "workflow_dispatch selects the clouds that have jobs" "$BOTH_CLOUDS" '[]' DISPATCH=true
+# Every cloud now has a job, so a dispatch reaches for all three.
+labels "workflow_dispatch selects every cloud" "$EVERY_CLOUD" '[]' DISPATCH=true
 
 # --- the two steps composed ------------------------------------------------
 #
@@ -214,8 +225,8 @@ compose "ci:lifecycle-aws runs aws only" 0 "Not exercised: civo" \
   '["ci:lifecycle-aws"]' LIFECYCLE_AWS=success
 compose "both cloud labels" 0 "aws: came up" \
   '["ci:lifecycle-aws","ci:lifecycle-civo"]' LIFECYCLE_AWS=success LIFECYCLE_CIVO=success
-compose "ci:lifecycle-hetzner is refused" 1 "no hetzner lifecycle job exists" \
-  '["ci:lifecycle-hetzner"]'
+compose "ci:lifecycle-hetzner runs hetzner only" 0 "Not exercised: aws civo" \
+  '["ci:lifecycle-hetzner"]' LIFECYCLE_HETZNER=success
 compose "no label at all" 1 "one cloud must run" '[]'
 compose "the old bare ci:lifecycle no longer starts anything" 1 "one cloud must run" \
   '["ci:lifecycle"]'
