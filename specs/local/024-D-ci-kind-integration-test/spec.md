@@ -25,7 +25,7 @@ Excludes: `minikube`, which ADR 0038 dropped from spec 022 entirely — kind is 
 ## Requirements
 
 1. This job MUST reuse spec 022's `PROVIDER=local make up` unchanged — it MUST NOT introduce a second, divergent way to create the cluster or install Argo CD on kind.
-2. The CI job MUST call the same `make` targets a developer runs rather than re-implementing any of their logic in workflow YAML — it stays a thin wrapper (mirrors spec 016's "thin wrapper" requirement for `lab.yml`). `make test` MUST gain a `local` arm: `configure_test_kubeconfig` today returns 1 for any provider but `aws` and `civo`, so the suite cannot reach a kind cluster without one. A `make test-<service>` target MUST exist for each service that already has a Ginkgo label (spec 023) — do not add one ahead of the corresponding test file landing. **Satisfied ahead of this spec, 2026-09-22 (LOCAL-024a).** The `local` arm shipped with the E2E kind environment, so the sentence above is stale on its facts: only `hetzner` still returns 1 (`scripts/lib/provider.sh:389-391`). The suite authenticates as the `e2e/e2e-test` ServiceAccount through a minted token, not as kind's admin. This spec adds no Makefile or script change at all — it is workflow YAML and one composite action.
+2. The CI job MUST call the same `make` targets a developer runs rather than re-implementing any of their logic in workflow YAML — it stays a thin wrapper (mirrors spec 016's "thin wrapper" requirement for `lab.yml`). `make test` MUST gain a `local` arm: `configure_test_kubeconfig` today returns 1 for any provider but `aws` and `civo`, so the suite cannot reach a kind cluster without one. A `make test-<service>` target MUST exist for each service that already has a Ginkgo label (spec 023) — do not add one ahead of the corresponding test file landing. **Satisfied ahead of this spec, 2026-09-22 (LOCAL-024a).** The `local` arm shipped with the E2E kind environment, so the sentence above is stale on its facts: no provider returns 1 any more — `hetzner` gained its arm with HETZ-115/130/140. The suite authenticates as the `e2e/e2e-test` ServiceAccount through a minted token, not as kind's admin. This spec adds no Makefile or script change at all — it is workflow YAML and one composite action.
 3. The root Argo Application applied during this test MUST point its `targetRevision` at the pull request's exact commit SHA, not `main` — this is what lets the test validate the PR's actual GitOps content rather than whatever is already on `main`. **Mechanism recorded 2026-09-22, as this spec's implementation hint asks.** It is split, and the split is easy to miss. The root Application on this target carries no automated sync, so `argo-up.sh` syncs it with `argocd app sync root --local` — from the **working tree**, which on a runner is the pull request's checkout. Its child Applications are ordinary repository consumers and carry `repoURL` + `targetRevision`. The job therefore sets `TARGET_REVISION` to the head SHA as well: left unset, the children would reconcile `main` while the root reflected the pull request, and the run would be green against content nobody proposed.
 4. Tests MUST NOT install Postgres, Kafka, Grafana, or any other platform service themselves. Argo CD MUST be the sole installer, reconciling from the GitOps bootstrap exactly as it does for the `aws` target.
 5. This spec MUST maintain an explicit, current list of AWS-specific integrations it cannot faithfully test — at minimum: NLB, Route 53, ACM, EBS/EFS CSI, Pod Identity, AWS Secrets Manager integration. Any test that would require one of these MUST be skipped here (via spec 023's Ginkgo labels or environment-specific test selection) and left to spec 020 instead — never faked or approximated with a kind-only substitute that could mask a real AWS-side regression.
@@ -71,14 +71,18 @@ because it is the only coverage `scripts/cluster-down-local.sh` will ever get,
 and it is a separate step so that a teardown fault cannot hide a test fault.
 `make down` on this target takes no `CONFIRM_DESTROY`.
 
-The job is judged by `pr-gate` as a **lifecycle** result, not a validation one,
-so the `expected 6 validation results` literal does not move; the results loop
-gains a third entry instead.
+**Superseded 2026-09-23, by the gate simplification.** As shipped, this job was
+a selectable lifecycle target: `local` joined `AVAILABLE`, and `ci:lifecycle`
+with no selector ran three of them. It is neither now. `kind-integration` is
+mandatory — no label gates it, it runs on every change that is not
+documentation-only, and `pr-gate` judges it by name beside the validate jobs
+with documentation as its only allowed skip reason. The count literal moved
+6 → 7 for that reason.
 
-`local` joined `AVAILABLE`, so `ci:lifecycle` with no selector now runs three
-targets. What had kept that default at two was cost, and a kind run spends
-neither money nor a cloud quota, so the argument does not reach it. `ci:hetzner`
-is now the only refused selector. ADR 0035 carries a dated amendment.
+What survives from the paragraph this replaces is its argument. What kept the
+cloud half opt-in was cost, and a kind run spends neither money nor a cloud
+quota, so that reasoning never reached this job. Making it mandatory raises the
+floor rather than the price. ADR 0035 carries the dated amendment.
 
 ### Requirement 5 — what this job still cannot test
 
@@ -100,15 +104,13 @@ Postgres backup surface is gated off entirely.
 | Fork safety (acceptance 3) | the `if:` requires `head.repo.full_name == github.repository`; no credential is issued to this job at all |
 | Requirement 7, `cancel-in-progress: true` | set, per pull request rather than a shared group |
 
-**Outstanding, pending the first live run on this pull request.** The pull
-request that adds this job can run it, but not by itself: `.github/` is on the
-`infra` path list, which makes the lifecycle check **required** rather than
-makes the job **start**. Starting it still takes the `ci:lifecycle` label, like
-any other lifecycle run.
+**Two of the four closed 2026-09-23**, by the run that merged #80. The
+remaining two need a deliberate break and a deliberate second push, and no
+real pull request has produced either yet.
 
 | Criterion | Status |
 |---|---|
-| The job reaches a healthy platform and a green suite on a runner | outstanding |
-| Cold-cache bring-up time against the 1800s children budget | outstanding — 496s was a laptop with a warm cache |
+| The job reaches a healthy platform and a green suite on a runner | **pass** — run 35840318904 |
+| Cold-cache bring-up time against the 1800s children budget | **pass** — 7m18s end to end on a cold runner, `up` + `test` + `down` together, against a budget of 1800s for the children alone. 496s was a laptop with a warm cache |
 | A deliberate `gitops/` break fails the job on that break, not on a timeout (acceptance 2) | outstanding |
 | A second commit cancels the first run (acceptance 4) | outstanding |

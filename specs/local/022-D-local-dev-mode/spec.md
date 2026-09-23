@@ -336,8 +336,10 @@ That last grant is why this target alone carries a `RoleBinding` in `envoy`.
 
 ### Outstanding
 
-- The kind CI job is LOCAL-024b. Until it lands, this evidence is gathered by
-  hand rather than on every pull request.
+- **Closed 2026-09-23.** The kind CI job landed as LOCAL-024b, and it is not
+  opt-in: `kind-integration` runs on every change that is not documentation-only
+  and `pr-gate` judges it by name. This evidence is now gathered on every pull
+  request rather than by hand.
 - `.kube/<project>-test.config` is left naming the deleted cluster after
   `make down`. It is rewritten before every use, and civo behaves the same
   way, so it is recorded here rather than fixed.
