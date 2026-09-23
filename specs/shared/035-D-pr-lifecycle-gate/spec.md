@@ -66,15 +66,34 @@ Non-goals:
    label, and applying one MUST itself start the run against the pull
    request's current head commit.
 
-   `ci:lifecycle` MUST be the only trigger, and MUST mean every provider that
+   ~~`ci:lifecycle` MUST be the only trigger, and MUST mean every provider that
    has a job when it carries no selector. `ci:aws`, `ci:civo`, `ci:hetzner`
    and `ci:local` MUST be selectors that narrow it, and MUST start nothing on
    their own — otherwise selecting two providers costs two label events, two
-   runs, and the second cancelling the first's validation.
+   runs, and the second cancelling the first's validation.~~
 
-   A selected provider with no job behind it MUST fail `pr-gate` with a
-   message saying so, rather than be ignored — a selector that silently does
-   nothing is worse than no selector.
+   **Superseded 2026-09-23.** One label per cloud, each its own trigger:
+   `ci:lifecycle-aws`, `ci:lifecycle-civo`, and `ci:lifecycle-hetzner` once
+   that job exists. There is no separate `ci:lifecycle`.
+
+   The two-runs problem this requirement prevented is now prevented by habit
+   rather than by construction: labels are added in one edit, and the README
+   says so in a callout. The cost of getting it wrong is one cloud running
+   twice, because the cloud jobs are serialized per provider rather than
+   cancelled. That was accepted to delete the `AVAILABLE` list, the `SELECTED`
+   fallback, the `TRIGGERED` flag and the inert-selector rule — and with them
+   the question of whether a given label triggers or merely narrows.
+
+   kind is no longer among these labels at all. `kind-integration` runs on
+   every change that is not documentation-only and is judged beside the
+   validate jobs, so the validation count is 7 rather than 6. An
+   infrastructure change additionally MUST have at least one cloud run and
+   pass, or carry the waiver: kind proves the chart reconciles, not that a
+   load balancer, DNS record, certificate or workload identity still works.
+
+   A requested cloud with no job behind it MUST fail `pr-gate` with a
+   message saying so, rather than be ignored — a label that silently does
+   nothing is worse than no label.
 
    The labels MUST be read once, and every later job MUST read that answer.
    The match MUST be exact string equality, so a label whose name merely

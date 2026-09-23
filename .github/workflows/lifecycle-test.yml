@@ -5,23 +5,25 @@ name: lifecycle-test
 # a lifecycle label. `pr-gate` below is the single required status check on
 # main.
 #
-# `ci:lifecycle` is the trigger. `ci:aws`, `ci:civo`, `ci:hetzner` and
-# `ci:local` are selectors that narrow it, and on their own they start nothing:
-# that is what lets two of them be added without starting two runs that cancel
-# each other's validation. `ci:lifecycle` with no selector runs every provider.
+# One label per cloud: `ci:lifecycle-aws`, `ci:lifecycle-civo`, and
+# `ci:lifecycle-hetzner` once that job exists. Each is its own trigger - there
+# is no separate `ci:lifecycle` to arm them, and no label means no cloud run.
 #
-# `ci:hetzner` names a job that does not exist yet, and pr-gate rejects a run
-# that selects it rather than let the selector do nothing. A run on a subset
-# says loudly which targets it never touched.
+# Add every label you want in ONE edit. Each label event starts a run, and the
+# cloud jobs are serialized per provider rather than cancelled, so adding two
+# labels in two edits runs the first provider twice.
 #
-# `ci:local` runs the platform on kind, on the runner itself. It reaches no
-# cloud, costs nothing and needs no credential, so it joins the default rather
-# than waiting to be asked for.
+# kind is not a label. `kind-integration` runs on every change that is not
+# documentation-only, and must pass: it reaches no cloud, needs no credential
+# and costs nothing, so there is nothing to opt into.
 #
-# The heavy half is opt-in because the two cloud providers together cost
-# roughly 55 minutes and a little under a dollar. Adding `ci:lifecycle` starts the run
-# against the pull request's current head commit; removing and re-adding it is
-# the re-run handle, and the selectors decide what that re-run covers.
+# kind alone does not carry an infrastructure change. `pr-gate` requires one
+# cloud to have run and passed, or the `ci:skip-lifecycle` waiver.
+#
+# The cloud half stays opt-in because two providers together cost roughly 55
+# minutes and a little under a dollar. Adding a cloud's label starts that
+# cloud's run against the pull request's current head commit; removing and
+# re-adding it is the re-run handle.
 #
 # Isolation is by PROJECT_NAME/SUBDOMAIN (ADR 0026), not a separate
 # terraform/live/ci/ tree - a documented deviation from spec AWS-020
@@ -63,11 +65,9 @@ jobs:
       terraform: ${{ steps.classify.outputs.terraform }}
       infra: ${{ steps.classify.outputs.infra }}
       infra_files: ${{ steps.classify.outputs.infra_files }}
-      triggered: ${{ steps.labels.outputs.triggered }}
       run_aws: ${{ steps.labels.outputs.run_aws }}
       run_civo: ${{ steps.labels.outputs.run_civo }}
       run_hetzner: ${{ steps.labels.outputs.run_hetzner }}
-      run_local: ${{ steps.labels.outputs.run_local }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -77,10 +77,8 @@ jobs:
       # answer, and so the label names live in one place rather than in a
       # `contains()` chain per provider per job.
       #
-      # `ci:lifecycle` is the trigger and a provider label is only a selector:
-      # adding two selectors would otherwise start two runs that cancel each
-      # other's validation. Selectors alone start nothing; `ci:lifecycle` with
-      # no selector means every provider.
+      # A cloud runs when its own label is present, and not otherwise. A manual
+      # dispatch runs every cloud that has a job.
       #
       # Matched with jq rather than the `contains()` expression so the
       # comparison is exact string equality, not whatever a future label name
@@ -91,39 +89,20 @@ jobs:
           LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
         run: |
           set -euo pipefail
-          PROVIDERS="aws civo hetzner local"
-          # Providers with a job behind them. Selecting one of the others is an
-          # explicit request the gate refuses out loud, so the default must
-          # never reach for them - it would refuse the commonest case of all.
-          AVAILABLE="aws civo local"
+          # hetzner has a label but no job yet, so a dispatch must not reach
+          # for it - pr-gate refuses it out loud instead.
+          CLOUDS="aws civo hetzner"
+          DISPATCH_RUNS="aws civo"
 
           has() {
             printf '%s' "${LABELS:-[]}" | jq -e --arg x "$1" 'any(.[]?; . == $x)' > /dev/null
           }
 
-          if [ "$DISPATCH" = "true" ]; then
-            TRIGGERED=true
-            SELECTED="$AVAILABLE"
-          else
-            TRIGGERED=false
-            if has "ci:lifecycle"; then
-              TRIGGERED=true
-            fi
-            SELECTED=""
-            for p in $PROVIDERS; do
-              if has "ci:$p"; then
-                SELECTED="$SELECTED $p"
-              fi
-            done
-            if [ -z "$SELECTED" ]; then
-              SELECTED="$AVAILABLE"
-            fi
-          fi
-
-          echo "triggered=$TRIGGERED" >> "$GITHUB_OUTPUT"
-          for p in $PROVIDERS; do
+          for p in $CLOUDS; do
             run=false
-            if [ "$TRIGGERED" = "true" ] && [[ " $SELECTED " == *" $p "* ]]; then
+            if [ "$DISPATCH" = "true" ]; then
+              case " $DISPATCH_RUNS " in *" $p "*) run=true ;; esac
+            elif has "ci:lifecycle-$p"; then
               run=true
             fi
             echo "run_$p=$run" >> "$GITHUB_OUTPUT"
@@ -210,12 +189,15 @@ jobs:
       contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    # A shared TF_PLUGIN_CACHE_DIR was tried here and removed: measured over
-    # four runs it was consistently slower (7m45s without it, 8m55s-10m11s
-    # with), because restoring and saving the cache costs more than the plugin
-    # downloads it avoids. The runtime is Terragrunt's per-unit init overhead,
-    # not the downloads. Parallelising the unit loop is the fix if this needs
-    # to get faster.
+    # A TF_PLUGIN_CACHE_DIR persisted across runs with actions/cache was tried
+    # and removed: measured over four runs it was consistently slower (7m45s
+    # without it, 8m55s-10m11s with), because restoring and saving the cache
+    # costs more than the downloads it avoids. That still holds.
+    #
+    # Its stated reason did not. The cost was never Terragrunt-specific: it is
+    # per-directory `terraform init`, and the module loop was the larger half
+    # (6m06s over 29 modules against 3m48s over 18 units, both ~12.6s each).
+    # Both loops now run concurrently inside terraform-check.sh.
     steps:
       - uses: actions/checkout@v4
 
@@ -237,54 +219,8 @@ jobs:
           chmod +x terragrunt_linux_amd64
           sudo mv terragrunt_linux_amd64 /usr/local/bin/terragrunt
 
-      - name: terraform fmt -check
-        run: terraform fmt -check -recursive terraform/
-
-      - name: terraform validate (every module)
-        run: |
-          set -euo pipefail
-          for m in terraform/modules/*/; do
-            m="${m%/}"
-            echo "== $m =="
-            (cd "$m" && terraform init -backend=false -input=false && terraform validate)
-          done
-
-      # Units with a `dependency` block are skipped: terragrunt resolves
-      # `dependency.x.outputs` by running `terraform output -json` directly
-      # in the dependency's own working directory, which hard-fails without
-      # a real initialized backend rather than falling back to
-      # mock_outputs (reproduced locally against this repo's units, not a
-      # config mistake) - giving this job real AWS/S3 reachability just to
-      # validate HCL would defeat the point. Their module code is still
-      # covered by the loop above; cluster/eks, the five
-      # cluster/*-pod-identity units, cluster-civo/{k8s,network},
-      # bootstrap/{acm,rolesanywhere} are the ones skipped here.
-      - name: terragrunt validate (non-dependency live units)
-        run: |
-          set -euo pipefail
-          export TF_CLI_ARGS_init="-backend=false"
-          for u in \
-            account-state \
-            account/ahorro-ci-role \
-            account/eks-access-identity \
-            account/eks-test-identity \
-            account/github-oidc \
-            account/kms \
-            account/lab-role \
-            account/root-domain \
-            bootstrap/route53 \
-            persistent-civo/backups \
-            persistent-civo/network \
-            persistent-civo/reserved-ip \
-            persistent-hetzner/network \
-            persistent-hetzner/ssh-key \
-            persistent/backups \
-            persistent/secrets \
-            persistent/vpc \
-            state; do
-            echo "== $u =="
-            (cd "terraform/live/$u" && terragrunt validate --non-interactive)
-          done
+      - name: terraform fmt, then validate every module and live unit
+        run: make terraform-check
 
       # soft_fail: report-only for now - a real scan against this repo
       # found 41 findings (3 critical/31 high/7 medium), many likely
@@ -583,20 +519,28 @@ jobs:
   # runners, which a cloud cluster outlives and a kind cluster does not - it
   # dies with the job that created it. So one job, and teardown is a step.
   kind-integration:
-    needs: [changes, validate-terraform, validate-gitops, validate-yaml,
-            validate-actions, validate-secrets, validate-repo]
+    # Deliberately NOT the cloud jobs' needs list. Those wait for every static
+    # check because a cluster costs money and a failed check means it would be
+    # wasted. This one is free, so it starts as soon as the change is
+    # classified and runs beside the static checks rather than behind them -
+    # waiting for validate-terraform alone would idle it for ten minutes.
+    # pr-gate still waits for its result, so nothing merges without it.
+    needs: [changes]
     permissions:
       contents: read
-    # Same gate as the cloud jobs, including the fork guard. No credential is
-    # issued here, but the runner still executes workloads this pull request
-    # controls, which is the abuse this guard exists for.
+    # No label gates this one: it reaches no cloud, needs no credential and
+    # costs nothing, so every change that is not documentation-only runs it.
+    # ci:skip-lifecycle is absent on purpose - that waiver exists to skip cloud
+    # spend, and there is none here to skip.
+    #
+    # The fork guard still applies. No credential is issued here, but the
+    # runner executes workloads this pull request controls, which is the abuse
+    # that guard exists for.
     if: >-
       !cancelled() &&
       !contains(needs.*.result, 'failure') &&
       !contains(needs.*.result, 'cancelled') &&
       needs.changes.outputs.docs_only != 'true' &&
-      needs.changes.outputs.run_local == 'true' &&
-      !contains(github.event.pull_request.labels.*.name, 'ci:skip-lifecycle') &&
       (github.event_name == 'workflow_dispatch' ||
        github.event.pull_request.head.repo.full_name == github.repository)
     # Per pull request, and cancellable - unlike the cloud jobs, which must
@@ -687,13 +631,11 @@ jobs:
           KIND_INTEGRATION: ${{ needs.kind-integration.result }}
           EVENT_NAME: ${{ github.event_name }}
           HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
-          TRIGGERED: ${{ needs.changes.outputs.triggered }}
           WANTS_SKIP: ${{ contains(github.event.pull_request.labels.*.name, 'ci:skip-lifecycle') }}
           WANTS_AWS: ${{ needs.changes.outputs.run_aws }}
           WANTS_CIVO: ${{ needs.changes.outputs.run_civo }}
-          WANTS_LOCAL: ${{ needs.changes.outputs.run_local }}
           # No job exists for this one yet. Named here so the gate can say so
-          # out loud rather than let the selector do nothing.
+          # out loud rather than let the label do nothing.
           WANTS_HETZNER: ${{ needs.changes.outputs.run_hetzner }}
         run: |
           set -euo pipefail
@@ -742,13 +684,17 @@ jobs:
           check validate-actions "$R_ACTIONS" "$DOCS_REASON"
           check validate-secrets "$R_SECRETS" ""
           check validate-repo "$R_REPO" ""
+          # Judged here rather than with the clouds below: it is not selected,
+          # it is not optional, and documentation is the only thing that
+          # excuses it.
+          check kind-integration "$KIND_INTEGRATION" "$DOCS_REASON"
           # Guards against a check line being deleted rather than a result
           # going missing, which the per-job check above already catches.
-          if [ "$COUNT" -ne 6 ]; then
-            echo "::error::expected 6 validation results, judged $COUNT."
+          if [ "$COUNT" -ne 7 ]; then
+            echo "::error::expected 7 validation results, judged $COUNT."
             exit 1
           fi
-          echo "static validation passed."
+          echo "static validation passed, and the platform came up on kind."
 
           if [ "$EVENT_NAME" != "pull_request" ]; then
             if [ "$LIFECYCLE_AWS" != "success" ] || [ "$LIFECYCLE_CIVO" != "success" ] \
@@ -756,7 +702,7 @@ jobs:
               echo "::error::lifecycle did not pass (aws=$LIFECYCLE_AWS civo=$LIFECYCLE_CIVO local=$KIND_INTEGRATION)."
               exit 1
             fi
-            echo "lifecycle passed on every provider."
+            echo "lifecycle passed on every target."
             exit 0
           fi
 
@@ -767,18 +713,17 @@ jobs:
 
           # Two contradictory instructions are an error, not a precedence rule.
           # Picking one silently would make the gate's behavior depend on a
-          # rule nobody reading the labels can see. Only the trigger can
-          # contradict the waiver; a provider selector asks for nothing on its
-          # own.
-          if [ "$TRIGGERED" = "true" ] && [ "$WANTS_SKIP" = "true" ]; then
-            echo "::error::this pull request carries both 'ci:lifecycle' and 'ci:skip-lifecycle'. Remove one - they ask for opposite things."
+          # rule nobody reading the labels can see.
+          if [ "$WANTS_SKIP" = "true" ] \
+             && { [ "$WANTS_AWS" = "true" ] || [ "$WANTS_CIVO" = "true" ] || [ "$WANTS_HETZNER" = "true" ]; }; then
+            echo "::error::this pull request asks for a cloud lifecycle run and also carries 'ci:skip-lifecycle'. Remove one - they ask for opposite things."
             exit 1
           fi
 
           # A provider label with no job behind it would otherwise do nothing at
           # all, which is worse than refusing it. hetzner is the last one.
           if [ "$WANTS_HETZNER" = "true" ]; then
-            echo "::error::'ci:hetzner' was requested, but no hetzner lifecycle job exists yet. Remove the label."
+            echo "::error::'ci:lifecycle-hetzner' was requested, but no hetzner lifecycle job exists yet. Remove the label."
             exit 1
           fi
 
@@ -817,22 +762,13 @@ jobs:
             exit 0
           fi
 
-          if [ "$TRIGGERED" != "true" ]; then
-            if [ "$INFRA" != "true" ]; then
-              echo "no infrastructure change - the lifecycle check is not required for this pull request."
-              exit 0
-            fi
-            echo "::error::this pull request changes infrastructure, so it needs the lifecycle check. Add 'ci:lifecycle' to start it - on its own it runs every provider, and with 'ci:aws', 'ci:civo' or 'ci:local' it runs only those."
-            exit 1
-          fi
-
           # Judged against what was asked for, never inferred from the results:
-          # a deliberately omitted provider and an unlabeled pull request both
+          # a deliberately omitted cloud and an unlabeled pull request both
           # report "skipped", and only one of the two is acceptable.
           GATE=0
+          PASSED=""
           OMITTED=""
-          for triple in "aws:$LIFECYCLE_AWS:$WANTS_AWS" "civo:$LIFECYCLE_CIVO:$WANTS_CIVO" \
-                        "local:$KIND_INTEGRATION:$WANTS_LOCAL"; do
+          for triple in "aws:$LIFECYCLE_AWS:$WANTS_AWS" "civo:$LIFECYCLE_CIVO:$WANTS_CIVO"; do
             name="${triple%%:*}"
             rest="${triple#*:}"
             result="${rest%%:*}"
@@ -842,20 +778,35 @@ jobs:
               continue
             fi
             case "$result" in
-              success) echo "$name: came up, passed make test, and was destroyed." ;;
+              success)
+                echo "$name: came up, passed make test, and was destroyed."
+                PASSED="$PASSED $name" ;;
               *)
                 echo "::error::the $name lifecycle did not pass (${result:-no result})."
                 GATE=1 ;;
             esac
           done
 
+          # kind proves the chart reconciles, not that a cloud still accepts
+          # it: no load balancer, no DNS, no certificate, no workload identity
+          # exists on that target. So one cloud must have run and passed before
+          # an infrastructure change merges.
+          if [ "$INFRA" = "true" ] && [ -z "$PASSED" ] && [ "$GATE" -eq 0 ]; then
+            echo "::error::this pull request changes infrastructure, so one cloud must run. Add 'ci:lifecycle-aws' or 'ci:lifecycle-civo' - add every label you want in one edit - or 'ci:skip-lifecycle' to waive it."
+            exit 1
+          fi
+
+          if [ "$INFRA" != "true" ] && [ -z "$PASSED" ]; then
+            echo "no infrastructure change - no cloud run is required for this pull request."
+          fi
+
           # Same reasoning as the waiver block: a partial run and a full run are
           # indistinguishable afterwards unless the run says which clouds it
           # never touched.
           if [ -n "$OMITTED" ]; then
-            echo "::warning::the lifecycle check ran on a subset of providers. Not exercised:$OMITTED"
+            echo "::warning::the lifecycle check ran on a subset of clouds. Not exercised:$OMITTED"
             {
-              echo "### Lifecycle check ran on a subset of providers"
+              echo "### Lifecycle check ran on a subset of clouds"
               echo
               echo "Not exercised by this pull request:"
               echo

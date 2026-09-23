@@ -202,3 +202,8 @@ values entry; the render check then fails until the set is reverted too.
   `method: plugin` Backup against a cluster that has no plugin. One guard in
   `backup_teardown` is the whole fix; it belongs to this spec, not to the one
   whose cycle found it.
+
+- 2026-09-23 - fourth reproduction, on HETZ-070's prod cycle. `argo-down`
+  printed `Backup/lab-postgres-teardown-... reported phase 'failed'` and
+  `ContinuousArchiving=True` again, with no `barman-cloud-plugin` Application
+  in the cluster. Nothing new about the mechanism; it is simply four for four.
