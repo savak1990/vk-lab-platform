@@ -194,6 +194,11 @@ the persistent units, because they live in a separate stack directory.
   layer is a server, volume, load balancer, primary IP or firewall. HETZ-120
   adds persistent volumes on this target, and must narrow the volume leg of
   the sweep before it does.
+- 2026-09-23 — the narrowing obligation above is retired, not done. It assumed
+  HETZ-120 would add a `Retain` storage class. It does not: the data of record
+  is a continuous WAL archive in S3, so the volume stays `Delete` and
+  disposable, and a volume still present after the cascade is a leak in every
+  case the sweep can see. The sweep keeps matching on the project label alone.
 - 2026-09-22 — merged as `7771dc9` (PR #56) and closed. The operator ran the
   live Hetzner cluster cycle after the merge and accepted the result; this
   entry records that attestation, not evidence collected in the session that

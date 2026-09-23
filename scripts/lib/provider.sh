@@ -262,6 +262,52 @@ require_local_context() {
   return 1
 }
 
+# Writes the control plane's k3s.yaml to $2, waiting for it to appear.
+#
+# Two waits are needed and only one used to be here. cloud-init takes a minute
+# or two to install k3s, so the file wait runs on the far side of the
+# connection - one decrypt, one call. But sshd answers nothing at all on a
+# server created seconds ago, and ssh then fails to connect rather than running
+# that remote wait, which was reported as a k3s timeout it never performed.
+# A connection that never opened is retried here.
+hetzner_fetch_k3s_kubeconfig() {
+  local ip="${1:?hetzner_fetch_k3s_kubeconfig: ip required}"
+  local out="${2:?hetzner_fetch_k3s_kubeconfig: output path required}"
+  local budget="${HETZNER_K3S_WAIT_SECONDS:-600}"
+  local poll="${HETZNER_K3S_POLL_INTERVAL:-5}"
+  local deadline=$(( $(date +%s) + budget ))
+  local connected=false
+  local remaining attempts rc
+
+  while :; do
+    remaining=$(( deadline - $(date +%s) ))
+    [ "$remaining" -le 0 ] && break
+    attempts=$(( remaining / poll ))
+    [ "$attempts" -lt 1 ] && attempts=1
+
+    hetzner_ssh "$ip" "i=0; while [ \$i -lt $attempts ]; do if [ -s /etc/rancher/k3s/k3s.yaml ]; then cat /etc/rancher/k3s/k3s.yaml; exit 0; fi; i=\$((i+1)); sleep $poll; done; exit 1" >"$out" 2>/dev/null
+    rc=$?
+
+    if [ "$rc" -eq 0 ] && [ -s "$out" ]; then
+      return 0
+    fi
+    # 255 is ssh's own "could not connect". Any other status came back from the
+    # remote side, so the wait did run and the file is genuinely not there.
+    if [ "$rc" -ne 255 ]; then
+      connected=true
+      break
+    fi
+    sleep "$poll"
+  done
+
+  if [ "$connected" = true ]; then
+    echo "hetzner_fetch_k3s_kubeconfig: /etc/rancher/k3s/k3s.yaml did not appear on $ip within ${budget}s." >&2
+  else
+    echo "hetzner_fetch_k3s_kubeconfig: no ssh connection to $ip within ${budget}s - the server may still be booting." >&2
+  fi
+  return 1
+}
+
 # k3s writes its kubeconfig only on the control plane, naming every object
 # "default" and pointing at 127.0.0.1. The API server certificate already
 # carries the public address, so the server URL is all that has to change for
@@ -270,23 +316,16 @@ require_local_context() {
 hetzner_kubeconfig() {
   local target="${1:-${KUBECONFIG:-$HOME/.kube/config}}"
   local ctx="${PROJECT_NAME}-hetzner"
-  local ip tmp merged attempts status=0
+  local ip tmp merged status=0
 
   if ! ip="$(hetzner_cp_ip)"; then
     echo "hetzner_kubeconfig: no control_plane_ip in SSM - has 'make cluster-up' run?" >&2
     return 1
   fi
 
-  # sshd answers a good minute before cloud-init has finished installing k3s,
-  # so the file is waited for on the far side of the one call this is allowed.
-  # The ceiling is generous because the poll exits the moment the file appears:
-  # 180s passed locally and failed in CI, where the download is slower.
-  attempts=$(( ${HETZNER_K3S_WAIT_SECONDS:-600} / 5 ))
   tmp="$(mktemp)"
-  hetzner_ssh "$ip" "i=0; while [ \$i -lt $attempts ]; do if [ -s /etc/rancher/k3s/k3s.yaml ]; then cat /etc/rancher/k3s/k3s.yaml; exit 0; fi; i=\$((i+1)); sleep 5; done; exit 1" >"$tmp" 2>/dev/null || status=1
-  if [ "$status" -ne 0 ] || [ ! -s "$tmp" ]; then
+  if ! hetzner_fetch_k3s_kubeconfig "$ip" "$tmp"; then
     rm -f "$tmp"
-    echo "hetzner_kubeconfig: /etc/rancher/k3s/k3s.yaml did not appear on $ip within ${HETZNER_K3S_WAIT_SECONDS:-600}s." >&2
     return 1
   fi
 

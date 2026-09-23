@@ -194,15 +194,19 @@ local_resolve_inputs() {
 # one. The load balancer's location is not one of them: it comes from the
 # REGION operator input, which no Terraform layer owns.
 #
-# No reserved IP and no backup bucket: this target has neither. No firewall or
-# ssh key id either, because nothing reads them until those two specs land.
+# No reserved IP: this target has none. No firewall or ssh key id either,
+# because nothing reads them yet. The backup bucket comes from the shared
+# persistent layer, which this target does not exclude.
 hetzner_resolve_inputs() {
   hcloud_token
+  # aws ssm get-parameters accepts at most 10 names per call, so the list is
+  # fetched in batches rather than one request.
   local ssm_names=(
     "/$PROJECT_NAME/bootstrap/route53/fqdn"
     "/$PROJECT_NAME/bootstrap/route53/zone_id"
     "/$PROJECT_NAME/persistent/argocd/admin_password_bcrypt"
     "/$PROJECT_NAME/persistent-hetzner/network/network_id"
+    "/$PROJECT_NAME/persistent/backups/bucket_name"
     "/$PROJECT_NAME/bootstrap/rolesanywhere/trust_anchor_arn"
     "/$PROJECT_NAME/bootstrap/rolesanywhere/profile_arn"
     "/$PROJECT_NAME/bootstrap/rolesanywhere/role_arn/eso"
@@ -212,11 +216,16 @@ hetzner_resolve_inputs() {
   )
   SSM_BATCH_NAMES=()
   SSM_BATCH_VALUES=()
-  while IFS=$'\t' read -r name value; do
-    SSM_BATCH_NAMES+=("$name")
-    SSM_BATCH_VALUES+=("$value")
-  done < <(aws ssm get-parameters --region "$LAB_REGION" --with-decryption \
-    --names "${ssm_names[@]}" --query 'Parameters[].[Name,Value]' --output text)
+  local batch_start=0
+  while [ "$batch_start" -lt "${#ssm_names[@]}" ]; do
+    while IFS=$'\t' read -r name value; do
+      SSM_BATCH_NAMES+=("$name")
+      SSM_BATCH_VALUES+=("$value")
+    done < <(aws ssm get-parameters --region "$LAB_REGION" --with-decryption \
+      --names "${ssm_names[@]:$batch_start:10}" \
+      --query 'Parameters[].[Name,Value]' --output text)
+    batch_start=$((batch_start + 10))
+  done
 
   LAB_FQDN="$(ssm_output "/$PROJECT_NAME/bootstrap/route53/fqdn")"
   ROUTE53_ZONE_ID="$(ssm_output "/$PROJECT_NAME/bootstrap/route53/zone_id")"
@@ -228,12 +237,8 @@ hetzner_resolve_inputs() {
   EXTERNAL_DNS_ROLE_ARN="$(ssm_output "/$PROJECT_NAME/bootstrap/rolesanywhere/role_arn/external-dns")"
   CERT_MANAGER_ROLE_ARN="$(ssm_output "/$PROJECT_NAME/bootstrap/rolesanywhere/role_arn/cert-manager")"
   PGBACKUP_ROLE_ARN="$(ssm_output "/$PROJECT_NAME/bootstrap/rolesanywhere/role_arn/pgbackup")"
-  # Empty rather than unset: the shared backup machinery reads these outside
-  # any provider branch, under set -u. No bucket exists on this target until
-  # HETZ-115/120 add one.
-  BACKUP_BUCKET=""
-  BACKUP_SERVER_NAME=""
-  RECOVER_SERVER_NAME=""
+  BACKUP_BUCKET="$(ssm_output "/$PROJECT_NAME/persistent/backups/bucket_name")"
+  backup_resolve_generation
   configure_kubeconfig "$KUBECONFIG"
 }
 
@@ -749,7 +754,10 @@ hetzner_install_root_application() {
     --set awsIdentity.rolesAnywhere.roleArns.external-dns="$EXTERNAL_DNS_ROLE_ARN" \
     --set awsIdentity.rolesAnywhere.roleArns.cert-manager="$CERT_MANAGER_ROLE_ARN" \
     --set awsIdentity.rolesAnywhere.roleArns.pgbackup="$PGBACKUP_ROLE_ARN" \
-    --set postgres.backup.enabled=false \
+    --set postgres.backup.enabled=true \
+    --set postgres.backup.bucket="$BACKUP_BUCKET" \
+    --set postgres.backup.serverName="$BACKUP_SERVER_NAME" \
+    --set postgres.backup.recoverServerName="$RECOVER_SERVER_NAME" \
     --set tls.issuer="${TLS_ISSUER:-letsencrypt-prod}" \
     --set tls.acmeEmail="${TLS_ACME_EMAIL:-}" \
     --set tls.hostedZoneId="$ROUTE53_ZONE_ID"
@@ -799,8 +807,8 @@ case "$PROVIDER" in
     ;;
 esac
 # Writes to SSM and prunes S3. Keyed on the bucket rather than on the provider:
-# local and hetzner both take no backups and mint no server name, and
-# put-parameter rejects the empty value that would then be written.
+# local takes no backups and mints no server name, and put-parameter rejects
+# the empty value that would then be written.
 if [ -n "${BACKUP_BUCKET:-}" ]; then
   backup_publish_server_name
 fi
