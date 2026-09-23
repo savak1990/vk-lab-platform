@@ -5,13 +5,15 @@ name: lifecycle-test
 # a lifecycle label. `pr-gate` below is the single required status check on
 # main.
 #
-# One label per cloud: `ci:lifecycle-aws`, `ci:lifecycle-civo`, and
-# `ci:lifecycle-hetzner` once that job exists. Each is its own trigger - there
-# is no separate `ci:lifecycle` to arm them, and no label means no cloud run.
+# One label, one decision: `ci:lifecycle-aws` or `ci:lifecycle-civo` for that
+# cloud alone, `ci:lifecycle` for every cloud that has a job, and
+# `ci:lifecycle-hetzner` once that job exists. No label means no cloud run.
 #
-# Add every label you want in ONE edit. Each label event starts a run, and the
-# cloud jobs are serialized per provider rather than cancelled, so adding two
-# labels in two edits runs the first provider twice.
+# One label rather than a trigger plus selectors, because GitHub emits a
+# `labeled` event per label - even from a single API call carrying both - and
+# the cloud jobs are serialized per provider rather than cancelled. Two labels
+# would therefore mean two runs and one cloud running twice. There is no way
+# to batch them, so the label set makes every choice reachable with one.
 #
 # kind is not a label. `kind-integration` runs on every change that is not
 # documentation-only, and must pass: it reaches no cloud, needs no credential
@@ -21,9 +23,9 @@ name: lifecycle-test
 # cloud to have run and passed, or the `ci:skip-lifecycle` waiver.
 #
 # The cloud half stays opt-in because two providers together cost roughly 55
-# minutes and a little under a dollar. Adding a cloud's label starts that
-# cloud's run against the pull request's current head commit; removing and
-# re-adding it is the re-run handle.
+# minutes and a little under a dollar. Adding a label starts that run against
+# the pull request's current head commit; removing and re-adding it is the
+# re-run handle.
 #
 # Isolation is by PROJECT_NAME/SUBDOMAIN (ADR 0026), not a separate
 # terraform/live/ci/ tree - a documented deviation from spec AWS-020
@@ -92,17 +94,25 @@ jobs:
           # hetzner has a label but no job yet, so a dispatch must not reach
           # for it - pr-gate refuses it out loud instead.
           CLOUDS="aws civo hetzner"
-          DISPATCH_RUNS="aws civo"
+          # Clouds with a job behind them. `ci:lifecycle` and a manual dispatch
+          # both mean these, and neither reaches for one the gate would refuse.
+          HAVE_JOBS="aws civo"
 
           has() {
             printf '%s' "${LABELS:-[]}" | jq -e --arg x "$1" 'any(.[]?; . == $x)' > /dev/null
           }
 
+          ALL=false
+          if [ "$DISPATCH" = "true" ] || has "ci:lifecycle"; then
+            ALL=true
+          fi
+
           for p in $CLOUDS; do
             run=false
-            if [ "$DISPATCH" = "true" ]; then
-              case " $DISPATCH_RUNS " in *" $p "*) run=true ;; esac
-            elif has "ci:lifecycle-$p"; then
+            if [ "$ALL" = "true" ]; then
+              case " $HAVE_JOBS " in *" $p "*) run=true ;; esac
+            fi
+            if has "ci:lifecycle-$p"; then
               run=true
             fi
             echo "run_$p=$run" >> "$GITHUB_OUTPUT"
