@@ -8,16 +8,16 @@
 # not proof of a successful shutdown, and a leaked hosted zone in particular
 # makes require-unique-subdomain.sh refuse every later run for this project.
 #
-# Everything here is a direct AWS/Civo existence check, never a state-file
+# Everything here is a direct cloud-API existence check, never a state-file
 # read: bootstrap-down.sh ends by deleting s3://<project>-tf-state, so by the
 # time this runs there is no state left to inspect.
 set -euo pipefail
 
 PROVIDER="${1:-}"
 case "$PROVIDER" in
-  aws | civo) ;;
+  aws | civo | hetzner) ;;
   *)
-    echo "usage: verify-no-leaks.sh <aws|civo>" >&2
+    echo "usage: verify-no-leaks.sh <aws|civo|hetzner>" >&2
     exit 2
     ;;
 esac
@@ -131,6 +131,24 @@ if [ "$PROVIDER" = "aws" ]; then
   if aws eks describe-cluster --name "$CLUSTER_NAME" --region "$LAB_REGION" >/dev/null 2>&1; then
     leak "EKS cluster $CLUSTER_NAME still exists."
   fi
+elif [ "$PROVIDER" = "hetzner" ]; then
+  hcloud_token
+
+  # Every unit labels what it creates with project=<name>, so one selector
+  # covers both layers. Read independently of cluster-down's own sweep: this
+  # has to be able to disagree with it.
+  for resource in network ssh-key firewall server volume primary-ip; do
+    for name in $(hcloud_list_names "$resource" || true); do
+      leak "Hetzner $resource $name still exists."
+    done
+  done
+
+  # The cloud controller manager labels nothing it creates, so a load balancer
+  # it made is invisible to the selector above and matches only on the name.
+  for name in $(hcloud_cli load-balancer list -o json 2>/dev/null \
+    | jq -r '(. // [])[].name' | grep -- "^${PROJECT_NAME}-" || true); do
+    leak "Hetzner load balancer $name still exists."
+  done
 else
   civo_token
 
@@ -166,9 +184,12 @@ else
       leak "Civo reserved IP $name still exists."
     fi
   done
+fi
 
-  # lab-role has iam:GetRole but not iam:ListRoles, so each consumer role is
-  # looked up by its exact name rather than enumerated.
+# The Roles Anywhere chain is built only where a workload CA exists, which is
+# every target but aws. lab-role has iam:GetRole but not iam:ListRoles, so each
+# consumer role is looked up by its exact name rather than enumerated.
+if [ "$PROVIDER" != "aws" ]; then
   for consumer in eso external-dns cert-manager pgbackup; do
     role="${PROJECT_NAME}-ra-${consumer}"
     if aws iam get-role --role-name "$role" >/dev/null 2>&1; then

@@ -418,11 +418,7 @@ configure_test_kubeconfig() {
   local kcfg=()
   [ -n "$kubeconfig" ] && kcfg=(--kubeconfig "$kubeconfig")
 
-  if [ "$PROVIDER" = "hetzner" ]; then
-    echo "configure_test_kubeconfig: PROVIDER=hetzner is implemented in HETZ-130" >&2
-    return 1
-  fi
-  if [ "$PROVIDER" != "civo" ] && [ "$PROVIDER" != "local" ]; then
+  if [ "$PROVIDER" = "aws" ]; then
     aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$LAB_REGION" --alias "${CLUSTER_NAME}-test" \
       --role-arn "$(aws iam get-role --role-name eks-test-identity --query Role.Arn --output text)" \
       ${kcfg[@]:+"${kcfg[@]}"} >/dev/null || return 1
@@ -430,7 +426,7 @@ configure_test_kubeconfig() {
     return
   fi
 
-  local admin_context="${PROJECT_NAME}-civo" test_context="${PROJECT_NAME}-civo-test"
+  local admin_context="${PROJECT_NAME}-${PROVIDER}" test_context="${PROJECT_NAME}-${PROVIDER}-test"
   if [ "$PROVIDER" = "local" ]; then
     admin_context="kind-${CLUSTER_NAME}"
     test_context="${PROJECT_NAME}-local-test"
@@ -470,6 +466,10 @@ backup_teardown() {
   local ns=cnpg-system
   if ! kubectl get cluster lab-postgres -n "$ns" >/dev/null 2>&1; then
     echo "ARGO-DOWN: no lab-postgres Cluster found - nothing to back up."
+    return 0
+  fi
+  if ! kubectl get objectstore lab-postgres-backups -n "$ns" >/dev/null 2>&1; then
+    echo "ARGO-DOWN: no barman ObjectStore - backups are not configured, nothing to back up."
     return 0
   fi
 
