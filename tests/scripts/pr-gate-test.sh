@@ -3,9 +3,9 @@
 # against label and job-result combinations, by extracting its `run:` block and
 # running it with the same environment Actions would give it.
 #
-# TRIGGERED and WANTS_<provider> are what the `changes` job's label step emits:
-# TRIGGERED is the `ci:lifecycle` trigger, and WANTS_<provider> already folds
-# the trigger together with the provider selectors.
+# WANTS_<cloud> is what the `changes` job's label step emits: one
+# `ci:lifecycle-<cloud>` label, one output. There is no separate trigger.
+# KIND_INTEGRATION is a result, never a request - that job is not selectable.
 # Usage: tests/scripts/pr-gate-test.sh
 set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -35,11 +35,10 @@ run() {
       INFRA_FILES=gitops/values.yaml \
       R_TERRAFORM=success R_GITOPS=success R_YAML=success \
       R_ACTIONS=success R_SECRETS=success R_REPO=success \
-      LIFECYCLE_AWS=skipped LIFECYCLE_CIVO=skipped KIND_INTEGRATION=skipped \
+      LIFECYCLE_AWS=skipped LIFECYCLE_CIVO=skipped KIND_INTEGRATION=success \
       EVENT_NAME=pull_request \
       HEAD_REPO=owner/repo GITHUB_REPOSITORY=owner/repo \
-      TRIGGERED=false WANTS_SKIP=false WANTS_AWS=false WANTS_CIVO=false \
-      WANTS_HETZNER=false WANTS_LOCAL=false \
+      WANTS_SKIP=false WANTS_AWS=false WANTS_CIVO=false WANTS_HETZNER=false \
       GITHUB_STEP_SUMMARY=/dev/null \
       "$@" \
       bash "$TMP/gate.sh" 2>&1
@@ -55,75 +54,70 @@ run() {
   fi
 }
 
+# --- kind, which is mandatory and not selectable ----------------------------
+
+# The whole point of the change: no label, and the platform still came up.
+run "kind must pass even with no label" 1 "one cloud must run" \
+  KIND_INTEGRATION=success
+run "a failed kind run blocks the merge" 1 "kind-integration did not pass" \
+  KIND_INTEGRATION=failure WANTS_CIVO=true LIFECYCLE_CIVO=success
+# Skipping is allowed for exactly one reason, and must be stated.
+run "kind skipped on a docs-only change" 0 "kind-integration: skipped" \
+  KIND_INTEGRATION=skipped DOCS_ONLY=true INFRA=false \
+  R_TERRAFORM=skipped R_GITOPS=skipped R_YAML=skipped R_ACTIONS=skipped
+run "kind skipped on an infrastructure change" 1 "it must run" \
+  KIND_INTEGRATION=skipped
+
 # --- nothing asked for ------------------------------------------------------
 
-run "no label on an infrastructure change" 1 "needs the lifecycle check"
-run "no label, no infrastructure change" 0 "not required" \
+run "no label on an infrastructure change" 1 "one cloud must run"
+run "no label, no infrastructure change" 0 "no cloud run is required" \
   INFRA=false
-# A selector on its own is inert, so this is the same state as no label at all.
-# That is what lets two selectors be added without starting two runs.
-run "a selector alone starts nothing" 1 "needs the lifecycle check" \
-  TRIGGERED=false WANTS_AWS=false WANTS_CIVO=false
 
-# --- ci:lifecycle, with and without selectors -------------------------------
+# --- one label per cloud ----------------------------------------------------
 
-run "ci:lifecycle alone runs every provider" 0 "local: came up" \
-  TRIGGERED=true WANTS_AWS=true WANTS_CIVO=true WANTS_LOCAL=true \
-  LIFECYCLE_AWS=success LIFECYCLE_CIVO=success KIND_INTEGRATION=success
-run "ci:lifecycle alone, aws fails" 1 "the aws lifecycle did not pass" \
-  TRIGGERED=true WANTS_AWS=true WANTS_CIVO=true WANTS_LOCAL=true \
-  LIFECYCLE_AWS=failure LIFECYCLE_CIVO=success KIND_INTEGRATION=success
-run "ci:lifecycle + ci:civo runs civo only" 0 "Not exercised: aws local" \
-  TRIGGERED=true WANTS_CIVO=true LIFECYCLE_CIVO=success
-run "ci:lifecycle + ci:civo, civo fails" 1 "the civo lifecycle did not pass" \
-  TRIGGERED=true WANTS_CIVO=true LIFECYCLE_CIVO=failure
-run "ci:lifecycle + ci:aws runs aws only" 0 "Not exercised: civo local" \
-  TRIGGERED=true WANTS_AWS=true LIFECYCLE_AWS=success
-run "ci:lifecycle + both selectors" 0 "Not exercised: local" \
-  TRIGGERED=true WANTS_AWS=true WANTS_CIVO=true \
-  LIFECYCLE_AWS=success LIFECYCLE_CIVO=success
+run "ci:lifecycle-civo runs civo only" 0 "Not exercised: aws" \
+  WANTS_CIVO=true LIFECYCLE_CIVO=success
+run "ci:lifecycle-civo, civo fails" 1 "the civo lifecycle did not pass" \
+  WANTS_CIVO=true LIFECYCLE_CIVO=failure
+run "ci:lifecycle-aws runs aws only" 0 "Not exercised: civo" \
+  WANTS_AWS=true LIFECYCLE_AWS=success
+run "both cloud labels" 0 "aws: came up" \
+  WANTS_AWS=true WANTS_CIVO=true LIFECYCLE_AWS=success LIFECYCLE_CIVO=success
+run "both labels, one fails" 1 "the aws lifecycle did not pass" \
+  WANTS_AWS=true WANTS_CIVO=true LIFECYCLE_AWS=failure LIFECYCLE_CIVO=success
 # The case result-inference could not tell apart from an unlabelled pull
 # request: both report skipped, and only one of them may merge.
-run "a selected provider whose job did not run" 1 "the aws lifecycle did not pass" \
-  TRIGGERED=true WANTS_AWS=true
-# A requested provider is judged whether or not the change is infrastructure:
+run "a requested cloud whose job did not run" 1 "the aws lifecycle did not pass" \
+  WANTS_AWS=true
+# A requested cloud is judged whether or not the change is infrastructure:
 # a failed run nobody asked to ignore is worse than one nobody asked for.
-run "ci:lifecycle + ci:aws on a non-infrastructure change, aws fails" 1 "the aws lifecycle did not pass" \
-  INFRA=false TRIGGERED=true WANTS_AWS=true LIFECYCLE_AWS=failure
+run "a cloud label on a non-infrastructure change, it fails" 1 "the civo lifecycle did not pass" \
+  INFRA=false WANTS_CIVO=true LIFECYCLE_CIVO=failure
 
-# --- selectors with no job behind them --------------------------------------
+# --- a label with no job behind it ------------------------------------------
 
-run "ci:lifecycle + ci:hetzner, which has no job" 1 "no hetzner lifecycle job exists" \
-  TRIGGERED=true WANTS_HETZNER=true
-
-# --- the kind job, which costs nothing and so is judged like the clouds -----
-
-run "ci:lifecycle + ci:local runs kind only" 0 "Not exercised: aws civo" \
-  TRIGGERED=true WANTS_LOCAL=true KIND_INTEGRATION=success
-run "ci:lifecycle + ci:local, kind fails" 1 "the local lifecycle did not pass" \
-  TRIGGERED=true WANTS_LOCAL=true KIND_INTEGRATION=failure
-# The same state an unlabelled pull request reports, and only one may merge.
-run "kind selected but its job never ran" 1 "the local lifecycle did not pass" \
-  TRIGGERED=true WANTS_LOCAL=true
+run "ci:lifecycle-hetzner, which has no job" 1 "no hetzner lifecycle job exists" \
+  WANTS_HETZNER=true
 
 # --- the waiver -------------------------------------------------------------
 
-run "ci:lifecycle and the skip label" 1 "opposite things" \
-  TRIGGERED=true WANTS_CIVO=true WANTS_SKIP=true
-# A selector is not a request, so it does not contradict the waiver.
-run "a selector and the skip label" 0 "WAIVED" \
+run "a cloud label and the skip label" 1 "opposite things" \
+  WANTS_CIVO=true WANTS_SKIP=true
+run "skip label alone waives the cloud half" 0 "WAIVED" \
   WANTS_SKIP=true
-run "skip label alone" 0 "WAIVED" \
-  WANTS_SKIP=true
+# The waiver covers clouds only. kind is free, so nothing excuses it.
+run "the skip label does not waive kind" 1 "kind-integration did not pass" \
+  WANTS_SKIP=true KIND_INTEGRATION=failure
 
 # --- everything else --------------------------------------------------------
 
 run "a failed validate job" 1 "validate-gitops did not pass" \
   R_GITOPS=failure
-run "workflow_dispatch runs every provider" 0 "lifecycle passed" \
-  EVENT_NAME=workflow_dispatch LIFECYCLE_AWS=success LIFECYCLE_CIVO=success \
-  KIND_INTEGRATION=success
-run "workflow_dispatch, kind fails" 1 "lifecycle did not pass" \
+run "workflow_dispatch runs every cloud" 0 "lifecycle passed" \
+  EVENT_NAME=workflow_dispatch LIFECYCLE_AWS=success LIFECYCLE_CIVO=success
+# kind is judged before the dispatch branch, so it reports its own failure.
+run "workflow_dispatch, kind fails" 1 "kind-integration did not pass" \
   EVENT_NAME=workflow_dispatch LIFECYCLE_AWS=success LIFECYCLE_CIVO=success \
   KIND_INTEGRATION=failure
 
@@ -158,55 +152,38 @@ labels() {
 
 ALL_OFF='run_aws=false
 run_civo=false
-run_hetzner=false
-run_local=false'
-# Every provider that HAS A JOB. Only hetzner stays false unless a label
-# names it, because the gate refuses a provider with no job - defaulting to it
-# would refuse the commonest case of all.
-AVAILABLE_ON='run_aws=true
-run_civo=true
-run_hetzner=false
-run_local=true'
+run_hetzner=false'
 CIVO_ONLY='run_aws=false
 run_civo=true
-run_hetzner=false
-run_local=false'
-LOCAL_ONLY='run_aws=false
-run_civo=false
-run_hetzner=false
-run_local=true'
-# Naming every cloud explicitly is not the same as naming nothing: the default
-# reaches for local too, two selectors ask for exactly what they name.
-CLOUDS_ONLY='run_aws=true
+run_hetzner=false'
+BOTH_CLOUDS='run_aws=true
 run_civo=true
-run_hetzner=false
-run_local=false'
+run_hetzner=false'
 
 labels "no labels" "$ALL_OFF" '[]'
-labels "a selector alone is inert" "$ALL_OFF" '["ci:aws"]'
-labels "two selectors alone are inert" "$ALL_OFF" '["ci:aws","ci:civo"]'
-labels "ci:lifecycle alone selects the providers that have jobs" "$AVAILABLE_ON" '["ci:lifecycle"]'
-labels "ci:lifecycle + ci:civo selects civo" "$CIVO_ONLY" '["ci:lifecycle","ci:civo"]'
-labels "ci:lifecycle + ci:local selects local" "$LOCAL_ONLY" '["ci:lifecycle","ci:local"]'
-labels "ci:lifecycle + two selectors" "$CLOUDS_ONLY" '["ci:lifecycle","ci:aws","ci:civo"]'
-# Naming a provider with no job is an explicit request, and stays visible so
-# the gate can refuse it. Only the default avoids reaching for these.
-labels "ci:lifecycle + ci:hetzner keeps the request visible" 'run_aws=false
+labels "ci:lifecycle-civo selects civo" "$CIVO_ONLY" '["ci:lifecycle-civo"]'
+labels "both cloud labels select both" "$BOTH_CLOUDS" '["ci:lifecycle-aws","ci:lifecycle-civo"]'
+# The old bare trigger is gone. It must select nothing rather than everything.
+labels "the old ci:lifecycle selects nothing" "$ALL_OFF" '["ci:lifecycle"]'
+# The old selector names are gone too.
+labels "the old ci:civo selects nothing" "$ALL_OFF" '["ci:civo"]'
+# Naming a cloud with no job stays visible so the gate can refuse it.
+labels "ci:lifecycle-hetzner keeps the request visible" 'run_aws=false
 run_civo=false
-run_hetzner=true
-run_local=false' '["ci:lifecycle","ci:hetzner"]'
+run_hetzner=true' '["ci:lifecycle-hetzner"]'
 # Exact string equality, not a substring test: an unrelated label that merely
-# contains a provider name must not select that provider.
-labels "an unrelated label is not a selector" "$AVAILABLE_ON" '["ci:lifecycle","ci:aws-migration"]'
-labels "workflow_dispatch selects the providers that have jobs" "$AVAILABLE_ON" '[]' DISPATCH=true
+# contains a cloud name must not select that cloud.
+labels "an unrelated label is not a label" "$ALL_OFF" '["ci:lifecycle-aws-migration"]'
+# hetzner has a label but no job, so a dispatch must not reach for it.
+labels "workflow_dispatch selects the clouds that have jobs" "$BOTH_CLOUDS" '[]' DISPATCH=true
 
 # --- the two steps composed ------------------------------------------------
 #
 # The bug this guards against: each step was correct alone, and the pair was
-# not. The label step emitted run_hetzner=true for a bare `ci:lifecycle`, the
-# gate refuses a selected provider with no job, and the gate's own tests set
-# those variables by hand - so both suites passed while the commonest label
-# combination failed in CI. Feed one step's real output into the other.
+# not. The label step emitted a request for a cloud with no job, the gate
+# refuses one, and the gate's own tests set those variables by hand - so both
+# suites passed while the commonest label combination failed in CI. Feed one
+# step's real output into the other.
 
 compose() {
   local name="$1" want_rc="$2" want_text="$3" json="$4"
@@ -218,33 +195,31 @@ compose() {
       run_aws=*)     env_args+=("WANTS_AWS=${line#*=}") ;;
       run_civo=*)    env_args+=("WANTS_CIVO=${line#*=}") ;;
       run_hetzner=*) env_args+=("WANTS_HETZNER=${line#*=}") ;;
-      run_local=*)   env_args+=("WANTS_LOCAL=${line#*=}") ;;
     esac
   done < <(env -i PATH="$PATH" DISPATCH=false LABELS="$json" \
              GITHUB_OUTPUT=/dev/null bash "$TMP/labels.sh" 2>/dev/null)
 
-  local triggered=false
-  if printf '%s' "$json" | jq -e 'any(.[]?; . == "ci:lifecycle")' > /dev/null; then
-    triggered=true
+  local skip=false
+  if printf '%s' "$json" | jq -e 'any(.[]?; . == "ci:skip-lifecycle")' > /dev/null; then
+    skip=true
   fi
-  env_args+=("TRIGGERED=$triggered")
+  env_args+=("WANTS_SKIP=$skip")
 
   run "composed: $name" "$want_rc" "$want_text" "${env_args[@]}" "$@"
 }
 
-compose "ci:lifecycle alone, every provider passes" 0 "local: came up" \
-  '["ci:lifecycle"]' LIFECYCLE_AWS=success LIFECYCLE_CIVO=success \
-  KIND_INTEGRATION=success
-compose "ci:lifecycle + ci:civo runs civo only" 0 "Not exercised: aws local" \
-  '["ci:lifecycle","ci:civo"]' LIFECYCLE_CIVO=success
-compose "ci:lifecycle + ci:aws runs aws only" 0 "Not exercised: civo local" \
-  '["ci:lifecycle","ci:aws"]' LIFECYCLE_AWS=success
-compose "ci:lifecycle + ci:local runs kind only" 0 "Not exercised: aws civo" \
-  '["ci:lifecycle","ci:local"]' KIND_INTEGRATION=success
-compose "ci:lifecycle + ci:hetzner is refused" 1 "no hetzner lifecycle job exists" \
-  '["ci:lifecycle","ci:hetzner"]'
-compose "no label at all" 1 "needs the lifecycle check" '[]'
-compose "a selector alone starts nothing" 1 "needs the lifecycle check" '["ci:civo"]'
+compose "ci:lifecycle-civo runs civo only" 0 "Not exercised: aws" \
+  '["ci:lifecycle-civo"]' LIFECYCLE_CIVO=success
+compose "ci:lifecycle-aws runs aws only" 0 "Not exercised: civo" \
+  '["ci:lifecycle-aws"]' LIFECYCLE_AWS=success
+compose "both cloud labels" 0 "aws: came up" \
+  '["ci:lifecycle-aws","ci:lifecycle-civo"]' LIFECYCLE_AWS=success LIFECYCLE_CIVO=success
+compose "ci:lifecycle-hetzner is refused" 1 "no hetzner lifecycle job exists" \
+  '["ci:lifecycle-hetzner"]'
+compose "no label at all" 1 "one cloud must run" '[]'
+compose "the old bare ci:lifecycle no longer starts anything" 1 "one cloud must run" \
+  '["ci:lifecycle"]'
+compose "the skip label waives the cloud half" 0 "WAIVED" '["ci:skip-lifecycle"]'
 
 echo
 if [ "$FAIL" -ne 0 ]; then
