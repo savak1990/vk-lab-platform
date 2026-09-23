@@ -428,25 +428,33 @@ whether the expensive half is needed:
 | Your pull request | What runs | `pr-gate` |
 |---|---|---|
 | Only `.md` files — specs, docs, README | Secret scanning and the specs layout check, ~30 seconds | green, no cloud spend |
-| Touches `terraform/`, `gitops/`, `scripts/`, `tests/`, `images/`, `Makefile`, `go.mod`, or a workflow | The static checks | red — add the label |
-| …and carries the **`ci:lifecycle`** label | Every provider that has a job: a cluster is created, `make test` runs against it, and it is destroyed | green if all of that passed |
-| …**plus `ci:aws`, `ci:civo` and/or `ci:local`** | Only the selected targets | green if those passed; the run names the targets it skipped |
-| …and carries **`ci:skip-lifecycle`** instead | The static checks only | green, but the waiver is recorded — see below |
+| Anything else | The static checks **and the platform on kind**, ~7 minutes, free | red — one cloud still has to run |
+| …and carries **`ci:lifecycle-aws`** and/or **`ci:lifecycle-civo`** | That cloud's cluster is created, `make test` runs against it, and it is destroyed | green if every requested cloud passed |
+| …and carries **`ci:skip-lifecycle`** instead | The static checks and kind only | green, but the waiver is recorded — see below |
 
-**`ci:lifecycle` is the trigger; the provider labels only narrow it.** A
-provider label on its own starts nothing, so you can add two of them and then
-fire one run — rather than two runs that cancel each other's validation. To run
-Civo alone: add `ci:civo`, then add `ci:lifecycle`.
+**kind is not optional and has no label.** Every change that is not
+documentation-only brings the whole platform up on kind, runs the E2E suite
+against it and tears it down, on the runner itself. No cloud account, no
+credential, no spend, about 7 minutes. If it fails, nothing merges.
 
-Pick the targets the change actually needs. A Hetzner-only Terraform change
-does not need an EKS cluster, and AWS is most of the 55 minutes. `ci:hetzner`
-names a job that does not exist yet — selecting it fails the gate with a message
-rather than quietly doing nothing.
+**One label per cloud, and each one is its own trigger.** There is no separate
+`ci:lifecycle` to arm them. To run Civo, add `ci:lifecycle-civo` — that is the
+whole action.
 
-`ci:local` is the cheap one. It runs the whole platform on kind, on the runner
-itself, in about 15 minutes: no cloud account, no credential, no spend. It is in
-the default set, so `ci:lifecycle` alone runs it beside AWS and Civo, and
-`ci:local` on its own is the way to check a `gitops/` change for free.
+> **Add every label you want in one edit.** Each label event starts a run, and
+> the cloud jobs are serialized per provider rather than cancelled, so adding
+> two labels in two separate edits runs the first cloud twice — twice the
+> minutes and twice the money.
+
+**kind alone does not carry an infrastructure change.** It proves the chart
+reconciles; it cannot prove a load balancer, a DNS record, a certificate or a
+workload identity still works, because none of those exist on that target. So
+`pr-gate` wants one cloud green, or the `ci:skip-lifecycle` waiver.
+
+Pick the cloud the change actually needs. A Hetzner-only Terraform change does
+not need an EKS cluster, and AWS is most of the 55 minutes.
+`ci:lifecycle-hetzner` names a job that does not exist yet — selecting it fails
+the gate with a message rather than quietly doing nothing.
 
 A pull request is **documentation-only** when every changed file ends in `.md`.
 It skips the four heavy checks — Terraform, GitOps, YAML and Actions lint — which
