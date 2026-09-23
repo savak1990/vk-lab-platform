@@ -120,7 +120,7 @@ sequence.
 | `make generate-secrets` | Throwaway secrets for a CI project. **Writes the publicly known password `test`** — never for a real lab |
 | `make kubeconfig` / `test-kubeconfig` | The only commands that touch your own kubectl context |
 | `make status` | Which layers currently hold state, for this `PROJECT_NAME` |
-| `make clusters` | Every platform cluster live in the account, across all projects |
+| `make clusters` | Every platform cluster live on every provider, across all projects |
 | `make clear-cache` | Clears every `.terragrunt-cache`. Run when switching projects |
 
 ### Checks
