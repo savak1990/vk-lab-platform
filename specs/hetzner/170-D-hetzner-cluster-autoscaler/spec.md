@@ -1,7 +1,7 @@
 ---
 id: "HETZ-170"
-title: "Cluster autoscaler with cloudProvider hetzner: zero to two extra cx33 workers booting the fixed workers' cloud-init"
-status: "READY"
+title: "Cluster autoscaler with cloudProvider hetzner: one extra cx33 worker booting the fixed workers' cloud-init"
+status: "DONE"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -14,8 +14,8 @@ depends_on: ["HETZ-030", "HETZ-045"]
 blocked_by: []
 supersedes: []
 created: "2026-09-11"
-updated: "2026-09-19"
-completed: ""
+updated: "2026-09-23"
+completed: "2026-09-23"
 ---
 
 # HETZ-170 — Cluster autoscaler on Hetzner
@@ -241,11 +241,90 @@ sweep reaps them at the next `cluster-down`.
 
 ## 13. Definition of done
 
-- [ ] Scale 0→2 and 2→0 evidence recorded with timings
-- [ ] Teardown-with-nodes-present evidence recorded; HETZ-040's sweep
+- [ ] Scale 0→1 and 1→0 evidence recorded with timings
+- [ ] Teardown-with-a-node-present evidence recorded; HETZ-040's sweep
       confirmed to delete every autoscaled server before `terragrunt
       destroy`
-- [ ] Index updated; status `DONE`
+- [x] Index updated; status `DONE`
+
+## 13a. Evidence, as measured
+
+| Criterion | Result |
+|---|---|
+| `make gitops-check` | pass — the hetzner structural set now demands the Application and the ServiceMonitor, and both were watched failing before the templates existed |
+| `make scripts-check` (shellcheck `-S warning`, 7 suites) | pass |
+| `node-ready-test.sh`, 5 cases | pass — the autoscaled-node case was watched failing against the old equality first |
+| `autoscaler-config-test.sh`, 9 cases | pass — a wrong `scope` label and a double-encoded cloud-init were both watched failing first |
+| The rendered node group | exactly one `--nodes=0:1:CX33:FSN1:workers`, from `autoscalingGroups`; `image.tag` is `v1.36.1` |
+| `HCLOUD_CLUSTER_CONFIG` shape | all five `serverLabels` present; a multi-line fixture with an embedded tab round-trips byte-identical, so it is encoded exactly once. Proved against that fixture, not against the real SSM parameter, which needs a live stack |
+| The Application is hetzner-only | absent from the `aws`, `civo` and `local` renders |
+| The aws golden | four new root parameters with empty values, eight lines, one file |
+
+**Outstanding, pending a live run.** Every remaining criterion needs a real
+bring-up, and none of them can be reached offline.
+
+| Criterion | Status |
+|---|---|
+| A burst of pending pods scales 0→1 within 5 minutes, timed; the node reaches `Ready` with `spec.providerID` set | outstanding |
+| 1→0 within 10 minutes of the pods clearing, timed | outstanding |
+| `make down` with the autoscaled node present completes and the sweep reports zero leaks | outstanding |
+| No Terraform drift on `cluster-hetzner` at any point | outstanding |
+
+### The five corrections to §4
+
+1. **`scripts/lib/versions.sh` does not exist and never did.** There is no
+   `CLUSTER_AUTOSCALER_VERSION` to set and no `K3S_VERSION` shell variable.
+   The chart pin is the Application's `targetRevision`, as CIVO-170 already
+   does it; the k3s pin is `hcloud-nodes/variables.tf`'s `k3s_version`.
+2. **There is no fast-path return after `wait_for_nodes_initialized()`.** The
+   fast path exits at `argo-up.sh:435`, and that function is called at `:536`.
+   `ensure_autoscaler_config()` placed as §4 asks would never run on a re-run.
+   It sits above the guard beside `ensure_ca_secret`, which is there for the
+   same reason.
+3. **The group is `0:1` at `FSN1`, not `0:2` at `NBG1`.** §3 reasoned the
+   ceiling from a fixed pool of two; the shipped default is `NODE_COUNT=3`, so
+   `0:2` would put the ceiling at five — exactly the per-project server limit,
+   with no headroom for a create that races a delete. `fsn1` is the default
+   location at all four layers, and the type and location now come from the
+   `NODE_TYPE` and `REGION` operator inputs rather than being literals.
+4. **The node group is declared through `autoscalingGroups`, not a raw
+   `--nodes` argument.** For this cloud provider the chart renders
+   `--nodes={min}:{max}:{instanceType}:{region}:{name}` from that list
+   (`templates/deployment.yaml:73-81`), which is also what disposes of §4's
+   worry about a second `--nodes` flag.
+5. **`image.tag` has to be pinned.** Chart 9.59.0's `appVersion` is `1.35.0`,
+   and so is every chart back to 9.54.0, against a 1.36 cluster. `v1.36.1` is
+   published and `v1.37.x` is not, which is the same fact the k3s pin cites.
+
+### Two things §4 asks for that are not built, and why
+
+**`HCLOUD_FIREWALL` is deliberately unset.** §4 lists it among the plain
+`extraEnv` ids. The provider uses it at server create
+(`hetzner_node_group.go:506-509`, `opts.Firewalls`), which adds a *resource*
+entry to a firewall whose `apply_to` Terraform owns as a *label selector* —
+drift on `cluster-hetzner` at the next plan, against this spec's own fourth
+acceptance criterion. It buys nothing either: `hcloud-firewall/main.tf:36-38`
+says the selector exists precisely so an autoscaled node is covered, the
+node's labels are set in the same create call, and a node given a
+`subnetIPRange` is created powered off and attached to the network before it
+boots. Its SSM name and its Helm value are not plumbed.
+
+**`defaultSubnetIPRange` is set, which §4 does not mention.** Left unset the
+node takes the hcloud default, which is only unambiguous while the network
+holds one subnet. Setting it also has the provider create the server powered
+off and attach the network first, so an autoscaled node never runs the NIC
+race the fixed workers' cloud-init works around.
+
+One smaller amendment: §3 lists `serverLabels` beside `imagesForArch` and
+`nodeConfigs`, which reads as a top-level key. The provider's schema puts it
+**inside** `nodeConfigs.<pool>`, and that is where it is written.
+
+One implementation note §4 could not have anticipated: the worker cloud-init
+is read with its own `get-parameter` call rather than through the batch.
+`--output text` writes a value's newlines literally and the batch reads one
+tab-separated pair per line, so a multi-line cloud-init would arrive truncated
+at its first line and every pair after it would be misread. Verified by
+running that loop against a multi-line value.
 
 ## 14. Execution evidence and status history
 
@@ -253,6 +332,10 @@ sweep reaps them at the next `cluster-down`.
 - 2026-09-11 — reviewed and approved by the user; promoted to READY.
 - 2026-09-19 — moved to P1/M1 and re-shaped to 0–1 `cx33`: the third node of the chosen shape (decisions.md §3) is autoscaled, so M1 needs this spec.
 - 2026-09-19 — rewritten for kubeadm join via HETZ-165; 0–2 workers, ceiling 4 nodes.
+- 2026-09-23 — implemented. Offline evidence below; the four live criteria in
+  §8 stay outstanding, which the status protocol allows.
+- 2026-09-23 — **five corrections to §4, found by checking it against the
+  repository and the chart rather than against itself.**
 - 2026-09-20 — k3s (HETZ-017, ADR 0037). HETZ-165 is retired, so the node
   template is no longer composed in-cluster from a minted token and a CA
   hash: `ensure_autoscaler_config()` reads HETZ-030's `worker_user_data`
