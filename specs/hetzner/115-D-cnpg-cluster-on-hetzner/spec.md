@@ -1,7 +1,7 @@
 ---
 id: "HETZ-115"
 title: "CNPG Cluster on Hetzner with disposable data on hcloud-volumes"
-status: "READY"
+status: "DONE"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -14,8 +14,8 @@ depends_on: ["HETZ-050", "HETZ-085", "CIVO-115"]
 blocked_by: []
 supersedes: []
 created: "2026-09-11"
-updated: "2026-09-19"
-completed: ""
+updated: "2026-09-23"
+completed: "2026-09-23"
 ---
 
 # HETZ-115 — CNPG Cluster on Hetzner with disposable data
@@ -37,7 +37,9 @@ In scope:
 - One real bring-up and one teardown on Hetzner that exercise the shared
   teardown gate and PVC wait.
 - The `hetzner` required-objects set in `scripts/gitops-render-check.sh`
-  for the `Cluster` kind.
+  for the `Cluster` kind. Already present at `:181-196` when this spec ran;
+  no edit was needed. Already present at `:181-196` when this spec ran;
+  no edit was needed.
 
 Not in scope:
 - Dumps, restore, the S3 bucket (CIVO-180, HETZ-120).
@@ -113,11 +115,13 @@ template and the gate.
 - The `Cluster` renders on hetzner and the pod reaches `Healthy`.
 - The PVC is `Bound`, provisioner `csi.hetzner.cloud`, storage class
   `hcloud-volumes`, 20 Gi.
-- `hcloud volume list` shows exactly one volume while the cluster runs and
-  none after `argo-down` completes.
-- A teardown with a live `Cluster` warns that no backup mechanism exists
-  and proceeds. It destroys the database; that is the documented interim
-  behaviour until HETZ-120 lands.
+- `hcloud volume list` shows exactly one *Postgres* volume while the cluster
+  runs, and none after `argo-down` completes. The count is four in total:
+  observability binds three more (Prometheus, Alertmanager, Loki), which this
+  criterion was written before and does not own.
+- A teardown with a live `Cluster` and no configured backup says so and
+  proceeds without attempting one. It destroys the database; that is the
+  documented interim behaviour until HETZ-120 lands.
 - The aws and civo golden diffs are byte-identical to their baselines.
 - `make gitops-check` passes.
 
@@ -148,9 +152,9 @@ values entry; the render check then fails until the set is reverted too.
 
 ## 13. Definition of done
 
-- [ ] Values and render-check set added; golden diffs empty
-- [ ] One bring-up and one gated teardown recorded with volume listings
-- [ ] Index updated; status `DONE`
+- [x] Values and render-check set added; golden diffs empty
+- [x] One bring-up and one gated teardown recorded with volume listings
+- [x] Index updated; status `DONE`
 
 ## 14. Execution evidence and status history
 
@@ -207,3 +211,35 @@ values entry; the render check then fails until the set is reverted too.
   printed `Backup/lab-postgres-teardown-... reported phase 'failed'` and
   `ContinuousArchiving=True` again, with no `barman-cloud-plugin` Application
   in the cluster. Nothing new about the mechanism; it is simply four for four.
+
+- 2026-09-23 - closed on one cycle on `vk-hetzner-lab`, `fsn1`, three `cpx32`.
+
+  The `Cluster` reached `1/1` and "Cluster in healthy state". Its PVC bound at
+  20 Gi on `hcloud-volumes`, provisioner `csi.hetzner.cloud`, reclaim
+  `Delete`. `hcloud volume list` held one 20 GB volume for Postgres and three
+  10 GB ones for Prometheus, Alertmanager and Loki, and none after the
+  teardown. Nothing in `gitops/` or `values.yaml` needed changing: the storage
+  class is hardcoded in `_helpers.tpl:38-42` and `Cluster/lab-postgres` was
+  already in `REQUIRED_OBJECTS_HETZNER`, so the spec's own §5 file list was
+  stale in this spec's favour.
+
+  The teardown bug this spec inherited is fixed, and the fix is four lines in
+  `backup_teardown` (`scripts/lib/provider.sh`, after the existing Cluster
+  check). It reproduced on the 060, 047, 085 and 070 cycles: `argo-up` passes
+  `postgres.backup.enabled=false` on hetzner, so no barman plugin and no
+  `ObjectStore` exist, while `cluster.yaml` is ungated and `lab-postgres`
+  does - and the teardown attempted a `method: plugin` Backup that failed in
+  zero seconds, warned that writes were about to be destroyed, and then waited
+  out its poll. This run printed one line instead:
+
+      ARGO-DOWN: no barman ObjectStore - backups are not configured, nothing to back up.
+
+  The guard reads the `ObjectStore`, not `$PROVIDER`. `kubectl get objectstore`
+  returns non-zero when the CRD itself is absent, which is the hetzner case
+  (`the server doesn't have a resource type "objectstore"`), so one check
+  covers both and the fix holds for any backup-disabled configuration rather
+  than for one target.
+
+  §8's third criterion said "exactly one volume" and its fourth named a
+  warning the code has never emitted. Both were corrected above before the
+  run rather than reported as passes.

@@ -24,6 +24,7 @@ on:
         options:
           - aws
           - civo
+          - hetzner
         default: aws
       # Blank uses the provider's default - vk-lab-platform on aws,
       # vk-civo-lab on civo. Lowercase alphanumeric and hyphen, 23 characters
@@ -78,7 +79,7 @@ on:
       # civo only, inert on aws. Untick for a throwaway project: staging
       # spares the production quota shared with the personal lab.
       production_tls:
-        description: "production_tls (civo only)"
+        description: "production_tls (civo/hetzner only)"
         type: boolean
         default: true
       # platform-down/full-down only. Type the RESOLVED project name exactly:
@@ -92,14 +93,14 @@ on:
 # the run itself never reads them, so a drift would mislabel a run, never
 # retarget one. Neither run-name nor concurrency can read a step output, so
 # the resolved name cannot come from the resolve step below.
-run-name: "lab: ${{ inputs.target }} (${{ inputs.provider }}/${{ inputs.project_name || (inputs.provider == 'civo' && 'vk-civo-lab' || 'vk-lab-platform') }})"
+run-name: "lab: ${{ inputs.target }} (${{ inputs.provider }}/${{ inputs.project_name || (inputs.provider == 'civo' && 'vk-civo-lab' || inputs.provider == 'hetzner' && 'vk-hetzner-lab' || 'vk-lab-platform') }})"
 
 # Different projects are independent stacks and may run in parallel; two runs
 # against the same project would race on its Terraform state, so they queue.
 # The group uses the resolved name, so a blank input and the default typed out
 # in full land in the same group rather than racing each other.
 concurrency:
-  group: lab-${{ inputs.provider }}-${{ inputs.project_name || (inputs.provider == 'civo' && 'vk-civo-lab' || 'vk-lab-platform') }}
+  group: lab-${{ inputs.provider }}-${{ inputs.project_name || (inputs.provider == 'civo' && 'vk-civo-lab' || inputs.provider == 'hetzner' && 'vk-hetzner-lab' || 'vk-lab-platform') }}
   cancel-in-progress: false
 
 permissions:
@@ -127,8 +128,10 @@ jobs:
         run: |
           set -euo pipefail
           case "$IN_PROVIDER:$IN_PROJECT_NAME" in
-            aws:vk-civo-lab|civo:vk-lab-platform)
-              echo "::error::project_name '$IN_PROJECT_NAME' is the other provider's default; leave it blank or pick a distinct name." >&2
+            aws:vk-civo-lab | aws:vk-hetzner-lab \
+            | civo:vk-lab-platform | civo:vk-hetzner-lab \
+            | hetzner:vk-lab-platform | hetzner:vk-civo-lab)
+              echo "::error::project_name '$IN_PROJECT_NAME' is another provider's default; leave it blank or pick a distinct name." >&2
               exit 1
               ;;
           esac
@@ -162,8 +165,8 @@ jobs:
       # decrypting it needs the assumed role. ::add-mask:: must reach the step's
       # own stdout, never a $(...) capture, and is per job.
       - name: Register the Civo token mask
-        if: inputs.provider == 'civo'
-        run: bash -c 'source scripts/lib/region.sh; source scripts/lib/provider.sh; civo_token'
+        if: inputs.provider != 'aws'
+        run: bash -c 'source scripts/lib/region.sh; source scripts/lib/provider.sh; case "$PROVIDER" in civo) civo_token ;; hetzner) hcloud_token ;; esac'
 
       - run: make ${{ inputs.target }}
         env:
@@ -171,7 +174,7 @@ jobs:
           # Argo CD otherwise reconciles gitops/ from main regardless of the
           # dispatched ref, so a branch run could not test a GitOps change.
           TARGET_REVISION: ${{ github.ref_name }}
-          # Read only by argo-up.sh's civo branch; inert on aws.
+          # Read by argo-up.sh's civo and hetzner branches; inert on aws.
           TLS_ISSUER: ${{ inputs.production_tls && 'letsencrypt-prod' || 'letsencrypt-staging' }}
 
       # argo-down exports the serving certificate to an Advanced-tier
@@ -184,10 +187,12 @@ jobs:
       # would silently leave a billed parameter behind. Anything unreadable is
       # kept, never deleted.
       - name: Drop a staging TLS parameter left by full-down
-        if: always() && inputs.provider == 'civo' && inputs.target == 'full-down'
+        env:
+          DEFAULT_PROJECT: ${{ inputs.provider == 'civo' && 'vk-civo-lab' || inputs.provider == 'hetzner' && 'vk-hetzner-lab' || 'vk-lab-platform' }}
+        if: always() && inputs.provider != 'aws' && inputs.target == 'full-down'
         run: |
           set -uo pipefail
-          NAME="/${PROJECT_NAME:-vk-civo-lab}/persistent/civo/tls/platform-public"
+          NAME="/${PROJECT_NAME:-$DEFAULT_PROJECT}/persistent/${PROVIDER}/tls/platform-public"
           VALUE="$(aws ssm get-parameter --region eu-west-1 --name "$NAME" \
             --with-decryption --query 'Parameter.Value' --output text 2>/dev/null || true)"
           if [ -z "$VALUE" ] || [ "$VALUE" = "None" ]; then
@@ -253,8 +258,8 @@ jobs:
           role-duration-seconds: 14400 # was previously omitted here, silently defaulting to 3600s unlike the lifecycle job
 
       - name: Register the Civo token mask
-        if: inputs.provider == 'civo'
-        run: bash -c 'source scripts/lib/region.sh; source scripts/lib/provider.sh; civo_token'
+        if: inputs.provider != 'aws'
+        run: bash -c 'source scripts/lib/region.sh; source scripts/lib/provider.sh; case "$PROVIDER" in civo) civo_token ;; hetzner) hcloud_token ;; esac'
 
       - run: make test
         env:

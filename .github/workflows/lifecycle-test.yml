@@ -5,9 +5,9 @@ name: lifecycle-test
 # a lifecycle label. `pr-gate` below is the single required status check on
 # main.
 #
-# One label, one decision: `ci:lifecycle-aws` or `ci:lifecycle-civo` for that
-# cloud alone, `ci:lifecycle` for every cloud that has a job, and
-# `ci:lifecycle-hetzner` once that job exists. No label means no cloud run.
+# One label, one decision: `ci:lifecycle-aws`, `ci:lifecycle-civo` or
+# `ci:lifecycle-hetzner` for that cloud alone, and `ci:lifecycle` for every
+# cloud. No label means no cloud run.
 #
 # One label rather than a trigger plus selectors, because GitHub emits a
 # `labeled` event per label - even from a single API call carrying both - and
@@ -91,12 +91,10 @@ jobs:
           LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
         run: |
           set -euo pipefail
-          # hetzner has a label but no job yet, so a dispatch must not reach
-          # for it - pr-gate refuses it out loud instead.
           CLOUDS="aws civo hetzner"
-          # Clouds with a job behind them. `ci:lifecycle` and a manual dispatch
-          # both mean these, and neither reaches for one the gate would refuse.
-          HAVE_JOBS="aws civo"
+          # Clouds with a job behind them. `ci:lifecycle` and a manual
+          # dispatch both mean these. Every cloud has one now.
+          HAVE_JOBS="aws civo hetzner"
 
           has() {
             printf '%s' "${LABELS:-[]}" | jq -e --arg x "$1" 'any(.[]?; . == $x)' > /dev/null
@@ -524,6 +522,41 @@ jobs:
       production_tls: false
       target_revision: ${{ github.event.pull_request.head.sha || github.ref_name }}
 
+  lifecycle-hetzner:
+    needs: [changes, validate-terraform, validate-gitops, validate-yaml,
+            validate-actions, validate-secrets, validate-repo]
+    permissions:
+      id-token: write
+      contents: read
+    if: >-
+      !cancelled() &&
+      !contains(needs.*.result, 'failure') &&
+      !contains(needs.*.result, 'cancelled') &&
+      needs.changes.outputs.docs_only != 'true' &&
+      needs.changes.outputs.run_hetzner == 'true' &&
+      !contains(github.event.pull_request.labels.*.name, 'ci:skip-lifecycle') &&
+      (github.event_name == 'workflow_dispatch' ||
+       github.event.pull_request.head.repo.full_name == github.repository)
+    concurrency:
+      group: lab-hetzner-vk-hetzner-ci
+      cancel-in-progress: false
+    uses: ./.github/workflows/lifecycle-provider.yml
+    with:
+      provider: hetzner
+      project_name: vk-hetzner-ci
+      subdomain: hzci
+      # Hetzner allows 5 servers per project and this account has one, shared
+      # with the personal lab. Two here leaves room for the lab's three, and a
+      # control plane plus one worker still exercises the private-network join
+      # that is this target's whole distinguishing feature.
+      node_count: "2"
+      # cx33 is the Makefile default and on 2026-09-23 the whole cx line read
+      # out of stock in every Hetzner location, so a run on the default would
+      # fail at placement. cpx32 is the same 4 vCPU / 8 GiB and is sold today.
+      node_type: cpx32
+      production_tls: false
+      target_revision: ${{ github.event.pull_request.head.sha || github.ref_name }}
+
   # The platform on kind, on the runner itself. Not a caller of
   # lifecycle-provider.yml: that workflow puts up, test and down on three
   # runners, which a cloud cluster outlives and a kind cluster does not - it
@@ -616,6 +649,7 @@ jobs:
       - validate-repo
       - lifecycle-aws
       - lifecycle-civo
+      - lifecycle-hetzner
       - kind-integration
     if: always()
     permissions:
@@ -638,14 +672,13 @@ jobs:
           R_REPO: ${{ needs.validate-repo.result }}
           LIFECYCLE_AWS: ${{ needs.lifecycle-aws.result }}
           LIFECYCLE_CIVO: ${{ needs.lifecycle-civo.result }}
+          LIFECYCLE_HETZNER: ${{ needs.lifecycle-hetzner.result }}
           KIND_INTEGRATION: ${{ needs.kind-integration.result }}
           EVENT_NAME: ${{ github.event_name }}
           HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
           WANTS_SKIP: ${{ contains(github.event.pull_request.labels.*.name, 'ci:skip-lifecycle') }}
           WANTS_AWS: ${{ needs.changes.outputs.run_aws }}
           WANTS_CIVO: ${{ needs.changes.outputs.run_civo }}
-          # No job exists for this one yet. Named here so the gate can say so
-          # out loud rather than let the label do nothing.
           WANTS_HETZNER: ${{ needs.changes.outputs.run_hetzner }}
         run: |
           set -euo pipefail
@@ -708,8 +741,8 @@ jobs:
 
           if [ "$EVENT_NAME" != "pull_request" ]; then
             if [ "$LIFECYCLE_AWS" != "success" ] || [ "$LIFECYCLE_CIVO" != "success" ] \
-               || [ "$KIND_INTEGRATION" != "success" ]; then
-              echo "::error::lifecycle did not pass (aws=$LIFECYCLE_AWS civo=$LIFECYCLE_CIVO local=$KIND_INTEGRATION)."
+               || [ "$LIFECYCLE_HETZNER" != "success" ] || [ "$KIND_INTEGRATION" != "success" ]; then
+              echo "::error::lifecycle did not pass (aws=$LIFECYCLE_AWS civo=$LIFECYCLE_CIVO hetzner=$LIFECYCLE_HETZNER local=$KIND_INTEGRATION)."
               exit 1
             fi
             echo "lifecycle passed on every target."
@@ -727,13 +760,6 @@ jobs:
           if [ "$WANTS_SKIP" = "true" ] \
              && { [ "$WANTS_AWS" = "true" ] || [ "$WANTS_CIVO" = "true" ] || [ "$WANTS_HETZNER" = "true" ]; }; then
             echo "::error::this pull request asks for a cloud lifecycle run and also carries 'ci:skip-lifecycle'. Remove one - they ask for opposite things."
-            exit 1
-          fi
-
-          # A provider label with no job behind it would otherwise do nothing at
-          # all, which is worse than refusing it. hetzner is the last one.
-          if [ "$WANTS_HETZNER" = "true" ]; then
-            echo "::error::'ci:lifecycle-hetzner' was requested, but no hetzner lifecycle job exists yet. Remove the label."
             exit 1
           fi
 
@@ -778,7 +804,8 @@ jobs:
           GATE=0
           PASSED=""
           OMITTED=""
-          for triple in "aws:$LIFECYCLE_AWS:$WANTS_AWS" "civo:$LIFECYCLE_CIVO:$WANTS_CIVO"; do
+          for triple in "aws:$LIFECYCLE_AWS:$WANTS_AWS" "civo:$LIFECYCLE_CIVO:$WANTS_CIVO" \
+                        "hetzner:$LIFECYCLE_HETZNER:$WANTS_HETZNER"; do
             name="${triple%%:*}"
             rest="${triple#*:}"
             result="${rest%%:*}"
@@ -802,7 +829,7 @@ jobs:
           # exists on that target. So one cloud must have run and passed before
           # an infrastructure change merges.
           if [ "$INFRA" = "true" ] && [ -z "$PASSED" ] && [ "$GATE" -eq 0 ]; then
-            echo "::error::this pull request changes infrastructure, so one cloud must run. Add 'ci:lifecycle-aws' or 'ci:lifecycle-civo' - add every label you want in one edit - or 'ci:skip-lifecycle' to waive it."
+            echo "::error::this pull request changes infrastructure, so one cloud must run. Add 'ci:lifecycle-aws', 'ci:lifecycle-civo' or 'ci:lifecycle-hetzner' - add every label you want in one edit - or 'ci:skip-lifecycle' to waive it."
             exit 1
           fi
 

@@ -155,3 +155,8 @@ needed.
   never exercised - ExternalDNS deleted both records and rewrote them at the
   same address. A genuinely changed address is still untested on this target,
   and this spec's recreate run is where it belongs.
+
+- 2026-09-23 - HETZ-130 is DONE, so two of this spec's four dependencies that
+  were open on 2026-09-19 have closed; only HETZ-120 remains DRAFT. The
+  changed-LB-address case recorded here on the HETZ-070 cycle is still
+  untested: HETZ-115's cycle tore down and did not rebuild.
