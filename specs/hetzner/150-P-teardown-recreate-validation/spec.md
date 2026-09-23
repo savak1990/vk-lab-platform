@@ -148,3 +148,10 @@ needed.
 - 2026-09-11 — reviewed and approved by the user; promoted to READY.
 - 2026-09-19 — kubeadm wording.
 - 2026-09-19 — depends on HETZ-047 (argo-down LB ordering).
+
+- 2026-09-23 - HETZ-070 leaves one thing here. The Hetzner load balancer kept
+  its address across a full Argo cascade teardown and rebuild in the same
+  project, so HETZ-070's "the A record follows a new LB IP" criterion was
+  never exercised - ExternalDNS deleted both records and rewrote them at the
+  same address. A genuinely changed address is still untested on this target,
+  and this spec's recreate run is where it belongs.
