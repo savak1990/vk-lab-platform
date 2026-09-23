@@ -268,3 +268,31 @@ same property the planned test would have shown.
    across four runs: 7m45s without, 8m55s-10m11s with. Removed, and recorded in
    a comment so it is not tried again. The cost is Terragrunt's per-unit init
    overhead; parallelising the loop is the fix if it needs one.
+
+- 2026-09-23 — defect found and fixed. `verify-no-leaks.sh` reported a leaked
+  state bucket on a teardown that had completed correctly, failing
+  `lifecycle-aws / down` on PR #74 — a pull request that changed no executable
+  code. The run log dates it to the millisecond: `bootstrap-down` printed
+  `Deleted s3://vk-lab-ci-eu-west-1-tf-state.` at 22:15:41.053, this script
+  started 9 ms later, and at 22:15:42.196 its `head-bucket` still answered.
+  Deleting a bucket is eventually consistent and the state bucket is the last
+  thing `bootstrap-down` removes, so the race is structural, not occasional:
+  every provider's `down` job has always been one API round trip away from a
+  false leak. Nothing billed — the account was checked empty afterwards.
+
+  The bucket check now polls until the delete settles, bounded by
+  `LEAK_BUCKET_SETTLE_SECONDS` (60s). A bucket already gone fails the first
+  call and waits not at all, so a clean teardown pays nothing; only a suspected
+  leak spends the window, and a real one is still reported. The Route 53, SSM
+  and per-provider checks are untouched, because every resource they read is
+  destroyed minutes earlier by `terraform destroy` rather than seconds earlier
+  by this script's own caller.
+
+  `tests/scripts/verify-no-leaks-test.sh` covers absent (clean, asserted to
+  take under five seconds), never-absent (still a leak) and
+  answers-once-then-gone (the regression), with a fake `aws` and no
+  credentials. It was run against the pre-fix script first and fails there with
+  the same `LEAK - S3 bucket ... still exists` line the CI run produced, so it
+  reproduces the defect rather than describing it. `scripts-check.sh` discovers
+  it automatically and it runs in a validate job, so it needs no lifecycle
+  label.

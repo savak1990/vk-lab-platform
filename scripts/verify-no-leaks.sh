@@ -47,9 +47,28 @@ echo "VERIFY-NO-LEAKS: checking project $PROJECT_NAME on $PROVIDER."
 # s3:* on exactly these two ARNs, so a denial here would itself be the bug -
 # but it would read as a pass, which is why the grant is asserted in the spec
 # rather than assumed silently here.
+#
+# A bucket that answers is not yet a leak. Deleting a bucket is eventually
+# consistent, and bootstrap-down deletes the state bucket as its very last
+# act - milliseconds before this runs - so the first head-bucket can still
+# succeed on a bucket that is gone. A bucket already absent fails the first
+# call and waits not at all, so only a suspected leak pays this time.
+bucket_gone() {
+  local bucket="$1" deadline
+  deadline=$(( $(date +%s) + ${LEAK_BUCKET_SETTLE_SECONDS:-60} ))
+  while aws s3api head-bucket --bucket "$bucket" --region "$LAB_REGION" >/dev/null 2>&1; do
+    if [ "$(date +%s)" -ge "$deadline" ]; then
+      return 1
+    fi
+    echo "VERIFY-NO-LEAKS: s3://$bucket still answers; waiting for the delete to settle."
+    sleep 5
+  done
+  return 0
+}
+
 for bucket in "${PROJECT_NAME}-${LAB_PROVIDER_REGION}-tf-state" "${PROJECT_NAME}-${LAB_PROVIDER_REGION}-postgres-backups"; do
-  if aws s3api head-bucket --bucket "$bucket" --region "$LAB_REGION" >/dev/null 2>&1; then
-    leak "S3 bucket s3://$bucket still exists."
+  if ! bucket_gone "$bucket"; then
+    leak "S3 bucket s3://$bucket still exists ${LEAK_BUCKET_SETTLE_SECONDS:-60}s after teardown."
   fi
 done
 
