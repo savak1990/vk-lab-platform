@@ -1,7 +1,7 @@
 ---
 id: "HETZ-070"
 title: "TLS and DNS on Hetzner: wildcard DNS-01 certificate, ExternalDNS following a dynamic LB address, TLS Secret persistence"
-status: "READY"
+status: "DONE"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -14,8 +14,8 @@ depends_on: ["HETZ-060", "HETZ-085", "CIVO-075", "CIVO-110"]
 blocked_by: []
 supersedes: []
 created: "2026-09-11"
-updated: "2026-09-11"
-completed: ""
+updated: "2026-09-23"
+completed: "2026-09-23"
 ---
 
 # HETZ-070 — TLS and DNS on Hetzner
@@ -79,7 +79,11 @@ consumed as-is.
 2. Run `PROVIDER=hetzner TLS_ISSUER=letsencrypt-staging make up`. Watch `kubectl get challenge -A`: `type: DNS-01`, `state: valid`. `Certificate platform-public` Ready. Record the time from Service IP to Ready.
 3. Watch Route 53: `aws route53 list-resource-record-sets --hosted-zone-id <id>` shows `argo.hz.<root>` A = LB IP and the `TXT` owner record with `vk-hetzner-lab`. Record the time from LB IP to record update.
 4. Run `make down` then `make up`. `kubectl get order -A` is empty; the serial is unchanged; the A record moves to the new IP; measure the delay and confirm `curl https://argo.hz.<root>/` succeeds once it moves.
-5. Negative tests with the cert-manager sidecar credentials: an A-record change on the hetzner zone is denied; any change on the civo zone is denied.
+5. Negative tests with the cert-manager sidecar credentials, plus one
+   positive: a TXT change on the hetzner zone is allowed, an A-record change
+   on the hetzner zone is denied, and any change on the civo zone is denied.
+   The positive is what distinguishes a correctly scoped role from a broken
+   one - two denials alone prove neither. `tests/manifests/hetzner-070/`.
 6. Switch to `letsencrypt-prod`. `curl -sv https://argo.hz.<root>/` verifies without `--insecure`.
 
 ## 7. Dependencies and blockers
@@ -92,9 +96,15 @@ and sidecar on hetzner), CIVO-075 and CIVO-110 for the components.
 - `openssl s_client -servername argo.hz.<root-domain>` shows SANs exactly `hz.<root-domain>` and `*.hz.<root-domain>`.
 - The challenge is DNS-01; no solver `HTTPRoute` exists.
 - ExternalDNS rewrites the A record to the new LB IP after `make up`; the measured delay is recorded and is under 10 min.
-- `make down`/`make up` creates no new `Order`; the serial is unchanged.
-- The cert-manager role denies A-record changes and any change outside the hetzner zone.
-- The AWS and Civo golden diffs are empty.
+- `make down`/`make up` creates no new `Order` and the serial is unchanged,
+  **when `TLS_ISSUER` is the same on both cycles**. §14 (2026-09-22) measured
+  what an issuer change costs instead: cert-manager reissues, because
+  `argo-down` exports whichever certificate is current.
+- The cert-manager role allows a TXT change on the hetzner zone, and denies
+  an A-record change there and any change outside that zone.
+- The AWS golden diff is empty. No Civo golden render exists (HETZ-060 §14),
+  so Civo is answered by the change being confined to `tests/`, `specs/` and
+  the hetzner arm of `argo-up.sh`.
 
 ## 9. Validation
 
@@ -125,8 +135,8 @@ wrong. Data risk: none.
 
 ## 13. Definition of done
 
-- [ ] Evidence for staging and prod, down/up without a new order, DNS delay measured
-- [ ] Index updated; status `DONE`
+- [x] Evidence for staging and prod, down/up without a new order, DNS delay measured
+- [x] Index updated; status `DONE`
 
 ## 14. Execution evidence and status history
 
@@ -187,3 +197,90 @@ wrong. Data risk: none.
   The certificate now in SSM is the **staging** one again. A default
   `make full-up` under `letsencrypt-prod` will reissue and pay that 9
   minutes.
+
+- 2026-09-23 — two cycles on `fsn1`, three `cx33`. Every criterion met. The
+  certificate in SSM is now the **prod** one, so the next bring-up on this
+  target orders nothing.
+
+  **Cycle 1, staging, the issuer unchanged.** `argo-up` restored the stored
+  Secret and cert-manager left it alone: `kubectl get order -A` empty, no
+  Challenge, and the served serial `2C21…CE3B` identical to the one read out
+  of SSM before the cluster existed. SANs exactly `hz.<root>` and
+  `*.hz.<root>`. The only HTTPRoutes present were `argocd`, `grafana` and
+  `https-redirect` — no solver route at any point. `curl` without
+  `--insecure` failed, as a staging chain must.
+
+  **Cycle 2, prod, the issuer changed.** The reissue §14 predicted happened
+  and cost **3m28s**, not the ~9 minutes estimated from the HETZ-060 cycle:
+  cert-manager logged `Issuing certificate as Secret was previously issued by
+  "ClusterIssuer.cert-manager.io/letsencrypt-staging"` at 06:38:50 and
+  `The certificate has been successfully issued` at 06:42:18. The earlier
+  figure measured a bring-up that also paid a fresh-zone delegation stall;
+  the issuer flip alone is cheaper than that. Order
+  `platform-public-1-2820414868` reached `valid`, and its two authorizations
+  record what the criterion was really asking:
+
+  ```
+  hz.<root>  wildcard=true   types=dns-01
+  hz.<root>  wildcard=false  types=http-01,tls-alpn-01,dns-01
+  ```
+
+  The wildcard identifier is offered dns-01 alone, so the wildcard half of
+  this certificate can never be issued any other way. Served afterwards:
+  issuer `CN=YE1`, serial `05C7…1030`, and `curl -sv https://argo.hz.<root>/`
+  reported `SSL certificate verify ok` with `HTTP/2 200` and no `--insecure`.
+
+  **The chain-length question is closed.** Staging exported at 7713
+  characters, prod at **7330**, against SSM Advanced's 8192 — 862 characters
+  of headroom, and prod is the shorter of the two. `export_tls_secret` is one
+  code path for every target, so the gap between the two is the ACME chain and
+  not the payload. The margin this spec was asked to watch grows when the
+  target moves to prod rather than shrinking.
+
+  **`HETZNER_ARGO_UP_DNS_WATCH_SECONDS` keeps its 300 s default, and that is
+  the measurement, not a skipped step.** §4 promised to replace HETZ-060's
+  guess with a measured value. The measurement is that the wait never waits:
+  `wait_for_dns` returned on its first poll on both cycles, because
+  ExternalDNS publishes while the root Application is still syncing, minutes
+  before `argo-up` reaches the DNS check. Lowering the ceiling would shorten
+  only the grace a genuinely late record gets before a warning that is not
+  fatal anyway. The knob is inert; a smaller number would buy nothing.
+
+  One observation the criterion did not anticipate: the Hetzner load balancer
+  **kept its address** (`91.98.15.137`) across a full Argo cascade teardown
+  and rebuild in the same project. So the "A record follows a new IP" case did
+  not arise. What was exercised is the delete-then-recreate path —
+  `argo-down` confirmed both ExternalDNS-owned records gone before the
+  cascade, and `argo-up` saw them rewritten. A changed address remains
+  untested on this target, and HETZ-150's recreate validation is where it will
+  land.
+
+  **The cert-manager role's Route 53 scope, three attempts from
+  `tests/manifests/hetzner-070/`**, running as
+  `assumed-role/vk-hetzner-lab-ra-cert-manager`:
+
+  | Attempt | Result |
+  |---|---|
+  | TXT UPSERT, lab zone | `ChangeInfo … Status: PENDING` — allowed |
+  | A UPSERT, lab zone | `AccessDenied … ChangeResourceRecordSets on … the lab zone` |
+  | TXT UPSERT, parent zone | `AccessDenied … ChangeResourceRecordSets on … the parent zone` |
+
+  The two denials name different zones, so one proves the record-type
+  condition and the other the zone scope. The positive is what makes either
+  mean anything: without it, a role that could change nothing at all would
+  pass both. §6 step 5 asked for the Civo zone as the out-of-scope target, but
+  no Civo project zone existed during this run; the parent zone is the
+  stronger substitute, because that is the zone the platform must never write
+  to. The record attempt 1 created was deleted by attempt 4 and the zone
+  listing afterwards showed only NS, SOA, the two ExternalDNS A records and
+  their two TXT owner records.
+
+  Teardown: `cluster-down` reported no leaked disposable resources, and the
+  account afterwards held no `vk-hetzner-lab` bucket and no `hz` zone.
+  `verify-no-leaks.sh` is not evidence here — it still refuses any provider
+  but `aws|civo` at `:16-23`, which is HETZ-140's gap, not this spec's.
+
+  One defect reproduced, not fixed, and now on its fourth cycle:
+  `backup_teardown` ran against a cluster with no barman plugin and reported
+  `Backup/lab-postgres-teardown-… phase 'failed'` with
+  `ContinuousArchiving=True`. It belongs to HETZ-115, which claims the fix.

@@ -246,3 +246,7 @@ Revert the values. Argo prunes. Volumes are deleted with the PVCs.
   extra volumes' worth of storage on every bring-up, not one. Nothing here
   touches the control-plane scrapes, which stay disabled chart-wide with no
   per-target gate.
+
+- 2026-09-23 - HETZ-070's two cycles confirm the three-PVC count a third and
+  fourth time: Prometheus, Alertmanager and Loki bind one 10Gi
+  `hcloud-volumes` claim each, Grafana none.

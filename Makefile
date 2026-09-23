@@ -1,4 +1,4 @@
-.PHONY: up down full-up full-down platform-up platform-down state-up state-down status clusters require-valid-project-name require-valid-node-config account-up account-down bootstrap-up bootstrap-down secret-encrypt secret-decrypt secrets-check node-config-check scripts-check generate-secrets ca-init ssh-key-init persistent-up persistent-down clear-cache cluster-up cluster-down kubeconfig node-ssh test-kubeconfig test-kubeconfig-isolated argo-up argo-down test go-check forward-up forward-down
+.PHONY: up down full-up full-down platform-up platform-down state-up state-down status clusters require-valid-project-name require-valid-node-config account-up account-down bootstrap-up bootstrap-down secret-encrypt secret-decrypt secrets-check node-config-check scripts-check generate-secrets ca-init ssh-key-init persistent-up persistent-down clear-cache cluster-up cluster-down kubeconfig node-ssh test-kubeconfig test-kubeconfig-isolated argo-up argo-down test go-check terraform-check forward-up forward-down
 
 .NOTPARALLEL:
 
@@ -320,6 +320,14 @@ forward-up:
 ## Usage: PROVIDER=local make forward-down
 forward-down:
 	./scripts/forward-down-local.sh
+
+## Formats, then validates every Terraform module and every live unit that
+## runs without a backend. Needs no cluster and no credentials - every init
+## is -backend=false. PARALLEL=<n> sets how many run at once (default 4,
+## matching the CI runner).
+## Usage: make terraform-check
+terraform-check:
+	./scripts/terraform-check.sh
 
 ## Compiles and vets every Go package, and runs the E2E framework's own
 ## offline tests. Needs no cluster and no credentials.

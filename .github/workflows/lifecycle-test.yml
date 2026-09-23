@@ -199,12 +199,15 @@ jobs:
       contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    # A shared TF_PLUGIN_CACHE_DIR was tried here and removed: measured over
-    # four runs it was consistently slower (7m45s without it, 8m55s-10m11s
-    # with), because restoring and saving the cache costs more than the plugin
-    # downloads it avoids. The runtime is Terragrunt's per-unit init overhead,
-    # not the downloads. Parallelising the unit loop is the fix if this needs
-    # to get faster.
+    # A TF_PLUGIN_CACHE_DIR persisted across runs with actions/cache was tried
+    # and removed: measured over four runs it was consistently slower (7m45s
+    # without it, 8m55s-10m11s with), because restoring and saving the cache
+    # costs more than the downloads it avoids. That still holds.
+    #
+    # Its stated reason did not. The cost was never Terragrunt-specific: it is
+    # per-directory `terraform init`, and the module loop was the larger half
+    # (6m06s over 29 modules against 3m48s over 18 units, both ~12.6s each).
+    # Both loops now run concurrently inside terraform-check.sh.
     steps:
       - uses: actions/checkout@v4
 
@@ -226,54 +229,8 @@ jobs:
           chmod +x terragrunt_linux_amd64
           sudo mv terragrunt_linux_amd64 /usr/local/bin/terragrunt
 
-      - name: terraform fmt -check
-        run: terraform fmt -check -recursive terraform/
-
-      - name: terraform validate (every module)
-        run: |
-          set -euo pipefail
-          for m in terraform/modules/*/; do
-            m="${m%/}"
-            echo "== $m =="
-            (cd "$m" && terraform init -backend=false -input=false && terraform validate)
-          done
-
-      # Units with a `dependency` block are skipped: terragrunt resolves
-      # `dependency.x.outputs` by running `terraform output -json` directly
-      # in the dependency's own working directory, which hard-fails without
-      # a real initialized backend rather than falling back to
-      # mock_outputs (reproduced locally against this repo's units, not a
-      # config mistake) - giving this job real AWS/S3 reachability just to
-      # validate HCL would defeat the point. Their module code is still
-      # covered by the loop above; cluster/eks, the five
-      # cluster/*-pod-identity units, cluster-civo/{k8s,network},
-      # bootstrap/{acm,rolesanywhere} are the ones skipped here.
-      - name: terragrunt validate (non-dependency live units)
-        run: |
-          set -euo pipefail
-          export TF_CLI_ARGS_init="-backend=false"
-          for u in \
-            account-state \
-            account/ahorro-ci-role \
-            account/eks-access-identity \
-            account/eks-test-identity \
-            account/github-oidc \
-            account/kms \
-            account/lab-role \
-            account/root-domain \
-            bootstrap/route53 \
-            persistent-civo/backups \
-            persistent-civo/network \
-            persistent-civo/reserved-ip \
-            persistent-hetzner/network \
-            persistent-hetzner/ssh-key \
-            persistent/backups \
-            persistent/secrets \
-            persistent/vpc \
-            state; do
-            echo "== $u =="
-            (cd "terraform/live/$u" && terragrunt validate --non-interactive)
-          done
+      - name: terraform fmt, then validate every module and live unit
+        run: make terraform-check
 
       # soft_fail: report-only for now - a real scan against this repo
       # found 41 findings (3 critical/31 high/7 medium), many likely
