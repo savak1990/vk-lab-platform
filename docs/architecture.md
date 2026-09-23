@@ -1948,7 +1948,15 @@ ManagedBy   = terraform
 
 `Project` carries the project name the stack was applied under, not a fixed
 literal — it is what distinguishes two concurrently-live projects' resources in
-one account, and what `make clusters` filters on.
+one account, and what `make clusters` filters on for AWS.
+
+The other two targets read the same idea from their own metadata, because
+neither carries AWS tags. On Hetzner the equivalents are the lowercase server
+labels `scope=platform` and `project=<name>`, and a cluster is the set of
+servers sharing the second — there is no cluster object to tag. On Civo the
+cluster's own name is the project name, and `make clusters` keys on that rather
+than on a tag: Civo's update API rejects tags, so a running cluster may carry
+none.
 
 `Project` and `Scope` exist specifically so that, looking at any resource in the AWS account, it is unambiguous that it belongs to this platform and not to a business/application service — reinforcing §2's repository-scope boundary at the infrastructure level, not only in source control.
 

@@ -150,6 +150,10 @@ away from a running bill.
 It MUST iterate the catalogue's regions for the provider, or state plainly
 which region it looked at. Carried forward from SHARED-044 §5.1.
 
+SHARED-046 discharged this for the Civo and Hetzner arms — each row names the
+region it was found in. What remains here is the AWS arm, which still reads
+`LAB_REGION` only, and which only this spec's region split makes wrong.
+
 ### 3.5 The region-change guard learns two cases
 
 SHARED-044 §3.7's guard in `scripts/state-up.sh` refuses to create

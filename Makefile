@@ -121,7 +121,7 @@ platform-down: require-valid-project-name require-valid-node-config clear-cache 
 status:
 	./scripts/status.sh
 
-## Lists every platform cluster live in the AWS account, across all projects.
+## Lists every platform cluster live on every provider, across all projects.
 clusters:
 	./scripts/clusters.sh
 
