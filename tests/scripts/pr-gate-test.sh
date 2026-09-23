@@ -174,10 +174,12 @@ run_hetzner=true'
 
 labels "no labels" "$ALL_OFF" '[]'
 labels "ci:lifecycle-civo selects civo" "$CIVO_ONLY" '["ci:lifecycle-civo"]'
+# One decision, one label: the all-clouds choice must not need two.
+labels "ci:lifecycle selects every cloud that has a job" "$EVERY_CLOUD" '["ci:lifecycle"]'
+labels "ci:lifecycle plus a narrower label is still every cloud" "$EVERY_CLOUD" '["ci:lifecycle","ci:lifecycle-aws"]'
 labels "both cloud labels select both" "$BOTH_CLOUDS" '["ci:lifecycle-aws","ci:lifecycle-civo"]'
 # The old bare trigger is gone. It must select nothing rather than everything.
-labels "the old ci:lifecycle selects nothing" "$ALL_OFF" '["ci:lifecycle"]'
-# The old selector names are gone too.
+# The old selector names are gone.
 labels "the old ci:civo selects nothing" "$ALL_OFF" '["ci:civo"]'
 labels "ci:lifecycle-hetzner selects hetzner" 'run_aws=false
 run_civo=false
@@ -228,8 +230,12 @@ compose "both cloud labels" 0 "aws: came up" \
 compose "ci:lifecycle-hetzner runs hetzner only" 0 "Not exercised: aws civo" \
   '["ci:lifecycle-hetzner"]' LIFECYCLE_HETZNER=success
 compose "no label at all" 1 "one cloud must run" '[]'
-compose "the old bare ci:lifecycle no longer starts anything" 1 "one cloud must run" \
-  '["ci:lifecycle"]'
+compose "ci:lifecycle runs every cloud" 0 "aws: came up" \
+  '["ci:lifecycle"]' LIFECYCLE_AWS=success LIFECYCLE_CIVO=success \
+  LIFECYCLE_HETZNER=success
+compose "ci:lifecycle with one cloud red" 1 "the civo lifecycle did not pass" \
+  '["ci:lifecycle"]' LIFECYCLE_AWS=success LIFECYCLE_CIVO=failure \
+  LIFECYCLE_HETZNER=success
 compose "the skip label waives the cloud half" 0 "WAIVED" '["ci:skip-lifecycle"]'
 
 echo
