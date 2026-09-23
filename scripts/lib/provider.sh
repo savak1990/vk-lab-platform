@@ -279,12 +279,14 @@ hetzner_kubeconfig() {
 
   # sshd answers a good minute before cloud-init has finished installing k3s,
   # so the file is waited for on the far side of the one call this is allowed.
-  attempts=$(( ${HETZNER_K3S_WAIT_SECONDS:-180} / 5 ))
+  # The ceiling is generous because the poll exits the moment the file appears:
+  # 180s passed locally and failed in CI, where the download is slower.
+  attempts=$(( ${HETZNER_K3S_WAIT_SECONDS:-600} / 5 ))
   tmp="$(mktemp)"
   hetzner_ssh "$ip" "i=0; while [ \$i -lt $attempts ]; do if [ -s /etc/rancher/k3s/k3s.yaml ]; then cat /etc/rancher/k3s/k3s.yaml; exit 0; fi; i=\$((i+1)); sleep 5; done; exit 1" >"$tmp" 2>/dev/null || status=1
   if [ "$status" -ne 0 ] || [ ! -s "$tmp" ]; then
     rm -f "$tmp"
-    echo "hetzner_kubeconfig: /etc/rancher/k3s/k3s.yaml did not appear on $ip within ${HETZNER_K3S_WAIT_SECONDS:-180}s." >&2
+    echo "hetzner_kubeconfig: /etc/rancher/k3s/k3s.yaml did not appear on $ip within ${HETZNER_K3S_WAIT_SECONDS:-600}s." >&2
     return 1
   fi
 

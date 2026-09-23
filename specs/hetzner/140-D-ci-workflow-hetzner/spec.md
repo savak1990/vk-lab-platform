@@ -246,6 +246,53 @@ Revert the workflow.
   workaround; the real fix is HETZ-175, whose P2/M2 priority now understates
   it - every Hetzner run is one stock check away from being unable to start.
 
-  **Outstanding.** §8's forced-failure cleanup case and the two-simultaneous-
-  dispatch queueing case are not yet exercised; the first `ci:lifecycle-hetzner`
-  run on this pull request is what answers the rest.
+  **The first run, 35859210888.** Green end to end: `up` 22m41s, `test` and
+  `down` both passing, and `pr-gate` judging hetzner as a cloud rather than
+  refusing it. The teardown is where the new code showed itself:
+
+      ARGO-DOWN: no barman ObjectStore - backups are not configured, nothing to back up.
+      deleted /vk-hetzner-ci/persistent/hetzner/tls/platform-public - issuer=... CN = (STAGING) ...
+      VERIFY-NO-LEAKS: no bootstrap or persistent resources remain for vk-hetzner-ci.
+
+  The middle line matters more than it looks. That step used to be gated on
+  `provider == 'civo'` with `civo` written into the parameter path, so before
+  this change a hetzner run would have left a billed Advanced-tier SecureString
+  behind on every cycle.
+
+  **The parallel run, 35863554802 - the coexistence test.** With the personal
+  lab live at three `cpx32`, a second CI run was triggered by removing and
+  re-adding the label. Measured at one-minute intervals:
+
+      servers ci=2 lab=3 total=5    both clusters live at once
+      servers ci=0 lab=3 total=3    CI torn down, the lab untouched
+
+  So `NODE_COUNT=2` is right and it is exact: 3 + 2 is the 5-server limit with
+  nothing spare, and one autoscaled node from HETZ-170 would break it. The
+  sweep isolation held - `hcloud_list_names` on `project=vk-hetzner-ci` and the
+  `^vk-hetzner-ci-` load-balancer prefix never reached the lab's resources,
+  which is the failure this test existed to look for. Two networks carried the
+  same `10.0.0.0/16` range simultaneously with no interference; hcloud networks
+  are isolated, so each control plane is `10.0.1.10` inside its own.
+
+  **§8's forced-failure cleanup case is answered by a real failure.** That
+  parallel run's `up` failed, and `down` ran anyway and left nothing:
+
+      CLUSTER-DOWN: no leaked disposable-lifecycle resources found.
+      Deleted s3://vk-hetzner-ci-fsn1-tf-state.
+      VERIFY-NO-LEAKS: no bootstrap or persistent resources remain for vk-hetzner-ci.
+
+  The cause was `HETZNER_K3S_WAIT_SECONDS`, whose 180s default this raises to
+  600s. k3s installs itself from cloud-init and the kubeconfig had not appeared
+  on the control plane in time. 180s passed on every local run and on the first
+  CI run, then failed on the second - marginal rather than wrong, and a CI leg
+  that fails on coin-flip timing is not shippable. The poll exits the moment
+  the file appears, so the higher ceiling costs nothing when it is not needed.
+
+  **Still outstanding:** the two-simultaneous-dispatch queueing case. The
+  concurrency group `lab-hetzner-vk-hetzner-ci` is written but never contended.
+
+  **Address reuse, for HETZ-150.** `91.98.15.137` was handed to three different
+  load balancers today - the lab's, CI's, and the lab's again - and the lab's
+  servers took public IPs that CI's servers had held twenty minutes earlier.
+  Hetzner recycles addresses aggressively within a location, so the
+  "A record follows a changed LB IP" case is still unexercised.
