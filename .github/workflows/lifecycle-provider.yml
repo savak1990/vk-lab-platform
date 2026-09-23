@@ -27,10 +27,8 @@ on:
         type: string
         required: false
         default: ""
-      test_label:
-        description: >-
-          A ginkgo label to narrow the suite to, for a target whose remaining
-          suites are not implemented yet. Blank runs the whole suite.
+      node_type:
+        description: "NODE_TYPE for this run. Blank keeps the provider default."
         type: string
         required: false
         default: ""
@@ -79,11 +77,15 @@ jobs:
       # After the AWS credentials: the token is KMS ciphertext in the repo, so
       # decrypting it needs the assumed role. ::add-mask:: must reach the step's
       # own stdout, never a $(...) capture, and is per job.
-      # Exported only when non-blank: Make reads an empty NODE_COUNT as set and
+      # Exported only when non-blank: Make reads an empty value as set and
       # would blank the provider's own default rather than keep it.
-      - name: Resolve the node count
-        if: inputs.node_count != ''
-        run: echo "NODE_COUNT=${{ inputs.node_count }}" >> "$GITHUB_ENV"
+      - name: Resolve the cluster shape
+        if: inputs.node_count != '' || inputs.node_type != ''
+        run: |
+          set -euo pipefail
+          [ -n "${{ inputs.node_count }}" ] && echo "NODE_COUNT=${{ inputs.node_count }}" >> "$GITHUB_ENV"
+          [ -n "${{ inputs.node_type }}" ] && echo "NODE_TYPE=${{ inputs.node_type }}" >> "$GITHUB_ENV"
+          exit 0
 
       - name: Register the cloud token mask
         if: inputs.provider != 'aws'
@@ -120,20 +122,21 @@ jobs:
           aws-region: eu-west-1
           role-duration-seconds: 14400
 
-      # Exported only when non-blank: Make reads an empty NODE_COUNT as set and
+      # Exported only when non-blank: Make reads an empty value as set and
       # would blank the provider's own default rather than keep it.
-      - name: Resolve the node count
-        if: inputs.node_count != ''
-        run: echo "NODE_COUNT=${{ inputs.node_count }}" >> "$GITHUB_ENV"
+      - name: Resolve the cluster shape
+        if: inputs.node_count != '' || inputs.node_type != ''
+        run: |
+          set -euo pipefail
+          [ -n "${{ inputs.node_count }}" ] && echo "NODE_COUNT=${{ inputs.node_count }}" >> "$GITHUB_ENV"
+          [ -n "${{ inputs.node_type }}" ] && echo "NODE_TYPE=${{ inputs.node_type }}" >> "$GITHUB_ENV"
+          exit 0
 
       - name: Register the cloud token mask
         if: inputs.provider != 'aws'
         run: bash -c 'source scripts/lib/region.sh; source scripts/lib/provider.sh; case "$PROVIDER" in civo) civo_token ;; hetzner) hcloud_token ;; esac'
 
-      # test-<label> narrows the suite by ginkgo label. A target whose whole
-      # suite is not implemented yet asks for the part that is, rather than
-      # failing on specs its spec does not claim.
-      - run: make ${{ inputs.test_label && format('test-{0}', inputs.test_label) || 'test' }}
+      - run: make test
         env:
           # A staging certificate chains to a root no Go client trusts. An aws
           # run and a production run leave this blank, so a real certificate
@@ -162,11 +165,15 @@ jobs:
           aws-region: eu-west-1
           role-duration-seconds: 14400
 
-      # Exported only when non-blank: Make reads an empty NODE_COUNT as set and
+      # Exported only when non-blank: Make reads an empty value as set and
       # would blank the provider's own default rather than keep it.
-      - name: Resolve the node count
-        if: inputs.node_count != ''
-        run: echo "NODE_COUNT=${{ inputs.node_count }}" >> "$GITHUB_ENV"
+      - name: Resolve the cluster shape
+        if: inputs.node_count != '' || inputs.node_type != ''
+        run: |
+          set -euo pipefail
+          [ -n "${{ inputs.node_count }}" ] && echo "NODE_COUNT=${{ inputs.node_count }}" >> "$GITHUB_ENV"
+          [ -n "${{ inputs.node_type }}" ] && echo "NODE_TYPE=${{ inputs.node_type }}" >> "$GITHUB_ENV"
+          exit 0
 
       - name: Register the cloud token mask
         if: inputs.provider != 'aws'

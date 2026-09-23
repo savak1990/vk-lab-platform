@@ -540,10 +540,10 @@ jobs:
       # control plane plus one worker still exercises the private-network join
       # that is this target's whole distinguishing feature.
       node_count: "2"
-      # The Postgres and Grafana suites need HETZ-120 and HETZ-160, which do
-      # not exist yet. Asking for the whole suite would fail on specs no spec
-      # claims; this narrows it to what HETZ-130 does claim.
-      test_label: argocd
+      # cx33 is the Makefile default and on 2026-09-23 the whole cx line read
+      # out of stock in every Hetzner location, so a run on the default would
+      # fail at placement. cpx32 is the same 4 vCPU / 8 GiB and is sold today.
+      node_type: cpx32
       production_tls: false
       target_revision: ${{ github.event.pull_request.head.sha || github.ref_name }}
 
