@@ -1,7 +1,7 @@
 ---
 id: "HETZ-130"
 title: "E2E test suite on Hetzner through the ServiceAccount token context"
-status: "READY"
+status: "DONE"
 priority: "P1"
 milestone: "M1"
 type: "implementation"
@@ -14,8 +14,8 @@ depends_on: ["HETZ-045", "HETZ-060", "CIVO-130"]
 blocked_by: []
 supersedes: []
 created: "2026-09-11"
-updated: "2026-09-19"
-completed: ""
+updated: "2026-09-23"
+completed: "2026-09-23"
 ---
 
 # HETZ-130 — E2E tests on Hetzner
@@ -33,7 +33,9 @@ Read `specs/civo/130-D-e2e-tests-civo/spec.md` first.
 
 In scope:
 - The `hetzner` arm of `test-kubeconfig` and `test` in the `Makefile`.
-- The RBAC subject values for `target: hetzner`.
+- The RBAC subject values for `target: hetzner`. Already generalised in
+  `_helpers.tpl:207-229` (`ne .Values.target "aws"`) when this spec ran; no
+  edit was needed.
 - `E2E_INSECURE_TLS` for CI runs with the staging issuer.
 
 Not in scope: new test cases. The Postgres test runs after HETZ-120.
@@ -91,8 +93,10 @@ CIVO-130 (SA-token path, RBAC hoist).
 
 ## 8. Acceptance criteria
 
-- `PROVIDER=hetzner make test-argocd` is green. `make test` is green after
-  HETZ-120 and HETZ-160 (tracked in HETZ-150).
+- `PROVIDER=hetzner make test` is green. This criterion originally claimed
+  only `test-argocd`, deferring the rest to HETZ-120 and HETZ-160; measured on
+  2026-09-23 the whole suite passes, because HETZ-045 and HETZ-050 already put
+  CNPG and observability on this target.
 - `make test` on aws and civo is unchanged: same flags, same context
   names.
 - The SA token scope is limited to the read-only role.
@@ -119,7 +123,7 @@ Revert. No data risk.
 
 ## 13. Definition of done
 
-- [ ] Make arm, values, evidence; index updated; status `DONE`
+- [x] Make arm, values, evidence; index updated; status `DONE`
 
 ## 14. Execution evidence and status history
 
@@ -128,3 +132,26 @@ Revert. No data risk.
 - 2026-09-19 — kubeadm wording.
 - 2026-09-20 — k3s (HETZ-017): wording only. A self-managed k3s cluster has no
   cloud IAM mapping either, so the ServiceAccount-token path is unchanged.
+
+- 2026-09-23 - closed on the same cycle as HETZ-115.
+
+  The whole change is in `configure_test_kubeconfig`: the stub that refused
+  hetzner is gone, the AWS guard is now positive (`= aws`) rather than a list
+  of negations, and the context names derive from `$PROVIDER` instead of being
+  hardcoded to civo. That is four lines. Three of this spec's claimed work
+  items were already done: `Makefile:290` derives `E2E_CONTEXT` from
+  `$(PROVIDER)`, `_helpers.tpl:207-229` already emits the ServiceAccount
+  subject for every non-aws target, and `E2E_TLS_FLAG` already exists at
+  `Makefile:302`. §3, §4 and §5 described work that HETZ-016 and CIVO-130 had
+  already absorbed.
+
+  `make test` ran against context `vk-hetzner-lab-hetzner-test` and passed the
+  **whole** suite: `Ran 4 of 4 Specs - SUCCESS! 4 Passed | 0 Failed`, covering
+  Argo CD, Grafana and both Postgres specs including a real read/write. §8
+  expected only `test-argocd` until HETZ-120 and HETZ-160; that expectation
+  was wrong, because HETZ-045 and HETZ-050 had already put CNPG and
+  observability on this target. The criterion is corrected above.
+
+  Consequence for HETZ-140: the CI leg runs the same `make test` as aws and
+  civo, with no ginkgo narrowing. A `test_label` input was written and then
+  deleted once the measurement came in.

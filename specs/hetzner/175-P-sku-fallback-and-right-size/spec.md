@@ -134,3 +134,14 @@ reverted with one values commit.
   project that already holds state in another location and prints the
   teardown command. This does not advance the SKU fallback or the
   right-sizing work, so the spec stays `READY`.
+
+- 2026-09-23 - this spec stopped being a nicety. HETZ-140's first Hetzner
+  bring-up failed at placement on `cx33`, the Makefile default:
+  `error during placement (resource_unavailable)` for the control plane and
+  both workers. The API's datacenter listing showed no `cx` type (ids 114-117)
+  available in any location, and `fsn1-dc14` with an empty availability list
+  altogether. `cpx32` - the same 4 vCPU / 8 GiB - created in `fsn1` minutes
+  later, so the flag was wrong in both directions in one reading, which
+  `catalog.sh:63-65` already predicted. The CI leg pins `cpx32` by hand as a
+  workaround; until the fallback here lands, every Hetzner run is one stock
+  check away from being unable to start a cluster.

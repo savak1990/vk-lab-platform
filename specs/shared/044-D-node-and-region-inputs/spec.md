@@ -391,7 +391,7 @@ Not implemented, and deliberately so. `lifecycle-provider.yml` is called only
 by `lifecycle-test.yml`, whose two legs are `aws` and `civo`, each with a fixed
 project and subdomain and no reason to vary its node shape. Three inputs no
 caller passes are dead surface. The Hetzner CI leg that needs `NODE_COUNT=2`
-arrives with [HETZ-140](../../hetzner/140-P-ci-workflow-hetzner/spec.md), which
+arrives with [HETZ-140](../../hetzner/140-D-ci-workflow-hetzner/spec.md), which
 owns the Hetzner workflow surface; the 3 + 2 sizing argument above is the
 input to that spec, and it stands as written.
 

@@ -250,3 +250,8 @@ Revert the values. Argo prunes. Volumes are deleted with the PVCs.
 - 2026-09-23 - HETZ-070's two cycles confirm the three-PVC count a third and
   fourth time: Prometheus, Alertmanager and Loki bind one 10Gi
   `hcloud-volumes` claim each, Grafana none.
+
+- 2026-09-23 - the three-PVC count holds a fifth time on HETZ-115's cycle
+  (Prometheus, Alertmanager, Loki at 10Gi each on `hcloud-volumes`; Grafana
+  none). Also measured: the Grafana e2e spec passes on hetzner today, so this
+  spec's remaining work is the control-plane scrapes, not Grafana itself.

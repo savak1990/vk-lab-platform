@@ -184,3 +184,10 @@ until `persistent-down`.
 - 2026-09-11 — created as DRAFT.
 - 2026-09-11 — reviewed and approved by the user; promoted to READY.
 - 2026-09-19 — no longer depends on HETZ-182 (x86 nodes).
+
+- 2026-09-23 - HETZ-115 closed the teardown half without this spec. The
+  `backup_teardown` guard now returns early when no barman `ObjectStore`
+  exists, so a hetzner teardown no longer attempts a plugin Backup it cannot
+  run. The guard reads cluster state rather than `$PROVIDER`, so when this
+  spec creates the `ObjectStore` the backup path arms itself with no code
+  change here.
