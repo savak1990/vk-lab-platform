@@ -363,7 +363,7 @@ below as a finding against HETZ-040.
   Cluster `serverName` unchanged, SSM pointer unchanged, still two
   generations, still six rows, postgres container `restartCount` 0.
 
-- 2026-09-23 — **finding against HETZ-040, not fixed here.** The first
+- 2026-09-23 — **finding against HETZ-040, fixed in this pull request.** The first
   `make up` of this session failed with
   `hetzner_kubeconfig: /etc/rancher/k3s/k3s.yaml did not appear on <ip> within 600s.`
   four seconds after `terragrunt apply` completed — it never waited 600s. The
@@ -375,3 +375,13 @@ below as a finding against HETZ-040.
   immediately and no later bring-up in this session reproduced it, so it needs
   a slow server create to surface. The message is also actively misleading,
   which is the more expensive half of the defect.
+
+  Fixed after PR #84 (`hetz-170-autoscaler`) failed its CI `lifecycle-hetzner`
+  leg with the identical message, which showed this was blocking the Hetzner
+  CI leg generally rather than being a local curiosity. The fetch is extracted
+  into `hetzner_fetch_k3s_kubeconfig`, which retries only on ssh exit 255 —
+  ssh's own "could not connect" — and lets any other status through, because
+  that status came back from the remote side and means the wait really ran.
+  The two cases now report different messages. `tests/scripts/hetzner-kubeconfig-fetch-test.sh`
+  stubs `hetzner_ssh` to cover four cases: connects first try, connects after
+  two refusals, never connects, and connects onto a server with no k3s.yaml.
