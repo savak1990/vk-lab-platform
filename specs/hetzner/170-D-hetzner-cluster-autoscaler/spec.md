@@ -258,17 +258,32 @@ sweep reaps them at the next `cluster-down`.
 | The rendered node group | exactly one `--nodes=0:1:CX33:FSN1:workers`, from `autoscalingGroups`; `image.tag` is `v1.36.1` |
 | `HCLOUD_CLUSTER_CONFIG` shape | all five `serverLabels` present; a multi-line fixture with an embedded tab round-trips byte-identical, so it is encoded exactly once. Proved against that fixture, not against the real SSM parameter, which needs a live stack |
 | The Application is hetzner-only | absent from the `aws`, `civo` and `local` renders |
-| The aws golden | four new root parameters with empty values, eight lines, one file |
+| The aws golden | three new root parameters with empty values, six lines, one file |
 
-**Outstanding, pending a live run.** Every remaining criterion needs a real
-bring-up, and none of them can be reached offline.
+### On a real cluster, run 35919205302 (2026-09-23)
+
+A full `up` → `test` → `down` on the CI Hetzner project, which proves
+everything about this change except the scaling itself.
+
+| Criterion | Result |
+|---|---|
+| `lifecycle-hetzner / up` | pass, 19m21s — the rewritten SSM batch resolved all twelve names, so the change most likely to break a working bring-up does not |
+| The autoscaler Application | `sync=Synced health=Healthy` from +16s and for the rest of the run, with no sync retry of its own |
+| `HCLOUD_CLUSTER_CONFIG` is accepted by the binary | implied by that health: the pod takes the Secret through `envFromSecret`, so a missing Secret or a config it could not parse would leave it crashlooping rather than Healthy |
+| `wait_for_nodes_ready` | `all 2 node(s) Ready` — CI runs a two-node pool, and the gate returned at exactly the fixed count |
+| `lifecycle-hetzner / test` | pass — the E2E suite green against the cluster |
+| `lifecycle-hetzner / down` | pass; `no leaked disposable-lifecycle resources found` and `no bootstrap or persistent resources remain` |
+
+**Still outstanding.** Each of these needs load driven at the cluster, which
+no lifecycle run does. The teardown row is listed again because the sweep ran
+with nothing to sweep, so it proves the path is reached, not that it reaps.
 
 | Criterion | Status |
 |---|---|
 | A burst of pending pods scales 0→1 within 5 minutes, timed; the node reaches `Ready` with `spec.providerID` set | outstanding |
 | 1→0 within 10 minutes of the pods clearing, timed | outstanding |
-| `make down` with the autoscaled node present completes and the sweep reports zero leaks | outstanding |
-| No Terraform drift on `cluster-hetzner` at any point | outstanding |
+| `make down` **with the autoscaled node present** completes and the sweep reports zero leaks | outstanding |
+| No Terraform drift on `cluster-hetzner` after an autoscaled node has existed | outstanding |
 
 ### The five corrections to §4
 
@@ -332,8 +347,10 @@ running that loop against a multi-line value.
 - 2026-09-11 — reviewed and approved by the user; promoted to READY.
 - 2026-09-19 — moved to P1/M1 and re-shaped to 0–1 `cx33`: the third node of the chosen shape (decisions.md §3) is autoscaled, so M1 needs this spec.
 - 2026-09-19 — rewritten for kubeadm join via HETZ-165; 0–2 workers, ceiling 4 nodes.
-- 2026-09-23 — implemented. Offline evidence below; the four live criteria in
-  §8 stay outstanding, which the status protocol allows.
+- 2026-09-23 — implemented, and proved on a real cluster by run 35919205302:
+  `up`, `test` and `down` all pass and the autoscaler Application reaches
+  `Synced/Healthy`. The four §8 criteria are about scaling, which no lifecycle
+  run drives, so they stay outstanding — which the status protocol allows.
 - 2026-09-23 — **five corrections to §4, found by checking it against the
   repository and the chart rather than against itself.**
 - 2026-09-20 — k3s (HETZ-017, ADR 0037). HETZ-165 is retired, so the node
