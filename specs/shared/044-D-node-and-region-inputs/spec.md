@@ -682,3 +682,11 @@ the correct behaviour rather than a limitation to work around.
   Everything offline is proven: `make node-config-check` covers the gate's
   accept and refuse sets, and `make specs-check`, `make gitops-check` and
   `make secrets-check` are green.
+
+- 2026-09-24 — `lab.yml`'s two node-type inputs became `choice` dropdowns
+  listing every type `catalog_node_types` sells, each labelled with its
+  provider. No input was added and no gate changed: GitHub has no dependent
+  dropdowns, so the list cannot be narrowed by the chosen provider or region,
+  and this spec's offline gate is still what refuses a combination that cannot
+  be created. The list is a second copy of the catalogue, so
+  `node-config-test.sh` now fails when the two differ.

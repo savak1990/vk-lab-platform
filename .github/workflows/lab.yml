@@ -12,11 +12,14 @@ name: lab
 # script already has (persistent-down/bootstrap-down/account-down's
 # CONFIRM_DESTROY check) is unaffected by this workflow, just wired through from
 # confirm_destroy below. `region`, `worker_node_type`, `min_worker_nodes` and
-# `max_worker_nodes` size the
-# cluster; they are free strings because what is valid depends on the provider
-# and on the region, and the offline gate refuses a bad combination in the
-# job's first seconds rather than deep inside an apply. `control_plane_node_type`
-# sizes the one server the platform owns itself, on hetzner alone.
+# `max_worker_nodes` size the cluster. The two node-type inputs are dropdowns
+# listing every type the catalogue sells, each labelled with the provider that
+# sells it: GitHub has no dependent dropdowns, so one flat list is as close as
+# the form gets, and it cannot express that cx43 sells in nbg1 but not hel1.
+# Picking a type the chosen provider and region do not sell is therefore still
+# possible, and the offline gate refuses it in the job's first seconds rather
+# than deep inside an apply. `control_plane_node_type` sizes the one server the
+# platform owns itself, on hetzner alone.
 on:
   workflow_dispatch:
     inputs:
@@ -49,14 +52,29 @@ on:
         description: "region (civo/hetzner only)"
         type: string
         default: ""
-      # Blank uses the provider's default - g4s.kube.medium on civo, cx33 on
-      # hetzner, t4g.medium on aws. A free string rather than a choice: valid types differ per
-      # provider and per region, GitHub has no dependent dropdowns, and one
-      # flat list could not say that cx43 sells in nbg1 but not in hel1.
+      # The first option keeps the provider's default - g4s.kube.medium on
+      # civo, cx43 on hetzner (cx33 in hel1), t4g.medium on aws. The rest are
+      # every type scripts/lib/catalog.sh sells, and node-config-test.sh fails
+      # if this list and that one drift apart.
       worker_node_type:
         description: "worker_node_type"
-        type: string
-        default: ""
+        type: choice
+        options:
+          - "default (provider decides)"
+          - "aws: t4g.medium"
+          - "aws: t4g.large"
+          - "aws: m6g.large"
+          - "civo: g4s.kube.medium"
+          - "civo: g4s.kube.large"
+          - "civo: g4m.kube.small"
+          - "civo: g4p.kube.small"
+          - "hetzner: cx23"
+          - "hetzner: cx33"
+          - "hetzner: cx43"
+          - "hetzner: cx53"
+          - "hetzner: cpx32"
+          - "hetzner: cpx42"
+        default: "default (provider decides)"
       # Worker nodes only, never a control plane. Blank uses the provider's
       # default: 3-4 on civo, 1-2 on hetzner, 1-3 on aws. On aws the ceiling is
       # not a node count Karpenter understands, so it is converted to a vCPU
@@ -70,12 +88,20 @@ on:
         type: string
         default: ""
       # hetzner only, where the platform creates the control plane itself and
-      # pays for it. Blank uses cx23. A value on any other provider is refused
-      # by the offline gate, since nothing there would read it.
+      # pays for it. The first option keeps cx23. A value on any other provider
+      # is refused by the offline gate, since nothing there would read it.
       control_plane_node_type:
         description: "control_plane_node_type (hetzner only)"
-        type: string
-        default: ""
+        type: choice
+        options:
+          - "default (hetzner cx23)"
+          - "hetzner: cx23"
+          - "hetzner: cx33"
+          - "hetzner: cx43"
+          - "hetzner: cx53"
+          - "hetzner: cpx32"
+          - "hetzner: cpx42"
+        default: "default (hetzner cx23)"
       target:
         description: "target"
         type: choice
@@ -156,6 +182,18 @@ jobs:
           [ -n "$IN_PROJECT_NAME" ] && echo "PROJECT_NAME=$IN_PROJECT_NAME" >> "$GITHUB_ENV"
           [ -n "$IN_SUBDOMAIN" ] && echo "SUBDOMAIN=$IN_SUBDOMAIN" >> "$GITHUB_ENV"
           [ -n "$IN_REGION" ] && echo "REGION=$IN_REGION" >> "$GITHUB_ENV"
+          # The two node-type dropdowns label each type with the provider that
+          # sells it; only the type itself reaches Make, and the "default"
+          # option means "change nothing", so Make's ?= default still wins.
+          node_type_of() {
+            case "$1" in
+              default*) echo "" ;;
+              *) echo "${1##* }" ;;
+            esac
+          }
+          IN_WORKER_NODE_TYPE="$(node_type_of "$IN_WORKER_NODE_TYPE")"
+          IN_CONTROL_PLANE_NODE_TYPE="$(node_type_of "$IN_CONTROL_PLANE_NODE_TYPE")"
+
           [ -n "$IN_WORKER_NODE_TYPE" ] && echo "WORKER_NODE_TYPE=$IN_WORKER_NODE_TYPE" >> "$GITHUB_ENV"
           [ -n "$IN_MIN_WORKER_NODES" ] && echo "MIN_WORKER_NODES=$IN_MIN_WORKER_NODES" >> "$GITHUB_ENV"
           [ -n "$IN_MAX_WORKER_NODES" ] && echo "MAX_WORKER_NODES=$IN_MAX_WORKER_NODES" >> "$GITHUB_ENV"
