@@ -396,19 +396,19 @@ running that loop against a multi-line value.
 - 2026-09-11 — created as DRAFT at P3/M2, mirroring CIVO-170's placement.
 - 2026-09-11 — reviewed and approved by the user; promoted to READY.
 - 2026-09-19 — moved to P1/M1 and re-shaped to 0–1 `cx33`: the third node of the chosen shape (decisions.md §3) is autoscaled, so M1 needs this spec.
-- 2026-09-19 — rewritten for kubeadm join via HETZ-165; 0–2 workers, ceiling 4 nodes.
+- 2026-09-19 — rewritten for kubeadm join via the join-credential spec, since retired; 0–2 workers, ceiling 4 nodes.
 - 2026-09-23 — implemented, and proved on a real cluster by run 35919205302:
   `up`, `test` and `down` all pass and the autoscaler Application reaches
   `Synced/Healthy`. The four §8 criteria are about scaling, which no lifecycle
   run drives, so they stay outstanding — which the status protocol allows.
 - 2026-09-23 — **five corrections to §4, found by checking it against the
   repository and the chart rather than against itself.**
-- 2026-09-20 — k3s (HETZ-017, ADR 0037). HETZ-165 is retired, so the node
+- 2026-09-20 — k3s (HETZ-017, ADR 0037). The join-credential spec is retired, so the node
   template is no longer composed in-cluster from a minted token and a CA
   hash: `ensure_autoscaler_config()` reads HETZ-030's `worker_user_data`
   SSM `SecureString` and uses that render as it stands, which makes an
   autoscaled node identical to the fixed worker by construction.
-  `depends_on` moves from HETZ-165 to HETZ-030 and HETZ-045. The
+  `depends_on` moves from that retired spec to HETZ-030 and HETZ-045. The
   Application, the `--nodes=0:2:CX33:NBG1:workers` group, the two-Secret env
   wiring, the ceiling of four and the teardown ordering are unchanged. The
-  1.37-tag note goes with HETZ-185.
+  1.37-tag note goes with the retired kubeadm operations runbook.

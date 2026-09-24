@@ -46,9 +46,13 @@ spec:
 
       max_wal_senders: "10"
   priorityClassName: postgres-critical
+  # A ceiling so one runaway query cannot take the node down. shared_buffers
+  # stays at the Postgres default, so the limit does not resize the cache.
   resources:
+    limits:
+      memory: 512Mi
     requests:
-      cpu: 250m
+      cpu: 100m
       memory: 256Mi
   storage:
     # Increase-only: shrinking a PVC is rejected by Kubernetes.

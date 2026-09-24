@@ -119,7 +119,7 @@ optional CCM/CSI metrics.
   it.
 - Sizing: Prometheus `resources.limits.memory` 2Gi, Loki 1Gi, Grafana
   512Mi. A single pod may use up to about 7 GiB on `cx33`, so no pod is
-  near the ceiling. Record requests for HETZ-175.
+  near the ceiling. Record requests for SHARED-048.
 
 ## 5. Files/components affected
 
@@ -140,7 +140,7 @@ values), `scripts/argo-up.sh` (control-plane private IP relay),
    `up{job="kube-scheduler"}` are 1. Record `kubeProxy` and
    `kubeletInsecureTls` outcomes.
 4. `hcloud volume list`: four 10 GB volumes plus CNPG's.
-5. Record per-node memory usage for HETZ-175.
+5. Record per-node memory usage for SHARED-048.
 
 ## 7. Dependencies and blockers
 
@@ -202,10 +202,10 @@ Revert the values. Argo prunes. Volumes are deleted with the PVCs.
 - 2026-09-11 — created as DRAFT.
 - 2026-09-11 — reviewed and approved by the user; promoted to READY.
 - 2026-09-19 — kubeadm: stacked etcd scraped, kube-proxy kept,
-  metrics-server Argo-installed; depends on HETZ-037 (Cilium) instead
-  of HETZ-030; x86 images.
+  metrics-server Argo-installed; depended on the Cilium CNI spec, since
+  retired, instead of HETZ-030; x86 images.
 - 2026-09-20 — option C: the control-plane metrics `extraArgs` are set by
-  HETZ-030's `control-plane.yaml.tftpl`, not by HETZ-035 (decisions.md §3,
+  HETZ-030's `control-plane.yaml.tftpl`, not by the kubeadm bootstrap spec (decisions.md §3,
   "Control-plane metrics").
 - 2026-09-20 — k3s (HETZ-017, ADR 0037). Scrape targets stay, their source
   changes: `--kube-controller-manager-arg`, `--kube-scheduler-arg` and
@@ -214,7 +214,7 @@ Revert the values. Argo prunes. Volumes are deleted with the PVCs.
   `--cluster-init`; SQLite would have had none. metrics-server flips from an
   Argo CD Application to k3s's bundled one, so `metricsServerEnabled` returns
   false on hetzner and `kubeletInsecureTls` is tried as `false` first.
-  `depends_on` moves from HETZ-037 to HETZ-045. Dashboards, volumes, the
+  `depends_on` moves from the retired Cilium CNI spec to HETZ-045. Dashboards, volumes, the
   10 GB floor, retention and sizing are unchanged.
 
 - 2026-09-22 — HETZ-060 clears part of §8's first criterion early. "Grafana

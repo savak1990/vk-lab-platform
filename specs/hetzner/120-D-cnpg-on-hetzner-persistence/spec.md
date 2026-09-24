@@ -225,7 +225,8 @@ bucket until `persistent-down`.
   CIVO-120 §12; not closed here.
 - **No e2e assertion covers archiving.** `tests/e2e/postgres_test.go`
   asserts nothing about `ContinuousArchiving` or a `completed` Backup, so
-  a silent archiving failure fails no test. Carried to HETZ-150.
+  a silent archiving failure fails no test. Recorded here as a known gap;
+  no spec owns it.
 - A volume re-attach on Hetzner stalled for about six minutes in the
   HETZ-020 spike (`specs/hetzner/research.md`). Any timeout budget for a
   volume-carrying pod moving between nodes must exceed that. No spec has

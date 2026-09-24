@@ -12,7 +12,7 @@ effort_estimate: "One session (4–6 h), documents only"
 estimate_confidence: "medium"
 depends_on: ["HETZ-015"]
 blocked_by: []
-supersedes: ["HETZ-035", "HETZ-037", "HETZ-165", "HETZ-185"]
+supersedes: []
 created: "2026-09-20"
 updated: "2026-09-20"
 completed: "2026-09-20"
@@ -48,15 +48,15 @@ infrastructure.
 
 In scope: `docs/adr/0037-k3s-bootstrap-on-hetzner.md` (new); a dated note on
 ADR 0036; the Hetzner cells of constitution §20; `docs/architecture.md` §10a and
-`docs/hetzner-high-level-design.md`; the retirement of HETZ-035, HETZ-037,
-HETZ-165 and HETZ-185; the rewrite of HETZ-030, HETZ-160 and HETZ-170; wording
+`docs/hetzner-high-level-design.md`; the retirement of the four kubeadm-era
+specs named in §5; the rewrite of HETZ-030, HETZ-160 and HETZ-170; wording
 and call-site edits across ten further specs; and the four package documents.
 
 Not in scope: any Terraform, GitOps or workflow file, and any shell file beyond
 one string — `configure_kubeconfig`'s hetzner stub in
-`scripts/lib/provider.sh:162` names HETZ-035, which this spec retires, and must
-name HETZ-040 instead so the message does not send a reader to a superseded
-spec. No implementation spec changes status to `IN_PROGRESS` because of this
+`scripts/lib/provider.sh:162` names the kubeadm bootstrap spec, which this spec
+retires, and must name HETZ-040 instead so the message does not send a reader to
+a retired spec. No implementation spec changes status to `IN_PROGRESS` because of this
 spec. The AWS and Civo
 targets are untouched; no file outside `specs/hetzner/`, `docs/adr/`,
 `docs/architecture.md`, `docs/hetzner-high-level-design.md`,
@@ -67,7 +67,7 @@ targets are untouched; no file outside `specs/hetzner/`, `docs/adr/`,
 - `docs/adr/0036-hetzner-kubeadm-third-execution-target.md` is `Accepted`; its
   "Alternatives considered" rejects k3s on the certification argument alone, and
   its Consequences commit the platform to owning "upgrades, certificates and
-  etcd backups", specified separately as HETZ-185.
+  etcd backups", specified separately as the operations runbook this spec retires.
 - `decisions.md:63` records the same reasoning: k3s "hides kubeadm, etcd, static
   pods and kubelet-under-systemd, which the CKA syllabus … and the upgrade
   runbook need; the SQLite datastore has no snapshot/restore practice."
@@ -200,16 +200,19 @@ the exposure.
 
 | Spec | Lines | Why it stops |
 |---|---|---|
-| HETZ-035, kubeadm bootstrap | 295 | It is the SSH join. Workers join at boot |
-| HETZ-037, Cilium CNI | 269 | k3s ships flannel; there is no CNI install step |
-| HETZ-165, join credential | 299 | Terraform owns the token; there is nothing to mint |
-| HETZ-185, operations runbook | 234 | The certification goal is withdrawn |
+| kubeadm bootstrap | 295 | It is the SSH join. Workers join at boot |
+| Cilium CNI | 269 | k3s ships flannel; there is no CNI install step |
+| kubeadm join credential | 299 | Terraform owns the token; there is nothing to mint |
+| kubeadm operations runbook | 234 | The certification goal is withdrawn |
+
+All four were marked `SUPERSEDED` by this spec and their folders were removed
+from the tree later, on 2026-09-24.
 
 Residue that survives its spec: `configure_kubeconfig`'s Hetzner arm and the
-node-Ready wait move from HETZ-035 into HETZ-040, with the source path
+node-Ready wait move from the kubeadm bootstrap spec into HETZ-040, with the source path
 `/etc/rancher/k3s/k3s.yaml` and the rewrite of `127.0.0.1` to the public IP; the
 32 KiB `user_data` guard and the allocatable-memory measurement move from
-HETZ-165 and HETZ-037 into HETZ-030.
+the join-credential and Cilium CNI specs into HETZ-030.
 
 **Rewrites.** HETZ-030 keeps its number and `id` and is renamed
 `030-P-hetzner-terraform-k3s-nodes`. Its firewall, server, label, private-IP and
@@ -217,14 +220,14 @@ SSM-output design survives as written; §4's two cloud-init templates and §8's
 acceptance criteria are replaced. HETZ-160 §3 and §4 change scrape targets: k3s
 runs the control-plane components in one process, and with `--cluster-init` the
 etcd target is real. HETZ-170 §3 and §4 point the autoscaler's `cloudInit` at
-the same worker `user_data` Terraform renders, and absorb HETZ-165's size guard.
+the same worker `user_data` Terraform renders, and absorb the join-credential spec's size guard.
 
 **Edits.** HETZ-010 §1, HETZ-020 (the 7-item checklist shrinks to the four
 Hetzner-platform items — volume survival, load balancer lifecycle and orphaning,
 account limits, invoice — because the kubeadm ordering items no longer describe
 anything), HETZ-025 §12, HETZ-040, HETZ-045, HETZ-050, HETZ-060, HETZ-085 §12,
 HETZ-130. Unchanged: HETZ-016, HETZ-018, HETZ-047, HETZ-070, HETZ-080,
-HETZ-115, HETZ-120, HETZ-140, HETZ-150, HETZ-175, HETZ-182, HETZ-190.
+HETZ-115, HETZ-120, HETZ-140, HETZ-175, HETZ-182, HETZ-190.
 
 ## 5. Files/components affected
 
@@ -267,16 +270,16 @@ sense that both describe the superseded bootstrap until it lands.
 ## 8. Acceptance criteria
 
 - `make specs-check` exits 0.
-- `grep -rIn --exclude-dir=.git -e kubeadm -e 'pkgs\.k8s\.io' -e apt-mark -e cp-bootstrap-done specs/hetzner docs/ CLAUDE.md` returns hits only inside the four `NNN-Z-` folders, inside ADR 0036's original text below its note, and in dated §14 history lines.
+- `grep -rIn --exclude-dir=.git -e kubeadm -e 'pkgs\.k8s\.io' -e apt-mark -e cp-bootstrap-done specs/hetzner docs/ CLAUDE.md` returned hits only inside the four retired folders, inside ADR 0036's original text below its note, and in dated §14 history lines.
 - `grep -rn '10\.244\.0\.0/16' specs/ docs/` returns nothing outside the retired folders.
-- `grep -rn 'Cilium' specs/hetzner docs/` names no live component: every hit is the retired HETZ-037, ADR 0036's original text, a dated history line, or a rejected alternative that says so.
+- `grep -rn 'Cilium' specs/hetzner docs/` names no live component: every hit is the retired Cilium CNI spec, ADR 0036's original text, a dated history line, or a rejected alternative that says so.
 - `docs/adr/0037-k3s-bootstrap-on-hetzner.md` exists, is `Accepted`, names the token-in-metadata exposure with its bounds, and lists at least kubeadm, kOps, Talos, Cluster API Provider Hetzner and OKD under alternatives considered.
 - ADR 0036 carries a dated blockquote naming ADR 0037 above `## Status`, and its `## Status` still reads `Accepted` — the target decision is not superseded, only the bootstrap mechanism.
-- The four retired specs read `status: "SUPERSEDED"`, sit in `NNN-Z-` folders, and each names HETZ-017 in §14.
+- The four retired specs read `status: "SUPERSEDED"`, sat in `NNN-Z-` folders, and each named HETZ-017 in §14. Their folders were removed on 2026-09-24.
 - `specs/hetzner/README.md`'s index agrees with every spec's front matter on status, title and `depends_on`.
 - `roadmap.md`'s dependency graph has no edge into a retired spec and its critical path routes through neither 035 nor 037.
 - `make gitops-check` and `make secrets-check` exit 0, unchanged from before the commit.
-- The only change outside `specs/`, `docs/` and `CLAUDE.md` is one string in `scripts/lib/provider.sh`: `configure_kubeconfig`'s hetzner stub named HETZ-035, which is now `SUPERSEDED`, and names HETZ-040 instead. No file under `terraform/`, `gitops/`, `tests/` or `.github/` is modified, and `grep -rn 'HETZ-035\|HETZ-037\|HETZ-165\|HETZ-185' scripts/ Makefile gitops/ terraform/ .github/` returns nothing.
+- The only change outside `specs/`, `docs/` and `CLAUDE.md` is one string in `scripts/lib/provider.sh`: `configure_kubeconfig`'s hetzner stub named the kubeadm bootstrap spec, now retired, and names HETZ-040 instead. No file under `terraform/`, `gitops/`, `tests/` or `.github/` is modified, and no retired spec id appears under `scripts/`, `Makefile`, `gitops/`, `terraform/` or `.github/`.
 
 ## 9. Validation
 
@@ -317,9 +320,9 @@ and no cloud resource at risk.
 - k3s upgrades replace the binary in place and restart one service. The platform
   still owns the control plane; the operations work shrinks but does not vanish,
   and no spec now covers it. If a runbook is wanted later it is a new spec, not
-  a revival of HETZ-185.
+  a revival of the retired runbook.
 - Embedded etcd on a single node writes more than SQLite. The `cx33` local NVMe
-  has ample headroom, but HETZ-150 should record etcd write latency once.
+  has ample headroom, but etcd write latency is worth recording once.
 
 ## 13. Definition of done
 
@@ -337,8 +340,8 @@ and no cloud resource at risk.
   unchanged 2 × `cx33` fixed pool with a schedulable control plane.
 - 2026-09-20 — implemented in three commits; `make specs-check`,
   `make gitops-check` and `make secrets-check` all exit 0. Pull request #38
-  opened; `IN_REVIEW`. ADR 0037 written and ADR 0036 noted; HETZ-035, 037,
-  165 and 185 are `SUPERSEDED` in `NNN-Z-` folders; HETZ-030, 160 and 170
+  opened; `IN_REVIEW`. ADR 0037 written and ADR 0036 noted; the four
+  kubeadm-era specs are `SUPERSEDED` in `NNN-Z-` folders; HETZ-030, 160 and 170
   rewritten; HETZ-010, 020, 025, 040, 045, 047, 050, 060, 085 and 130
   edited; the four package documents, constitution §20,
   `docs/architecture.md` §10a, both high-level designs and `CLAUDE.md`

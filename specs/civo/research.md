@@ -60,7 +60,7 @@ a 20 GiB CNPG volume and the observability volumes:
 
 That sits at the top of the 60 to 80 USD target. The volume sizes are the
 adjustment knob: halving the Prometheus and Loki claims saves 1.10 and
-brings the total to 79.57. CIVO-175 measures real usage and revisits both
+brings the total to 79.57. SHARED-048 measures real usage and revisits both
 the volumes and the node size.
 
 Retained AWS costs while Civo runs:
@@ -135,7 +135,7 @@ publish. The ceiling was 2 USD.
 The spike did not test the **static PV rebind** across clusters. It also did not test the **data**
 on a surviving volume. The table above shows that the volume *object* survives. It does not show
 that the ext4 filesystem and its contents come back when a new cluster binds the volume. The table
-records the `volumeHandle` format that such a test needs. CIVO-120 and CIVO-150 both depend on
+records the `volumeHandle` format that such a test needs. CIVO-120 depends on
 this second half. Treat it as an open experiment.
 
 ## Later experiments (bounded, not run in planning)

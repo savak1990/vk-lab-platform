@@ -46,7 +46,7 @@ In scope:
 - A scale-up test.
 
 Not in scope: multiple pools, spot-like capacity (Civo has none), Karpenter
-parity, full right-sizing of the platform (CIVO-175), proof of scale-down
+parity, full right-sizing of the platform (SHARED-048), proof of scale-down
 (see §12).
 
 ## 3. Current state / evidence
@@ -214,7 +214,7 @@ Remove the Application and restore `node_count` to an explicit value in
 
 - **Scale-down is not proven by this spec.** The platform's measured working
   set does not fit two nodes, so the cluster is expected to settle at three.
-  The saving the autoscaler bounds are meant to deliver arrives only once CIVO-175
+  The saving the autoscaler bounds are meant to deliver arrives only once SHARED-048
   reduces the real footprint. Until then the deliverable is the mechanism and
   the scale-up proof.
 - **A run that starts at the floor exercises no scale event.** That is the

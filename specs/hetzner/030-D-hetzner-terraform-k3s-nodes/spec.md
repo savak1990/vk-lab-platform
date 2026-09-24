@@ -465,8 +465,8 @@ and HETZ-040's sweep removes any that Terraform lost.
   release notes at every version bump, and HETZ-050's render check keeps
   asserting that the platform defines no StorageClass of its own.
 - Embedded etcd on a single node writes more than the SQLite default. The
-  `cx33` local NVMe has headroom, but HETZ-150 records etcd write latency
-  once so a later HA decision has a baseline.
+  `cx33` local NVMe has headroom. Recording etcd write latency once would
+  give a later HA decision a baseline; no spec owns that measurement.
 - `user_data` size: both renders stay under 32 KiB, and HETZ-170 feeds the
   worker render to the autoscaler unchanged, so the module asserts the
   bound rather than trusting it.
@@ -513,7 +513,7 @@ and HETZ-040's sweep removes any that Terraform lost.
   (ceiling 4) (decisions.md §3, Node shape): every ARM server type failed a
   real create in every EU location; `cx33` succeeded in all three.
 - 2026-09-19 — rewritten for kubeadm: cloud-init installs packages only,
-  the cluster is created by HETZ-035; folder renamed.
+  the cluster is created by the kubeadm bootstrap spec, since retired; folder renamed.
 - 2026-09-20 — option C: `kubeadm init` and the Cilium install move into
   the control plane's cloud-init.
 - 2026-09-20 — rewritten for k3s (HETZ-017, ADR 0037); folder renamed to

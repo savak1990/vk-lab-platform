@@ -72,7 +72,7 @@ Not in scope:
   §5.1.
 - **Karpenter's instance list** (`gitops/values.yaml:106,110`). It carries the
   same region-availability constraint and is not governed by the catalogue.
-- **Right-sizing pod requests.** That is CIVO-175 and HETZ-175's other half.
+- **Right-sizing pod requests.** That is SHARED-048.
 - **Migrating existing data on a region change.** Retained EBS volumes are
   availability-zone-bound; a region move abandons them. Accepted by the
   operator: a cluster started in a new region starts with fresh data.
@@ -382,8 +382,8 @@ implementation**.
 
 `AWS-031` is `Z`/DEFERRED and records exactly this work. It is superseded.
 `HETZ-175 §4` already specs `server_type` as a Hetzner-only input via
-`HCLOUD_SERVER_TYPE`; that half is absorbed here and HETZ-175 keeps its
-right-sizing half. `CIVO-175` is not an equivalent — its §2 says changing the
+`HCLOUD_SERVER_TYPE`; that half is absorbed here and HETZ-175 keeps the
+fallback. `CIVO-175`, since replaced by SHARED-048, was not an equivalent — its §2 said changing the
 pool SKU "is a separate one-line change once decided".
 
 ### 3.10 CI — DESCOPED (2026-09-22)
@@ -682,3 +682,11 @@ the correct behaviour rather than a limitation to work around.
   Everything offline is proven: `make node-config-check` covers the gate's
   accept and refuse sets, and `make specs-check`, `make gitops-check` and
   `make secrets-check` are green.
+
+- 2026-09-24 — `lab.yml`'s two node-type inputs became `choice` dropdowns
+  listing every type `catalog_node_types` sells, each labelled with its
+  provider. No input was added and no gate changed: GitHub has no dependent
+  dropdowns, so the list cannot be narrowed by the chosen provider or region,
+  and this spec's offline gate is still what refuses a combination that cannot
+  be created. The list is a second copy of the catalogue, so
+  `node-config-test.sh` now fails when the two differ.

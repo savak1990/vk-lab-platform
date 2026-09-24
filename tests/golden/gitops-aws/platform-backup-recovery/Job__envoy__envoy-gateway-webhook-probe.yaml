@@ -56,5 +56,11 @@ spec:
           # all); version matches the EKS cluster's own server version.
           image: alpine/k8s:1.36.4
           name: probe
+          resources:
+            limits:
+              memory: 64Mi
+            requests:
+              cpu: 10m
+              memory: 32Mi
       restartPolicy: Never
       serviceAccountName: envoy-gateway-webhook-probe

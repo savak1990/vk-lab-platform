@@ -267,6 +267,8 @@ named template can't reach a sibling container in the same Pod spec.
     requests:
       cpu: 10m
       memory: 16Mi
+    limits:
+      memory: 32Mi
   volumeMounts:
     - name: ra-cert
       mountPath: /ra

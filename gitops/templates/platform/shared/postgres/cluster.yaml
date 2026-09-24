@@ -22,10 +22,14 @@ spec:
     nodeSelector:
       {{- .Values.postgres.nodeSelector | toYaml | nindent 6 }}
   {{- end }}
+  # A ceiling so one runaway query cannot take the node down. shared_buffers
+  # stays at the Postgres default, so the limit does not resize the cache.
   resources:
     requests:
-      cpu: 250m
+      cpu: 100m
       memory: 256Mi
+    limits:
+      memory: 512Mi
   bootstrap:
     {{- if and .Values.postgres.backup.enabled .Values.postgres.backup.recoverServerName }}
     # No initdb fallback: a loud failure beats silently wiping a recoverable

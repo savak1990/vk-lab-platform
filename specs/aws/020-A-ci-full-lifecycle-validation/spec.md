@@ -16,9 +16,7 @@ updated: "2026-09-19"
 
 Implements a manually-triggered `platform-integration.yml` workflow that runs the full create→verify→write→destroy→verify-persistence→recreate→verify-recovery→destroy→verify-no-leaks sequence from spec 014, against CI's own isolated state — plus a scheduled safety-net cleanup job (ADR 0007):
 
-- `.github/workflows/platform-integration.yml` — `workflow_dispatch`-triggered (or triggered on a trusted-context push to `main` touching `terraform/**`/`gitops/**`), running spec 014's exact sequence against `terraform/live/ci/{persistent,disposable}` state, verified using spec 023's Go/Ginkgo E2E suite. A `mode` input selects between two runs of the same workflow:
-  - `mode=routine` (the default): apply → E2E → idempotency check (a second `terraform plan` shows no diff) → destroy.
-  - `mode=resilience`: apply → E2E → destroy → apply → E2E → destroy — the full recreate-after-destroy proof. Run on a schedule (e.g. nightly) or manually, never as part of a routine PR-triggered run, since it costs roughly twice as much and mainly proves teardown/recreation behavior that doesn't change with every Terraform edit.
+- `.github/workflows/platform-integration.yml` — `workflow_dispatch`-triggered (or triggered on a trusted-context push to `main` touching `terraform/**`/`gitops/**`), running spec 014's exact sequence against `terraform/live/ci/{persistent,disposable}` state, verified using spec 023's Go/Ginkgo E2E suite. The workflow runs one mode: apply → E2E → idempotency check (a second `terraform plan` shows no diff) → destroy. A second `mode=resilience` run — apply → E2E → destroy → apply → E2E → destroy — was specified here originally and **withdrawn on 2026-09-24** under constitution §13: it costs roughly twice as much per run and mainly proves teardown and recreation behaviour that does not change with every Terraform edit. Constitution §4 and §12 still require that destroy and recreate behaviour be tested; CNPG data survival across a `make down`/`make up` cycle (AWS-007-1, CIVO-120, HETZ-120) and the merge-gate lifecycle leg's `up` → `test` → `down` carry that obligation.
 - CI's own delegated DNS subdomain, `ci.lab.<root-domain>`, and its own ACM certificate covering `ci.lab.<root-domain>`/`*.ci.lab.<root-domain>` — the same Terraform pattern as the personal lab's `lab.<root-domain>` zone/certificate from spec 002, one level down, so this workflow can verify HTTPS without touching the personal lab's zone.
 - `.github/workflows/cleanup-stale-ci.yml` — a scheduled (e.g., daily) job that identifies and removes orphaned CI resources left by a cancelled run, a runner crash, or a failed cleanup, using the standard tags, not name patterns.
 
@@ -36,7 +34,6 @@ Excludes: the fast, lint-only PR checks (018); the kind-based GitOps integration
 6. A failed run MUST still attempt cleanup of its disposable CI infrastructure (constitution's platform invariants) — the cleanup step MUST run even on failure (e.g., `if: always()`).
 7. GitHub Actions concurrency controls and Terraform state locking MUST prevent two concurrent runs from mutating the same CI state (architecture.md §32) — one `concurrency:` group covers this workflow, with `cancel-in-progress: false`, so overlapping triggers queue rather than race against the same shared `ci/cluster` environment.
 8. A scheduled stale-resource cleanup job MUST exist as a safety net (architecture.md §31) — it MUST identify candidates using the standard platform tags plus `Ephemeral=true` (Requirement 3), not name patterns or manual account scanning, so it never risks touching an untagged or unrelated resource.
-9. The recreate-after-destroy resilience proof MUST run as `mode=resilience` on this same workflow (Requirement 1), not as part of a routine `mode=routine` PR-triggered run.
 
 ## Status of this spec as implemented
 
@@ -54,15 +51,13 @@ Still outstanding, which is why this spec is not DONE:
 - Requirement 3, the `Ephemeral=true` tag — no resource carries it.
 - Requirement 8, the scheduled stale-resource reaper — does not exist.
   Recovery from a failed teardown is a documented `lab.yml` dispatch instead.
-- Requirement 9's `mode=resilience` recreate cycle — not implemented; CIVO-150
-  covers the equivalent for Civo as a manual runbook.
 - Requirement 4's own `ci.lab.<root-domain>` zone — each CI project gets its
   own subdomain zone under ADR 0026's isolation model instead.
 
 ## Implementation hints
 
 - Create only this spec's own role, trusting the single OIDC provider spec 015 already created (do not create a second provider) — scope its trust policy and IAM permissions to `terraform/live/ci/*` state paths only, mirroring spec 016's personal-lab role pattern at the role level.
-- Use a single GitHub Actions `concurrency:` group (e.g., `ci-full-lifecycle`) with `cancel-in-progress: false` covering both `mode=routine` and `mode=resilience` runs of this workflow, since they share the same `ci/cluster` state.
+- Use a single GitHub Actions `concurrency:` group (e.g., `ci-full-lifecycle`) with `cancel-in-progress: false`, since every run of this workflow shares the same `ci/cluster` state.
 - CI's delegated subdomain and certificate (Requirement 4) live in `terraform/live/ci/persistent/`, reusing the exact same Terraform modules as the personal lab's zone/certificate from spec 002 — same mechanism, one level down (`ci.lab.<root-domain>` instead of `lab.<root-domain>`).
 - Implement `mode` as a `workflow_dispatch` input (default `routine`) with the resilience branch simply repeating the apply→E2E→destroy steps twice and skipping the idempotency-check step — its own destroy→recreate cycle already proves more than a no-diff plan would.
 - The scheduled cleanup job can reuse the same postcondition-checking logic built in spec 014, scoped to the CI account/tag namespace, run on a cron trigger independent of any specific workflow run.
@@ -70,7 +65,6 @@ Still outstanding, which is why this spec is not DONE:
 ## Testing / acceptance criteria
 
 - A manually-triggered `mode=routine` run completes the entire CREATE→...→VERIFY NO LEAKS sequence against `terraform/live/ci/` state successfully, using spec 023's E2E suite for verification, including HTTPS verification against CI's own delegated subdomain.
-- A manually-triggered `mode=resilience` run completes its create→verify→destroy→create→verify→destroy cycle successfully, and is confirmed to not run as part of a routine PR-triggered `mode=routine` run.
 - Two runs triggered concurrently (regardless of mode) are serialized by the concurrency group rather than both proceeding against the same state.
 - A deliberately-failed run (inject a failure partway through) still results in disposable CI resources being cleaned up — confirm via the postcondition checklist.
 - A fork-originated pull request cannot trigger this workflow or obtain its credentials — confirm by inspecting the workflow's trigger configuration and a fork PR's run permissions.

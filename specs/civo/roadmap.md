@@ -5,8 +5,8 @@
 | Milestone | Goal | Specs | Exit criterion |
 |---|---|---|---|
 | M0 Foundations | Operator surface, governance, feasibility facts | 010, 015, 020 | AWS unchanged; ADRs merged; spike report answers persistence and default-app questions |
-| M1 Viable Civo platform | `PROVIDER=civo make full-up` brings up Argo, Envoy with TLS, DNS, ESO, CNPG with persistent backups, and observability on a fixed node pool; `make down`/`up` preserves data; CI can run it | 025–160, 180 | CIVO-150 lifecycle validation passes; idle cost recorded |
-| M2 Hardening and optimization | AWS moved to the barman-cloud plugin (CIVO-185, done), autoscaler after the API-key research, right-sizing, client IP, identity hardening, wildcard TLS | 075, 170, 175, 185, 190, 200 | each spec's DoD |
+| M1 Viable Civo platform | `PROVIDER=civo make full-up` brings up Argo, Envoy with TLS, DNS, ESO, CNPG with persistent backups, and observability on a fixed node pool; `make down`/`up` preserves data; CI can run it | 025–160, 180 | the CI lifecycle leg runs `up`, `test`, `down` green, CNPG data survives a `make down`/`make up` cycle (CIVO-120), and idle cost is recorded |
+| M2 Hardening and optimization | AWS moved to the barman-cloud plugin (CIVO-185, done), autoscaler after the API-key research, client IP, identity hardening, wildcard TLS | 075, 170, 185, 190, 200 | each spec's DoD |
 
 ## Dependency graph
 
@@ -54,22 +54,16 @@ flowchart TD
   045 --> 140
   050 --> 160[160 observability]
   100 --> 160
-  120 --> 150[150 lifecycle validation]
-  110 --> 150
-  070 --> 150
   070 --> 075[075 wildcard DNS-01]
   082 --> 075
   090 --> 075
-  130 --> 150
-  160 --> 175[175 right-size]
-  170 --> 175
   060 --> 190[190 proxy protocol]
   085 --> 200[200 identity hardening]
 ```
 
 ## Critical path
 
-015 → 010 → 025 → 030 → 040 → 045 (with 050) → 065 → 080 → 082 → 085 → 090 → 100 → 115 → 180 → 120 → 150.
+015 → 010 → 025 → 030 → 040 → 045 (with 050) → 065 → 080 → 082 → 085 → 090 → 100 → 115 → 180 → 120.
 
 Parallel tracks once 045/050 land: ingress (060 → 070), identity (080 → 082 →
 090 → 110), observability (160), tests (130), CI (140), autoscaler (170).
@@ -104,10 +98,10 @@ Parallel tracks once 045/050 land: ingress (060 → 070), identity (080 → 082 
 | Certificate flows separated (TLS vs workload identity) | 070 vs 085 |
 | Storage verification list | 020, 120, 180 |
 | CNPG sizing, backups, restore | 180 (bucket, sidecar image, IAM, plugin, ObjectStore), 120 (Cluster wiring, cycle proof), 185 (AWS migration) |
-| Capacity comparison, fixed capacity allowed, autoscaler separate | 030 (fixed pool), 170 (deferred), 175 |
+| Capacity comparison, fixed capacity allowed, autoscaler separate | 030 (fixed pool), 170, SHARED-048 (right-sizing) |
 | Identity chain items 1–9 | 080 (2), 082 (1, 8), 085 (3, 4), 090 (6, 7, 9), 085/090 (5) |
 | Civo token handling | 010, 040, 140, ADR 0030 |
-| Destruction classification and recovery | 040, 045, 150 |
-| Tests and CI gates | 130, 140, 150 |
+| Destruction classification and recovery | 040, 045 |
+| Tests and CI gates | 130, 140 |
 | Costs with dated prices | research.md |
 | Future agent compatibility | 050 non-goals note; no mandatory dependencies added |

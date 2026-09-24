@@ -38,7 +38,7 @@ HETZ-045 explicitly deferred to it.
 In scope: the hetzner branch of `scripts/argo-down.sh` and
 `wait_for_lb_gone()` in `scripts/lib/provider.sh`. Also in scope: the
 `depends_on`/`updated`/§14 edits this spec's existence triggers on
-HETZ-140 and HETZ-150.
+HETZ-140.
 
 Not in scope: `argo-up` (HETZ-045, already written); the CCM install
 itself and its helm release name `hccm` (HETZ-045); uninstalling the

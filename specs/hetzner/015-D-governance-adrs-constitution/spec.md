@@ -44,7 +44,7 @@ The scope includes these items:
 - `terraform/live/persistent/README.md` line for `persistent-hetzner`.
 
 The scope does not include code, the identity refactor (HETZ-018), or the
-bootstrap script design (HETZ-035).
+bootstrap script design, since retired.
 
 ## 3. Current state / evidence
 
@@ -234,7 +234,7 @@ One PR. A revert removes the documents. Nothing depends on them at run time.
   non-EKS design, and this package's `architecture.md` and `decisions.md`.
 
   It does **not** rewrite the implementation specs that still name the old
-  Secret — HETZ-020, HETZ-045, HETZ-050, HETZ-150 and HETZ-170 — because each
+  Secret — HETZ-020, HETZ-045, HETZ-050 and HETZ-170 — because each
   owns its own contract text and rewriting them here would put this spec's
   scope inside theirs. HETZ-045 creates the Secret and HETZ-018 owns naming
   parametrized by provider, including the Civo rename to the shared name;

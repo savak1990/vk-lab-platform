@@ -94,8 +94,6 @@ two additions:
 | HETZ-020 | [020-D-hetzner-feasibility-spike](020-D-hetzner-feasibility-spike/spec.md) | Feasibility spike: volume survival, LB lifecycle and orphaning, account limits, invoice | DONE | P0 | S | standard | 017 | M0 |
 | HETZ-025 | [025-D-hetzner-persistent-stack](025-D-hetzner-persistent-stack/spec.md) | `persistent-hetzner` network, subnet, SSH key | DONE | P1 | S | standard | 010, 015, 080 | M1 |
 | HETZ-030 | [030-D-hetzner-terraform-k3s-nodes](030-D-hetzner-terraform-k3s-nodes/spec.md) | `cluster-hetzner` firewall and `NODE_COUNT` `cx33` servers that install k3s from their own cloud-init | DONE | P1 | M | strongest | 010, 015, 017, 025 | M1 |
-| HETZ-035 | [035-Z-hetzner-kubeadm-bootstrap](035-Z-hetzner-kubeadm-bootstrap/spec.md) | `kubeadm join` over SSH from `cluster-up`, `admin.conf` kubeconfig, idempotent re-run | SUPERSEDED | P1 | M | strongest | 030, 040, 020 | M1 |
-| HETZ-037 | [037-Z-hetzner-cilium-cni](037-Z-hetzner-cilium-cni/spec.md) | Cilium from the control plane's cloud-init; `cluster-up` ends when every node is Ready | SUPERSEDED | P1 | M | standard | 030, 035 | M1 |
 | HETZ-040 | [040-D-hetzner-cluster-scripts](040-D-hetzner-cluster-scripts/spec.md) | Cluster scripts: `hcloud` helpers, SSH kubeconfig, node-Ready wait, `cluster_exists`, `node-ssh`, label-based leak sweep | DONE | P1 | M | standard | 017, 030 | M1 |
 | HETZ-045 | [045-D-argo-scripts-hetzner-branches](045-D-argo-scripts-hetzner-branches/spec.md) | `argo-up` Hetzner branch: `hcloud` Secret, CCM helm install, taint wait, root Application, LB/DNS waits | DONE | P1 | M | strongest | 016, 040, 050 | M1 |
 | HETZ-047 | [047-D-argo-down-teardown-ordering](047-D-argo-down-teardown-ordering/spec.md) | `argo-down` teardown ordering: the load balancer confirmed gone, and the CSI driver kept alive through the cascade | DONE | P1 | S | standard | 045, 020 | M1 |
@@ -108,15 +106,12 @@ two additions:
 | HETZ-120 | [120-D-cnpg-on-hetzner-persistence](120-D-cnpg-on-hetzner-persistence/spec.md) | CNPG persistence through the barman-cloud plugin | DONE | P1 | S | standard | 115, CIVO-120, CIVO-180 | M1 |
 | HETZ-130 | [130-D-e2e-tests-hetzner](130-D-e2e-tests-hetzner/spec.md) | E2E suite on Hetzner via ServiceAccount token | DONE | P1 | S | standard | 045, 060, CIVO-130 | M1 |
 | HETZ-140 | [140-D-ci-workflow-hetzner](140-D-ci-workflow-hetzner/spec.md) | `lab.yml` third provider value, `hcloud` CLI, token mask, label sweep in cleanup | DONE | P1 | M | standard | 015, 045, CIVO-140, 047 | M1 |
-| HETZ-150 | [150-P-teardown-recreate-validation](150-P-teardown-recreate-validation/spec.md) | Full lifecycle validation on Hetzner with the Hetzner resource classification | READY | P1 | M | strongest | 070, 120, 130, 047 | M1 |
 | HETZ-160 | [160-P-observability-on-hetzner](160-P-observability-on-hetzner/spec.md) | Observability on Hetzner: control-plane scrapes on, x86 images, 10 GiB volume floor | READY | P1 | M | standard | 045, 050, 085, CIVO-160 | M1 |
-| HETZ-165 | [165-Z-kubeadm-join-credential](165-Z-kubeadm-join-credential/spec.md) | `argo-up` creates the long-lived bootstrap token, CA hash and rendered join cloud-init in `kube-system/hcloud-autoscaler` | SUPERSEDED | P1 | S | standard | 037, 045 | M1 |
 | HETZ-170 | [170-D-hetzner-cluster-autoscaler](170-D-hetzner-cluster-autoscaler/spec.md) | Cluster autoscaler `cloudProvider: hetzner`, one `cx33` worker that boots the same worker cloud-init | DONE | P1 | M | strongest | 030, 045 | M1 |
-| HETZ-175 | [175-P-sku-fallback-and-right-size](175-P-sku-fallback-and-right-size/spec.md) | Stock-aware SKU fallback (CX → CPX) and right-sizing on measured data | READY | P2 | S | standard | 160, CIVO-175 | M2 |
+| HETZ-175 | [175-P-sku-fallback](175-P-sku-fallback/spec.md) | Stock-aware SKU fallback when the chosen server type is out of stock | READY | P2 | S | standard | — | M2 |
 | HETZ-177 | [177-P-hetzner-arm-node-types](177-P-hetzner-arm-node-types/spec.md) | ARM node types (CAX) in the Hetzner catalogue, verified end to end | BLOCKED | P1 | M | standard | 040, 045, 182 | M2 |
 | HETZ-178 | [178-D-dedicated-control-plane](178-D-dedicated-control-plane/spec.md) | A dedicated `cx23` control plane, tainted so it carries no workload, beside a `cx43` worker | DONE | P1 | S | strongest | 030, 170 | M1 |
 | HETZ-182 | [182-P-multi-arch-images](182-P-multi-arch-images/spec.md) | Repo-built images published for `linux/arm64` as well as `linux/amd64` | DRAFT | P0 | S | fast | CIVO-180 | M2 |
-| HETZ-185 | [185-Z-kubeadm-operations-runbook](185-Z-kubeadm-operations-runbook/spec.md) | CKA practice runbook: kubeadm upgrade 1.36 → 1.37, stacked etcd snapshot/restore, certificate checks | SUPERSEDED | P2 | M | standard | 037, 040 | M1 |
 | HETZ-190 | [190-P-proxy-protocol-client-ip](190-P-proxy-protocol-client-ip/spec.md) | Proxy protocol on the hcloud LB and client IP at Envoy | READY | P3 | S | fast | 060, CIVO-190 | M2 |
 
 The headers in each `spec.md` are the source of truth. Keep this table in sync.

@@ -184,5 +184,6 @@ value map, so the Hetzner target meets §16 as written, and the constitution's
 - [ADR 0029](0029-rolesanywhere-offline-ca.md) and
   [ADR 0030](0030-civo-api-token-handling.md) — both carry notes for this
   target.
-- Specs HETZ-025, HETZ-030, HETZ-035, HETZ-037, HETZ-040 and HETZ-045
+- Specs HETZ-025, HETZ-030, HETZ-040 and HETZ-045 (plus the kubeadm
+  bootstrap and Cilium CNI specs, both since retired by ADR 0037)
   implement what this record decides.
