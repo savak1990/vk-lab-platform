@@ -1,4 +1,4 @@
-.PHONY: up down full-up full-down platform-up platform-down state-up state-down status clusters require-valid-project-name require-valid-node-config account-up account-down bootstrap-up bootstrap-down secret-encrypt secret-decrypt secrets-check node-config-check scripts-check generate-secrets ca-init ssh-key-init persistent-up persistent-down clear-cache cluster-up cluster-down kubeconfig node-ssh test-kubeconfig test-kubeconfig-isolated argo-up argo-down test go-check terraform-check forward-up forward-down
+.PHONY: up down full-up full-down platform-up platform-down state-up state-down status clusters require-valid-project-name require-valid-node-config require-valid-recover-from account-up account-down bootstrap-up bootstrap-down secret-encrypt secret-decrypt secrets-check node-config-check scripts-check generate-secrets ca-init ssh-key-init persistent-up persistent-down clear-cache cluster-up cluster-down kubeconfig node-ssh test-kubeconfig test-kubeconfig-isolated argo-up argo-down test go-check terraform-check forward-up forward-down
 
 .NOTPARALLEL:
 
@@ -27,6 +27,11 @@ else
 export PROJECT_NAME ?= vk-lab-platform
 export SUBDOMAIN ?= lab
 endif
+
+# Starts this bring-up from another target's backup archive, named as
+# s3://<bucket>/<generation>. Exported so both `RECOVER_FROM=x make up` and
+# `make up RECOVER_FROM=x` reach the scripts. Empty on an ordinary run.
+export RECOVER_FROM ?=
 
 # The cluster's shape, mirroring scripts/lib/catalog.sh. Exported because
 # several recipes call terragrunt directly and never source provider.sh,
@@ -92,7 +97,7 @@ endif
 ## Fails fast (naming `make persistent-up`) if Persistent doesn't exist yet -
 ## never creates it (constitution §17). For a from-scratch environment use
 ## `make full-up`.
-up: require-valid-project-name require-valid-node-config clear-cache cluster-up argo-up
+up: require-valid-project-name require-valid-node-config require-valid-recover-from clear-cache cluster-up argo-up
 
 ## Tears down Argo CD then the cluster. Does NOT touch Persistent or
 ## Bootstrap - use `make persistent-down`/`make bootstrap-down` for those.
@@ -104,7 +109,7 @@ down: require-valid-project-name require-valid-node-config clear-cache argo-down
 ## (see persistent-up); root-domain.enc is generated from $ROOT_DOMAIN if
 ## set and missing, otherwise it must already exist - it's a real domain,
 ## never randomly generated.
-full-up: require-valid-project-name require-valid-node-config clear-cache bootstrap-up persistent-up cluster-up argo-up
+full-up: require-valid-project-name require-valid-node-config require-valid-recover-from clear-cache bootstrap-up persistent-up cluster-up argo-up
 
 ## Tears down the entire platform: Argo CD -> cluster -> Persistent ->
 ## Bootstrap (DNS zone + ACM cert, then this project's own state bucket).
@@ -115,7 +120,7 @@ full-down: require-valid-project-name require-valid-node-config clear-cache argo
 ## Brings up Persistent + the disposable cluster + Argo CD onto an existing
 ## State/Bootstrap layer. For cluster+Argo only (Persistent already up) use
 ## `make up`; for everything from scratch use `make full-up`.
-platform-up: require-valid-project-name require-valid-node-config clear-cache persistent-up cluster-up argo-up
+platform-up: require-valid-project-name require-valid-node-config require-valid-recover-from clear-cache persistent-up cluster-up argo-up
 
 ## Tears down Argo CD -> cluster -> Persistent, stopping there. Leaves
 ## Bootstrap/State untouched. For an environment whose Bootstrap/State must
@@ -374,6 +379,12 @@ require-valid-project-name:
 ## scripts/lib/catalog.sh for the allowed shapes and why each is there.
 require-valid-node-config:
 	@bash -c 'source scripts/lib/require-valid-node-config.sh; require_valid_node_config'
+
+## Rejects a RECOVER_FROM that is not s3://<bucket>/<generation>, before any
+## cloud call. Unset on an ordinary bring-up; see scripts/lib for the shape
+## and why this one fails closed.
+require-valid-recover-from:
+	@bash -c 'source scripts/lib/require-valid-recover-from.sh; require_valid_recover_from'
 
 clear-cache:
 	find terraform/live -type d -name .terragrunt-cache -prune -exec rm -rf {} +
