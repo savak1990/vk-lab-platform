@@ -142,16 +142,20 @@ Those tests keep their own targets for running one at a time —
 | `PROJECT_NAME` | per provider | lowercase letters, digits and hyphens, at most 23 characters |
 | `SUBDOMAIN` | per provider | must differ per project |
 | `REGION` | `LON1` / `fsn1` | `civo` and `hetzner` only, see below; matched case-insensitively. Refused on `aws` |
-| `NODE_TYPE` | `t4g.medium` / `g4s.kube.medium` / `cx33` | see below |
-| `NODE_COUNT` | `1` / `3` / `3` | a positive integer |
+| `WORKER_NODE_TYPE` | `t4g.medium` / `g4s.kube.medium` / `cx43` | see below; the hetzner default is `cx33` in `hel1`, which sells no `cx43` |
+| `CONTROL_PLANE_NODE_TYPE` | `cx23` | `hetzner` only — the one target whose control plane this platform owns and pays for |
+| `MIN_WORKER_NODES` | `1` / `3` / `1` | a positive integer, workers only; a control plane is never counted |
+| `MAX_WORKER_NODES` | `3` / `4` / `2` | a positive integer, at least `MIN_WORKER_NODES` |
+| `RECOVER_FROM` | unset | `s3://<bucket>/<generation>` — starts this bring-up from another target's archive, see below |
 | `CONFIRM_DESTROY` | unset | must equal `PROJECT_NAME`, on guarded targets |
 | `ROTATE` | unset | `1`, on `ca-init` and `ssh-key-init` |
 | `ROOT_DOMAIN` | unset | only used to seed `secrets/root-domain.enc` when missing |
 | `FIXED_TEST_PASSWORDS` | unset | `true` for CI only |
 
 Defaults are listed `aws` / `civo` / `hetzner`. `PROVIDER=local` owns no cloud
-resources, so it **ignores** `REGION`, `NODE_TYPE` and `NODE_COUNT` — leaving
-them exported while switching targets is harmless.
+resources, so it **ignores** the region and node variables — leaving them
+exported while switching targets is harmless. It refuses `RECOVER_FROM`
+outright, because that target takes no backups at all.
 
 **`REGION` does not apply to `aws`.** Every AWS resource this platform creates
 lives in `eu-west-1`, including a Civo or Hetzner project's state bucket, SSM
@@ -159,13 +163,13 @@ parameters and Roles Anywhere chain. `PROVIDER=aws` with any other region is
 refused rather than ignored, because a typed region is a statement of intent
 the platform cannot honor. See ADR 0024 and ADR 0040.
 
-`REGION`, `NODE_TYPE` and `NODE_COUNT` are validated **before any cloud call
-and without credentials**, so a typo fails in under a second rather than part
-way through an apply. The allowed shapes, and why each is on the list, are in
+The region, node and `RECOVER_FROM` inputs are validated **before any cloud
+call and without credentials**, so a typo fails in under a second rather than
+part way through an apply. The allowed shapes, and why each is on the list, are in
 `scripts/lib/catalog.sh` — it is a deliberately short cost guardrail, not a
 copy of each cloud's catalogue.
 
-| `PROVIDER` | `REGION` | `NODE_TYPE` allowed there |
+| `PROVIDER` | `REGION` | `WORKER_NODE_TYPE` allowed there |
 |---|---|---|
 | `aws` | fixed at `eu-west-1`, not an input | `t4g.medium`, `t4g.large`, `m6g.large` |
 | `civo` | `LON1` `NYC1` `FRA1` `MUM1` | `g4s.kube.medium` `g4s.kube.large` `g4m.kube.small` `g4p.kube.small` |
@@ -194,7 +198,7 @@ at 21 percent. `GET /v1/pricing` reports `currency: USD` for this account,
 although Hetzner's public price list is in EUR; the amounts agree, so only
 the label is in doubt. See `specs/hetzner/research.md`.
 
-| `PROVIDER` | `NODE_TYPE` | vCPU / RAM | Per node, per month |
+| `PROVIDER` | `WORKER_NODE_TYPE` | vCPU / RAM | Per node, per month |
 |---|---|---|---|
 | `aws` | `t4g.medium` *(default)* | 2 / 4 GiB | USD 26.86 |
 | `aws` | `t4g.large` | 2 / 8 GiB | USD 53.73 |
@@ -231,8 +235,8 @@ a workload that runs out of memory first, `g4p` for one that runs out of CPU.
 EKS charges USD 0.10 per cluster per hour whatever the node count, which is
 why the smallest AWS lab still costs more than the largest Civo one. Civo
 gives the k3s control plane away. Hetzner sells no managed Kubernetes, so its
-control plane *is* the first of the three nodes and is already counted — see
-`NODE_COUNT` above. Two things the Hetzner total includes and the per-node
+control plane *is* a server of its own, sized by `CONTROL_PLANE_NODE_TYPE`
+and counted separately from `MIN_WORKER_NODES`/`MAX_WORKER_NODES`. Two things the Hetzner total includes and the per-node
 table above does not: one primary IPv4 for each node at USD 0.726 gross per
 month, and the `lb11` at USD 10.27 gross. All Hetzner figures are gross,
 VAT included at 21 percent, read from `GET /v1/pricing` on 2026-09-22.
@@ -263,19 +267,61 @@ make full-up
 # Civo, in Frankfurt instead of London.
 PROVIDER=civo REGION=FRA1 make full-up
 
-# Hetzner: three cx33 for the lab, in Helsinki rather than Nuremberg.
-PROVIDER=hetzner REGION=hel1 NODE_COUNT=3 make full-up
+# Hetzner: up to three workers, in Helsinki rather than Frankfurt.
+PROVIDER=hetzner REGION=hel1 MIN_WORKER_NODES=1 MAX_WORKER_NODES=3 make full-up
 
 # A bigger AWS system node group. AWS takes no REGION.
-PROVIDER=aws NODE_TYPE=t4g.large make up
+PROVIDER=aws WORKER_NODE_TYPE=t4g.large make up
+
+# Move a database onto this target from another provider's archive.
+RECOVER_FROM=s3://vk-hetzner-lab-fsn1-postgres-backups/lab-postgres-20260101T000000Z \
+  PROVIDER=civo make full-up
 
 # One kind cluster locally. No cloud, no credentials.
 PROVIDER=local make up
 ```
 
 On Hetzner the server limit is **per account, not per project**, and defaults
-to 5. A three-node lab plus a two-node CI run is exactly that limit, so
-`NODE_COUNT` is how the two are kept from colliding.
+to 5. A lab plus a CI run shares that limit, so `MAX_WORKER_NODES` is how the
+two are kept from colliding.
+
+### Moving a database between providers
+
+Every real target archives PostgreSQL to S3 in `eu-west-1` and pins one
+PostgreSQL image, so a database can start on one cloud and continue on
+another. `RECOVER_FROM` names the archive to start from:
+
+```sh
+# What is in the source project's bucket?
+aws s3 ls s3://vk-hetzner-lab-fsn1-postgres-backups/
+
+# Bring the new target up from one of those generations.
+RECOVER_FROM=s3://vk-hetzner-lab-fsn1-postgres-backups/lab-postgres-20260101T000000Z \
+  PROVIDER=civo make full-up
+
+# Confirm the branch before trusting a row.
+kubectl get cluster lab-postgres -n cnpg-system -o jsonpath='{.spec.bootstrap}'
+```
+
+The generation is copied into the new target's own bucket, then recovered
+from there, so the source archive is only ever read. The override applies to
+one bring-up: the next `make up` returns to this project's own pointer.
+
+Three things worth knowing before relying on it:
+
+- **Check the branch, do not infer it.** An unresolved recovery handle renders
+  `initdb`, and a cluster that quietly initialises an empty database still
+  reports healthy. A malformed `RECOVER_FROM` is refused before any cloud
+  call, and a copy that fails aborts the bring-up.
+- **If a migrating bring-up fails part-way, re-run it with `RECOVER_FROM`
+  still set.** The copy is idempotent. A bare re-run is not safe: the
+  generation pointer is written only after the platform reports healthy.
+- **Do not `make full-down` the source until the new target is verified.** That
+  empties the source bucket. `make down` leaves it intact.
+
+Retention is a two-day recovery window, so migrate promptly or raise it first.
+Full detail, including the live three-cloud evidence, is in
+[`specs/shared/048-D-cross-provider-migration/`](specs/shared/048-D-cross-provider-migration/spec.md).
 
 ### Running locally on kind
 

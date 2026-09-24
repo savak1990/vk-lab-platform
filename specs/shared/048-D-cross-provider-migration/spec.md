@@ -1,7 +1,7 @@
 ---
 id: "SHARED-048"
 title: "A Postgres database moves between providers without losing data"
-status: "IN_PROGRESS"
+status: "DONE"
 priority: "P2"
 milestone: "M2"
 type: "implementation"
@@ -15,7 +15,7 @@ blocked_by: []
 supersedes: []
 created: "2026-09-24"
 updated: "2026-09-24"
-completed: ""
+completed: "2026-09-24"
 ---
 
 # SHARED-048 — A database moves between providers
