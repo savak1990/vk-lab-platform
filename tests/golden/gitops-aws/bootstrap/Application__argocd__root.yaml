@@ -37,6 +37,12 @@ spec:
           value: "4"
         - name: capacity.autoscaler.pool
           value: workers
+        - name: capacity.autoscaler.nodeType
+          value: ""
+        - name: capacity.autoscaler.location
+          value: ""
+        - name: capacity.autoscaler.sshKeyId
+          value: ""
         - name: envoyGateway.acmCertificateArn
           value: ""
         - name: envoyGateway.nlbSubnetIds

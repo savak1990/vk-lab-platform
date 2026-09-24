@@ -37,6 +37,12 @@ spec:
           value: {{ .Values.capacity.autoscaler.max | quote }}
         - name: capacity.autoscaler.pool
           value: {{ .Values.capacity.autoscaler.pool | quote }}
+        - name: capacity.autoscaler.nodeType
+          value: {{ .Values.capacity.autoscaler.nodeType | quote }}
+        - name: capacity.autoscaler.location
+          value: {{ .Values.capacity.autoscaler.location | quote }}
+        - name: capacity.autoscaler.sshKeyId
+          value: {{ .Values.capacity.autoscaler.sshKeyId | quote }}
         - name: envoyGateway.acmCertificateArn
           value: {{ .Values.envoyGateway.acmCertificateArn | quote }}
         - name: envoyGateway.nlbSubnetIds

@@ -19,6 +19,9 @@ ARGOCD_CHART_VERSION="${ARGOCD_CHART_VERSION:-10.4.0}"
 # hetzner only. Installed by this script rather than by Argo CD, because
 # Argo needs the cluster DNS that only this controller unblocks.
 HCCM_CHART_VERSION="${HCCM_CHART_VERSION:-1.37.0}"
+# hetzner only. Must match the image the nodes module gives the fixed pool -
+# an autoscaled node boots that pool's cloud-init and would fail on another OS.
+HCLOUD_NODE_IMAGE="${HCLOUD_NODE_IMAGE:-ubuntu-24.04}"
 TARGET_REVISION="${TARGET_REVISION:-main}"
 REPO_URL="${REPO_URL:-https://github.com/savak1990/vk-lab-platform}"
 # local target only. Fixed and publicly known on purpose, like
@@ -188,15 +191,15 @@ local_resolve_inputs() {
   require_local_context
 }
 
-# Ten names is exactly the get-parameters cap, so this is one call and reuses
-# the aws-side ssm_output lookup. An eleventh name needs the batching loop
-# civo_resolve_inputs carries - enabling backups or the autoscaler will add
-# one. The load balancer's location is not one of them: it comes from the
-# REGION operator input, which no Terraform layer owns.
+# Thirteen names against a get-parameters cap of ten, so this batches the way
+# civo_resolve_inputs does and reuses the aws-side ssm_output lookup. It was one
+# call until the autoscaler's two took it over the cap; its third, the worker
+# cloud-init, is read below instead. The load balancer's location is not one of
+# them: it comes from the REGION operator input, which no Terraform layer owns.
 #
-# No reserved IP: this target has none. No firewall or ssh key id either,
-# because nothing reads them yet. The backup bucket comes from the shared
-# persistent layer, which this target does not exclude.
+# No reserved IP: this target has none. No firewall id either, because nothing
+# reads it. The backup bucket comes from the shared persistent layer, which
+# this target does not exclude.
 hetzner_resolve_inputs() {
   hcloud_token
   # aws ssm get-parameters accepts at most 10 names per call, so the list is
@@ -213,6 +216,8 @@ hetzner_resolve_inputs() {
     "/$PROJECT_NAME/bootstrap/rolesanywhere/role_arn/external-dns"
     "/$PROJECT_NAME/bootstrap/rolesanywhere/role_arn/cert-manager"
     "/$PROJECT_NAME/bootstrap/rolesanywhere/role_arn/pgbackup"
+    "/$PROJECT_NAME/persistent-hetzner/ssh-key/ssh_key_id"
+    "/$PROJECT_NAME/persistent-hetzner/network/subnet_ip_range"
   )
   SSM_BATCH_NAMES=()
   SSM_BATCH_VALUES=()
@@ -239,6 +244,17 @@ hetzner_resolve_inputs() {
   PGBACKUP_ROLE_ARN="$(ssm_output "/$PROJECT_NAME/bootstrap/rolesanywhere/role_arn/pgbackup")"
   BACKUP_BUCKET="$(ssm_output "/$PROJECT_NAME/persistent/backups/bucket_name")"
   backup_resolve_generation
+  SSH_KEY_ID="$(ssm_output "/$PROJECT_NAME/persistent-hetzner/ssh-key/ssh_key_id")"
+  # Stated rather than left to Hetzner's default: the network holds one subnet
+  # today, and a second would make that default a guess.
+  HCLOUD_SUBNET_IP_RANGE="$(ssm_output "/$PROJECT_NAME/persistent-hetzner/network/subnet_ip_range")"
+  # Its own call, not the batch: --output text writes a value's newlines
+  # literally, and the batch reads one tab-separated pair per line. A
+  # multi-line cloud-init would be truncated at its first line and every pair
+  # after it misread. Carries the k3s join token, so it is never echoed.
+  WORKER_USER_DATA="$(aws ssm get-parameter --region "$LAB_REGION" --with-decryption \
+    --name "/$PROJECT_NAME/cluster-hetzner/k8s/worker_user_data" \
+    --query 'Parameter.Value' --output text)"
   configure_kubeconfig "$KUBECONFIG"
 }
 
@@ -341,6 +357,42 @@ wait_for_dns() {
   return 0
 }
 
+# The node template is Terraform's own worker render, so an autoscaled node
+# cannot drift from the fixed pool: same k3s version, same flags, same token.
+# serverLabels carries five keys because three consumers select on them - the
+# firewall, the teardown sweep and the failure diagnostics - and each needs a
+# different one.
+ensure_autoscaler_config() {
+  local cloud_init config
+  cloud_init="$(printf '%s' "$WORKER_USER_DATA" | base64 | tr -d '\n')"
+  config="$(jq -cn \
+    --arg image "$HCLOUD_NODE_IMAGE" \
+    --arg subnet "$HCLOUD_SUBNET_IP_RANGE" \
+    --arg cloudInit "$cloud_init" \
+    --arg project "$PROJECT_NAME" \
+    '{
+      imagesForArch: {amd64: $image, arm64: $image},
+      defaultSubnetIPRange: $subnet,
+      nodeConfigs: {
+        workers: {
+          cloudInit: $cloudInit,
+          serverLabels: {
+            project: $project,
+            scope: "platform",
+            lifecycle: "disposable",
+            managed_by: "autoscaler",
+            role: "worker"
+          }
+        }
+      }
+    }' | base64 | tr -d '\n')"
+  kubectl create secret generic hcloud-autoscaler-config -n kube-system \
+    --from-literal=HCLOUD_CLUSTER_CONFIG="$config" \
+    --dry-run=client -o yaml \
+    | kubectl label --local -f - app.kubernetes.io/managed-by=argo-up -o yaml \
+    | kubectl apply -f - >/dev/null
+}
+
 ensure_ca_secret() {
   local ca_cert_path="${REPO_ROOT}/secrets/${PROJECT_NAME}/${PROVIDER}-ca-cert.pem"
   [ -f "$ca_cert_path" ] || { echo "ARGO-UP: no CA cert at $ca_cert_path - run 'PROVIDER=$PROVIDER make ca-init' first." >&2; exit 1; }
@@ -405,6 +457,13 @@ aws_wait_for_dns() {
 # ensure_ca_secret would hard-fail on the missing committed certificate.
 if [ "$PROVIDER" = civo ] || [ "$PROVIDER" = hetzner ]; then
   ensure_ca_secret
+fi
+
+# Above the fast-path guard for the same reason as ensure_ca_secret: a re-run
+# that takes the fast path must still refresh this, because the render it
+# copies changes whenever the nodes module re-applies.
+if [ "$PROVIDER" = hetzner ]; then
+  ensure_autoscaler_config
 fi
 
 # Idempotency guard: if the root Application is already Synced/Healthy,
@@ -747,6 +806,9 @@ hetzner_install_root_application() {
     --set postgres.storageSize="$POSTGRES_STORAGE_SIZE" \
     --set envoyGateway.fqdn="$LAB_FQDN" \
     --set envoyGateway.location="$REGION" \
+    --set capacity.autoscaler.nodeType="$NODE_TYPE" \
+    --set capacity.autoscaler.location="$REGION" \
+    --set capacity.autoscaler.sshKeyId="$SSH_KEY_ID" \
     --set externalDns.txtOwnerId="$PROJECT_NAME" \
     --set awsIdentity.rolesAnywhere.trustAnchorArn="$TRUST_ANCHOR_ARN" \
     --set awsIdentity.rolesAnywhere.profileArn="$PROFILE_ARN" \

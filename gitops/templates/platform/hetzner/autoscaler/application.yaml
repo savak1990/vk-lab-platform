@@ -1,0 +1,82 @@
+{{- if eq .Values.target "hetzner" }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cluster-autoscaler
+  namespace: argocd
+  annotations:
+    # Wave 0 puts this after external-secrets (-2) and the operators, and
+    # before the observability stack (1) whose pending pods it must serve.
+    # Teardown runs waves in reverse, and removal ahead of the workloads leaks
+    # nothing: the servers it created are swept by label before destroy.
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://kubernetes.github.io/autoscaler
+    chart: cluster-autoscaler
+    targetRevision: 9.59.0
+    helm:
+      values: |
+        cloudProvider: hetzner
+        # The chart's appVersion trails the cluster by a minor, and the
+        # autoscaler must match it. This tag and the k3s pin move together;
+        # bumping either alone leaves them on different minors.
+        image:
+          tag: v1.36.1
+        # minSize/maxSize are stated here, not taken from capacity.autoscaler,
+        # which carries civo's 3/4. A Hetzner project sells five servers, the
+        # fixed pool is three, so one elastic node is the whole budget.
+        autoscalingGroups:
+          - name: workers
+            minSize: 0
+            maxSize: 1
+            instanceType: {{ .Values.capacity.autoscaler.nodeType | upper | quote }}
+            region: {{ .Values.capacity.autoscaler.location | upper | quote }}
+        # Per key, not envFrom: this Secret's keys are token and network, and
+        # envFrom would name the variables after them.
+        extraEnvSecrets:
+          HCLOUD_TOKEN:
+            name: hcloud
+            key: token
+          HCLOUD_NETWORK:
+            name: hcloud
+            key: network
+        envFromSecret: hcloud-autoscaler-config
+        # No HCLOUD_FIREWALL. The provider would attach the firewall to the
+        # server at create, adding a resource entry to an apply_to that
+        # Terraform owns as a label selector - drift on every later plan. The
+        # selector already covers the node: its labels are set at create, and
+        # a node placed in the subnet does not boot until after that.
+        extraEnv:
+          HCLOUD_SSH_KEY: {{ .Values.capacity.autoscaler.sshKeyId | quote }}
+          HCLOUD_PUBLIC_IPV4: "true"
+          HCLOUD_PUBLIC_IPV6: "true"
+        extraArgs:
+          # Without the first two, every scale-down is blocked: external-dns
+          # runs in kube-system with no PodDisruptionBudget, and several
+          # platform pods mount emptyDir scratch.
+          skip-nodes-with-system-pods: false
+          skip-nodes-with-local-storage: false
+          scale-down-unneeded-time: 10m
+        podAnnotations:
+          # Keeps the autoscaler off a node it is draining.
+          cluster-autoscaler.kubernetes.io/safe-to-evict: "false"
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            memory: 256Mi
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+{{- end }}
