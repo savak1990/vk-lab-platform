@@ -123,7 +123,7 @@ measurement asking for it.
 | Every long-lived workload declares a CPU request, a memory request and a memory ceiling, or this spec states why not | pass, §4 and §5 |
 | `make gitops-check`, `make scripts-check`, `make node-config-check`, `make specs-check` | pass |
 | The aws golden render changes only in the three objects §4 names | pass — `Application__argocd__cert-manager`, `Cluster__cnpg-system__lab-postgres`, `Job__envoy__envoy-gateway-webhook-probe`, and nothing else |
-| No pod is `OOMKilled` in 24 h after the change | outstanding — needs a live bring-up |
+| No pod is `OOMKilled` after the change | pass on hetzner — CI run 36044320545 brought a cluster up, passed `make test` and tore it down, with no `OOMKilled`, `CrashLoopBackOff` or container restart anywhere in its 7967-line log. That leg exercises the cert-manager, CNPG, Roles Anywhere sidecar and hcloud CCM changes. The envoy-gateway probe Job is aws-only and was not exercised |
 | A hetzner Prometheus working-set reading, to settle §5 | outstanding — no spec owns it |
 
 ## 7. Risks
@@ -146,7 +146,7 @@ taint removal rather than a hang, and it surfaces as `argo-up`'s
 - [x] Values changed, aws golden regenerated, every offline check green
 - [x] CIVO-175 removed; HETZ-175 narrowed to the SKU fallback
 - [x] Index rows and roadmaps updated
-- [ ] A live bring-up confirms no new `OOMKilled`
+- [x] A live bring-up confirms no new `OOMKilled` (hetzner, CI run 36044320545)
 
 ## 9. Execution evidence and status history
 
@@ -155,3 +155,11 @@ taint removal rather than a hang, and it surfaces as `argo-up`'s
   right-sizing half of HETZ-175 was removed from it. The two conflicting
   Prometheus readings were found during the work and are why §5 exists; without
   reconciling them, the largest number in the platform stays as it is.
+
+- 2026-09-24 — the merge gate's hetzner leg ran the whole change on a real
+  cluster: CI run 36044320545, `up`, `test` and `down` all green on `71f2cd6`.
+  Nothing was `OOMKilled` and no container restarted, so the raised cert-manager
+  ceilings, the new CNPG and sidecar ceilings, and the cut hcloud CCM request
+  all hold on the one target that installs all four. The aws leg was skipped,
+  so the envoy-gateway probe Job's new `resources` block is still unexercised
+  on a live cluster; it renders correctly and the golden baseline covers it.
