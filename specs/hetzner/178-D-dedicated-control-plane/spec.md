@@ -109,6 +109,12 @@ Prices are `catalog.sh`'s gross figures, one basis throughout.
 Same two servers, so the same three slots stay free under the account's limit of
 five. The autoscaler still adds at most one worker, leaving two slots for CI.
 
+That worker follows `NODE_TYPE`, so it is now `cx43` as well — `argo-up`
+renders `--nodes=0:1:CX43:FSN1:workers`. The burst node costs 22.37 rather than
+12.09, which puts the three-server ceiling at 52.59 gross per month against the
+old 36.27. Still inside the 50-100 USD goal `decisions.md` sets, and reached
+only while pods are pending.
+
 The workload was measured rather than estimated, by rendering the target and
 reading the three charts installed outside Argo:
 
