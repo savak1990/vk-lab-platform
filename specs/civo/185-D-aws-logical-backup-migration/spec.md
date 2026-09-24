@@ -33,7 +33,7 @@ Three things are gained:
 - **Point-in-time recovery on AWS.** A cold `VolumeSnapshot` taken at
   teardown gives none, and it fences the primary while it runs.
 - **One mechanism.** One set of templates, one recovery branch, one
-  generation pointer, one set of e2e assertions (CIVO-150) for both
+  generation pointer, one set of e2e assertions for both
   providers.
 - **Less surface.** The snapshot controller, the snapshot class, the
   client-side-applied `VolumeSnapshotContent`, the root Application's

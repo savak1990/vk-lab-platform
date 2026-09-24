@@ -5,8 +5,8 @@
 | Milestone | Goal | Specs | Exit criterion |
 |---|---|---|---|
 | M0 Foundations | Operator surface, governance, the bootstrap decision, the two generalisation refactors, feasibility facts | 010, 015, 016, 017, 018, 020 | AWS and Civo unchanged (golden renders, `make -n`); ADRs merged; spike report answers the CCM-ordering, kubeconfig, volume-survival and LB-deletion questions |
-| M1 Viable Hetzner platform | `PROVIDER=hetzner make full-up` brings up a k3s cluster (1 cp + 1 worker `cx33`, embedded etcd, flannel), the hcloud CCM, Argo, CSI, Envoy with wildcard TLS, DNS, ESO, CNPG with barman-cloud backups, observability, and the cluster autoscaler for 0–2 extra workers; `make down`/`up` preserves data; CI can run it | 025–170 | HETZ-150 passes; idle cost recorded against the 32 EUR fixed / 53 EUR ceiling model (research.md shape F) |
-| M2 Scale and harden | ARM (CAX) node types in the catalogue, stock-aware SKU fallback, right-sizing, arm64 images, client IP | 177, 175, 182, 190 | each spec's DoD |
+| M1 Viable Hetzner platform | `PROVIDER=hetzner make full-up` brings up a k3s cluster (1 cp + 1 worker `cx33`, embedded etcd, flannel), the hcloud CCM, Argo, CSI, Envoy with wildcard TLS, DNS, ESO, CNPG with barman-cloud backups, observability, and the cluster autoscaler for 0–2 extra workers; `make down`/`up` preserves data; CI can run it | 025–170 | the CI lifecycle leg runs `up`, `test`, `down` green, CNPG data survives a `make down`/`make up` cycle (HETZ-120), and idle cost is recorded against the 32 EUR fixed / 53 EUR ceiling model (research.md shape F) |
+| M2 Scale and harden | ARM (CAX) node types in the catalogue, stock-aware SKU fallback, arm64 images, client IP | 177, 175, 182, 190 | each spec's DoD |
 
 ## Dependency graph
 
@@ -58,10 +58,6 @@ flowchart TD
   050 --> 160
   085 --> 160
   C160[CIVO-160] --> 160
-  070 --> 150[150 lifecycle validation]
-  120 --> 150
-  130 --> 150
-  047 --> 150
   047 --> 140
   030 --> 170[170 autoscaler]
   045 --> 170
@@ -74,7 +70,7 @@ flowchart TD
 
 ## Critical path
 
-015 → 017 → 010 → 016 → 018 → 080 → 025 → 030 → 040 → 045 (with 050) → 085 → 060 → 070 → 115 → 120 → 150. 047, 160 and 170 hang off 045 in parallel.
+015 → 017 → 010 → 016 → 018 → 080 → 025 → 030 → 040 → 045 (with 050) → 085 → 060 → 070 → 115 → 120. 047, 160 and 170 hang off 045 in parallel.
 
 HETZ-177 is an M2 spec taken out of order, immediately after 040. On
 2026-09-21 every x86 type in the catalogue was out of stock in both usable
@@ -127,4 +123,4 @@ unrelated records, so the Hetzner ADR took 0036.
 | Civo tasks that do not apply | architecture.md §3 rows marked n/a (reserved IP, bundled StorageClass) and decisions.md §4 |
 | Same headers as Civo tasks | every `spec.md`; README format note |
 | AWS access identical to Civo | 018, 080 |
-| Cost within 50–100 USD with maximal CPU/memory | research.md cost model, shape A–F; 175 |
+| Cost within 50–100 USD with maximal CPU/memory | research.md cost model, shape A–F; 175 (SKU fallback), SHARED-048 (right-sizing) |

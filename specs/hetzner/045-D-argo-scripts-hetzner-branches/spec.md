@@ -139,18 +139,20 @@ none beyond the dump gate, which fails closed.
 - 2026-09-11 — created as DRAFT.
 - 2026-09-11 — reviewed and approved by the user; promoted to READY.
 - 2026-09-19 — rewritten for kubeadm: CoreDNS evidence from kubeadm
-  manifests; `argo-down` moved to HETZ-047; depends on HETZ-037.
+  manifests; `argo-down` moved to HETZ-047; depended on the Cilium CNI spec,
+  since retired.
 - 2026-09-20 — review fix: §3 credits the control-plane cloud-init
-  (HETZ-030) with the init and the Cilium install, HETZ-035 with the
-  worker joins and HETZ-037 with the Ready wait.
+  (HETZ-030) with the init and the Cilium install, the kubeadm bootstrap spec
+  with the worker joins and the Cilium CNI spec with the Ready wait. Both are
+  retired.
 - 2026-09-20 — k3s (HETZ-017, ADR 0037). The CCM ordering and its reason are
   unchanged: k3s's bundled CoreDNS tolerates the `uninitialized` taint no
   better than kubeadm's did. What changes is the upstream: the Ready cluster
-  now arrives from HETZ-040 rather than HETZ-037, so `depends_on` names 040
+  now arrives from HETZ-040 rather than the retired Cilium CNI spec, so `depends_on` names 040
   directly; `clusterCIDR` is k3s's `10.42.0.0/16`; routes stay off for
   flannel's VXLAN rather than Cilium's; the Cilium chart pin is gone; and the
   autoscaler Secrets that follow `wait_for_nodes_initialized` belong to
-  HETZ-170 now that HETZ-165 is retired.
+  HETZ-170 now that the kubeadm join-credential spec is retired.
 - 2026-09-22 — implemented offline; status `IN_REVIEW`, folder renamed to
   `045-A-argo-scripts-hetzner-branches`. **The live cycle has not run**, so §13
   stays open: this entry records the code, not its acceptance.

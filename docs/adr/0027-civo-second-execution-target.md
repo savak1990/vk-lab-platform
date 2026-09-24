@@ -11,7 +11,7 @@ Accepted
 design (minikube/kind, spec 022) and is not a candidate for hosting
 anything durable.
 
-`specs/shared/027-Z-alt-cloud-targets/spec.md` researched adding Civo or
+A research-only alternative-cloud-targets spec, since removed, looked at adding Civo or
 DigitalOcean as a genuine second cloud target and proposed a `TARGET`
 input to select between them. That spec is research-only, has four open
 questions, and never reached an accepted design.
@@ -57,7 +57,7 @@ CD, and every Kubernetes workload on it follow the same create/destroy
 discipline as the AWS Disposable class — `make up`/`make down`
 semantics, not a separate lifecycle taxonomy.
 
-**This supersedes the `TARGET` proposal of `specs/shared/027-Z-alt-cloud-targets/spec.md`.**
+**This supersedes the `TARGET` proposal of the withdrawn alternative-cloud-targets spec.**
 That spec is marked Superseded, with a pointer to `specs/civo/`.
 
 ## Consequences

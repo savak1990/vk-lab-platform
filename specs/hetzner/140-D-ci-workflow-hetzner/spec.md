@@ -291,7 +291,7 @@ Revert the workflow.
   **Still outstanding:** the two-simultaneous-dispatch queueing case. The
   concurrency group `lab-hetzner-vk-hetzner-ci` is written but never contended.
 
-  **Address reuse, for HETZ-150.** `91.98.15.137` was handed to three different
+  **Address reuse.** `91.98.15.137` was handed to three different
   load balancers today - the lab's, CI's, and the lab's again - and the lab's
   servers took public IPs that CI's servers had held twenty minutes earlier.
   Hetzner recycles addresses aggressively within a location, so the

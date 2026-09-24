@@ -135,7 +135,7 @@ publish. The ceiling was 2 USD.
 The spike did not test the **static PV rebind** across clusters. It also did not test the **data**
 on a surviving volume. The table above shows that the volume *object* survives. It does not show
 that the ext4 filesystem and its contents come back when a new cluster binds the volume. The table
-records the `volumeHandle` format that such a test needs. CIVO-120 and CIVO-150 both depend on
+records the `volumeHandle` format that such a test needs. CIVO-120 depends on
 this second half. Treat it as an open experiment.
 
 ## Later experiments (bounded, not run in planning)

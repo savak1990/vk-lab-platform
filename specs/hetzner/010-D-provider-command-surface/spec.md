@@ -168,7 +168,7 @@ One PR together with `specs/hetzner/`. A revert restores the previous Makefile a
     two-item list; extra terms append as
     `project=other,role=control-plane,managed_by=terraform`.
   - `make kubeconfig PROVIDER=hetzner` → `configure_kubeconfig:
-    PROVIDER=hetzner is implemented in HETZ-035`, exit 1 (make exit 2);
+    PROVIDER=hetzner is implemented in HETZ-040`, exit 1 (make exit 2);
     `make test-kubeconfig PROVIDER=hetzner` → `... implemented in
     HETZ-130`, exit 1. A fake `kubectl` on PATH was never reached.
   - `bash -n scripts/lib/provider.sh` clean. `make secrets-check`,
@@ -178,8 +178,8 @@ One PR together with `specs/hetzner/`. A revert restores the previous Makefile a
     never captured); `hcloud_token; hcloud_cli server list` → empty table,
     exit 0; `hcloud_list_names server` → empty, exit 0; `~/.config/hcloud`
     absent before and after.
-  - Deviations from §4: the `kubeconfig` stub names HETZ-035, which owns
-    `configure_kubeconfig` (HETZ-035 §2), not HETZ-040. The README uses
+  - Deviations from §4: at the time the `kubeconfig` stub named the kubeadm
+    bootstrap spec, since retired, rather than HETZ-040. The README uses
     `make secret-encrypt NAME=hetzner-token VALUE=<token> SCOPE=global`
     because the Make target overrides `SECRET_NAME`/`SECRET_SCOPE` from
     `NAME=`/`SCOPE=`. `BACKUP_SSM_LAYER=persistent` is exported for hetzner
@@ -198,7 +198,7 @@ One PR together with `specs/hetzner/`. A revert restores the previous Makefile a
 - 2026-09-20 — k3s (HETZ-017, ADR 0037). The seam this spec shipped is
   unchanged; §1's description of what runs inside `cluster-up` is not, because
   there is no `scripts/hetzner-bootstrap.sh` any more. One shipped line
-  changed with it: `configure_kubeconfig`'s hetzner stub named HETZ-035, which
-  is now `SUPERSEDED`, and names HETZ-040. The evidence above is left as the
+  changed with it: `configure_kubeconfig`'s hetzner stub named the kubeadm
+  bootstrap spec, since retired, and now names HETZ-040. The evidence above is left as the
   record of what was run on 2026-09-20; the stub's wording is the only part of
   it that no longer matches the tree. Status stays `DONE`.

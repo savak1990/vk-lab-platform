@@ -252,8 +252,7 @@ wrong. Data risk: none.
   not arise. What was exercised is the delete-then-recreate path —
   `argo-down` confirmed both ExternalDNS-owned records gone before the
   cascade, and `argo-up` saw them rewritten. A changed address remains
-  untested on this target, and HETZ-150's recreate validation is where it will
-  land.
+  untested on this target, and no spec owns that check.
 
   **The cert-manager role's Route 53 scope, three attempts from
   `tests/manifests/hetzner-070/`**, running as

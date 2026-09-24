@@ -155,11 +155,11 @@ the persistent units, because they live in a separate stack directory.
 
 - 2026-09-11 — created as DRAFT.
 - 2026-09-11 — reviewed and approved by the user; promoted to READY.
-- 2026-09-19 — rewritten for kubeadm: kubeconfig and readiness moved to HETZ-035/037; two-part `cluster_exists`; autoscaled servers swept before destroy.
-- 2026-09-20 — option C: the control plane initializes itself at boot, so `cluster_exists` is true before HETZ-035 runs; the Argo guard is stated as a separate three-case check (decisions.md §3, "Bootstrap driver").
+- 2026-09-19 — rewritten for kubeadm: kubeconfig and readiness moved to the kubeadm bootstrap and Cilium CNI specs, both since retired; two-part `cluster_exists`; autoscaled servers swept before destroy.
+- 2026-09-20 — option C: the control plane initializes itself at boot, so `cluster_exists` is true before the kubeadm bootstrap step runs; the Argo guard is stated as a separate three-case check (decisions.md §3, "Bootstrap driver").
 - 2026-09-20 — review fix: `hetzner_ssh` states one KMS decrypt and one temp dir per call, so every poll over SSH loops on the remote side.
 - 2026-09-20 — k3s (HETZ-017, ADR 0037). This spec absorbs the two pieces of
-  the retired HETZ-035 that survive the bootstrap change: the hetzner arm of
+  the retired kubeadm bootstrap spec that survive the bootstrap change: the hetzner arm of
   `configure_kubeconfig`, now reading `/etc/rancher/k3s/k3s.yaml` and
   rewriting `127.0.0.1`, and the node-Ready wait, which no longer waits on a
   CNI install because k3s starts flannel itself. `cluster_exists` probes the
