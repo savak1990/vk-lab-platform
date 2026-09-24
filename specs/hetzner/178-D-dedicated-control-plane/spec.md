@@ -147,10 +147,33 @@ real fallback.
 | `CONTROL_PLANE_NODE_TYPE` is refused on aws, civo and local, and refused for a type the chosen region does not sell | pass, `tests/scripts/node-config-test.sh` |
 | Every Hetzner region resolves to a worker type it actually sells | pass, `hel1` gives `cx33`, `fsn1` and `nbg1` give `cx43` |
 | `make scripts-check`, `make gitops-check`, `make node-config-check`, `terraform fmt`, `terraform validate` | pass |
-| The control plane carries the taint after `make up` | outstanding, needs a live cycle |
+| A tainted control plane still brings a cluster up, and tears it down | pass, CI run 35995691271 |
 | CoreDNS and the CCM run on the control plane; every other singleton runs on the worker | outstanding |
 | The HETZ-170 burst test still scales the group 0→1→0 | outstanding |
 | `terragrunt plan` on `cluster-hetzner` is clean while state is populated | outstanding — this also closes HETZ-170's last open criterion |
+
+### The CI lifecycle run, 2026-09-24
+
+Run 35995691271 on `vk-hetzner-ci`, `fsn1`, `NODE_COUNT=2`: a `cx23` control
+plane carrying the new taint plus one `cpx32` worker. `up`, `test` and `down`
+all succeeded.
+
+That settles the risk this change actually carried. The cloud controller
+manager scheduled onto the tainted node and cleared
+`node.cloudprovider.kubernetes.io/uninitialized`; CoreDNS reached Available, so
+`wait_for_nodes_initialized` passed; Argo CD synced the whole target and the
+end-to-end tests ran against it; and the teardown left nothing behind. The
+offline toleration check in §3 predicted this, and the run confirms it rather
+than merely not contradicting it.
+
+It also answers a question the change raised: `cx23` is orderable today. Hetzner
+cannot be asked this in advance — `/v1/datacenters` reported **zero** available
+server types in `fsn1-dc14` while this run was creating servers there, which is
+the same unreliability HETZ-020 recorded. CI therefore pins both its node types
+to the `cpx` line, which stayed sold when the whole `cx` line did not.
+
+What the run cannot cover: it drives no load, so the burst test is untouched,
+and the lifecycle never plans, so drift is untested. Both need a local cycle.
 
 ### What a live run must also record
 
