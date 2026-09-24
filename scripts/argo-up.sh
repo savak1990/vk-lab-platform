@@ -11,6 +11,8 @@ source "$REPO_ROOT/scripts/lib/region.sh"
 source "$REPO_ROOT/scripts/lib/provider.sh"
 # shellcheck source=lib/argo-watch.sh
 source "$REPO_ROOT/scripts/lib/argo-watch.sh"
+# shellcheck source=lib/require-valid-recover-from.sh
+source "$REPO_ROOT/scripts/lib/require-valid-recover-from.sh"
 
 # Keeps kubectl and helm on a repo-local kubeconfig: a lifecycle run must never
 # change the context the operator is working in.
@@ -44,6 +46,10 @@ fi
 # Never set below 2: recovery reads the previous generation while
 # the current one is still building its own first base backup.
 POSTGRES_BACKUP_KEEP_GENERATIONS="${POSTGRES_BACKUP_KEEP_GENERATIONS:-2}"
+# Names another target's archive to start from. Validated before make reaches
+# this script; empty on every ordinary bring-up.
+RECOVER_FROM="${RECOVER_FROM:-}"
+RECOVER_BUCKET=""
 SPOT_KARPENTER_INSTANCE_TYPES_JSON="$(jq -Rc 'split(",")' <<< "$SPOT_KARPENTER_INSTANCE_TYPES")"
 ON_DEMAND_KARPENTER_INSTANCE_TYPES_JSON="$(jq -Rc 'split(",")' <<< "$ON_DEMAND_KARPENTER_INSTANCE_TYPES")"
 
@@ -96,10 +102,31 @@ aws_resolve_inputs() {
   configure_kubeconfig "$KUBECONFIG"
 }
 
+# Copies another project's generation into this one's bucket, so the ordinary
+# recovery path finds it with no knowledge of where it came from. barman keys
+# everything under <destinationPath><serverName>/, so the prefix copies whole.
+backup_import_generation() {
+  local src="s3://$RECOVER_BUCKET/$RECOVER_SERVER_NAME/"
+  local dest="s3://$BACKUP_BUCKET/$RECOVER_SERVER_NAME/"
+  if [ -n "$(aws s3 ls "$dest" --region "$LAB_REGION" 2>/dev/null | head -n1)" ]; then
+    echo "ARGO-UP: $RECOVER_SERVER_NAME is already in this project's bucket - not re-copying."
+    return 0
+  fi
+  echo "ARGO-UP: importing $src into this project's bucket..."
+  aws s3 cp --recursive "$src" "$dest" --region "$LAB_REGION" >/dev/null
+  echo "ARGO-UP: imported $RECOVER_SERVER_NAME."
+}
+
 # serverName is minted per bring-up, so a recovered cluster never archives
-# into the generation it recovered from.
+# into the generation it recovered from. An operator-named archive is imported
+# first; a failed copy aborts rather than falling through to initdb.
 backup_resolve_generation() {
-  RECOVER_SERVER_NAME="$(backup_recovery_handle "$BACKUP_SSM_LAYER")"
+  if [ -n "$RECOVER_FROM" ]; then
+    recover_from_parse "$RECOVER_FROM"
+    backup_import_generation
+  else
+    RECOVER_SERVER_NAME="$(backup_recovery_handle "$BACKUP_SSM_LAYER")"
+  fi
   BACKUP_SERVER_NAME="lab-postgres-$(date -u +%Y%m%dT%H%M%SZ)"
 }
 

@@ -1,0 +1,314 @@
+---
+id: "SHARED-048"
+title: "A Postgres database moves between providers without losing data"
+status: "DONE"
+priority: "P2"
+milestone: "M2"
+type: "implementation"
+difficulty: "S"
+recommended_model_tier: "strongest"
+model_rationale: "The code is small, but the failure mode is silent: a recovery that does not resolve renders initdb over a recoverable archive and reports healthy"
+effort_estimate: "One session, plus three live bring-ups across three clouds"
+estimate_confidence: "medium"
+depends_on: ["CIVO-120", "HETZ-120", "CIVO-185"]
+blocked_by: []
+supersedes: []
+created: "2026-09-24"
+updated: "2026-09-24"
+completed: "2026-09-24"
+---
+
+# SHARED-048 — A database moves between providers
+
+## 1. Outcome and rationale
+
+`RECOVER_FROM=s3://<bucket>/<generation>` makes a bring-up start from a backup
+generation written by a **different** target. The rows survive the move.
+
+The operator's framing, 2026-09-24: *"Imagine we started our startup on hetzner
+k3s cloud and it became viral and we need to scale … we might want to migrate to
+civo or aws without loosing data."*
+
+Nothing about that scenario was supported. Each target read its own SSM pointer
+and nothing else, so leaving a provider meant leaving the data.
+
+## 2. Why this is nearly free
+
+Three properties of the existing design do almost all the work.
+
+**One object store for every target.** `objectstore.yaml:19` sets
+`destinationPath: s3://<bucket>/` with no `endpointURL`. Civo and Hetzner do not
+use Civo Object Store or Hetzner Object Storage — they write AWS S3 in
+`eu-west-1` through IAM Roles Anywhere. The archive never lived on the provider
+being left.
+
+**One Postgres binary.** `gitops/values.yaml:87` digest-pins
+`postgresql:18.4-system-trixie` in one place, with no per-target override.
+Physical WAL recovery requires identical major versions. This pin is what makes
+a cross-provider restore legal rather than merely attempted.
+
+**One AWS account.** No `assume_role` appears anywhere in `terraform/live` or
+`scripts/lib`. The buckets are SSE-S3 with no KMS key, and the bucket policy
+(`postgres-backups/main.tf:28-52`) is a `Deny` on plaintext transport with no
+principal allow-list.
+
+The only true gap was that nothing let an operator name a source.
+
+## 3. Scope and non-goals
+
+In scope:
+
+- `RECOVER_FROM`, validated offline before any cloud call.
+- An import step that copies the named generation into this project's own
+  bucket, and is a no-op when the prefix is already there.
+- Three live bring-ups proving a database crosses two provider boundaries.
+
+Not in scope:
+
+- **RDS, or any non-CNPG target.** No `pg_dump`, `pg_restore` or
+  `pg_basebackup` exists anywhere in `scripts`, `gitops`, `terraform` or
+  `tests`. Physical recovery between CNPG clusters is the only mechanism this
+  platform has. A migration to a managed service needs tooling that does not
+  exist yet, and is a different spec.
+- **Horizontal scaling.** `cluster.yaml:12` is `instances: 1` with no replicas.
+  This spec moves data; it scales nothing. If viral growth is the real driver,
+  replicas, connection pooling and storage sizing are the work.
+- **Reading a foreign bucket in place.** Designed and rejected — see §5.
+- **Any IAM change.** See §5.
+
+## 4. The silent-`initdb` hazard
+
+`cluster.yaml:30` selects the bootstrap branch:
+
+```
+{{- if and .Values.postgres.backup.enabled .Values.postgres.backup.recoverServerName }}
+```
+
+An empty `recoverServerName` renders `initdb`. The comment beneath it — *"No
+initdb fallback: a loud failure beats silently wiping a recoverable database"* —
+covers a **failed** recovery. It does not cover an **absent or unresolved**
+handle.
+
+That is the failure this spec must not introduce. A migration that resolves to
+nothing would bring up an empty database, report healthy, and lose the data it
+was asked to move.
+
+Two mechanisms prevent it:
+
+1. `require_valid_recover_from` refuses a malformed value offline, before any
+   cloud call, and reports every problem in one pass.
+2. `backup_import_generation` runs under `set -euo pipefail`. A copy from a
+   source that does not exist aborts the bring-up rather than continuing with an
+   unresolved handle.
+
+Neither is a substitute for reading `.spec.bootstrap` on the live cluster, which
+§8 requires.
+
+## 5. Why copy rather than read across
+
+barman keys everything under `<destinationPath><serverName>/`. Copying a
+generation prefix into the target's own bucket preserves that layout exactly, so
+the existing single `ObjectStore` resolves it with no chart change at all.
+
+The alternative was designed in full and rejected. `cluster.yaml:49` points
+recovery at `barmanObjectName: lab-postgres-backups` — the same `ObjectStore`
+the cluster archives into. `serverName` is a parameter at each reference site,
+so one store already serves two *prefixes*; but `destinationPath` lives only on
+the store, so two *buckets* need two stores.
+
+| | Copy (chosen) | Read across (rejected) |
+|---|---|---|
+| Chart change | none | new template, `cluster.yaml:49`, golden regeneration |
+| Terraform change | **none** | wildcard bucket ARN in two modules |
+| Unknowns | none | two `ObjectStore` objects in one namespace, unproven here |
+| Cost at scale | duplicates the archive | reads in place |
+
+**No IAM change is needed.** The copy runs with the operator's own credentials,
+which already reach both buckets; the cluster itself only ever reads the bucket
+it already owns. The rejected design would have widened
+`rolesanywhere/main.tf:18` and `postgres-backup-pod-identity/main.tf:13` to
+`arn:aws:s3:::*-postgres-backups`, giving every lab cluster `s3:DeleteObject` on
+every other project's archive.
+
+The trade is real and is accepted knowingly: copying duplicates the archive. At
+lab size that is seconds and cents. At the size the motivating scenario implies,
+reading in place would be the better mechanism, and this decision should be
+revisited rather than assumed still correct.
+
+## 6. Composition with generation pruning
+
+`backup_prune_generations` protects both `$BACKUP_SERVER_NAME` and
+`$RECOVER_SERVER_NAME` by name. After an import the recovered-from generation
+genuinely is in `$BACKUP_BUCKET`, so it is protected for exactly as long as it
+is the source, then ages out under the ordinary
+`POSTGRES_BACKUP_KEEP_GENERATIONS` rule. No new code, and no special case.
+
+## 7. Implementation
+
+| Piece | Where |
+|---|---|
+| Guard and parse | `scripts/lib/require-valid-recover-from.sh` |
+| Unit test | `tests/scripts/recover-from-test.sh`, 13 assertions |
+| Import and branch | `scripts/argo-up.sh`, `backup_import_generation` and `backup_resolve_generation` |
+| Operator surface | `Makefile`: `export RECOVER_FROM ?=`, a `require-valid-recover-from` target on `up`, `full-up` and `platform-up` |
+
+`RECOVER_FROM` is deliberately not persisted. `backup_publish_server_name`
+writes only `BACKUP_SERVER_NAME`, so the next bring-up on that target returns to
+its own pointer with no extra code. The override applies to one bring-up.
+
+No Helm value and no `--set` flag changed: `RECOVER_SERVER_NAME` already flowed
+to the chart, and after the import the generation is in the bucket
+`postgres.backup.bucket` already names.
+
+## 8. Acceptance criteria
+
+1. Rows written on Hetzner are readable on AWS, having passed through Civo.
+2. On each recovering bring-up, `.spec.bootstrap` on the live `Cluster` shows
+   `recovery` and no `initdb` key — **read, not inferred from a healthy pod**.
+3. The imported generation prefix appears in the target project's own bucket.
+4. The source project's bucket still lists that generation afterwards.
+5. A second bring-up with the same `RECOVER_FROM` prints the skip message and
+   does not re-copy.
+6. A bring-up with no `RECOVER_FROM` recovers from that target's own pointer.
+7. A malformed `RECOVER_FROM` exits non-zero before any cloud call.
+8. `PROVIDER=aws|civo make -n up` differs from `origin/main` by exactly the one
+   added guard line; `make gitops-check` reports no golden change.
+9. `verify-no-leaks.sh` exits 0 on all three targets afterwards.
+
+## 9. Operator procedure
+
+```bash
+# 1. Find the source generation.
+aws s3 ls s3://vk-hetzner-lab-<region>-postgres-backups/
+
+# 2. Bring the new target up from it.
+RECOVER_FROM=s3://vk-hetzner-lab-<region>-postgres-backups/lab-postgres-<T> \
+  PROVIDER=civo make full-up
+
+# 3. Confirm the branch before trusting a row.
+kubectl get cluster lab-postgres -n cnpg-system -o jsonpath='{.spec.bootstrap}'
+```
+
+**Confirm a completed base backup before leaving the source.** Recovery needs a
+base backup, not WAL segments alone. `ScheduledBackup` carries
+`immediate: true`, so one is taken at bring-up, and teardown adds a best-effort
+second — but neither is guaranteed to have finished when an operator is ready to
+move on:
+
+```bash
+kubectl get backup -n cnpg-system
+```
+
+**If a recovering bring-up fails part-way, re-run it with `RECOVER_FROM` still
+set.** The import is idempotent, so repeating it is safe. A bare re-run is not:
+`backup_publish_server_name` writes the generation pointer only after the
+platform reports healthy, so a failed first attempt leaves that pointer absent,
+and a second bring-up without `RECOVER_FROM` resolves to nothing and renders
+`initdb` — over the archive that was just imported. This is the §4 hazard
+reached by a different route.
+
+**Never `make full-down` on the source until the new target is verified.**
+`scripts/persistent-down.sh:123` empties the backup bucket and `:148` deletes
+the generation pointer. `make down` leaves both intact.
+
+`retentionPolicy` is `"2d"` (`values.yaml:99`), so a source archive older than
+two days may already have been pruned by its own project. Migrate promptly, or
+raise the retention before starting.
+
+## 14. Evidence
+
+Offline, 2026-09-24, on `origin/main` at `abdee9d`:
+
+- `make scripts-check` — passes, including `recover-from-test.sh` (13/13).
+- `make gitops-check` — passes; the aws golden baseline is unchanged, which is
+  the mechanized proof that this needed no chart change.
+- `make -n up` on all four targets differs from the base by exactly one line,
+  the new guard.
+- The guard refuses through both `RECOVER_FROM=x make ...` and
+  `make ... RECOVER_FROM=x`, reporting both problems in one pass:
+
+```
+Refusing: invalid RECOVER_FROM
+  - bucket 'b' is not a valid S3 bucket name
+  - generation 'nonsense' must look like lab-postgres-20260101T000000Z
+```
+
+### Live, 2026-09-24 — three hops across three clouds
+
+One database moved Hetzner k3s (`fsn1`) → Civo managed Kubernetes (`LON1`) →
+AWS EKS (`eu-west-1`), carrying rows first written on Hetzner.
+
+| Hop | Command | Source generation | Result |
+|---|---|---|---|
+| 1 | `PROVIDER=hetzner make up` | own pointer, no `RECOVER_FROM` | recovered 6 rows from a third consecutive cycle |
+| 2 | `PROVIDER=civo make up` | `vk-hetzner-lab-fsn1-…/lab-postgres-20260924T180201Z` | 8 rows, 4 tables |
+| 3 | `PROVIDER=aws make full-up` | `vk-civo-lab-lon1-…/lab-postgres-20260924T183132Z` | 10 rows, 5 tables |
+
+Final state on EKS, having originated two clouds away:
+
+```
+  1-6  | cycle0/cycle1   | written on Hetzner over three earlier down/up cycles
+  7-8  | hetzner-origin  | written on Hetzner before the first migration
+  9-10 | civo-hop        | written on Civo after the first migration
+tables: proof, ddl_proof_cycle0, ddl_proof_cycle1,
+        migration_proof_hetzner, migration_proof_civo
+```
+
+Criteria:
+
+1. **Met.** 10/10 rows and 5/5 tables on EKS.
+2. **Met.** `.spec.bootstrap` read from the live `Cluster` on both recovering
+   hops: `{"recovery":{"database":"vkdb","owner":"vkdb","source":"lab-postgres-previous"}}`,
+   with `externalClusters[0]…serverName` naming the foreign generation. No
+   `initdb` key on either.
+3. **Met.** Both hops logged `ARGO-UP: imported <generation>.` and the prefix
+   appeared in the target bucket.
+4. **Met.** After all three hops, every source bucket still listed its
+   generations — Hetzner `…T214905Z` and `…T180201Z`, Civo `…T180201Z` and
+   `…T183132Z`.
+5. **Met.** A second Civo bring-up with the same `RECOVER_FROM` printed
+   `lab-postgres-20260924T180201Z is already in this project's bucket - not
+   re-copying.` and left the 10 rows intact.
+6. **Met.** Hop 1 ran with no `RECOVER_FROM` and recovered from Hetzner's own
+   pointer. Post-import, each target published **its own** new generation, not
+   the imported one — AWS's pointer reads `lab-postgres-20260924T191306Z` while
+   the imported generation was `…T183132Z`, so a later bare bring-up resolves to
+   the target's own work.
+7. **Met.** Offline, both invocation forms, both problems in one pass.
+8. **Met.** One added line in `make -n up`; `gitops-check` golden unchanged.
+9. **Met.** All three projects were then destroyed in full —
+   `CONFIRM_DESTROY=<project> make full-down` on each — and
+   `verify-no-leaks.sh` reported `no bootstrap or persistent resources remain`
+   for all three. `make clusters` reports no EKS cluster, no Civo cluster and
+   no labelled Hetzner server; no project bucket remains; the only hosted zone
+   left is the external parent the platform never owns. The two surviving SSM
+   parameters are the deliberately retained serving certificates, which the
+   leak checker names as kept rather than leaked.
+
+`ContinuousArchiving=True` on every hop. A base backup reached `completed`
+before each teardown, and each teardown's forced WAL switch produced a
+`completed` pre-teardown backup in about 20 s.
+
+**The override beat an existing pointer.** Civo held its own generation
+(`lab-postgres-20260924T155420Z`) when hop 2 ran. `RECOVER_FROM` took
+precedence rather than deferring to it, which is the branch in
+`backup_resolve_generation` doing its job. Civo's own older archive was then
+pruned by the ordinary keep-2 rule once the imported and new generations
+arrived — expected, and worth knowing before migrating a project that still has
+data worth keeping.
+
+**One failure, recorded.** The first AWS teardown aborted at `cluster-down`:
+
+```
+Error: reading CloudWatch Logs Log Group (/aws/eks/vk-lab-platform-eks/cluster):
+  dial tcp: lookup logs.eu-west-1.amazonaws.com: no such host
+```
+
+Local DNS resolution dropped mid-run. Not a platform defect; the teardown was
+re-run.
+
+**Observation, not a change made here.** A `make up` against an
+already-healthy cluster takes a fast path that neither publishes a new
+generation nor prunes. The pointer, the archiver `serverName` and the completed
+base backup stayed consistent throughout, so nothing was at risk, but the
+behaviour predates this spec and is worth a look on its own.
