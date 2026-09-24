@@ -108,7 +108,7 @@ two additions:
 | HETZ-140 | [140-D-ci-workflow-hetzner](140-D-ci-workflow-hetzner/spec.md) | `lab.yml` third provider value, `hcloud` CLI, token mask, label sweep in cleanup | DONE | P1 | M | standard | 015, 045, CIVO-140, 047 | M1 |
 | HETZ-160 | [160-P-observability-on-hetzner](160-P-observability-on-hetzner/spec.md) | Observability on Hetzner: control-plane scrapes on, x86 images, 10 GiB volume floor | READY | P1 | M | standard | 045, 050, 085, CIVO-160 | M1 |
 | HETZ-170 | [170-D-hetzner-cluster-autoscaler](170-D-hetzner-cluster-autoscaler/spec.md) | Cluster autoscaler `cloudProvider: hetzner`, one `cx33` worker that boots the same worker cloud-init | DONE | P1 | M | strongest | 030, 045 | M1 |
-| HETZ-175 | [175-P-sku-fallback-and-right-size](175-P-sku-fallback-and-right-size/spec.md) | Stock-aware SKU fallback (CX → CPX) and right-sizing on measured data | READY | P2 | S | standard | 160, CIVO-175 | M2 |
+| HETZ-175 | [175-P-sku-fallback](175-P-sku-fallback/spec.md) | Stock-aware SKU fallback when the chosen server type is out of stock | READY | P2 | S | standard | — | M2 |
 | HETZ-177 | [177-P-hetzner-arm-node-types](177-P-hetzner-arm-node-types/spec.md) | ARM node types (CAX) in the Hetzner catalogue, verified end to end | BLOCKED | P1 | M | standard | 040, 045, 182 | M2 |
 | HETZ-178 | [178-D-dedicated-control-plane](178-D-dedicated-control-plane/spec.md) | A dedicated `cx23` control plane, tainted so it carries no workload, beside a `cx43` worker | DONE | P1 | S | strongest | 030, 170 | M1 |
 | HETZ-182 | [182-P-multi-arch-images](182-P-multi-arch-images/spec.md) | Repo-built images published for `linux/arm64` as well as `linux/amd64` | DRAFT | P0 | S | fast | CIVO-180 | M2 |

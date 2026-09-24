@@ -27,7 +27,7 @@ own cloud-init (ADR 0036, ADR 0037).
 | Operator surface | `PROVIDER=aws\|civo` on the existing `make` targets; default `aws`; no new lifecycle commands | 2026-09-06 |
 | Civo project identity | `PROVIDER=civo` defaults `PROJECT_NAME=vk-civo-lab` and `SUBDOMAIN=civo`: own state bucket `vk-civo-lab-tf-state`, own zone `civo.<root-domain>`, own SSM prefix. Only the account layer is shared with the AWS project | 2026-09-06 |
 | Stage model | Identical on both providers: `account-up` → `bootstrap-up` → `persistent-up` → `cluster-up` → `argo-up` (and the reverse) | 2026-09-06 |
-| Cost target on Civo | 60–80 USD/month idle, all-in (nodes, LB, CNPG volume). Soft ceiling; bursts allowed. Measured 2026-09-17 (CIVO-160): the full observability profile runs on the three Medium nodes, but memory is tight, so CIVO-175 right-sizes before any node is added | 2026-09-06 |
+| Cost target on Civo | 60–80 USD/month idle, all-in (nodes, LB, CNPG volume). Soft ceiling; bursts allowed. Measured 2026-09-17 (CIVO-160): the full observability profile runs on the three Medium nodes, but memory is tight, so SHARED-048 right-sizes before any node is added | 2026-09-06 |
 | Node plan | One pool of `g4s.kube.medium` nodes (2 vCPU / 4 GB each; 2308 MiB allocatable per node, measured in CIVO-020 and again in CIVO-160). Terraform creates it at three nodes; the cluster autoscaler holds it between 3 and 4 (CIVO-170). The autoscaler carries a Civo API key in `kube-system`, and a Civo key is account-wide — accepted for this single-operator lab | 2026-09-20 |
 | AWS workload identity from Civo | IAM Roles Anywhere; no long-lived AWS keys in workloads | 2026-09-06 |
 | CA topology (M1) | Single offline CA: certificate committed, key KMS-encrypted in `secrets/` | 2026-09-06 |
@@ -35,7 +35,7 @@ own cloud-init (ADR 0036, ADR 0037).
 | DNS | Route 53 stays authoritative; ExternalDNS writes from both providers with distinct owner IDs | 2026-09-06 |
 | TLS on Civo | Terminated at Envoy Gateway with cert-manager + Let's Encrypt (HTTP-01 through Gateway API) | 2026-09-06 |
 | Civo region | `LON1` default; `FRA1` alternative; declared once per layer, never derived | 2026-09-06 |
-| Observability on Civo | Full profile in M1 on the three Medium nodes. It runs, but 2 of 3 nodes used more memory than allocatable on 2026-09-17 (CIVO-160); CIVO-175 right-sizes | 2026-09-06 |
+| Observability on Civo | Full profile in M1 on the three Medium nodes. It runs, but 2 of 3 nodes used more memory than allocatable on 2026-09-17 (CIVO-160); SHARED-048 right-sizes | 2026-09-06 |
 | AWS regression | AWS behavior stays byte-identical throughout; proven by a golden render diff and the existing lifecycle test | 2026-09-06 |
 | Repository rule | Platform-only; no business application code | existing |
 
@@ -190,7 +190,8 @@ template subtrees; shared components read only the contract values.
 | 2026-09-06 | Fixed pool of three Medium nodes, soft 60–80 USD target | With the autoscaler deferred, three Medium nodes give 7.8 GiB (documented; 6.76 GiB measured) inside the budget while one Large gives 5.9 GiB; two Large nodes would cost about 100 USD | 1 × Large (56 USD, 5.9 GiB, trimmed observability); 2 × Large (100 USD, over target) |
 | 2026-09-06 | Logical dumps to S3 as the single backup mechanism for both providers | Civo cannot snapshot or clone volumes; S3 bills bytes stored rather than a 500 GB minimum; an image we own needs no sidecar and no permanent key. Trade: no point-in-time recovery | barman to Civo Object Store (5.43 USD/month); barman to S3 with a permanent IAM user key |
 | 2026-09-06 | Cluster autoscaler deferred to M2 at P3 | Civo issues one API key per personal account; the autoscaler needs that account-wide key in `kube-system`, where a Secret reader gains full account control. Research recorded in CIVO-170 §12 | running it in M1 and accepting the exposure |
-| 2026-09-06 | Right-sizing spec (CIVO-175) revisits requests/limits and memory-optimized SKUs | CPU is wasted on this workload; measured data first | deciding SKU now |
+| 2026-09-06 | A right-sizing spec revisits requests/limits and memory-optimized SKUs | CPU is wasted on this workload; measured data first | deciding SKU now |
+| 2026-09-24 | Right-sizing becomes one spec for every target, SHARED-048, rather than one per provider | the requests are shared values rendered for all four targets, so three specs would have changed the same lines three times | a per-provider spec each; a measured Prometheus cut, which two disagreeing readings do not support |
 | 2026-09-06 | Roles Anywhere with a single offline CA | Free; external CA allowed; Private CA costs 50 USD/month; no Civo ServiceAccount OIDC issuer documented for web-identity federation | AWS Private CA; static AWS keys; web identity |
 | 2026-09-06 | Civo token KMS-encrypted in repo | One secrets mechanism; CI already has KMS via OIDC; masked with `::add-mask::` | GitHub environment secret; SSM copy |
 | 2026-09-06 | TLS at Envoy, Let's Encrypt HTTP-01 via Gateway API | No AWS credentials in cert-manager; LE rate limit handled by persisting the TLS Secret across `down`/`up` | DNS-01 with Route 53; provider-managed LB certificate |

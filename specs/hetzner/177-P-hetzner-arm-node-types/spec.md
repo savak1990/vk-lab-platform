@@ -221,7 +221,7 @@ key an x86 cluster would.
    remedy is per image: an upstream tag that has one, or HETZ-182 for a
    repo-built one.
 4. **Ampere cores are not Xeon cores.** The same core count is not the same
-   throughput. HETZ-175 right-sizes on measured data; this spec should hand it
+   throughput. SHARED-048 right-sizes on measured data; this spec should hand it
    ARM numbers rather than guess.
 
 ## 13. Definition of done

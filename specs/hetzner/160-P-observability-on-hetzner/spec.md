@@ -119,7 +119,7 @@ optional CCM/CSI metrics.
   it.
 - Sizing: Prometheus `resources.limits.memory` 2Gi, Loki 1Gi, Grafana
   512Mi. A single pod may use up to about 7 GiB on `cx33`, so no pod is
-  near the ceiling. Record requests for HETZ-175.
+  near the ceiling. Record requests for SHARED-048.
 
 ## 5. Files/components affected
 
@@ -140,7 +140,7 @@ values), `scripts/argo-up.sh` (control-plane private IP relay),
    `up{job="kube-scheduler"}` are 1. Record `kubeProxy` and
    `kubeletInsecureTls` outcomes.
 4. `hcloud volume list`: four 10 GB volumes plus CNPG's.
-5. Record per-node memory usage for HETZ-175.
+5. Record per-node memory usage for SHARED-048.
 
 ## 7. Dependencies and blockers
 

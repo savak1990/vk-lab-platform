@@ -106,7 +106,7 @@ The destroy is the rollback. This spec creates nothing persistent.
 - **Civo auto-creates a firewall per network with all TCP/UDP open**, separate from and in addition to the two firewalls this spec creates. Observed directly on 2026-09-07: a `${project}-default` firewall existed after `cluster-civo/network` applied, with 6 rules (all TCP/UDP ingress+egress from `0.0.0.0/0`, plus ICMP), 0 instances/clusters/LBs attached. This is distinct from the LoadBalancer-triggered auto-firewall CIVO-020 already documented (§8) - this one appears at the network level, unattached, before any LoadBalancer Service exists. It is currently inert (nothing uses it) but CIVO-060 must never let a Service fall back to Civo's default firewall selection; the `kubernetes.civo.com/firewall-id` annotation must always be explicit.
 - **The Civo CLI's `civo kubernetes config` has no `--merge` flag** (this plan's Security notes originally assumed one). `--save` merges into the existing kubeconfig by default; `--overwrite` replaces it. `--switch` is deprecated as a separate flag - `--save` alone now auto-switches context. Verified against CLI v1.5.4's own usage output during this spec's real cycle.
 
-- A single pod cannot exceed about 2.6 GiB on a Medium node. Prometheus is the pod most likely to approach that ceiling. CIVO-160 sets its limits accordingly and CIVO-175 measures the real figure.
+- A single pod cannot exceed about 2.6 GiB on a Medium node. Prometheus is the pod most likely to approach that ceiling. CIVO-160 sets its limits accordingly and SHARED-048 measures the real figure.
 
 ## 13. Definition of done
 

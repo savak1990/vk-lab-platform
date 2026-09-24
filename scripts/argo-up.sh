@@ -560,6 +560,9 @@ ensure_hcloud_ccm() {
     --set networking.enabled=true \
     --set networking.clusterCIDR=10.42.0.0/16 \
     --set-string env.HCLOUD_NETWORK_ROUTES_ENABLED.value=false \
+    --set resources.requests.cpu=10m \
+    --set resources.requests.memory=32Mi \
+    --set resources.limits.memory=64Mi \
     --wait
 }
 

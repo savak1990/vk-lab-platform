@@ -124,7 +124,7 @@ reading the three charts installed outside Argo:
 | Per node (alloy, hcloud-csi node, node-exporter) | 45m | 200 MiB |
 
 Two figures qualify that total. kube-prometheus-stack alone is 1600 MiB of it,
-which HETZ-175 right-sizes on measured data. And Argo CD's seven workloads
+which SHARED-048 revisited on measured data. And Argo CD's seven workloads
 declare no requests at all, so roughly 500-800 MiB of real use is invisible to
 the scheduler. Budget about 5 GiB of real memory. One `cx33` worker was
 therefore rejected: it would leave under a gigabyte.

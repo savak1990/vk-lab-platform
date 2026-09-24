@@ -60,7 +60,7 @@ a 20 GiB CNPG volume and the observability volumes:
 
 That sits at the top of the 60 to 80 USD target. The volume sizes are the
 adjustment knob: halving the Prometheus and Loki claims saves 1.10 and
-brings the total to 79.57. CIVO-175 measures real usage and revisits both
+brings the total to 79.57. SHARED-048 measures real usage and revisits both
 the volumes and the node size.
 
 Retained AWS costs while Civo runs:
