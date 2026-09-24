@@ -276,7 +276,14 @@ Criteria:
    the target's own work.
 7. **Met.** Offline, both invocation forms, both problems in one pass.
 8. **Met.** One added line in `make -n up`; `gitops-check` golden unchanged.
-9. See below.
+9. **Met.** All three projects were then destroyed in full —
+   `CONFIRM_DESTROY=<project> make full-down` on each — and
+   `verify-no-leaks.sh` reported `no bootstrap or persistent resources remain`
+   for all three. `make clusters` reports no EKS cluster, no Civo cluster and
+   no labelled Hetzner server; no project bucket remains; the only hosted zone
+   left is the external parent the platform never owns. The two surviving SSM
+   parameters are the deliberately retained serving certificates, which the
+   leak checker names as kept rather than leaked.
 
 `ContinuousArchiving=True` on every hop. A base backup reached `completed`
 before each teardown, and each teardown's forced WAL switch produced a
