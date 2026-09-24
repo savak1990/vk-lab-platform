@@ -39,8 +39,10 @@ export NODE_TYPE ?= g4s.kube.medium
 export NODE_COUNT ?= 3
 else ifeq ($(PROVIDER),hetzner)
 export REGION ?= fsn1
-export NODE_TYPE ?= cx33
-export NODE_COUNT ?= 3
+# fsn1's type. hel1 does not sell cx43 - see scripts/lib/catalog.sh.
+export NODE_TYPE ?= cx43
+export NODE_COUNT ?= 2
+export CONTROL_PLANE_NODE_TYPE ?= cx23
 else ifeq ($(PROVIDER),local)
 else
 export REGION ?= eu-west-1

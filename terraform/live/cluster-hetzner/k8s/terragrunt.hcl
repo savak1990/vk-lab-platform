@@ -36,9 +36,10 @@ dependency "firewall" {
 
 inputs = {
   project         = get_env("PROJECT_NAME", "vk-lab-platform")
-  node_count      = tonumber(get_env("NODE_COUNT", "3"))
-  node_type       = get_env("NODE_TYPE", "cx33")
-  location        = get_env("REGION", "fsn1")
+  node_count              = tonumber(get_env("NODE_COUNT", "2"))
+  node_type               = get_env("NODE_TYPE", "cx43")
+  control_plane_node_type = get_env("CONTROL_PLANE_NODE_TYPE", "cx23")
+  location                = get_env("REGION", "fsn1")
   network_id      = dependency.persistent_network.outputs.network_id
   subnet_ip_range = dependency.persistent_network.outputs.subnet_ip_range
   ssh_key_id      = dependency.ssh_key.outputs.ssh_key_id

@@ -1,4 +1,5 @@
-# Guards NODE_COUNT, NODE_TYPE and REGION before anything reaches a cloud.
+# Guards NODE_COUNT, NODE_TYPE, CONTROL_PLANE_NODE_TYPE and REGION before
+# anything reaches a cloud.
 # Offline and credential-free by design: the point is to fail on a typo in
 # under a second, not twenty minutes into an apply. Whether a type is in
 # stock right now is a different question, answered by HETZ-175's probe.
@@ -26,6 +27,7 @@ node_config_legal_regions() {
 require_valid_node_config() {
   local provider="${PROVIDER:-aws}"
   local region="${REGION:-}" node_type="${NODE_TYPE:-}" node_count="${NODE_COUNT:-}"
+  local cp_node_type="${CONTROL_PLANE_NODE_TYPE:-}"
   local errors=()
 
   # Ignored rather than refused: these are commonly left exported in a shell
@@ -54,7 +56,7 @@ require_valid_node_config() {
   if [ -n "$canonical_region" ]; then
     local allowed
     allowed="$(catalog_node_types "$provider" "$canonical_region")"
-    node_type="${node_type:-$(catalog_default_node_type "$provider")}"
+    node_type="${node_type:-$(catalog_default_node_type "$provider" "$canonical_region")}"
     if [ -z "$allowed" ]; then
       errors+=("REGION '$canonical_region' has no node type this platform will order; see scripts/lib/catalog.sh")
     elif ! catalog_canonical_node_type "$provider" "$canonical_region" "$node_type" >/dev/null; then
@@ -62,6 +64,21 @@ require_valid_node_config() {
     fi
   elif [ -n "$node_type" ]; then
     errors+=("NODE_TYPE '$node_type' was not checked, because REGION is invalid")
+  fi
+
+  # The only control plane the platform creates and pays for is hetzner's, so
+  # elsewhere a value is refused rather than ignored - nothing would read it.
+  if [ "$provider" = "hetzner" ]; then
+    if [ -n "$canonical_region" ]; then
+      local cp_allowed
+      cp_allowed="$(catalog_node_types "$provider" "$canonical_region")"
+      cp_node_type="${cp_node_type:-$(catalog_default_control_plane_node_type "$provider")}"
+      if [ -n "$cp_allowed" ] && ! catalog_canonical_node_type "$provider" "$canonical_region" "$cp_node_type" >/dev/null; then
+        errors+=("CONTROL_PLANE_NODE_TYPE '$cp_node_type' is not allowed in '$canonical_region'; there: $cp_allowed")
+      fi
+    fi
+  elif [ -n "$cp_node_type" ]; then
+    errors+=("CONTROL_PLANE_NODE_TYPE is not an input for PROVIDER=$provider; only hetzner creates a control plane this platform sizes")
   fi
 
   if ! printf '%s' "$node_count" | grep -Eq '^[1-9][0-9]*$'; then

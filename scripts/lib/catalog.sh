@@ -128,11 +128,25 @@ catalog_default_region() {
   esac
 }
 
+# Keyed by (provider, region) for the same reason catalog_node_types is: a flat
+# default would name a type that cannot be created there. hetzner wants cx43,
+# which hel1 does not sell.
 catalog_default_node_type() {
+  case "$1:$2" in
+    aws:*) echo "t4g.medium" ;;
+    civo:*) echo "g4s.kube.medium" ;;
+    hetzner:hel1) echo "cx33" ;;
+    hetzner:*) echo "cx43" ;;
+    *) echo "" ;;
+  esac
+}
+
+# Only hetzner has one: everywhere else the control plane belongs to the cloud,
+# and the platform neither sizes nor pays for it. Small because the node is
+# tainted and carries no workload.
+catalog_default_control_plane_node_type() {
   case "$1" in
-    aws) echo "t4g.medium" ;;
-    civo) echo "g4s.kube.medium" ;;
-    hetzner) echo "cx33" ;;
+    hetzner) echo "cx23" ;;
     *) echo "" ;;
   esac
 }
@@ -143,7 +157,7 @@ catalog_default_node_count() {
   case "$1" in
     aws) echo "1" ;;
     civo) echo "3" ;;
-    hetzner) echo "3" ;;
+    hetzner) echo "2" ;;
     *) echo "" ;;
   esac
 }

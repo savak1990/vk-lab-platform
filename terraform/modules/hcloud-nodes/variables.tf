@@ -4,7 +4,7 @@ variable "project" {
 }
 
 variable "node_count" {
-  description = "NODE_COUNT - servers in the fixed pool, the schedulable control plane included. Authoritative only at create time; the cluster autoscaler owns the count afterwards."
+  description = "NODE_COUNT - servers in the fixed pool, the control plane included. Authoritative only at create time; the cluster autoscaler owns the count afterwards."
   type        = number
   default     = 3
 
@@ -15,9 +15,15 @@ variable "node_count" {
 }
 
 variable "node_type" {
-  description = "NODE_TYPE - the Hetzner server type for every server. Validated against scripts/lib/catalog.sh before Terraform runs."
+  description = "NODE_TYPE - the Hetzner server type for every worker. Validated against scripts/lib/catalog.sh before Terraform runs."
   type        = string
-  default     = "cx33"
+  default     = "cx43"
+}
+
+variable "control_plane_node_type" {
+  description = "CONTROL_PLANE_NODE_TYPE - the server type for the control plane alone. Smaller than the workers because the node is tainted and carries no workload."
+  type        = string
+  default     = "cx23"
 }
 
 variable "control_plane_count" {

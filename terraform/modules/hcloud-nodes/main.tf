@@ -41,7 +41,7 @@ resource "random_password" "k3s_token" {
 
 resource "hcloud_server" "control_plane" {
   name         = "${var.project}-cp-1"
-  server_type  = var.node_type
+  server_type  = var.control_plane_node_type
   image        = var.image
   location     = var.location
   ssh_keys     = [var.ssh_key_id]
