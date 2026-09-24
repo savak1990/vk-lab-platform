@@ -81,6 +81,10 @@ longer needs `--kubelet-insecure-tls`.
 
 **The control plane stays schedulable** and carries workloads, so the kubelet
 reservations decided for the kubeadm design are carried over unchanged —
+*(Amended 2026-09-24 by spec HETZ-178: it no longer does. The control plane is
+created on a smaller server type and tainted
+`node-role.kubernetes.io/control-plane=true:NoSchedule` at first boot. The
+reservations below are unchanged and still apply to every node.)* —
 `system-reserved` 500m/1Gi, `kube-reserved` 250m/512Mi, `eviction-hard`
 `memory.available<300Mi`. Their distribution changes: kubeadm set them once in
 the `kube-system/kubelet-config` ConfigMap and every join inherited them, while

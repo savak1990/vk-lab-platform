@@ -63,7 +63,7 @@ equivalent; **n/a** = not applicable on Hetzner.
 | Reserved IP | `civo_reserved_ip` for the LB | **none**: primary IPs attach to servers only; the LB owns its address and gets a new one per `make up` | n/a | 025, 060 |
 | SSH key | — | `hcloud_ssh_key` from a committed public key; private key `secrets/<project>/hetzner-ssh-key.enc` | new | 025 |
 | Cluster | `civo_kubernetes_cluster` (managed) | `hcloud_firewall` + `control_plane_count` + `worker_count` `hcloud_server` (`cx33`, `ubuntu-24.04` x86, hostname = server name); cloud-init installs k3s on every node — the control plane as `k3s server --cluster-init`, workers as `k3s agent` against its private address with the Terraform-generated token, joining at first boot | new | 030, 040 |
-| Capacity | fixed pool of three Medium | 1 cp + 1 worker fixed; autoscaler 0–2 extra `cx33` in M1; ceiling 4 nodes | mirror | 030, 170 |
+| Capacity | fixed pool of three Medium | 1 tainted `cx23` control plane + 1 `cx43` worker fixed; autoscaler 0–1 extra worker in M1; ceiling 3 servers, leaving 2 of the account's 5 for CI | new | 030, 170, 178 |
 | Kubeconfig | `civo kubernetes config` | `/etc/kubernetes/admin.conf` over SSH, server rewritten to the public IP | new | 035 |
 | Readiness | `kubectl get nodes` (provider `ready` unreliable) | Terraform returns when servers exist; the control plane initializes itself at boot, and the bootstrap script joins the workers and then waits for every node Ready | mirror | 037 |
 | Leak sweep | `civo` CLI by name/network | `hcloud` CLI by label `project=<project>` over servers, load balancers, volumes, primary IPs, firewalls | mirror | 040 |
