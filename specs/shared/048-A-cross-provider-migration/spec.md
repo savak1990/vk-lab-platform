@@ -233,5 +233,75 @@ Refusing: invalid RECOVER_FROM
   - generation 'nonsense' must look like lab-postgres-20260101T000000Z
 ```
 
-**Outstanding:** the three-hop live run (§8 criteria 1-6, 9). Recorded here
-rather than claimed.
+### Live, 2026-09-24 — three hops across three clouds
+
+One database moved Hetzner k3s (`fsn1`) → Civo managed Kubernetes (`LON1`) →
+AWS EKS (`eu-west-1`), carrying rows first written on Hetzner.
+
+| Hop | Command | Source generation | Result |
+|---|---|---|---|
+| 1 | `PROVIDER=hetzner make up` | own pointer, no `RECOVER_FROM` | recovered 6 rows from a third consecutive cycle |
+| 2 | `PROVIDER=civo make up` | `vk-hetzner-lab-fsn1-…/lab-postgres-20260924T180201Z` | 8 rows, 4 tables |
+| 3 | `PROVIDER=aws make full-up` | `vk-civo-lab-lon1-…/lab-postgres-20260924T183132Z` | 10 rows, 5 tables |
+
+Final state on EKS, having originated two clouds away:
+
+```
+  1-6  | cycle0/cycle1   | written on Hetzner over three earlier down/up cycles
+  7-8  | hetzner-origin  | written on Hetzner before the first migration
+  9-10 | civo-hop        | written on Civo after the first migration
+tables: proof, ddl_proof_cycle0, ddl_proof_cycle1,
+        migration_proof_hetzner, migration_proof_civo
+```
+
+Criteria:
+
+1. **Met.** 10/10 rows and 5/5 tables on EKS.
+2. **Met.** `.spec.bootstrap` read from the live `Cluster` on both recovering
+   hops: `{"recovery":{"database":"vkdb","owner":"vkdb","source":"lab-postgres-previous"}}`,
+   with `externalClusters[0]…serverName` naming the foreign generation. No
+   `initdb` key on either.
+3. **Met.** Both hops logged `ARGO-UP: imported <generation>.` and the prefix
+   appeared in the target bucket.
+4. **Met.** After all three hops, every source bucket still listed its
+   generations — Hetzner `…T214905Z` and `…T180201Z`, Civo `…T180201Z` and
+   `…T183132Z`.
+5. **Met.** A second Civo bring-up with the same `RECOVER_FROM` printed
+   `lab-postgres-20260924T180201Z is already in this project's bucket - not
+   re-copying.` and left the 10 rows intact.
+6. **Met.** Hop 1 ran with no `RECOVER_FROM` and recovered from Hetzner's own
+   pointer. Post-import, each target published **its own** new generation, not
+   the imported one — AWS's pointer reads `lab-postgres-20260924T191306Z` while
+   the imported generation was `…T183132Z`, so a later bare bring-up resolves to
+   the target's own work.
+7. **Met.** Offline, both invocation forms, both problems in one pass.
+8. **Met.** One added line in `make -n up`; `gitops-check` golden unchanged.
+9. See below.
+
+`ContinuousArchiving=True` on every hop. A base backup reached `completed`
+before each teardown, and each teardown's forced WAL switch produced a
+`completed` pre-teardown backup in about 20 s.
+
+**The override beat an existing pointer.** Civo held its own generation
+(`lab-postgres-20260924T155420Z`) when hop 2 ran. `RECOVER_FROM` took
+precedence rather than deferring to it, which is the branch in
+`backup_resolve_generation` doing its job. Civo's own older archive was then
+pruned by the ordinary keep-2 rule once the imported and new generations
+arrived — expected, and worth knowing before migrating a project that still has
+data worth keeping.
+
+**One failure, recorded.** The first AWS teardown aborted at `cluster-down`:
+
+```
+Error: reading CloudWatch Logs Log Group (/aws/eks/vk-lab-platform-eks/cluster):
+  dial tcp: lookup logs.eu-west-1.amazonaws.com: no such host
+```
+
+Local DNS resolution dropped mid-run. Not a platform defect; the teardown was
+re-run.
+
+**Observation, not a change made here.** A `make up` against an
+already-healthy cluster takes a fast path that neither publishes a new
+generation nor prunes. The pointer, the archiver `serverName` and the completed
+base backup stayed consistent throughout, so nothing was at risk, but the
+behaviour predates this spec and is worth a look on its own.
