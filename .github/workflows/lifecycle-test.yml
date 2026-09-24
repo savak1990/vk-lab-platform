@@ -449,10 +449,12 @@ jobs:
   #
   # Neither job needs the other, so they run at the same time, and a failure in
   # one can never stop the other reaching its own teardown. That independence
-  # is the whole point; it is not an optimization.
+  # is the whole point; it is not an optimization. They do share one upstream
+  # gate beyond the static checks: kind-integration, so no provider API is
+  # reached until the platform comes up on a free cluster first.
   lifecycle-aws:
     needs: [changes, validate-terraform, validate-gitops, validate-yaml,
-            validate-actions, validate-secrets, validate-repo]
+            validate-actions, validate-secrets, validate-repo, kind-integration]
     # A called workflow can never hold more permissions than its caller grants,
     # so id-token: write has to be restated here or OIDC fails inside it.
     permissions:
@@ -491,7 +493,7 @@ jobs:
 
   lifecycle-civo:
     needs: [changes, validate-terraform, validate-gitops, validate-yaml,
-            validate-actions, validate-secrets, validate-repo]
+            validate-actions, validate-secrets, validate-repo, kind-integration]
     permissions:
       id-token: write
       contents: read
@@ -524,7 +526,7 @@ jobs:
 
   lifecycle-hetzner:
     needs: [changes, validate-terraform, validate-gitops, validate-yaml,
-            validate-actions, validate-secrets, validate-repo]
+            validate-actions, validate-secrets, validate-repo, kind-integration]
     permissions:
       id-token: write
       contents: read
@@ -550,10 +552,14 @@ jobs:
       # control plane plus one worker still exercises the private-network join
       # that is this target's whole distinguishing feature.
       node_count: "2"
-      # cx33 is the Makefile default and on 2026-09-23 the whole cx line read
-      # out of stock in every Hetzner location, so a run on the default would
-      # fail at placement. cpx32 is the same 4 vCPU / 8 GiB and is sold today.
+      # On 2026-09-23 the whole cx line read out of stock in every Hetzner
+      # location, so a run on either default would fail at placement. Both are
+      # pinned to the cpx line, which was sold throughout. cpx32 is the
+      # smallest one the catalogue carries, so the control plane is larger
+      # here than the lab's cx23 - a 25-minute run is billed by the hour, and
+      # a run that cannot start costs more than an oversized control plane.
       node_type: cpx32
+      control_plane_node_type: cpx32
       production_tls: false
       target_revision: ${{ github.event.pull_request.head.sha || github.ref_name }}
 
@@ -562,12 +568,16 @@ jobs:
   # runners, which a cloud cluster outlives and a kind cluster does not - it
   # dies with the job that created it. So one job, and teardown is a step.
   kind-integration:
-    # Deliberately NOT the cloud jobs' needs list. Those wait for every static
-    # check because a cluster costs money and a failed check means it would be
-    # wasted. This one is free, so it starts as soon as the change is
-    # classified and runs beside the static checks rather than behind them -
-    # waiting for validate-terraform alone would idle it for ten minutes.
-    # pr-gate still waits for its result, so nothing merges without it.
+    # Starts as soon as the change is classified, beside the static checks
+    # rather than behind them - waiting for validate-terraform alone would idle
+    # it for ten minutes, and this job is free.
+    #
+    # The cloud jobs list it in their own needs, so none of them reaches a
+    # provider API until the platform has been proven to render, sync and tear
+    # down on kind. A cluster costs money and a Hetzner run costs a server slot
+    # out of five; neither is worth spending on a change that cannot come up
+    # locally. That gate is the `if` those jobs already carry - it refuses on
+    # any needs result of failure or cancelled.
     needs: [changes]
     permissions:
       contents: read

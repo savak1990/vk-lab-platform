@@ -82,7 +82,14 @@ longer needs `--kubelet-insecure-tls`.
 **The control plane stays schedulable** and carries workloads, so the kubelet
 reservations decided for the kubeadm design are carried over unchanged —
 `system-reserved` 500m/1Gi, `kube-reserved` 250m/512Mi, `eviction-hard`
-`memory.available<300Mi`. Their distribution changes: kubeadm set them once in
+`memory.available<300Mi`.
+
+*Amended 2026-09-24 by spec HETZ-178: the control plane is no longer
+schedulable. It is created on a smaller server type and tainted
+`node-role.kubernetes.io/control-plane=true:NoSchedule` at first boot. The
+three reservations above are unchanged and still apply to every node.*
+
+Their distribution changes: kubeadm set them once in
 the `kube-system/kubelet-config` ConfigMap and every join inherited them, while
 k3s takes them as `--kubelet-arg` on each node's install line. One Terraform
 variable renders both templates, so the values cannot drift apart.

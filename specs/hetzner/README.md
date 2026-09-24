@@ -114,6 +114,7 @@ two additions:
 | HETZ-170 | [170-D-hetzner-cluster-autoscaler](170-D-hetzner-cluster-autoscaler/spec.md) | Cluster autoscaler `cloudProvider: hetzner`, one `cx33` worker that boots the same worker cloud-init | DONE | P1 | M | strongest | 030, 045 | M1 |
 | HETZ-175 | [175-P-sku-fallback-and-right-size](175-P-sku-fallback-and-right-size/spec.md) | Stock-aware SKU fallback (CX → CPX) and right-sizing on measured data | READY | P2 | S | standard | 160, CIVO-175 | M2 |
 | HETZ-177 | [177-P-hetzner-arm-node-types](177-P-hetzner-arm-node-types/spec.md) | ARM node types (CAX) in the Hetzner catalogue, verified end to end | BLOCKED | P1 | M | standard | 040, 045, 182 | M2 |
+| HETZ-178 | [178-D-dedicated-control-plane](178-D-dedicated-control-plane/spec.md) | A dedicated `cx23` control plane, tainted so it carries no workload, beside a `cx43` worker | DONE | P1 | S | strongest | 030, 170 | M1 |
 | HETZ-182 | [182-P-multi-arch-images](182-P-multi-arch-images/spec.md) | Repo-built images published for `linux/arm64` as well as `linux/amd64` | DRAFT | P0 | S | fast | CIVO-180 | M2 |
 | HETZ-185 | [185-Z-kubeadm-operations-runbook](185-Z-kubeadm-operations-runbook/spec.md) | CKA practice runbook: kubeadm upgrade 1.36 → 1.37, stacked etcd snapshot/restore, certificate checks | SUPERSEDED | P2 | M | standard | 037, 040 | M1 |
 | HETZ-190 | [190-P-proxy-protocol-client-ip](190-P-proxy-protocol-client-ip/spec.md) | Proxy protocol on the hcloud LB and client IP at Envoy | READY | P3 | S | fast | 060, CIVO-190 | M2 |

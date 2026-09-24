@@ -14,7 +14,8 @@ name: lab
 # confirm_destroy below. `region`, `node_type` and `node_count` size the
 # cluster; they are free strings because what is valid depends on the provider
 # and on the region, and the offline gate refuses a bad combination in the
-# job's first seconds rather than deep inside an apply.
+# job's first seconds rather than deep inside an apply. `control_plane_node_type`
+# sizes the one server the platform owns itself, on hetzner alone.
 on:
   workflow_dispatch:
     inputs:
@@ -55,10 +56,17 @@ on:
         description: "node_type"
         type: string
         default: ""
-      # Blank uses the provider's default - 3 on civo and hetzner, 1 on aws.
+      # Blank uses the provider's default - 3 on civo, 2 on hetzner, 1 on aws.
       # Counts the cluster's own nodes; Karpenter capacity is separate.
       node_count:
         description: "node_count"
+        type: string
+        default: ""
+      # hetzner only, where the platform creates the control plane itself and
+      # pays for it. Blank uses cx23. A value on any other provider is refused
+      # by the offline gate, since nothing there would read it.
+      control_plane_node_type:
+        description: "control_plane_node_type (hetzner only)"
         type: string
         default: ""
       target:
@@ -125,6 +133,7 @@ jobs:
           IN_REGION: ${{ inputs.region }}
           IN_NODE_TYPE: ${{ inputs.node_type }}
           IN_NODE_COUNT: ${{ inputs.node_count }}
+          IN_CONTROL_PLANE_NODE_TYPE: ${{ inputs.control_plane_node_type }}
         run: |
           set -euo pipefail
           case "$IN_PROVIDER:$IN_PROJECT_NAME" in
@@ -141,6 +150,7 @@ jobs:
           [ -n "$IN_REGION" ] && echo "REGION=$IN_REGION" >> "$GITHUB_ENV"
           [ -n "$IN_NODE_TYPE" ] && echo "NODE_TYPE=$IN_NODE_TYPE" >> "$GITHUB_ENV"
           [ -n "$IN_NODE_COUNT" ] && echo "NODE_COUNT=$IN_NODE_COUNT" >> "$GITHUB_ENV"
+          [ -n "$IN_CONTROL_PLANE_NODE_TYPE" ] && echo "CONTROL_PLANE_NODE_TYPE=$IN_CONTROL_PLANE_NODE_TYPE" >> "$GITHUB_ENV"
           exit 0
 
       # The test job below does not fire for target `test` - it only follows an

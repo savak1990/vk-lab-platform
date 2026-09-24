@@ -55,14 +55,20 @@ source "$PROVIDER_SH_REPO_ROOT/scripts/lib/catalog.sh"
 
 if catalog_takes_node_inputs "$PROVIDER"; then
   export REGION="${REGION:-$(catalog_default_region "$PROVIDER")}"
-  export NODE_TYPE="${NODE_TYPE:-$(catalog_default_node_type "$PROVIDER")}"
-  export NODE_COUNT="${NODE_COUNT:-$(catalog_default_node_count "$PROVIDER")}"
-
+  # Region first: the node-type default is keyed by it.
   if _provider_canonical="$(catalog_canonical_region "$PROVIDER" "$REGION")"; then
     export REGION="$_provider_canonical"
-    if _provider_canonical="$(catalog_canonical_node_type "$PROVIDER" "$REGION" "$NODE_TYPE")"; then
-      export NODE_TYPE="$_provider_canonical"
-    fi
+  fi
+  export NODE_TYPE="${NODE_TYPE:-$(catalog_default_node_type "$PROVIDER" "$REGION")}"
+  export NODE_COUNT="${NODE_COUNT:-$(catalog_default_node_count "$PROVIDER")}"
+  export CONTROL_PLANE_NODE_TYPE="${CONTROL_PLANE_NODE_TYPE:-$(catalog_default_control_plane_node_type "$PROVIDER")}"
+
+  if _provider_canonical="$(catalog_canonical_node_type "$PROVIDER" "$REGION" "$NODE_TYPE")"; then
+    export NODE_TYPE="$_provider_canonical"
+  fi
+  if [ -n "$CONTROL_PLANE_NODE_TYPE" ] &&
+    _provider_canonical="$(catalog_canonical_node_type "$PROVIDER" "$REGION" "$CONTROL_PLANE_NODE_TYPE")"; then
+    export CONTROL_PLANE_NODE_TYPE="$_provider_canonical"
   fi
   unset _provider_canonical
 fi
