@@ -61,8 +61,18 @@ run_case "the control plane alone fails - the worker has not joined" \
 run_case "two workers are not enough when MIN_WORKER_NODES is 3" "$READY3" 3 1
 run_case "no nodes at all fails" "" 1 1
 
+# Only hetzner's control plane is a node of the cluster. Elsewhere the cloud
+# owns it, so the worker count is the whole expectation.
+PROVIDER=civo run_case "civo counts workers alone, with no control plane node" \
+  "w-1 Ready <none> 1h v1.33.0
+w-2 Ready <none> 1h v1.33.0
+w-3 Ready <none> 1h v1.33.0" 3 0
+PROVIDER=civo run_case "civo still fails one worker short" \
+  "w-1 Ready <none> 1h v1.33.0
+w-2 Ready <none> 1h v1.33.0" 3 1
+
 if [ "$fails" -gt 0 ]; then
   echo "node-ready-test: $fails case(s) failed" >&2
   exit 1
 fi
-echo "node-ready-test: all 7 cases passed"
+echo "node-ready-test: all 9 cases passed"

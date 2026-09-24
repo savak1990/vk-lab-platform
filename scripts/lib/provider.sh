@@ -420,9 +420,11 @@ api_reachable() {
 # is the whole assertion - nodes stay tainted uninitialized until HETZ-045's
 # cloud controller manager runs, so waiting for schedulable would never return.
 wait_for_nodes_ready() {
-  # The control plane is one node on top of the workers. It is tainted and
-  # schedules nothing, but it registers and reports Ready like any other.
-  local expected=$(( ${MIN_WORKER_NODES:-1} + 1 ))
+  # Only hetzner adds one: its control plane is a node of this cluster, tainted
+  # and scheduling nothing but registering and reporting Ready like any other.
+  # Every other target's control plane belongs to the cloud and never appears.
+  local expected="${MIN_WORKER_NODES:-1}"
+  [ "${PROVIDER:-}" = hetzner ] && expected=$(( expected + 1 ))
   local budget="${HETZNER_NODE_READY_SECONDS:-600}"
   local interval="${ARGO_UP_POLL_INTERVAL:-5}"
   local deadline=$((SECONDS + budget))

@@ -118,7 +118,7 @@ risk a server slot.
 |---|---|
 | Every target's rendered bounds are unchanged from before the rename | pass — aws `cpuLimit: 4`, civo `3:4`, hetzner `0:1:CX43:FSN1` |
 | `MAX < MIN` is refused; a non-integer is refused; `MAX = 4` on hetzner is refused | pass, `tests/scripts/node-config-test.sh`, 18 cases |
-| `wait_for_nodes_ready` expects `MIN_WORKER_NODES + 1` on hetzner | pass, `tests/scripts/node-ready-test.sh`, 7 cases |
+| `wait_for_nodes_ready` expects `MIN_WORKER_NODES + 1` on hetzner and `MIN_WORKER_NODES` elsewhere | pass, `tests/scripts/node-ready-test.sh`, 9 cases |
 | Every hetzner region resolves to a worker type it sells, through `make` | pass — `hel1` gives `cx33`, `fsn1` and `nbg1` give `cx43` |
 | `make scripts-check`, `make gitops-check`, `make node-config-check`, `terraform fmt`, `terraform validate` on all three cluster modules | pass |
 | The aws golden render is unchanged | pass — the root Application's parameters did not change |
