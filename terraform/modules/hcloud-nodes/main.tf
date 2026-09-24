@@ -1,5 +1,5 @@
 locals {
-  worker_count = var.node_count - var.control_plane_count
+  worker_count = var.min_worker_nodes
 
   # Hetzner's gateway is the network's first address, not the subnet's, so
   # .1-.9 stay assignable and .10 is free for a fixed control plane. Derived
@@ -82,7 +82,7 @@ resource "hcloud_server" "worker" {
   count = local.worker_count
 
   name         = "${var.project}-worker-${count.index + 1}"
-  server_type  = var.node_type
+  server_type  = var.worker_node_type
   image        = var.image
   location     = var.location
   ssh_keys     = [var.ssh_key_id]

@@ -1,5 +1,5 @@
-# Guards NODE_COUNT, NODE_TYPE, CONTROL_PLANE_NODE_TYPE and REGION before
-# anything reaches a cloud.
+# Guards MIN_WORKER_NODES, MAX_WORKER_NODES, WORKER_NODE_TYPE,
+# CONTROL_PLANE_NODE_TYPE and REGION before anything reaches a cloud.
 # Offline and credential-free by design: the point is to fail on a typo in
 # under a second, not twenty minutes into an apply. Whether a type is in
 # stock right now is a different question, answered by HETZ-175's probe.
@@ -26,8 +26,9 @@ node_config_legal_regions() {
 
 require_valid_node_config() {
   local provider="${PROVIDER:-aws}"
-  local region="${REGION:-}" node_type="${NODE_TYPE:-}" node_count="${NODE_COUNT:-}"
+  local region="${REGION:-}" node_type="${WORKER_NODE_TYPE:-}"
   local cp_node_type="${CONTROL_PLANE_NODE_TYPE:-}"
+  local min_workers="${MIN_WORKER_NODES:-}" max_workers="${MAX_WORKER_NODES:-}"
   local errors=()
 
   # Ignored rather than refused: these are commonly left exported in a shell
@@ -38,12 +39,13 @@ require_valid_node_config() {
   fi
 
   region="${region:-$(catalog_default_region "$provider")}"
-  node_count="${node_count:-$(catalog_default_node_count "$provider")}"
+  min_workers="${min_workers:-$(catalog_default_min_workers "$provider")}"
+  max_workers="${max_workers:-$(catalog_default_max_workers "$provider")}"
 
   local canonical_region=""
   # Fixed rather than merely unlisted: the shared secrets key, lab-role and
   # the OIDC provider all live in it, so a project elsewhere fails deep in an
-  # apply instead of here. Resolved anyway, so NODE_TYPE is still checked.
+  # apply instead of here. Resolved anyway, so WORKER_NODE_TYPE is still checked.
   if [ "$provider" = "aws" ]; then
     canonical_region="$(catalog_default_region aws)"
     if [ -n "${REGION:-}" ] && [ "$(catalog_lower "$REGION")" != "$canonical_region" ]; then
@@ -56,14 +58,14 @@ require_valid_node_config() {
   if [ -n "$canonical_region" ]; then
     local allowed
     allowed="$(catalog_node_types "$provider" "$canonical_region")"
-    node_type="${node_type:-$(catalog_default_node_type "$provider" "$canonical_region")}"
+    node_type="${node_type:-$(catalog_default_worker_node_type "$provider" "$canonical_region")}"
     if [ -z "$allowed" ]; then
       errors+=("REGION '$canonical_region' has no node type this platform will order; see scripts/lib/catalog.sh")
     elif ! catalog_canonical_node_type "$provider" "$canonical_region" "$node_type" >/dev/null; then
-      errors+=("NODE_TYPE '$node_type' is not allowed in '$canonical_region'; there: $allowed")
+      errors+=("WORKER_NODE_TYPE '$node_type' is not allowed in '$canonical_region'; there: $allowed")
     fi
   elif [ -n "$node_type" ]; then
-    errors+=("NODE_TYPE '$node_type' was not checked, because REGION is invalid")
+    errors+=("WORKER_NODE_TYPE '$node_type' was not checked, because REGION is invalid")
   fi
 
   # The only control plane the platform creates and pays for is hetzner's, so
@@ -81,8 +83,23 @@ require_valid_node_config() {
     errors+=("CONTROL_PLANE_NODE_TYPE is not an input for PROVIDER=$provider; only hetzner creates a control plane this platform sizes")
   fi
 
-  if ! printf '%s' "$node_count" | grep -Eq '^[1-9][0-9]*$'; then
-    errors+=("NODE_COUNT '$node_count' must be a positive integer")
+  # Both whole and ordered before either is compared, so a non-numeric value
+  # never reaches an arithmetic test that would abort the shell.
+  local counts_whole=1
+  if ! printf '%s' "$min_workers" | grep -Eq '^[1-9][0-9]*$'; then
+    errors+=("MIN_WORKER_NODES '$min_workers' must be a positive integer")
+    counts_whole=0
+  fi
+  if ! printf '%s' "$max_workers" | grep -Eq '^[1-9][0-9]*$'; then
+    errors+=("MAX_WORKER_NODES '$max_workers' must be a positive integer")
+    counts_whole=0
+  fi
+  if [ "$counts_whole" = 1 ]; then
+    if [ "$max_workers" -lt "$min_workers" ]; then
+      errors+=("MAX_WORKER_NODES '$max_workers' must be at least MIN_WORKER_NODES '$min_workers'")
+    elif [ "$provider" = "hetzner" ] && [ "$max_workers" -gt 3 ]; then
+      errors+=("MAX_WORKER_NODES '$max_workers' is too high on hetzner: the account sells 5 server(s) and shares them with CI, and one of them is the control plane")
+    fi
   fi
 
   # Reported together: an operator who cannot see what they typed should

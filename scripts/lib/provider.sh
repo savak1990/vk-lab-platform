@@ -59,12 +59,13 @@ if catalog_takes_node_inputs "$PROVIDER"; then
   if _provider_canonical="$(catalog_canonical_region "$PROVIDER" "$REGION")"; then
     export REGION="$_provider_canonical"
   fi
-  export NODE_TYPE="${NODE_TYPE:-$(catalog_default_node_type "$PROVIDER" "$REGION")}"
-  export NODE_COUNT="${NODE_COUNT:-$(catalog_default_node_count "$PROVIDER")}"
+  export WORKER_NODE_TYPE="${WORKER_NODE_TYPE:-$(catalog_default_worker_node_type "$PROVIDER" "$REGION")}"
+  export MIN_WORKER_NODES="${MIN_WORKER_NODES:-$(catalog_default_min_workers "$PROVIDER")}"
+  export MAX_WORKER_NODES="${MAX_WORKER_NODES:-$(catalog_default_max_workers "$PROVIDER")}"
   export CONTROL_PLANE_NODE_TYPE="${CONTROL_PLANE_NODE_TYPE:-$(catalog_default_control_plane_node_type "$PROVIDER")}"
 
-  if _provider_canonical="$(catalog_canonical_node_type "$PROVIDER" "$REGION" "$NODE_TYPE")"; then
-    export NODE_TYPE="$_provider_canonical"
+  if _provider_canonical="$(catalog_canonical_node_type "$PROVIDER" "$REGION" "$WORKER_NODE_TYPE")"; then
+    export WORKER_NODE_TYPE="$_provider_canonical"
   fi
   if [ -n "$CONTROL_PLANE_NODE_TYPE" ] &&
     _provider_canonical="$(catalog_canonical_node_type "$PROVIDER" "$REGION" "$CONTROL_PLANE_NODE_TYPE")"; then
@@ -419,7 +420,11 @@ api_reachable() {
 # is the whole assertion - nodes stay tainted uninitialized until HETZ-045's
 # cloud controller manager runs, so waiting for schedulable would never return.
 wait_for_nodes_ready() {
-  local expected="${NODE_COUNT:-3}"
+  # Only hetzner adds one: its control plane is a node of this cluster, tainted
+  # and scheduling nothing but registering and reporting Ready like any other.
+  # Every other target's control plane belongs to the cloud and never appears.
+  local expected="${MIN_WORKER_NODES:-1}"
+  [ "${PROVIDER:-}" = hetzner ] && expected=$(( expected + 1 ))
   local budget="${HETZNER_NODE_READY_SECONDS:-600}"
   local interval="${ARGO_UP_POLL_INTERVAL:-5}"
   local deadline=$((SECONDS + budget))

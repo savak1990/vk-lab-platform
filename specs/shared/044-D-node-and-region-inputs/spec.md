@@ -189,6 +189,12 @@ script runs.
 
 ### 3.3 What `NODE_COUNT` counts
 
+> **Superseded 2026-09-24 by SHARED-047.** `NODE_COUNT` no longer exists;
+> `MIN_WORKER_NODES` and `MAX_WORKER_NODES` replace it and count worker nodes
+> only. The Hetzner row below counted the control plane *because it was
+> schedulable*, and HETZ-178 tainted it, so that reason lapsed. The rest of
+> this section is kept as the record of why the shape was chosen.
+
 **Every node the operator pays for in the fixed pool.** Autoscaler and
 Karpenter capacity is added on top and is not counted.
 

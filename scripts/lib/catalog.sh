@@ -131,7 +131,7 @@ catalog_default_region() {
 # Keyed by (provider, region) for the same reason catalog_node_types is: a flat
 # default would name a type that cannot be created there. hetzner wants cx43,
 # which hel1 does not sell.
-catalog_default_node_type() {
+catalog_default_worker_node_type() {
   case "$1:$2" in
     aws:*) echo "t4g.medium" ;;
     civo:*) echo "g4s.kube.medium" ;;
@@ -151,13 +151,42 @@ catalog_default_control_plane_node_type() {
   esac
 }
 
-# aws is 1 because Karpenter supplies workload capacity on top of the
-# system node group; civo and hetzner pay for every node they run.
-catalog_default_node_count() {
+# Worker nodes only - a control plane is never counted, whether the cloud owns
+# it or this platform does.
+#
+# The floor differs by what each target's elastic capacity can be trusted to
+# do. aws is 1 because Karpenter supplies everything above the system node
+# group. civo is 3 because the measured working set does not fit on 2, and a
+# lower floor lets an autoscaler that simulates on requests settle into
+# permanent over-subscription. hetzner is 1 because its control plane is
+# tainted and its worker is large.
+catalog_default_min_workers() {
   case "$1" in
     aws) echo "1" ;;
     civo) echo "3" ;;
+    hetzner) echo "1" ;;
+    *) echo "" ;;
+  esac
+}
+
+# The ceiling, counting the fixed workers. hetzner stops at 2 because the
+# account sells five servers and CI shares them: 1 control plane + 1 fixed + 1
+# elastic leaves 2 for a CI run. aws is 3 because (3-1) x 2 vCPU reproduces
+# Karpenter's shipped cpuLimit of 4.
+catalog_default_max_workers() {
+  case "$1" in
+    aws) echo "3" ;;
+    civo) echo "4" ;;
     hetzner) echo "2" ;;
+    *) echo "" ;;
+  esac
+}
+
+# aws has no node-count bound at all: Karpenter caps a NodePool by vCPU. One
+# node is defined as this many, so a count can be converted to that cap.
+catalog_vcpu_per_node() {
+  case "$1" in
+    aws) echo "2" ;;
     *) echo "" ;;
   esac
 }
