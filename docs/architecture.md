@@ -1703,8 +1703,8 @@ not dispatchable), plus a `confirm_destroy` free-text input wired to
 `CONFIRM_DESTROY` for `full-down`, which reaches `bootstrap-down`):
 
 ```text
-lab.yml (target: status | up | down | platform-up | platform-down |
-                 full-up | full-down)
+lab.yml (target: up | down | argo-up | argo-down | test |
+                 platform-up | platform-down | full-up | full-down)
     ↓
 make ${{ inputs.target }}   (CONFIRM_DESTROY=${{ inputs.confirm_destroy }})
 ```

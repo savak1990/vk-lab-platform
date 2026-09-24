@@ -174,12 +174,25 @@ lab_options() {
     in_input && /^        options:$/ { in_opts = 1; next }
     in_opts && /^          - / {
       line = $0
-      sub(/^          - "/, "", line)
+      sub(/^          - "?/, "", line)
       sub(/"$/, "", line)
       print line
       next
     }
     in_opts { exit }
+  ' "$REPO_ROOT/.github/workflows/lab.yml"
+}
+
+lab_default() {
+  awk -v key="      $1:" '
+    $0 == key { in_input = 1; next }
+    in_input && /^        default: / {
+      line = $0
+      sub(/^        default: /, "", line)
+      gsub(/"/, "", line)
+      print line
+      exit
+    }
   ' "$REPO_ROOT/.github/workflows/lab.yml"
 }
 
@@ -227,35 +240,50 @@ for input in worker_node_type control_plane_node_type; do
   esac
 done
 
+# A preselected value that is not one of the options makes GitHub refuse the
+# whole dispatch, and every choice input here ships preselected.
+for input in target provider worker_node_type control_plane_node_type; do
+  want="$(lab_default "$input")"
+  if ! lab_options "$input" | grep -qxF "$want"; then
+    echo "FAIL: lab.yml $input default '$want' is not one of its options"
+    fails=$((fails + 1))
+  else
+    echo "ok: lab.yml $input default '$want' is an offered option"
+  fi
+done
+
 # The same normaliser lab.yml runs on the two dropdown values, kept in step by
-# eye: a label that stops reducing to empty would pin every run to one type.
+# eye. The form is preselected for hetzner, so a label naming another provider
+# must reduce to empty or every aws and civo dispatch is refused by the gate.
 node_type_of() {
   case "$1" in
-    default*) echo "" ;;
-    *) echo "${1##* }" ;;
+    "$IN_PROVIDER: "*) echo "${1##* }" ;;
+    *) echo "" ;;
   esac
 }
 
 expect_strip() {
   local got
-  got="$(node_type_of "$1")"
-  if [ "$got" != "$2" ]; then
-    echo "FAIL: node_type_of '$1' gave '$got', want '$2'"
+  got="$(node_type_of "$2")"
+  if [ "$got" != "$3" ]; then
+    echo "FAIL: node_type_of '$2' on $1 gave '$got', want '$3'"
     fails=$((fails + 1))
   else
-    echo "ok: node_type_of '$1' -> '$got'"
+    echo "ok: node_type_of '$2' on $1 -> '$got'"
   fi
 }
 
-for input in worker_node_type control_plane_node_type; do
-  while IFS= read -r option; do
-    case "$option" in
-      default*) expect_strip "$option" "" ;;
-      *) expect_strip "$option" "${option##* }" ;;
-    esac
-  done < <(lab_options "$input")
+for IN_PROVIDER in hetzner aws civo; do
+  for input in worker_node_type control_plane_node_type; do
+    while IFS= read -r option; do
+      case "$option" in
+        "$IN_PROVIDER: "*) expect_strip "$IN_PROVIDER" "$option" "${option##* }" ;;
+        *) expect_strip "$IN_PROVIDER" "$option" "" ;;
+      esac
+    done < <(lab_options "$input")
+  done
+  expect_strip "$IN_PROVIDER" "" ""
 done
-expect_strip "" ""
 
 [ "$fails" -eq 0 ] || {
   echo "$fails case(s) failed"

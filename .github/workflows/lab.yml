@@ -1,6 +1,8 @@
 name: lab
 
 # Manually triggered only - this starts/stops real, billable infrastructure.
+# Every field ships preselected for a hetzner bring-up, so the common dispatch
+# is open-and-run; a blank field still means "whatever that provider uses".
 # `provider` selects the whole stack (project defaults, Terraform directories,
 # identity mechanism); the Makefile owns those defaults, so a blank
 # project_name/subdomain means "whatever that provider uses". The assumed role
@@ -15,22 +17,39 @@ name: lab
 # `max_worker_nodes` size the cluster. The two node-type inputs are dropdowns
 # listing every type the catalogue sells, each labelled with the provider that
 # sells it: GitHub has no dependent dropdowns, so one flat list is as close as
-# the form gets, and it cannot express that cx43 sells in nbg1 but not hel1.
-# Picking a type the chosen provider and region do not sell is therefore still
-# possible, and the offline gate refuses it in the job's first seconds rather
-# than deep inside an apply. `control_plane_node_type` sizes the one server the
+# the form gets. A label naming another provider is dropped in the resolve step
+# below, but the list cannot express that cx43 sells in nbg1 and not in hel1,
+# so a type the chosen region does not sell is still possible - and the offline
+# gate refuses it in the job's first seconds rather than deep inside an apply. `control_plane_node_type` sizes the one server the
 # platform owns itself, on hetzner alone.
 on:
   workflow_dispatch:
     inputs:
+      # First, because it is the one field every dispatch changes. `status` is
+      # not offered: it starts nothing and costs nothing, so the form is not
+      # the place to run it.
+      target:
+        description: "target"
+        type: choice
+        options:
+          - up
+          - down
+          - argo-up
+          - argo-down
+          - test
+          - platform-up
+          - platform-down
+          - full-up
+          - full-down
+        default: up
       provider:
         description: "provider"
         type: choice
         options:
+          - hetzner
           - aws
           - civo
-          - hetzner
-        default: aws
+        default: hetzner
       # Blank uses the provider's default - vk-lab-platform on aws,
       # vk-civo-lab on civo. Lowercase alphanumeric and hyphen, 23 characters
       # at most. A new name creates a wholly separate cluster and state bucket.
@@ -52,10 +71,12 @@ on:
         description: "region (civo/hetzner only)"
         type: string
         default: ""
-      # The first option keeps the provider's default - g4s.kube.medium on
-      # civo, cx43 on hetzner (cx33 in hel1), t4g.medium on aws. The rest are
-      # every type scripts/lib/catalog.sh sells, and node-config-test.sh fails
-      # if this list and that one drift apart.
+      # Preselected to the hetzner worker, so a default dispatch needs no
+      # edit here. The first option keeps the provider's default instead -
+      # g4s.kube.medium on civo, t4g.medium on aws, cx33 in hetzner hel1,
+      # which is the one region the preselected cx43 does not sell. The rest
+      # are every type scripts/lib/catalog.sh sells, and node-config-test.sh
+      # fails if this list and that one drift apart.
       worker_node_type:
         description: "worker_node_type"
         type: choice
@@ -74,7 +95,7 @@ on:
           - "hetzner: cx53"
           - "hetzner: cpx32"
           - "hetzner: cpx42"
-        default: "default (provider decides)"
+        default: "hetzner: cx43"
       # Worker nodes only, never a control plane. Blank uses the provider's
       # default: 3-4 on civo, 1-2 on hetzner, 1-3 on aws. On aws the ceiling is
       # not a node count Karpenter understands, so it is converted to a vCPU
@@ -88,8 +109,9 @@ on:
         type: string
         default: ""
       # hetzner only, where the platform creates the control plane itself and
-      # pays for it. The first option keeps cx23. A value on any other provider
-      # is refused by the offline gate, since nothing there would read it.
+      # pays for it. Preselected to cx23, which is also what the first option
+      # resolves to. A value on any other provider is refused by the offline
+      # gate, since nothing there would read it.
       control_plane_node_type:
         description: "control_plane_node_type (hetzner only)"
         type: choice
@@ -101,22 +123,7 @@ on:
           - "hetzner: cx53"
           - "hetzner: cpx32"
           - "hetzner: cpx42"
-        default: "default (hetzner cx23)"
-      target:
-        description: "target"
-        type: choice
-        options:
-          - status
-          - up
-          - down
-          - argo-up
-          - argo-down
-          - test
-          - platform-up
-          - platform-down
-          - full-up
-          - full-down
-        default: up
+        default: "hetzner: cx23"
       # civo only, inert on aws. Untick for a throwaway project: staging
       # spares the production quota shared with the personal lab.
       production_tls:
@@ -183,12 +190,13 @@ jobs:
           [ -n "$IN_SUBDOMAIN" ] && echo "SUBDOMAIN=$IN_SUBDOMAIN" >> "$GITHUB_ENV"
           [ -n "$IN_REGION" ] && echo "REGION=$IN_REGION" >> "$GITHUB_ENV"
           # The two node-type dropdowns label each type with the provider that
-          # sells it; only the type itself reaches Make, and the "default"
-          # option means "change nothing", so Make's ?= default still wins.
+          # sells it. Only the type itself reaches Make, and a label naming
+          # another provider is dropped like the "default" option, so a form
+          # preselected for hetzner leaves Make's ?= default alone elsewhere.
           node_type_of() {
             case "$1" in
-              default*) echo "" ;;
-              *) echo "${1##* }" ;;
+              "$IN_PROVIDER: "*) echo "${1##* }" ;;
+              *) echo "" ;;
             esac
           }
           IN_WORKER_NODE_TYPE="$(node_type_of "$IN_WORKER_NODE_TYPE")"
