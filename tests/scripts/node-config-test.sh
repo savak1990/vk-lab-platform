@@ -227,6 +227,36 @@ for input in worker_node_type control_plane_node_type; do
   esac
 done
 
+# The same normaliser lab.yml runs on the two dropdown values, kept in step by
+# eye: a label that stops reducing to empty would pin every run to one type.
+node_type_of() {
+  case "$1" in
+    default*) echo "" ;;
+    *) echo "${1##* }" ;;
+  esac
+}
+
+expect_strip() {
+  local got
+  got="$(node_type_of "$1")"
+  if [ "$got" != "$2" ]; then
+    echo "FAIL: node_type_of '$1' gave '$got', want '$2'"
+    fails=$((fails + 1))
+  else
+    echo "ok: node_type_of '$1' -> '$got'"
+  fi
+}
+
+for input in worker_node_type control_plane_node_type; do
+  while IFS= read -r option; do
+    case "$option" in
+      default*) expect_strip "$option" "" ;;
+      *) expect_strip "$option" "${option##* }" ;;
+    esac
+  done < <(lab_options "$input")
+done
+expect_strip "" ""
+
 [ "$fails" -eq 0 ] || {
   echo "$fails case(s) failed"
   exit 1

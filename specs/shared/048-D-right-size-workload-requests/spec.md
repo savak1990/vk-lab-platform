@@ -134,9 +134,12 @@ intent, but 512Mi is a judgement and not a measurement — Postgres did not
 appear among the top pods in the one reading that exists.
 
 **The hcloud CCM cut is from a chart default, not from a measurement.** 100m
-to 10m is a large relative cut on a controller that has never been observed.
-It fails loudly if wrong: nodes keep the `uninitialized` taint and `argo-up`'s
-`wait_for_nodes_initialized` times out.
+to 10m is a tenfold cut on a controller that has never been observed. The
+platform sets no CPU ceiling anywhere, so the request cannot throttle it — only
+contention with other pods can starve it. The failure mode is therefore a slow
+taint removal rather than a hang, and it surfaces as `argo-up`'s
+`wait_for_nodes_initialized` timing out while nodes still carry the
+`uninitialized` taint.
 
 ## 8. Definition of done
 
