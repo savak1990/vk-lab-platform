@@ -122,4 +122,50 @@ risk a server slot.
 | Every hetzner region resolves to a worker type it sells, through `make` | pass — `hel1` gives `cx33`, `fsn1` and `nbg1` give `cx43` |
 | `make scripts-check`, `make gitops-check`, `make node-config-check`, `terraform fmt`, `terraform validate` on all three cluster modules | pass |
 | The aws golden render is unchanged | pass — the root Application's parameters did not change |
-| A lifecycle run on hetzner and on civo | outstanding — those are the two targets whose bring-up path changes shape |
+| A lifecycle run on every cloud | pass — CI run 36002556042 on `9136bec`: aws, hetzner and civo each `up`, `test`, `down` green; civo on its second attempt, see below |
+| A full local `make up` on civo from this branch | pass — `platform ready`, three nodes, `--nodes=3:4:workers`, 11 Applications Synced/Healthy |
+
+## 9. The Civo failure, and why it is not this change
+
+The first CI attempt on civo failed in `argo-up`, and a local `make up` from
+the same commit failed the same way an hour later. Both looked like a sync
+ordering fault: cert-manager, envoy-gateway and cnpg-operator crashlooping on
+`no matches for kind`, everything that needs a certificate stuck behind them,
+and root failing after ten retries on `ensure CRDs are installed first`.
+
+The cause was one layer down. The apiserver serves lists either from storage or
+from its watch cache, and its own CRD controllers — the ones that mark a CRD
+`Established` and publish it under `/apis` — read from the cache. On the failed
+cluster the two had parted company:
+
+| CRD list | Count | resourceVersion |
+|---|---|---|
+| storage | 68 | 5160 |
+| watch cache | 32 | 1182, frozen |
+| pods, storage | 25 | 5164 |
+| pods, watch cache | 25 | 5164, current |
+
+Only the CRD stream had stopped. The process had not restarted, `/readyz` was
+`ok`, `apiserver_watch_cache_initializations_total` was 1, and 36 CRDs sat with
+`acceptedNames` empty and `conditions: null` — never seen by the controllers
+that would establish them. The apiserver runs at `192.168.1.2`, not on any of
+the three workers, and no node reported pressure. The stream between Civo's
+datastore and Civo's apiserver stalled; nothing a client can do causes that.
+
+To rule out the tree, the same day saw six fresh clusters:
+
+| Tree | Result |
+|---|---|
+| this branch, CI | wedged, cache frozen at 32 |
+| this branch, local | wedged, cache frozen at 32 |
+| `c694be7`, the last commit to pass civo in CI | clean, 68 of 68 |
+| `main` at `e999eda` | clean, 68 of 68 |
+| this branch, local | clean, full `make up` exit 0 |
+| this branch, local, again | wedged, cache frozen at 65 |
+
+Three of six, on all three trees, at two different points in the burst. The
+civo render at `c694be7` and at this branch is byte-identical (1691 lines), and
+nothing under `terraform/modules/civo-k8s`, `terraform/live/cluster-civo` or any
+chart version changed between them. The CI re-run then passed on the first try.
+A civo bring-up is a coin flip until Civo's control plane stops dropping that
+stream; the platform's only defence is to run it again.
