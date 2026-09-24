@@ -189,6 +189,24 @@ RECOVER_FROM=s3://vk-hetzner-lab-<region>-postgres-backups/lab-postgres-<T> \
 kubectl get cluster lab-postgres -n cnpg-system -o jsonpath='{.spec.bootstrap}'
 ```
 
+**Confirm a completed base backup before leaving the source.** Recovery needs a
+base backup, not WAL segments alone. `ScheduledBackup` carries
+`immediate: true`, so one is taken at bring-up, and teardown adds a best-effort
+second — but neither is guaranteed to have finished when an operator is ready to
+move on:
+
+```bash
+kubectl get backup -n cnpg-system
+```
+
+**If a recovering bring-up fails part-way, re-run it with `RECOVER_FROM` still
+set.** The import is idempotent, so repeating it is safe. A bare re-run is not:
+`backup_publish_server_name` writes the generation pointer only after the
+platform reports healthy, so a failed first attempt leaves that pointer absent,
+and a second bring-up without `RECOVER_FROM` resolves to nothing and renders
+`initdb` — over the archive that was just imported. This is the §4 hazard
+reached by a different route.
+
 **Never `make full-down` on the source until the new target is verified.**
 `scripts/persistent-down.sh:123` empties the backup bucket and `:148` deletes
 the generation pointer. `make down` leaves both intact.
