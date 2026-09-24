@@ -274,15 +274,65 @@ everything about this change except the scaling itself.
 | `lifecycle-hetzner / test` | pass — the E2E suite green against the cluster |
 | `lifecycle-hetzner / down` | pass; `no leaked disposable-lifecycle resources found` and `no bootstrap or persistent resources remain` |
 
-**Still outstanding.** Each of these needs load driven at the cluster, which
-no lifecycle run does. The teardown row is listed again because the sweep ran
-with nothing to sweep, so it proves the path is reached, not that it reaps.
+**Still outstanding after that run.** Each of these needs load driven at the
+cluster, which no lifecycle run does. The burst test below closes the first
+three; the drift check remains open.
+
+### The burst test, on a personal lab cluster
+
+Three runs against `vk-hetzner-lab`, a two-node fixed pool with the group at
+`0:1`. Runs 1 and 2 were each built from scratch with `make up` and measured
+both scale directions; run 3 reused run 2's cluster to exercise the teardown
+sweep, which the first two did not.
+
+| | Run 1 (2026-09-23) | Run 2 (2026-09-24) | Run 3 (2026-09-24) | Budget |
+|---|---|---|---|---|
+| Burst of 3 × 3Gi pods → 3 nodes `Ready`, 0 `Pending` | 67s | 83s | 45s | 5 min |
+| Burst deleted → node cordoned | 10m08s | 10m28s | n/a | 10 min |
+| → server gone | 11m23s | 11m30s | n/a | — |
+
+Scale-down lands at ten minutes rather than twenty because
+`scale-down-unneeded-time` and `scale-down-delay-after-add` are both 10m and
+run concurrently, not in sequence.
+
+Also observed on those runs, each of which could have failed silently:
+
+| Checked | Result |
+|---|---|
+| `HCLOUD_CLUSTER_CONFIG` decodes to the real worker cloud-init | 2499 bytes, intact — the multi-line SSM read is correct |
+| The server carries all five `serverLabels` | present, plus the chart's own `hcloud/node-group=workers` |
+| `spec.providerID` | `hcloud://…`, set by the cloud controller manager |
+| The node's private address | `10.0.1.2`, inside the pinned subnet |
+| Firewall `apply_to` | unchanged at `servers=2`; the autoscaled node was covered by the label selector alone |
+| Autoscaler startup options | `hetzner [0:1:CX33:FSN1:workers]` — one node group, one `--nodes` |
+
+**Run 3, teardown with the autoscaled node present.** At `make down` the
+project held three servers, and `project=…,managed_by=autoscaler` matched
+`workers-d9f5583e3503ff3` alone. After the run no server, volume, load
+balancer, firewall or primary IP remained, and only the persistent network and
+SSH key survived.
+
+The sweep is the only mechanism that can account for that. `argo-down` had
+already deleted the autoscaler's Application, so nothing in the cluster could
+remove the server; Terraform never held it in state, so `destroy` could not;
+and it is gone. The sweep's own log line was lost to a truncated capture, so
+the proof is the outcome rather than the message.
+
+**No firewall drift, from the same run.** The firewall destroy refreshed state
+first and printed its `apply_to` as `label_selector =
+"project=vk-hetzner-lab,scope=platform"` with `server = 0`, after an
+autoscaled node had lived behind that firewall for an hour. That is exactly
+the resource entry the unset `HCLOUD_FIREWALL` was meant to avoid, and it is
+absent. It is also the strongest form this evidence can take for now: the
+destroy emptied `cluster-hetzner` state, so a `terragrunt plan` there reports
+a full create rather than drift. The criterion stays outstanding until the
+next bring-up can carry a plan while the state is populated.
 
 | Criterion | Status |
 |---|---|
-| A burst of pending pods scales 0→1 within 5 minutes, timed; the node reaches `Ready` with `spec.providerID` set | outstanding |
-| 1→0 within 10 minutes of the pods clearing, timed | outstanding |
-| `make down` **with the autoscaled node present** completes and the sweep reports zero leaks | outstanding |
+| A burst of pending pods scales 0→1 within 5 minutes, timed; the node reaches `Ready` with `spec.providerID` set | pass, three runs |
+| 1→0 within 10 minutes of the pods clearing, timed | pass, two runs |
+| `make down` **with the autoscaled node present** completes and the sweep reports zero leaks | pass, run 3 |
 | No Terraform drift on `cluster-hetzner` after an autoscaled node has existed | outstanding |
 
 ### The five corrections to §4
