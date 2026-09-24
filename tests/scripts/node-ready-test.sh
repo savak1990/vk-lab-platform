@@ -27,9 +27,9 @@ hcloud_cli() { printf '[]\n'; }
 hetzner_ssh() { return 0; }
 
 run_case() {
-  local label="$1" nodes="$2" count="$3" want="$4" got
+  local label="$1" nodes="$2" min="$3" want="$4" got
   NODES="$nodes"
-  NODE_COUNT="$count" HETZNER_NODE_READY_SECONDS=1 ARGO_UP_POLL_INTERVAL=1 \
+  MIN_WORKER_NODES="$min" HETZNER_NODE_READY_SECONDS=1 ARGO_UP_POLL_INTERVAL=1 \
     wait_for_nodes_ready > /dev/null 2>&1
   got=$?
   if [ "$got" = "$want" ]; then
@@ -40,23 +40,29 @@ run_case() {
   fi
 }
 
-READY3="cp-1 Ready control-plane 1h v1.36.4
-w-1 Ready <none> 1h v1.36.4
+# MIN_WORKER_NODES counts workers; the control plane is one node on top of it,
+# Ready but unschedulable, so hetzner waits for MIN_WORKER_NODES + 1.
+READY2="cp-1 Ready control-plane 1h v1.36.4
+w-1 Ready <none> 1h v1.36.4"
+
+READY3="$READY2
 w-2 Ready <none> 1h v1.36.4"
 
-run_case "the fixed pool alone is Ready" "$READY3" 3 0
+run_case "one worker and the control plane is the whole fixed pool" "$READY2" 1 0
+run_case "two workers when MIN_WORKER_NODES is 2" "$READY3" 2 0
 run_case "an autoscaled node above the fixed pool still passes" \
-  "$READY3
-w-auto Ready <none> 2m v1.36.4" 3 0
+  "$READY2
+w-auto Ready <none> 2m v1.36.4" 1 0
 run_case "a NotReady node fails even when the count is met" \
-  "$READY3
-w-auto NotReady <none> 30s v1.36.4" 3 1
-run_case "fewer nodes than the fixed pool fails" \
-  "cp-1 Ready control-plane 1h v1.36.4" 3 1
-run_case "no nodes at all fails" "" 3 1
+  "$READY2
+w-auto NotReady <none> 30s v1.36.4" 1 1
+run_case "the control plane alone fails - the worker has not joined" \
+  "cp-1 Ready control-plane 1h v1.36.4" 1 1
+run_case "two workers are not enough when MIN_WORKER_NODES is 3" "$READY3" 3 1
+run_case "no nodes at all fails" "" 1 1
 
 if [ "$fails" -gt 0 ]; then
   echo "node-ready-test: $fails case(s) failed" >&2
   exit 1
 fi
-echo "node-ready-test: all 5 cases passed"
+echo "node-ready-test: all 7 cases passed"

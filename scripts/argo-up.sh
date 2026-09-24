@@ -28,16 +28,12 @@ REPO_URL="${REPO_URL:-https://github.com/savak1990/vk-lab-platform}"
 # FIXED_TEST_PASSWORDS: the cluster is throwaway and holds nothing real.
 LOCAL_ARGOCD_PASSWORD="${LOCAL_ARGOCD_PASSWORD:-test}"
 LOCAL_GRAFANA_PASSWORD="${LOCAL_GRAFANA_PASSWORD:-test}"
-# Comma-separated; cpu limit is a node-count cap, not a vCPU budget - keep
-# it in sync with the instance types' vCPU count when overriding either.
-# spot is general workload capacity (several arm64 families/sizes, so a
-# capacity-optimized fleet request has a fallback when one instance
-# type/AZ combination has no Spot capacity); onDemand is tainted and
+# Comma-separated. spot is general workload capacity (several arm64
+# families/sizes, so a capacity-optimized fleet request has a fallback when one
+# instance type/AZ combination has no Spot capacity); onDemand is tainted and
 # reserved for Postgres, which tolerates it explicitly.
 SPOT_KARPENTER_INSTANCE_TYPES="${SPOT_KARPENTER_INSTANCE_TYPES:-t4g.medium,t4g.large,m6g.medium,m6g.large,m7g.medium,m7g.large}"
-SPOT_KARPENTER_CPU_LIMIT="${SPOT_KARPENTER_CPU_LIMIT:-4}"
 ON_DEMAND_KARPENTER_INSTANCE_TYPES="${ON_DEMAND_KARPENTER_INSTANCE_TYPES:-t4g.medium,t4g.large,m6g.medium,m6g.large,m7g.medium,m7g.large}"
-ON_DEMAND_KARPENTER_CPU_LIMIT="${ON_DEMAND_KARPENTER_CPU_LIMIT:-4}"
 # Increase-only: Kubernetes rejects a PVC shrink. The local default is smaller
 # because kind's provisioner carves it out of the laptop's own disk.
 if [ "$PROVIDER" = local ]; then
@@ -614,6 +610,12 @@ PRIOR_OPERATION_STARTED_AT="$(kubectl get application root -n argocd \
 # beneath it in gitops/ reconciling, which can take much longer than a helm
 # install timeout is meant to bound. The wait loop below handles that.
 aws_install_root_application() {
+  # Karpenter bounds a NodePool by vCPU, never by node count, so the operator's
+  # worker range is converted here at a fixed vCPU per node. Each pool gets the
+  # whole budget rather than a share: when spot capacity runs out, on-demand
+  # has to be able to absorb all of it. A range with no room means no dynamic
+  # capacity, which is a limit of zero.
+  local karpenter_cpu_limit=$(( (MAX_WORKER_NODES - MIN_WORKER_NODES) * $(catalog_vcpu_per_node aws) ))
   helm upgrade --install root-application "$REPO_ROOT/gitops/bootstrap" \
     --namespace argocd \
     --server-side=true --force-conflicts \
@@ -623,8 +625,8 @@ aws_install_root_application() {
     --set repoURL="$REPO_URL" \
     --set targetRevision="$TARGET_REVISION" \
     --set postgres.storageSize="$POSTGRES_STORAGE_SIZE" \
-    --set karpenter.spot.cpuLimit="$SPOT_KARPENTER_CPU_LIMIT" \
-    --set karpenter.onDemand.cpuLimit="$ON_DEMAND_KARPENTER_CPU_LIMIT" \
+    --set karpenter.spot.cpuLimit="$karpenter_cpu_limit" \
+    --set karpenter.onDemand.cpuLimit="$karpenter_cpu_limit" \
     --set-json karpenter.spot.instanceTypes="$SPOT_KARPENTER_INSTANCE_TYPES_JSON" \
     --set-json karpenter.onDemand.instanceTypes="$ON_DEMAND_KARPENTER_INSTANCE_TYPES_JSON" \
     --set envoyGateway.acmCertificateArn="$ACM_CERTIFICATE_ARN" \
@@ -699,6 +701,8 @@ civo_install_root_application() {
     --server-side=true --force-conflicts \
     --set target=civo \
     --set project="$PROJECT_NAME" \
+    --set capacity.autoscaler.min="$MIN_WORKER_NODES" \
+    --set capacity.autoscaler.max="$MAX_WORKER_NODES" \
     --set repoURL="$REPO_URL" \
     --set targetRevision="$TARGET_REVISION" \
     --set postgres.storageSize="$POSTGRES_STORAGE_SIZE" \
@@ -806,7 +810,9 @@ hetzner_install_root_application() {
     --set postgres.storageSize="$POSTGRES_STORAGE_SIZE" \
     --set envoyGateway.fqdn="$LAB_FQDN" \
     --set envoyGateway.location="$REGION" \
-    --set capacity.autoscaler.nodeType="$NODE_TYPE" \
+    --set capacity.autoscaler.min=0 \
+    --set capacity.autoscaler.max=$(( MAX_WORKER_NODES - MIN_WORKER_NODES )) \
+    --set capacity.autoscaler.nodeType="$WORKER_NODE_TYPE" \
     --set capacity.autoscaler.location="$REGION" \
     --set capacity.autoscaler.sshKeyId="$SSH_KEY_ID" \
     --set externalDns.txtOwnerId="$PROJECT_NAME" \

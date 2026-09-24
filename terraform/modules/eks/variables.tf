@@ -37,19 +37,19 @@ variable "project" {
   type        = string
 }
 
-variable "node_count" {
-  description = "NODE_COUNT - size of the fixed system node group. Karpenter supplies workload capacity on top, so this is not the cluster's total."
+variable "min_worker_nodes" {
+  description = "MIN_WORKER_NODES - size of the fixed system node group. Karpenter supplies every worker above it, bounded by MAX_WORKER_NODES as a NodePool cpu limit, so this is not the cluster's total."
   type        = number
   default     = 1
 
   validation {
-    condition     = var.node_count > 0
-    error_message = "node_count must be a positive integer."
+    condition     = var.min_worker_nodes > 0
+    error_message = "min_worker_nodes must be a positive integer."
   }
 }
 
-variable "node_type" {
-  description = "NODE_TYPE - instance type for the system node group. Validated against scripts/lib/catalog.sh before Terraform runs; pod density per type is spec 028."
+variable "worker_node_type" {
+  description = "WORKER_NODE_TYPE - instance type for the system node group. Validated against scripts/lib/catalog.sh before Terraform runs; pod density per type is spec 028."
   type        = string
   default     = "t4g.medium"
 }

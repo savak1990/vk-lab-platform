@@ -11,7 +11,8 @@ name: lab
 # no remapping, no per-target gating; whatever safety behavior a given target's
 # script already has (persistent-down/bootstrap-down/account-down's
 # CONFIRM_DESTROY check) is unaffected by this workflow, just wired through from
-# confirm_destroy below. `region`, `node_type` and `node_count` size the
+# confirm_destroy below. `region`, `worker_node_type`, `min_worker_nodes` and
+# `max_worker_nodes` size the
 # cluster; they are free strings because what is valid depends on the provider
 # and on the region, and the offline gate refuses a bad combination in the
 # job's first seconds rather than deep inside an apply. `control_plane_node_type`
@@ -52,14 +53,20 @@ on:
       # hetzner, t4g.medium on aws. A free string rather than a choice: valid types differ per
       # provider and per region, GitHub has no dependent dropdowns, and one
       # flat list could not say that cx43 sells in nbg1 but not in hel1.
-      node_type:
-        description: "node_type"
+      worker_node_type:
+        description: "worker_node_type"
         type: string
         default: ""
-      # Blank uses the provider's default - 3 on civo, 2 on hetzner, 1 on aws.
-      # Counts the cluster's own nodes; Karpenter capacity is separate.
-      node_count:
-        description: "node_count"
+      # Worker nodes only, never a control plane. Blank uses the provider's
+      # default: 3-4 on civo, 1-2 on hetzner, 1-3 on aws. On aws the ceiling is
+      # not a node count Karpenter understands, so it is converted to a vCPU
+      # limit per NodePool at two vCPU per node.
+      min_worker_nodes:
+        description: "min_worker_nodes"
+        type: string
+        default: ""
+      max_worker_nodes:
+        description: "max_worker_nodes"
         type: string
         default: ""
       # hetzner only, where the platform creates the control plane itself and
@@ -131,8 +138,9 @@ jobs:
           IN_PROJECT_NAME: ${{ inputs.project_name }}
           IN_SUBDOMAIN: ${{ inputs.subdomain }}
           IN_REGION: ${{ inputs.region }}
-          IN_NODE_TYPE: ${{ inputs.node_type }}
-          IN_NODE_COUNT: ${{ inputs.node_count }}
+          IN_WORKER_NODE_TYPE: ${{ inputs.worker_node_type }}
+          IN_MIN_WORKER_NODES: ${{ inputs.min_worker_nodes }}
+          IN_MAX_WORKER_NODES: ${{ inputs.max_worker_nodes }}
           IN_CONTROL_PLANE_NODE_TYPE: ${{ inputs.control_plane_node_type }}
         run: |
           set -euo pipefail
@@ -148,8 +156,9 @@ jobs:
           [ -n "$IN_PROJECT_NAME" ] && echo "PROJECT_NAME=$IN_PROJECT_NAME" >> "$GITHUB_ENV"
           [ -n "$IN_SUBDOMAIN" ] && echo "SUBDOMAIN=$IN_SUBDOMAIN" >> "$GITHUB_ENV"
           [ -n "$IN_REGION" ] && echo "REGION=$IN_REGION" >> "$GITHUB_ENV"
-          [ -n "$IN_NODE_TYPE" ] && echo "NODE_TYPE=$IN_NODE_TYPE" >> "$GITHUB_ENV"
-          [ -n "$IN_NODE_COUNT" ] && echo "NODE_COUNT=$IN_NODE_COUNT" >> "$GITHUB_ENV"
+          [ -n "$IN_WORKER_NODE_TYPE" ] && echo "WORKER_NODE_TYPE=$IN_WORKER_NODE_TYPE" >> "$GITHUB_ENV"
+          [ -n "$IN_MIN_WORKER_NODES" ] && echo "MIN_WORKER_NODES=$IN_MIN_WORKER_NODES" >> "$GITHUB_ENV"
+          [ -n "$IN_MAX_WORKER_NODES" ] && echo "MAX_WORKER_NODES=$IN_MAX_WORKER_NODES" >> "$GITHUB_ENV"
           [ -n "$IN_CONTROL_PLANE_NODE_TYPE" ] && echo "CONTROL_PLANE_NODE_TYPE=$IN_CONTROL_PLANE_NODE_TYPE" >> "$GITHUB_ENV"
           exit 0
 

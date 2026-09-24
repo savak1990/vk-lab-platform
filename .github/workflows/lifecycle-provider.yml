@@ -22,13 +22,18 @@ on:
         description: "SUBDOMAIN for this run - unique per project."
         type: string
         required: true
-      node_count:
-        description: "NODE_COUNT for this run. Blank keeps the provider default."
+      min_worker_nodes:
+        description: "MIN_WORKER_NODES for this run. Blank keeps the provider default."
         type: string
         required: false
         default: ""
-      node_type:
-        description: "NODE_TYPE for this run. Blank keeps the provider default."
+      max_worker_nodes:
+        description: "MAX_WORKER_NODES for this run. Blank keeps the provider default."
+        type: string
+        required: false
+        default: ""
+      worker_node_type:
+        description: "WORKER_NODE_TYPE for this run. Blank keeps the provider default."
         type: string
         required: false
         default: ""
@@ -85,11 +90,13 @@ jobs:
       # Exported only when non-blank: Make reads an empty value as set and
       # would blank the provider's own default rather than keep it.
       - name: Resolve the cluster shape
-        if: inputs.node_count != '' || inputs.node_type != '' || inputs.control_plane_node_type != ''
+        if: inputs.min_worker_nodes != '' || inputs.max_worker_nodes != '' ||
+            inputs.worker_node_type != '' || inputs.control_plane_node_type != ''
         run: |
           set -euo pipefail
-          [ -n "${{ inputs.node_count }}" ] && echo "NODE_COUNT=${{ inputs.node_count }}" >> "$GITHUB_ENV"
-          [ -n "${{ inputs.node_type }}" ] && echo "NODE_TYPE=${{ inputs.node_type }}" >> "$GITHUB_ENV"
+          [ -n "${{ inputs.min_worker_nodes }}" ] && echo "MIN_WORKER_NODES=${{ inputs.min_worker_nodes }}" >> "$GITHUB_ENV"
+          [ -n "${{ inputs.max_worker_nodes }}" ] && echo "MAX_WORKER_NODES=${{ inputs.max_worker_nodes }}" >> "$GITHUB_ENV"
+          [ -n "${{ inputs.worker_node_type }}" ] && echo "WORKER_NODE_TYPE=${{ inputs.worker_node_type }}" >> "$GITHUB_ENV"
           [ -n "${{ inputs.control_plane_node_type }}" ] && echo "CONTROL_PLANE_NODE_TYPE=${{ inputs.control_plane_node_type }}" >> "$GITHUB_ENV"
           exit 0
 
@@ -131,11 +138,13 @@ jobs:
       # Exported only when non-blank: Make reads an empty value as set and
       # would blank the provider's own default rather than keep it.
       - name: Resolve the cluster shape
-        if: inputs.node_count != '' || inputs.node_type != '' || inputs.control_plane_node_type != ''
+        if: inputs.min_worker_nodes != '' || inputs.max_worker_nodes != '' ||
+            inputs.worker_node_type != '' || inputs.control_plane_node_type != ''
         run: |
           set -euo pipefail
-          [ -n "${{ inputs.node_count }}" ] && echo "NODE_COUNT=${{ inputs.node_count }}" >> "$GITHUB_ENV"
-          [ -n "${{ inputs.node_type }}" ] && echo "NODE_TYPE=${{ inputs.node_type }}" >> "$GITHUB_ENV"
+          [ -n "${{ inputs.min_worker_nodes }}" ] && echo "MIN_WORKER_NODES=${{ inputs.min_worker_nodes }}" >> "$GITHUB_ENV"
+          [ -n "${{ inputs.max_worker_nodes }}" ] && echo "MAX_WORKER_NODES=${{ inputs.max_worker_nodes }}" >> "$GITHUB_ENV"
+          [ -n "${{ inputs.worker_node_type }}" ] && echo "WORKER_NODE_TYPE=${{ inputs.worker_node_type }}" >> "$GITHUB_ENV"
           [ -n "${{ inputs.control_plane_node_type }}" ] && echo "CONTROL_PLANE_NODE_TYPE=${{ inputs.control_plane_node_type }}" >> "$GITHUB_ENV"
           exit 0
 
@@ -175,11 +184,13 @@ jobs:
       # Exported only when non-blank: Make reads an empty value as set and
       # would blank the provider's own default rather than keep it.
       - name: Resolve the cluster shape
-        if: inputs.node_count != '' || inputs.node_type != '' || inputs.control_plane_node_type != ''
+        if: inputs.min_worker_nodes != '' || inputs.max_worker_nodes != '' ||
+            inputs.worker_node_type != '' || inputs.control_plane_node_type != ''
         run: |
           set -euo pipefail
-          [ -n "${{ inputs.node_count }}" ] && echo "NODE_COUNT=${{ inputs.node_count }}" >> "$GITHUB_ENV"
-          [ -n "${{ inputs.node_type }}" ] && echo "NODE_TYPE=${{ inputs.node_type }}" >> "$GITHUB_ENV"
+          [ -n "${{ inputs.min_worker_nodes }}" ] && echo "MIN_WORKER_NODES=${{ inputs.min_worker_nodes }}" >> "$GITHUB_ENV"
+          [ -n "${{ inputs.max_worker_nodes }}" ] && echo "MAX_WORKER_NODES=${{ inputs.max_worker_nodes }}" >> "$GITHUB_ENV"
+          [ -n "${{ inputs.worker_node_type }}" ] && echo "WORKER_NODE_TYPE=${{ inputs.worker_node_type }}" >> "$GITHUB_ENV"
           [ -n "${{ inputs.control_plane_node_type }}" ] && echo "CONTROL_PLANE_NODE_TYPE=${{ inputs.control_plane_node_type }}" >> "$GITHUB_ENV"
           exit 0
 

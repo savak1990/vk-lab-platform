@@ -13,19 +13,19 @@ variable "firewall_id" {
   type        = string
 }
 
-variable "node_count" {
-  description = "NODE_COUNT - nodes in the fixed pool. Authoritative only at create time; the cluster autoscaler owns it afterwards."
+variable "min_worker_nodes" {
+  description = "MIN_WORKER_NODES - worker nodes in the fixed pool. Authoritative only at create time; the cluster autoscaler owns the count afterwards."
   type        = number
   default     = 3
 
   validation {
-    condition     = var.node_count > 0
-    error_message = "node_count must be a positive integer."
+    condition     = var.min_worker_nodes > 0
+    error_message = "min_worker_nodes must be a positive integer."
   }
 }
 
-variable "node_type" {
-  description = "NODE_TYPE - the Civo size for every node in the pool. Validated against scripts/lib/catalog.sh before Terraform runs."
+variable "worker_node_type" {
+  description = "WORKER_NODE_TYPE - the Civo size for every node in the pool. Validated against scripts/lib/catalog.sh before Terraform runs."
   type        = string
   default     = "g4s.kube.medium"
 }

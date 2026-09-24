@@ -123,13 +123,16 @@ module "eks" {
       # must stay under IAM's 64-char role-name limit for longer PROJECT_NAMEs.
       iam_role_name  = "${var.cluster_name}-system-ng"
       ami_type       = "AL2023_ARM_64_STANDARD"
-      instance_types = [var.node_type]
+      instance_types = [var.worker_node_type]
       capacity_type  = "ON_DEMAND"
-      min_size       = var.node_count
-      max_size       = var.node_count
-      desired_size   = var.node_count
-      subnet_ids     = [local.node_subnet_id] # single fixed AZ, not all defaults
-      labels         = { "node-type" = "system" }
+      # Pinned, all three: nothing scales this group. MIN_WORKER_NODES is the
+      # floor, and Karpenter supplies every node above it up to
+      # MAX_WORKER_NODES, which reaches it as a NodePool cpu limit instead.
+      min_size     = var.min_worker_nodes
+      max_size     = var.min_worker_nodes
+      desired_size = var.min_worker_nodes
+      subnet_ids   = [local.node_subnet_id] # single fixed AZ, not all defaults
+      labels       = { "node-type" = "system" }
 
       # Matches the vpc-cni prefix-delegation override above - without this,
       # nodeadm still calculates max-pods from the pre-prefix-delegation

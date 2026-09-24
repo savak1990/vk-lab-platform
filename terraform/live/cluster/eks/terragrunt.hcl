@@ -32,6 +32,6 @@ inputs = {
   control_plane_subnet_ids = dependency.vpc.outputs.public_subnet_ids
   public_subnet_ids_by_az  = dependency.vpc.outputs.public_subnet_ids_by_az
   project                  = local.project
-  node_count               = tonumber(get_env("NODE_COUNT", "1"))
-  node_type                = get_env("NODE_TYPE", "t4g.medium")
+  min_worker_nodes         = tonumber(get_env("MIN_WORKER_NODES", "1"))
+  worker_node_type         = get_env("WORKER_NODE_TYPE", "t4g.medium")
 }

@@ -36,8 +36,8 @@ dependency "firewall" {
 
 inputs = {
   project         = get_env("PROJECT_NAME", "vk-lab-platform")
-  node_count              = tonumber(get_env("NODE_COUNT", "2"))
-  node_type               = get_env("NODE_TYPE", "cx43")
+  min_worker_nodes        = tonumber(get_env("MIN_WORKER_NODES", "1"))
+  worker_node_type        = get_env("WORKER_NODE_TYPE", "cx43")
   control_plane_node_type = get_env("CONTROL_PLANE_NODE_TYPE", "cx23")
   location                = get_env("REGION", "fsn1")
   network_id      = dependency.persistent_network.outputs.network_id

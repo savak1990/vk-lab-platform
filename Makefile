@@ -35,19 +35,24 @@ endif
 # canonical spelling is resolved in provider.sh, not here.
 ifeq ($(PROVIDER),civo)
 export REGION ?= LON1
-export NODE_TYPE ?= g4s.kube.medium
-export NODE_COUNT ?= 3
+export WORKER_NODE_TYPE ?= g4s.kube.medium
+export MIN_WORKER_NODES ?= 3
+export MAX_WORKER_NODES ?= 4
 else ifeq ($(PROVIDER),hetzner)
 export REGION ?= fsn1
-# fsn1's type. hel1 does not sell cx43 - see scripts/lib/catalog.sh.
-export NODE_TYPE ?= cx43
-export NODE_COUNT ?= 2
+# No WORKER_NODE_TYPE literal: hetzner's default depends on the region, since
+# hel1 does not sell cx43, and every hetzner recipe reaches terragrunt through
+# provider.sh, which resolves it. A literal here would override that and make
+# REGION=hel1 fail the gate on a type the operator never chose.
+export MIN_WORKER_NODES ?= 1
+export MAX_WORKER_NODES ?= 2
 export CONTROL_PLANE_NODE_TYPE ?= cx23
 else ifeq ($(PROVIDER),local)
 else
 export REGION ?= eu-west-1
-export NODE_TYPE ?= t4g.medium
-export NODE_COUNT ?= 1
+export WORKER_NODE_TYPE ?= t4g.medium
+export MIN_WORKER_NODES ?= 1
+export MAX_WORKER_NODES ?= 3
 endif
 
 # Repo-local kubeconfigs, one per identity so the read-only test context can

@@ -25,8 +25,8 @@ resource "civo_kubernetes_cluster" "this" {
   # the autoscaler cannot even request while the Civo API is down.
   pools {
     label      = "workers"
-    size       = var.node_type
-    node_count = var.node_count
+    size       = var.worker_node_type
+    node_count = var.min_worker_nodes
   }
 
   # tags: Civo's create API accepts tags but its update API rejects them

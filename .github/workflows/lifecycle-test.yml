@@ -547,18 +547,21 @@ jobs:
       provider: hetzner
       project_name: vk-hetzner-ci
       subdomain: hzci
-      # Hetzner allows 5 servers per project and this account has one, shared
-      # with the personal lab. Two here leaves room for the lab's three, and a
-      # control plane plus one worker still exercises the private-network join
-      # that is this target's whole distinguishing feature.
-      node_count: "2"
+      # Hetzner sells 5 servers per account and this one is shared with the
+      # personal lab. One fixed worker and no elastic capacity is two servers
+      # here, which leaves the lab its three. A control plane plus one worker
+      # still exercises the private-network join that is this target's whole
+      # distinguishing feature; the autoscaler has no load to react to in CI
+      # anyway, so a ceiling above the floor would only buy a risk.
+      min_worker_nodes: "1"
+      max_worker_nodes: "1"
       # On 2026-09-23 the whole cx line read out of stock in every Hetzner
       # location, so a run on either default would fail at placement. Both are
       # pinned to the cpx line, which was sold throughout. cpx32 is the
       # smallest one the catalogue carries, so the control plane is larger
       # here than the lab's cx23 - a 25-minute run is billed by the hour, and
       # a run that cannot start costs more than an oversized control plane.
-      node_type: cpx32
+      worker_node_type: cpx32
       control_plane_node_type: cpx32
       production_tls: false
       target_revision: ${{ github.event.pull_request.head.sha || github.ref_name }}

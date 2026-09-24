@@ -3,19 +3,19 @@ variable "project" {
   type        = string
 }
 
-variable "node_count" {
-  description = "NODE_COUNT - servers in the fixed pool, the control plane included. Authoritative only at create time; the cluster autoscaler owns the count afterwards."
+variable "min_worker_nodes" {
+  description = "MIN_WORKER_NODES - fixed worker servers. The control plane is not one of them and is created separately."
   type        = number
-  default     = 3
+  default     = 1
 
   validation {
-    condition     = var.node_count > var.control_plane_count
-    error_message = "node_count must leave at least one worker beside the control plane."
+    condition     = var.min_worker_nodes > 0
+    error_message = "min_worker_nodes must leave at least one worker beside the control plane."
   }
 }
 
-variable "node_type" {
-  description = "NODE_TYPE - the Hetzner server type for every worker. Validated against scripts/lib/catalog.sh before Terraform runs."
+variable "worker_node_type" {
+  description = "WORKER_NODE_TYPE - the Hetzner server type for every worker. Validated against scripts/lib/catalog.sh before Terraform runs."
   type        = string
   default     = "cx43"
 }

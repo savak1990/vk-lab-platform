@@ -18,11 +18,13 @@ storage:
 # only meaningful where Karpenter's spot/on-demand distinction exists (aws).
 capacity:
   spotAvoidance: true
-  # min/max/pool are civo-only. The pool name "workers" is special to the civo
-  # cloud provider - it applies min/max to every pool in the cluster, which is
-  # correct here because there is one. hetzner states its own bounds in its
-  # Application: a ceiling of four is that target's account limit, not an input.
-  # The three below are hetzner-only, from the operator inputs and SSM.
+  # min/max come from MIN_WORKER_NODES and MAX_WORKER_NODES, but mean different
+  # things per target: civo's autoscaler owns the pool Terraform created, so
+  # they are absolute, while hetzner's owns a group beside the fixed pool, so
+  # they are a delta and min is always 0. The pool name "workers" is special to
+  # the civo cloud provider - it applies min/max to every pool in the cluster,
+  # which is correct here because there is one. The three below are
+  # hetzner-only, from the operator inputs and SSM.
   autoscaler:
     min: 3
     max: 4

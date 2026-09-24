@@ -16,7 +16,7 @@ source "$REPO_ROOT/scripts/lib/argo-state.sh"
 # export X="${X:-default}" cannot then change them - so one inherited value
 # would pin all three arms to whichever provider make was invoked for. Each
 # arm sets PROVIDER itself and discovers the project from tags and labels.
-unset PROVIDER PROJECT_NAME CLUSTER_NAME REGION NODE_TYPE NODE_COUNT
+unset PROVIDER PROJECT_NAME CLUSTER_NAME REGION NODE_TYPE MIN_WORKER_NODES MAX_WORKER_NODES
 
 # Never the operator's ~/.kube/config: update-kubeconfig also switches
 # current-context, so walking N clusters would silently repoint their kubectl.
