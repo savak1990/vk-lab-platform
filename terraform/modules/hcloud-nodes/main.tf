@@ -131,9 +131,12 @@ resource "aws_ssm_parameter" "control_plane_private_ip" {
 }
 
 resource "aws_ssm_parameter" "worker_ips" {
-  name        = "/${var.project}/cluster-hetzner/k8s/worker_ips"
-  type        = "String"
-  value       = join(",", hcloud_server.worker[*].ipv4_address)
+  name = "/${var.project}/cluster-hetzner/k8s/worker_ips"
+  type = "String"
+  # A parked cluster has no worker, and put-parameter rejects the empty string
+  # that would then be written. A sentinel rather than a conditional resource,
+  # so the parameter exists in every state; nothing reads its value.
+  value       = local.worker_count > 0 ? join(",", hcloud_server.worker[*].ipv4_address) : "-"
   description = "This project's fixed k3s worker public IPv4 addresses, comma-separated."
 }
 

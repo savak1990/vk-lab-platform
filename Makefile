@@ -1,4 +1,4 @@
-.PHONY: up down full-up full-down platform-up platform-down state-up state-down status clusters require-valid-project-name require-valid-node-config require-valid-recover-from account-up account-down bootstrap-up bootstrap-down secret-encrypt secret-decrypt secrets-check node-config-check scripts-check generate-secrets ca-init ssh-key-init persistent-up persistent-down clear-cache cluster-up cluster-down kubeconfig node-ssh test-kubeconfig test-kubeconfig-isolated argo-up argo-down test go-check terraform-check forward-up forward-down
+.PHONY: up down full-up full-down platform-up platform-down state-up state-down status clusters require-valid-project-name require-valid-node-config require-valid-recover-from account-up account-down bootstrap-up bootstrap-down secret-encrypt secret-decrypt secrets-check node-config-check scripts-check generate-secrets ca-init ssh-key-init persistent-up persistent-down clear-cache cluster-up cluster-down park unpark kubeconfig node-ssh test-kubeconfig test-kubeconfig-isolated argo-up argo-down test go-check terraform-check forward-up forward-down
 
 .NOTPARALLEL:
 
@@ -252,6 +252,23 @@ else
 cluster-down:
 	./scripts/cluster-down.sh
 endif
+
+## Takes the worker nodes to zero, leaving the control plane, etcd, every Argo CD
+## object, the volumes and the load balancer with its DNS records untouched. The
+## cluster still answers kubectl and schedules nothing, so every platform
+## workload goes Pending - Postgres included. Cheaper than running and far
+## quicker to leave than a bring-up, but not cheaper than `make down`: park for
+## hours, tear down for weeks. Hetzner only; the other targets refuse and say why.
+## Usage: PROVIDER=hetzner make park
+park:
+	./scripts/park.sh park
+
+## Brings the workers back after `make park`. The re-created worker rejoins with
+## the join token Terraform already holds, so there is no restore and no
+## operator step; Argo CD reschedules the platform once the node is Ready.
+## Usage: PROVIDER=hetzner make unpark
+unpark:
+	./scripts/park.sh unpark
 
 ## Switches your own kubectl context to the disposable cluster. On aws, every
 ## kubectl call re-assumes eks-access-identity via --role-arn (baked into
