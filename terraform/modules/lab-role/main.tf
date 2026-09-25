@@ -282,13 +282,20 @@ data "aws_iam_policy_document" "permissions" {
     resources = ["arn:aws:ssm:*::parameter/aws/service/eks/optimized-ami/*"]
   }
 
+  # CreateUserPool has no resource-level form - no ARN exists before the pool
+  # does, the same AWS IAM limitation as s3:CreateBucket and ec2:Create* above.
+  statement {
+    sid       = "AhorroCognitoCreateUserPool"
+    actions   = ["cognito-idp:CreateUserPool"]
+    resources = ["*"]
+  }
+
   # The Ahorro user pool (terraform/live/persistent/ahorro-cognito). Scoped to
   # userpool ARNs in this account. No ListUserPools: every call addresses the
   # pool by the id already in state.
   statement {
     sid = "AhorroCognitoUserPool"
     actions = [
-      "cognito-idp:CreateUserPool",
       "cognito-idp:DeleteUserPool",
       "cognito-idp:DescribeUserPool",
       "cognito-idp:UpdateUserPool",
