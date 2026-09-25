@@ -62,9 +62,15 @@ kubectl get application root -n argocd >/dev/null 2>&1 \
   || die "Argo CD's root Application does not exist, so this cluster is not fully up. Run 'make up' first."
 
 # The cloud's answer, not Kubernetes': a Node object can outlive its server.
-fixed_workers="$(hcloud_list_names server role=worker 2>/dev/null || true)"
-autoscaled="$(hcloud_list_names server managed_by=autoscaler 2>/dev/null || true)"
-worker_servers="$(printf '%s\n%s\n' "$fixed_workers" "$autoscaled" | grep -c . || true)"
+# Deduplicated, because an autoscaled server carries role=worker as well and
+# would otherwise be counted by both selectors.
+worker_server_names() {
+  {
+    hcloud_list_names server role=worker 2>/dev/null || true
+    hcloud_list_names server managed_by=autoscaler 2>/dev/null || true
+  } | sort -u | grep . || true
+}
+worker_servers="$(worker_server_names | grep -c . || true)"
 
 terragrunt_apply() {
   log "applying the cluster stack with MIN_WORKER_NODES=$MIN_WORKER_NODES"
@@ -94,10 +100,20 @@ if [ "$DIRECTION" = park ]; then
   terragrunt_apply
 
   # Autoscaled servers are not in Terraform's state, so the apply above does not
-  # touch them. Left alone they would keep billing beside a parked cluster.
-  for srv in $autoscaled; do
-    log "deleting autoscaled server $srv"
-    hcloud_cli server delete "$srv" >/dev/null 2>&1 || log "could not delete $srv - check the Hetzner console"
+  # touch them, and a stopped Hetzner server still bills. The list has to be read
+  # again here rather than reused from before the drain: draining makes pods
+  # Pending, the autoscaler answers that by adding a node, and that node is born
+  # after any earlier list. Once the fixed worker is gone the autoscaler pod is
+  # itself Pending and cannot scale again, so a second pass converges.
+  for _pass in 1 2; do
+    leftover="$(hcloud_list_names server managed_by=autoscaler 2>/dev/null || true)"
+    [ -n "$leftover" ] || break
+    for srv in $leftover; do
+      log "deleting autoscaled server $srv"
+      hcloud_cli server delete "$srv" >/dev/null 2>&1 || log "could not delete $srv - check the Hetzner console"
+      kubectl delete node "$srv" --ignore-not-found >/dev/null 2>&1 || true
+    done
+    sleep "${PARK_AUTOSCALE_SETTLE:-20}"
   done
 
   # Nothing else in this repo reaps a Node object. A stale NotReady one would

@@ -35,9 +35,13 @@ one, because `cluster-down.sh` sweeps volumes as well as servers:
 
 | | EUR/month |
 |---|---|
-| Running: cx23 control plane + cx43 worker + lb11 + 2 primary IPv4 + 20Gi volume | 35.61 |
-| Parked | 16.62 |
+| Running: cx23 control plane + cx43 worker + lb11 + 2 primary IPv4 + 50Gi of volumes | 37.33 |
+| Parked | 18.34 |
 | Torn down | ~0 |
+
+Measured on the live cluster, not estimated: there are **four** volumes, not one —
+20Gi for Postgres and 10Gi each for Prometheus, Alertmanager and Loki, so 50Gi at
+0.0572 EUR/GB is 2.86 rather than the 1.14 a single claim would cost.
 
 What park buys is **time and in-cluster state**. A bring-up allows
 `ARGO_UP_WATCH_SECONDS` of 2700 for the platform to reach Healthy, on top of a
@@ -172,10 +176,37 @@ matters more than it does now.
   `park.sh` is its only caller.
 - **A parked cluster is not free.** Parking for weeks is the wrong choice; §1
   carries the rule and §8 measures the number it rests on.
+- **An unpark can fail on stock, and park does not reserve capacity.** This is
+  the risk most easily mistaken for a flaky retry. Coming back means creating a
+  server, and Hetzner answered `error during placement (resource_unavailable)`
+  for `cx43` in `fsn1` during this spec's own live test. A parked cluster
+  therefore charges for a control plane, etcd, volumes and a load balancer while
+  holding no claim at all on the worker that makes it useful. Teardown carries
+  the same exposure but does not bill while it waits. The remedy is to retry or to
+  name a different `WORKER_NODE_TYPE` — the live test unparked onto `cpx32` after
+  `cx43` was refused — which also makes HETZ-175's stock-aware SKU fallback a
+  dependency of park being dependable rather than a separate convenience.
 - **The drain is best-effort.** A drain that does not finish inside
   `PARK_DRAIN_SECONDS` logs and continues, because a park that refuses to
   complete leaves a cluster in neither state. The volume is the thing at risk,
   and §8's live criterion is what checks it.
+
+## 7a. The autoscaler races the drain
+
+Draining the worker makes pods Pending, and the autoscaler answers a Pending pod
+by creating a node. So a park that lists autoscaled servers **before** the drain
+is reading a list that the drain then invalidates, and the node born in that
+window survives the park — powered off, and billing, because Hetzner bills a
+server that exists.
+
+The list is therefore re-read after the apply rather than reused, in a two-pass
+loop with a settle between passes. One pass would not be enough on its own
+reasoning, but it converges: once the fixed worker is gone the autoscaler pod is
+itself Pending and cannot scale again.
+
+A second consequence of the same labels: an autoscaled server carries
+`role=worker` **and** `managed_by=autoscaler`, so a naive count matches it twice
+and reports two workers where one exists. The count is deduplicated.
 
 ## 8. Acceptance criteria
 
@@ -189,12 +220,14 @@ matters more than it does now.
 | `unpark` refuses while workers exist, and otherwise applies at the real floor | pass, `tests/scripts/park-test.sh` |
 | `make scripts-check`, `terraform fmt`, `terraform validate` | pass |
 | `make -n` for the existing lifecycle targets is unchanged | pass, additive targets only |
-| A live cycle: `make full-up`, write a Postgres row, `make park`, `make unpark`, read the row back | outstanding |
-| While parked: one server, the volume still present, `kubectl` answering, and `make clusters` showing the project | outstanding |
-| The measured unpark time against the measured bring-up time, which is the number §1's park-for-hours rule rests on | outstanding |
-| Two park/unpark cycles in succession, to catch state that only breaks the second time | outstanding |
+| A live cycle: `make full-up`, write a Postgres row, `make park`, `make unpark`, read the row back | pass, §9 |
+| While parked: one server, every volume still present, `kubectl` answering, and `make clusters` showing the project | pass, §9 |
+| The measured unpark time against the measured bring-up time, which is the number §1's park-for-hours rule rests on | pass, §9 |
+| Two park/unpark cycles in succession, to catch state that only breaks the second time | pass, §9 — and the second cycle is what proved §7a's fix |
+| No autoscaled server survives a park | pass, §9 — it did not, before §7a's fix |
+| A normal Hetzner bring-up and teardown still work with the relaxed floor and the sentinel | pass, CI run 36114722529 |
 
-Criteria 1-8 need no cloud. The last four need one live cycle.
+Criteria 1-8 need no cloud.
 
 ## 9. Evidence
 
@@ -224,9 +257,41 @@ Two defects the tests found before any cloud was involved:
   same remedy SHARED-046 reached for the same cause. Worth recording plainly:
   the uncaught version of this applies a zero-worker plan to the AWS stack.
 
-**Outstanding: the live cycle.** No cluster existed on any provider when this
-shipped, and the persistent Hetzner layer had been torn down too, so the run
-needs `make full-up` rather than `make up`.
+**Live, 2026-09-25, `vk-hetzner-lab` in `fsn1`.** `make full-up` from nothing,
+about 20 minutes wall clock, then two full park/unpark cycles.
+
+| | cycle 1 | cycle 2 |
+|---|---|---|
+| park | 90s | 79s |
+| unpark to both nodes Ready | 76s | 61s |
+| unpark to Postgres readable | 173s | 154s |
+| an autoscaled server survived the park | **yes** | **no** |
+
+Both probe rows survived both cycles, read back from `vkdb` after the second
+unpark. That is the assertion that matters: a 20Gi volume reattached to a server
+that had not existed a minute earlier.
+
+The parked shape was correct in both cycles — one server, all four volumes
+retained, the load balancer still up on `91.98.15.137`, `kubectl` answering,
+`/readyz` ok, the root Application still `Synced`, 25 pods Pending, and
+`make clusters` reporting `vk-hetzner-lab@fsn1  running  1  30m`.
+
+The worker returned as `vk-hetzner-lab-worker-1` on the same private address
+`10.0.1.11` with a new public one, and rejoined with no SSH and no coordination
+step, as §5 predicted. It also returned on a **different server type** than it
+left on, which §7's stock risk forced and which is worth recording as a
+capability: an unpark may re-shape the worker.
+
+**What the live run cost, beyond the two defects in §7a.** `make clusters` was
+misreporting this cluster, and both causes were field paths that had never been
+checked against a real Hetzner API — the outstanding criterion SHARED-046 shipped
+with. `hcloud server list -o json` returns a top-level `location` and a **null**
+`datacenter`, so the location rendered `-`; and `created` is
+`2026-09-25T09:08:41Z`, which BSD `date`'s `%z` will not parse because it matches
+neither a colon nor a literal `Z`, so the age rendered `-`. Fixed in
+`scripts/clusters.sh`, and the corrected row above is the verification. Before the
+fix the same cluster read `vk-hetzner-lab@-  mixed  2  -`, where even the node
+count was wrong because it was counting the leaked server.
 
 ## 10. Constitution amendments
 

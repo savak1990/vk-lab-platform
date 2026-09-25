@@ -31,7 +31,16 @@ echo "hcloud $*" >> "$CALLS"
 if [ "$1 $2" = "server list" ]; then
   case "$*" in
     *role=control-plane*) echo '[{"name":"vk-fake-hz-cp-1"}]' ;;
-    *managed_by=autoscaler*) echo '[]' ;;
+    *managed_by=autoscaler*)
+      # FAKE_AUTOSCALE_RACE models what the live cluster did: the autoscaler
+      # answers the drain by creating a node, so this server exists only after
+      # the apply. A park that reuses a list taken before the drain misses it,
+      # and a stopped Hetzner server still bills.
+      if [ "${FAKE_AUTOSCALE_RACE:-no}" = yes ] && [ -f "$APPLIED" ]; then
+        echo '[{"name":"workers-raced"}]'
+      elif [ "${FAKE_DUP:-no}" = yes ]; then
+        echo '[{"name":"vk-fake-hz-worker-1"}]'
+      else echo '[]'; fi ;;
     *role=worker*)
       if [ "${FAKE_PARKED:-no}" = yes ]; then echo '[]'
       else echo '[{"name":"vk-fake-hz-worker-1"}]'; fi ;;
@@ -241,7 +250,28 @@ out="$(run unpark hetzner FAKE_PARKED=yes)"; rc=$?
 grep -q 'terragrunt.*MIN_WORKER_NODES=1' "$CALLS" \
   || err "unpark: must apply at the real floor, not zero: $(grep '^terragrunt' "$CALLS")"
 
+# 7. The autoscaler race. A server that appears only after the apply must still
+#    be deleted, together with its Node object. Found on a live cluster, where it
+#    was left behind powered off and billing.
+: > "$CALLS"
+out="$(run park hetzner FAKE_AUTOSCALE_RACE=yes)"; rc=$?
+[ "$rc" -eq 0 ] || err "autoscaler race: expected rc=0, got $rc: $out"
+grep -q 'hcloud server delete workers-raced' "$CALLS" \
+  || err "autoscaler race: a server born during the drain was not deleted, so it keeps billing: $(cat "$CALLS")"
+grep -q 'kubectl delete node workers-raced' "$CALLS" \
+  || err "autoscaler race: the raced server's Node object was left behind"
+
+# 8. One server matching both role=worker and managed_by=autoscaler is one
+#    server. Counting it twice made unpark report two workers where one existed.
+: > "$CALLS"
+out="$(run unpark hetzner FAKE_DUP=yes)"; rc=$?
+[ "$rc" -ne 0 ] || err "dedupe: unpark must refuse while a worker exists, got rc=0: $out"
+case "$out" in
+  *"1 worker server(s)"*) ;;
+  *) err "dedupe: one server must count once, got: $out" ;;
+esac
+
 if [ "$fail" -eq 0 ]; then
-  echo "PARK-TEST: ok - every non-hetzner target refuses with a reason, an unreachable API and a missing root both refuse before terragrunt, a park drains then applies at zero then reaps the Node without touching root, a second park is a no-op, and unpark refuses while running."
+  echo "PARK-TEST: ok - refusals name a reason, an unreachable API and a missing root both refuse before terragrunt, a park drains then applies at zero then reaps the Node without touching root, a server the autoscaler creates during the drain is still deleted, one server counts once, a second park is a no-op, and unpark refuses while running."
 fi
 exit "$fail"

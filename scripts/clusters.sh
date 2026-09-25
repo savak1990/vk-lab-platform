@@ -32,7 +32,9 @@ age_of() {
   # absent timestamp would report a plausible age of however long the day is.
   # BSD date refuses it, which is why this only ever showed on Linux.
   [ -n "$1" ] || { echo "-"; return; }
-  stamp="$(echo "$1" | sed -E 's/\.[0-9]+//; s/([+-][0-9]{2}):([0-9]{2})$/\1\2/')"
+  # Trailing Z as well as +01:00: hcloud emits Zulu, and BSD date's %z matches
+  # neither a colon nor a literal Z.
+  stamp="$(echo "$1" | sed -E 's/\.[0-9]+//; s/Z$/+0000/; s/([+-][0-9]{2}):([0-9]{2})$/\1\2/')"
   created_epoch="$(date -j -f "%Y-%m-%dT%H:%M:%S%z" "$stamp" +%s 2>/dev/null \
     || date -d "$1" +%s 2>/dev/null || echo "")"
   [ -n "$created_epoch" ] || { echo "-"; return; }
@@ -174,7 +176,7 @@ list_hetzner() (
       [ .[] | select(.labels.scope == "platform") ]
       | group_by(.labels.project)[]
       | [ (.[0].labels.project // "-"),
-          (.[0].datacenter.location.name // "-"),
+          (.[0].location.name // "-"),
           ([.[].status] | unique | if length == 1 then .[0] else "mixed" end),
           (length | tostring),
           ([.[].created] | sort | .[0]) ]
