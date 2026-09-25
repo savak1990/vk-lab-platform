@@ -1150,6 +1150,9 @@ make down              destroys them — argo-down (Argo cascade) then Terragrun
 
 make full-up           bootstrap-up -> persistent-up -> up, in order — brings up the entire platform from nothing
 make full-down         the exact reverse of full-up — tears down the entire platform, including Persistent/Bootstrap
+
+make park              hetzner only: takes the worker nodes to zero, leaving the control plane, etcd, Argo's objects, the volumes and the load balancer
+make unpark            brings the workers back — the re-created worker rejoins with the token Terraform already holds
 ```
 
 `make state-up`/`make state-down` still exist as their own targets (per-project state bucket create/destroy), but nothing in the normal flow calls them directly — `bootstrap-up`/`bootstrap-down` call them internally as their first/last step. The Account layer has its own separate dedicated state bucket, created/destroyed the same way by `scripts/account-state-up.sh`/`scripts/account-state-down.sh`, called internally by `account-up`/`account-down`.
@@ -1157,6 +1160,8 @@ make full-down         the exact reverse of full-up — tears down the entire pl
 The Account layer applies in the platform's single region, `eu-west-1` (`terraform/live/root.hcl`'s `aws_region` local), the same region every project's own layers apply in — so the shared secrets KMS key created there is always co-regional with the parameters it encrypts (ADR 0024; spec 031 records what a second region would cost).
 
 `make up`/`make down` compose `cluster-up`/`argo-up` and `argo-down`/`cluster-down` respectively (ADR 0012, spec 006-1) — `argo-down`'s Argo-driven cascade must complete before `cluster-down` touches the EKS cluster, since only Argo/Karpenter's own controllers can clean up the AWS resources they provisioned outside Terraform.
+
+`make park`/`make unpark` are a guarded modifier on the Disposable pair and not a fifth lifecycle class — they create and destroy nothing outside the class `make up`/`make down` already own, and a parked cluster is still Disposable. Implemented on `hetzner` only, because there the platform owns the control plane: `k3s server` runs the API server, scheduler, controller manager and embedded etcd in one systemd unit, so the cluster keeps answering with no worker present, and HETZ-178's control-plane taint means nothing tries to reschedule the platform onto it. On `aws` the EKS control plane is a fixed hourly charge park cannot touch and Karpenter is pinned to the node group park would remove, so it cannot provision the node it needs to run on (spec AWS-034); on `civo` the in-cluster autoscaler owns the pool count under `selfHeal` and a count of zero is untested against the API (spec HETZ-200 §11). Park never deletes Argo CD's root Application, because `cluster-down` refuses while root exists and a parked cluster's servers and volumes still carry the labels a teardown sweep matches on. Park is not cheaper than `make down`, which sweeps the volumes too — it is quicker to return from, so park for hours and tear down for weeks (ADR 0041).
 
 `make full-up`/`make full-down` are convenience compositions of the commands above, for the from-scratch case. They add no new guard logic and change no individual command's own contract — each step still enforces its own precondition/confirmation exactly as if invoked standalone, so `full-down` still pauses on `persistent-down`'s and `bootstrap-down`'s own confirmation prompts rather than smoothing them over.
 

@@ -90,6 +90,19 @@ Compositions, which change no individual command's own guards:
 | `make platform-up` / `platform-down` | `persistent-up` → `up`, onto an existing Bootstrap layer, and the reverse |
 | `make full-up` / `full-down` | `bootstrap-up` → `persistent-up` → `up`, and the exact reverse |
 
+A third disposable state, between running and gone — **Hetzner only**:
+
+| Command | Effect |
+|---|---|
+| `make park` | Takes the worker nodes to zero. The control plane, etcd, every Argo CD object, the volumes and the load balancer with its DNS records all stay. The cluster answers `kubectl` and schedules nothing, so every workload goes Pending — Postgres included |
+| `make unpark` | Brings the workers back. The re-created worker rejoins with the join token Terraform already holds, so there is no restore and no operator step |
+
+Park is not cheaper than `make down`, which sweeps the volumes too and reaches
+about zero. It is quicker to come back from: no 45-minute Argo watch, no
+certificate re-issue, no Postgres dump and restore. **Park for hours; tear down
+for weeks.** On `aws` and `civo` both commands refuse and say why — see
+`specs/aws/034-Z-parked-eks-cluster/` and `specs/hetzner/200-P-parked-clusters/`.
+
 Layer commands can also be run on their own: `state-up`, `state-down`,
 `cluster-up`, `cluster-down`, `argo-up`, `argo-down`.
 
