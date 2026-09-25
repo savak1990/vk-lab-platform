@@ -78,7 +78,7 @@ was raised to 1152Mi at the time.
 |---|---|---|---|
 | cert-manager controller | 10m / 32Mi, limit 64Mi | 10m / 48Mi, limit 128Mi | restarted seven times with `Error` on 2026-09-17 |
 | cert-manager cainjector | 10m / 32Mi, limit 64Mi | 10m / 64Mi, limit 128Mi | `OOMKilled` at that ceiling on 2026-09-17 |
-| CNPG `lab-postgres` | 250m / 256Mi, no ceiling | 100m / 256Mi, limit 512Mi | the largest CPU request in the platform, for a one-instance lab database, and the only long-lived workload with no memory ceiling |
+| CNPG `lab-postgres` | 250m / 256Mi, no ceiling | 100m / 256Mi, limit 512Mi — **raised to 1Gi on 2026-09-26** | the largest CPU request in the platform, for a one-instance lab database, and the only long-lived workload with no memory ceiling |
 | Roles Anywhere sidecar | 10m / 16Mi, no ceiling | 10m / 16Mi, limit 32Mi | injected into three pods on civo and hetzner, none of them capped |
 | hcloud CCM | chart default 100m / 50Mi, no ceiling | 10m / 32Mi, limit 64Mi | it reconciles node objects and routes on a two-node cluster |
 | envoy-gateway webhook probe Job | nothing at all | 10m / 32Mi, limit 64Mi | the one workload that declared no `resources` block; BestEffort, and it runs on every sync |
@@ -132,6 +132,13 @@ measurement asking for it.
 previously have taken the node down now kills the pod instead, which is the
 intent, but 512Mi is a judgement and not a measurement — Postgres did not
 appear among the top pods in the one reading that exists.
+
+That risk was taken up on 2026-09-26: the ceiling was raised to 1Gi on
+operator judgement, with no measurement recorded either. `shared_buffers`
+stays at the Postgres default, so the higher limit does not resize the cache —
+it only widens the headroom before a runaway query is killed. Requests stay at
+256Mi, so the pod is still Burstable and the scheduler still reserves the
+smaller figure.
 
 **The hcloud CCM cut is from a chart default, not from a measurement.** 100m
 to 10m is a tenfold cut on a controller that has never been observed. The
