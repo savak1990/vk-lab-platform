@@ -113,6 +113,6 @@ two additions:
 | HETZ-178 | [178-D-dedicated-control-plane](178-D-dedicated-control-plane/spec.md) | A dedicated `cx23` control plane, tainted so it carries no workload, beside a `cx43` worker | DONE | P1 | S | strongest | 030, 170 | M1 |
 | HETZ-182 | [182-P-multi-arch-images](182-P-multi-arch-images/spec.md) | Repo-built images published for `linux/arm64` as well as `linux/amd64` | DRAFT | P0 | S | fast | CIVO-180 | M2 |
 | HETZ-190 | [190-P-proxy-protocol-client-ip](190-P-proxy-protocol-client-ip/spec.md) | Proxy protocol on the hcloud LB and client IP at Envoy | READY | P3 | S | fast | 060, CIVO-190 | M2 |
-| HETZ-200 | [200-P-parked-clusters](200-P-parked-clusters/spec.md) | `make park`/`make unpark`: workers to zero, control plane and state kept | READY | P2 | M | strongest | 030, 170, 178, SHARED-047 | M2 |
+| HETZ-200 | [200-D-parked-clusters](200-D-parked-clusters/spec.md) | `make park`/`make unpark`: workers to zero, control plane and state kept | DONE | P2 | M | strongest | 030, 170, 178, SHARED-047 | M2 |
 
 The headers in each `spec.md` are the source of truth. Keep this table in sync.

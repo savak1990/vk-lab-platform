@@ -1,7 +1,7 @@
 ---
 id: "HETZ-200"
 title: "make park and make unpark: a cluster that keeps its control plane and loses its workers"
-status: "READY"
+status: "DONE"
 priority: "P2"
 milestone: "M2"
 type: "implementation"
@@ -15,6 +15,7 @@ blocked_by: []
 supersedes: []
 created: "2026-09-25"
 updated: "2026-09-25"
+completed: "2026-09-25"
 ---
 
 # HETZ-200 — parked clusters
