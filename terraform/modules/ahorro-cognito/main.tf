@@ -6,8 +6,8 @@ locals {
 }
 
 # Deletion protection stays off: the AWS API refuses DeleteUserPool on a
-# protected pool, so `full-down` would fail and the CI lifecycle test would
-# leak one pool per run. CONFIRM_DESTROY on persistent-down is the guard.
+# protected pool, so a teardown would fail and leak one pool per run.
+# CONFIRM_DESTROY on persistent-down is the guard.
 resource "aws_cognito_user_pool" "this" {
   name                     = "${var.project}-ahorro"
   username_attributes      = ["email"]
@@ -37,11 +37,9 @@ resource "aws_cognito_user_pool" "this" {
   }
 }
 
-# One client, not two. The application's verifier pins a single client id and
-# rejects a token minted by any other, so a second client would produce tokens
-# the service refuses. The admin password flow is reachable only through a
-# signed AWS API call; the non-admin ALLOW_USER_PASSWORD_AUTH, which anyone
-# holding the public client id could call, stays off.
+# One client: the application's verifier pins a single client id, so a second
+# client would mint tokens its own service refuses. The non-admin
+# ALLOW_USER_PASSWORD_AUTH stays off - the public client id could call it.
 resource "aws_cognito_user_pool_client" "app" {
   name            = "vk-ahorro-app"
   user_pool_id    = aws_cognito_user_pool.this.id

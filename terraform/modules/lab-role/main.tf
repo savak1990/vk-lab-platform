@@ -283,8 +283,8 @@ data "aws_iam_policy_document" "permissions" {
   }
 
   # The Ahorro user pool (terraform/live/persistent/ahorro-cognito). Scoped to
-  # userpool ARNs in this account; ListUserPools has no resource-level form,
-  # so it sits in its own statement below, same as EksDiscovery above.
+  # userpool ARNs in this account. No ListUserPools: every call addresses the
+  # pool by the id already in state.
   statement {
     sid = "AhorroCognitoUserPool"
     actions = [
@@ -312,13 +312,6 @@ data "aws_iam_policy_document" "permissions" {
     resources = ["arn:aws:cognito-idp:*:${local.account}:userpool/*"]
   }
 
-  # ListUserPools takes no resource-level scoping - the same AWS IAM
-  # limitation as EksDiscovery and the SSM Describe statement below.
-  statement {
-    sid       = "AhorroCognitoDiscovery"
-    actions   = ["cognito-idp:ListUserPools"]
-    resources = ["*"]
-  }
 
   # Scoped by path shape, not project name - this role is account-global
   # and shared across every project, with no PROJECT_NAME input of its own
