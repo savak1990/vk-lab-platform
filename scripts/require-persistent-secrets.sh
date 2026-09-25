@@ -15,7 +15,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/secret-scope.sh"
 scope_of() { [ "$1" = root-domain ] && echo global || echo project; }
 
 missing=()
-for name in root-domain postgres-app-password grafana-admin-password; do
+for name in root-domain postgres-app-password grafana-admin-password ahorro-test-user-password; do
   test -f "$(secret_path "$name" "$(scope_of "$name")")" || missing+=("$name")
 done
 

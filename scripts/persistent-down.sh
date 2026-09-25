@@ -176,7 +176,7 @@ while IFS= read -r arg; do exclude_args+=("$arg"); done < <(persistent_exclude_f
 # The empty-array form keeps bash 3.2 from failing on an unset expansion under set -u.
 terragrunt run --all ${exclude_args[@]+"${exclude_args[@]}"} --non-interactive -- destroy -auto-approve
 
-for unit_prefix in persistent/vpc persistent/secrets persistent/backups persistent-civo/network persistent-civo/reserved-ip persistent-civo/backups persistent-hetzner/network persistent-hetzner/ssh-key; do
+for unit_prefix in persistent/vpc persistent/secrets persistent/backups persistent/ahorro-cognito persistent-civo/network persistent-civo/reserved-ip persistent-civo/backups persistent-hetzner/network persistent-hetzner/ssh-key; do
   if ! remaining=$(count_resources "$unit_prefix"); then
     exit 1
   fi

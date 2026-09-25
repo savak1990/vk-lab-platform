@@ -70,6 +70,7 @@ fi
 
 generate_password_if_missing postgres-app-password
 generate_password_if_missing grafana-admin-password
+generate_password_if_missing ahorro-test-user-password
 
 # Every non-EKS target reaches AWS through Roles Anywhere and so needs the
 # CA; aws uses Pod Identity and never touches these files.
