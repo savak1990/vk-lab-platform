@@ -36,8 +36,12 @@ network, with a Let's Encrypt wildcard certificate and Route 53 records
 that follow the load balancer's address (spec HETZ-060). The address is
 new on every `make up`, because this target reserves none.
 
-Measured on 2026-09-22 with the default shape, three `cx33` in `fsn1`: a cold
-`make full-up` from an empty account took 17m21s, and a full teardown 11m35s.
+Measured on 2026-09-22 with the shape that was then default, three `cx33` in
+`fsn1`: a cold `make full-up` from an empty account took 17m21s, and a full
+teardown 11m35s. On 2026-09-25, at today's default of one `cx43` worker beside a
+`cx23` control plane, a cold `make full-up` took about 20 minutes. A
+`make park` then took 79-90s, and a `make unpark` reached a readable Postgres in
+154-173s — which is the case for parking rather than stopping.
 
 Two things move those numbers. A bring-up whose `TLS_ISSUER` differs from the
 issuer of the certificate stored in SSM pays a full DNS-01 reissue, about 9
@@ -89,6 +93,19 @@ Compositions, which change no individual command's own guards:
 |---|---|
 | `make platform-up` / `platform-down` | `persistent-up` → `up`, onto an existing Bootstrap layer, and the reverse |
 | `make full-up` / `full-down` | `bootstrap-up` → `persistent-up` → `up`, and the exact reverse |
+
+A third disposable state, between running and gone — **Hetzner only**:
+
+| Command | Effect |
+|---|---|
+| `make park` | Takes the worker nodes to zero. The control plane, etcd, every Argo CD object, the volumes and the load balancer with its DNS records all stay. The cluster answers `kubectl` and schedules nothing, so every workload goes Pending — Postgres included |
+| `make unpark` | Brings the workers back. The re-created worker rejoins with the join token Terraform already holds, so there is no restore and no operator step |
+
+Park is not cheaper than `make down`, which sweeps the volumes too and reaches
+about zero. It is quicker to come back from: no 45-minute Argo watch, no
+certificate re-issue, no Postgres dump and restore. **Park for hours; tear down
+for weeks.** On `aws` and `civo` both commands refuse and say why — see
+`specs/aws/034-Z-parked-eks-cluster/` and `specs/hetzner/200-D-parked-clusters/`.
 
 Layer commands can also be run on their own: `state-up`, `state-down`,
 `cluster-up`, `cluster-down`, `argo-up`, `argo-down`.
@@ -142,7 +159,7 @@ Those tests keep their own targets for running one at a time —
 | `PROJECT_NAME` | per provider | lowercase letters, digits and hyphens, at most 23 characters |
 | `SUBDOMAIN` | per provider | must differ per project |
 | `REGION` | `LON1` / `fsn1` | `civo` and `hetzner` only, see below; matched case-insensitively. Refused on `aws` |
-| `WORKER_NODE_TYPE` | `t4g.medium` / `g4s.kube.medium` / `cx43` | see below; the hetzner default is `cx33` in `hel1`, which sells no `cx43` |
+| `WORKER_NODE_TYPE` | `t4g.medium` / `g4s.kube.medium` / `cx43` | see below; the hetzner default is `cx43`, or `cx33` in `hel1`, which sells no `cx43` |
 | `CONTROL_PLANE_NODE_TYPE` | `cx23` | `hetzner` only — the one target whose control plane this platform owns and pays for |
 | `MIN_WORKER_NODES` | `1` / `3` / `1` | a positive integer, workers only; a control plane is never counted |
 | `MAX_WORKER_NODES` | `3` / `4` / `2` | a positive integer, at least `MIN_WORKER_NODES` |
@@ -207,9 +224,9 @@ the label is in doubt. See `specs/hetzner/research.md`.
 | `civo` | `g4s.kube.large` | 4 / 8 GiB | USD 43.45 |
 | `civo` | `g4m.kube.small` | 2 / 16 GiB | USD 78.21 |
 | `civo` | `g4p.kube.small` | 4 / 16 GiB | USD 86.91 |
-| `hetzner` | `cx23` | 2 / 4 GiB | USD 7.85 |
-| `hetzner` | `cx33` *(default)* | 4 / 8 GiB | USD 12.09 |
-| `hetzner` | `cx43` | 8 / 16 GiB | USD 22.37 |
+| `hetzner` | `cx23` *(default control plane)* | 2 / 4 GiB | USD 7.85 |
+| `hetzner` | `cx33` *(default in `hel1`)* | 4 / 8 GiB | USD 12.09 |
+| `hetzner` | `cx43` *(default elsewhere)* | 8 / 16 GiB | USD 22.37 |
 | `hetzner` | `cx53` | 16 / 32 GiB | USD 42.34 |
 | `hetzner` | `cpx32` | 4 / 8 GiB | USD 50.81 |
 | `hetzner` | `cpx42` | 8 / 16 GiB | USD 99.21 |
@@ -224,22 +241,50 @@ double the price, so cost per unit is flat. Above it the two axes separate:
 core, and `g4p.kube.small` buys the same memory with four cores. Pick `g4m` for
 a workload that runs out of memory first, `g4p` for one that runs out of CPU.
 
-**A lab left running for a month**, at each provider's default shape:
+**A lab left for a month in each state**, at today's defaults. Every figure is
+USD per month and includes the load balancer, the volumes, and the AWS resources
+every target keeps.
 
-| `PROVIDER` | Default shape | Nodes | Control plane | Total |
-|---|---|---|---|---|
-| `aws` | 1 × `t4g.medium` | USD 26.86 | USD 73.00 | **~USD 100** |
-| `civo` | 3 × `g4s.kube.medium` | USD 65.19 | free | **~USD 65** |
-| `hetzner` | 3 × `cx33` | USD 36.27 | — | **~USD 49** |
+| `PROVIDER` | Running | Parked | Stopped |
+|---|---|---|---|
+| `aws` | **~121**<br>EKS 73.00<br>1 × `t4g.medium` 26.86<br>NLB 16.43<br>42 GiB EBS 3.36<br>AWS floor 1.80 | **N/A** | **~1.80**<br>Route 53 zone 0.50<br>KMS key 1.00<br>S3 state ~0.30 |
+| `civo` | **~82**<br>3 × `g4s.kube.medium` 65.19<br>load balancer 10.86<br>42 GiB volumes 4.62<br>AWS floor 1.80<br>control plane free | **N/A** | **~1.80**<br>the AWS floor<br>plus a reserved IP |
+| `hetzner` | **~47**<br>1 × `cx43` worker 22.37<br>`lb11` 10.27<br>`cx23` control plane 7.85<br>50 GiB volumes 3.46<br>2 × primary IPv4 1.45<br>AWS floor 1.80 | **~24**<br>`lb11` 10.27<br>`cx23` control plane 7.85<br>50 GiB volumes 3.46<br>1 × primary IPv4 0.73<br>AWS floor 1.80 | **~1.80**<br>the AWS floor<br>network and SSH key are free |
 
-EKS charges USD 0.10 per cluster per hour whatever the node count, which is
-why the smallest AWS lab still costs more than the largest Civo one. Civo
-gives the k3s control plane away. Hetzner sells no managed Kubernetes, so its
-control plane *is* a server of its own, sized by `CONTROL_PLANE_NODE_TYPE`
-and counted separately from `MIN_WORKER_NODES`/`MAX_WORKER_NODES`. Two things the Hetzner total includes and the per-node
-table above does not: one primary IPv4 for each node at USD 0.726 gross per
-month, and the `lb11` at USD 10.27 gross. All Hetzner figures are gross,
-VAT included at 21 percent, read from `GET /v1/pricing` on 2026-09-22.
+**Running** is `make up` complete. **Parked** is `make park`, which only `hetzner`
+implements — the other two refuse, because on `aws` the EKS charge continues
+whatever the node count, and on `civo` the autoscaler owns the pool count.
+**Stopped** is after `make down`, which destroys the volumes as well as the
+servers.
+
+Read the table twice and two rules fall out:
+
+1. **Stopped beats parked on cost, always.** Park keeps a control plane, a load
+   balancer and every volume alive. It buys about 3 minutes to return instead of
+   about 20, and it keeps the certificates and the database. Park for hours; stop
+   for weeks.
+2. **AWS costs most when idle and saves least when parked.** EKS charges USD 0.10
+   per cluster per hour whatever the node count, so more than half the AWS bill
+   survives any scale-down. That is why `make park` refuses there.
+
+Every target keeps a small **AWS floor** of about USD 1.80 per month, because
+`civo` and `hetzner` both hold their Terraform state, SSM parameters, KMS key and
+DNS zone in AWS. Only `make bootstrap-down` removes it.
+
+Two figures are measured rather than listed. Hetzner carries 50 GiB of volumes,
+not 42, because its minimum volume is 10 GB and it rounds a smaller claim up. The
+Civo reserved IP has no verified price; treat that cell as a lower bound.
+
+The three control planes explain most of the spread. Civo gives its k3s control
+plane away. AWS charges for EKS by the hour and never stops. Hetzner sells no
+managed Kubernetes at all, so its control plane *is* a server, sized by
+`CONTROL_PLANE_NODE_TYPE` and counted apart from
+`MIN_WORKER_NODES`/`MAX_WORKER_NODES`.
+
+Two Hetzner lines sit in the table and not in the per-node prices above: a
+primary IPv4 for each node at USD 0.726, and the `lb11` at USD 10.27. All
+Hetzner figures are gross, VAT included at 21 percent, read from
+`GET /v1/pricing` on 2026-09-22.
 
 **Not in those totals**, and unavoidable on any target:
 
@@ -438,12 +483,17 @@ composite target already does.
   own default (`vk-lab-platform`/`lab`, or `vk-civo-lab`/`civo`). A blank input
   is omitted rather than exported empty, so the Makefile stays the single place
   those defaults live. Give a custom project its own subdomain.
-- **`region`** / **`node_type`** / **`node_count`** — leave blank for the
-  provider's default (`LON1`/`g4s.kube.medium`/`3` on Civo,
-  `fsn1`/`cx33`/`3` on Hetzner, `eu-west-1`/`t4g.medium`/`1` on AWS). They are free strings, not dropdowns:
-  which node types sell depends on the provider *and* the region, and GitHub
-  has no dependent dropdown. `make` refuses a bad combination offline in the
-  job's first seconds. **`region` applies to Civo and Hetzner only** — on AWS
+- **`region`** / **`worker_node_type`** / **`min_worker_nodes`** /
+  **`max_worker_nodes`** / **`control_plane_node_type`** — leave blank for the
+  provider's default (`LON1`/`g4s.kube.medium`/`3`/`4` on Civo,
+  `fsn1`/`cx43`/`1`/`2` plus a `cx23` control plane on Hetzner,
+  `eu-west-1`/`t4g.medium`/`1`/`3` on AWS). The two node-type inputs are
+  dropdowns listing every type the catalogue sells, each labelled with its
+  provider — but a dropdown cannot know which region you picked, and which types
+  sell depends on the provider *and* the region. `make` refuses a bad combination
+  offline in the job's first seconds. `control_plane_node_type` applies to
+  Hetzner only, where the platform owns the control plane.
+  **`region` applies to Civo and Hetzner only** — on AWS
   the region is fixed at `eu-west-1` and a value here is refused, not ignored
   (ADR 0040).
 - **`production_tls`** — Civo only, ignored on AWS. Ticked orders a real

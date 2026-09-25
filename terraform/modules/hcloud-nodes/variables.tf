@@ -8,9 +8,12 @@ variable "min_worker_nodes" {
   type        = number
   default     = 1
 
+  # Zero is the parked cluster: the control plane keeps answering and holding
+  # etcd with no worker beside it. The offline gate still refuses zero from an
+  # operator, so only the park script can reach it.
   validation {
-    condition     = var.min_worker_nodes > 0
-    error_message = "min_worker_nodes must leave at least one worker beside the control plane."
+    condition     = var.min_worker_nodes >= 0
+    error_message = "min_worker_nodes cannot be negative."
   }
 }
 
