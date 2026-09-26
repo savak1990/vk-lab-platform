@@ -72,6 +72,11 @@ PROVIDER=local    # one kind cluster on this machine; owns no cloud resources
 
 ### Lifecycle commands
 
+`make help` lists every target under its group heading, and `make help-<target>`
+prints one target's own documentation in full. Both read the Makefile only: no
+cloud call, no credentials. `make` on its own does the same, so a bare `make`
+never creates anything.
+
 Four independent layers, created in order and destroyed in reverse. A
 `*-up` target never creates the layer below it — it fails fast and names the
 command to run first.
@@ -139,6 +144,7 @@ sequence.
 | `make status` | Which layers currently hold state, for this `PROJECT_NAME` |
 | `make clusters` | Every platform cluster live on every provider, across all projects |
 | `make clear-cache` | Clears every `.terragrunt-cache`. Run when switching projects |
+| `make help` / `help-<target>` | Every target with its group and summary, or one target in full |
 
 ### Checks
 
