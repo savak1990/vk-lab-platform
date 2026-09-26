@@ -69,9 +69,23 @@ ssm_output() {
   exit 1
 }
 
-# One batched get-parameters call, not six round trips. --with-decryption
+# The Ahorro pool's public identifiers, for the application's pointer
+# Application to pass down as Helm parameters. persistent/ahorro-cognito is in
+# no PERSISTENT_EXCLUDE list, so every cloud target creates it; a target that
+# ever excludes the unit needs its resolver revisited, not a default here.
+# Reads the batch ssm_output already populated, so it suits the aws and
+# hetzner resolvers; civo keeps its own arrays and maps these by suffix.
+ahorro_resolve_cognito() {
+  AHORRO_COGNITO_USER_POOL_ID="$(ssm_output "/$PROJECT_NAME/persistent/ahorro-cognito/user_pool_id")"
+  AHORRO_COGNITO_CLIENT_ID="$(ssm_output "/$PROJECT_NAME/persistent/ahorro-cognito/client_id")"
+  AHORRO_COGNITO_ISSUER="$(ssm_output "/$PROJECT_NAME/persistent/ahorro-cognito/issuer")"
+}
+
+# One batched get-parameters call, not nine round trips. --with-decryption
 # is a no-op on the plain String ones, so this serves both types uniformly.
-# Bash 3.2 compatible (no associative arrays) - linear scan over 6 items.
+# Bash 3.2 compatible (no associative arrays) - linear scan over 9 items.
+# Nine against a get-parameters cap of ten: a tenth name still fits, an
+# eleventh needs the batching loop civo_resolve_inputs already has.
 aws_resolve_inputs() {
   local ssm_names=(
     "/$PROJECT_NAME/bootstrap/acm/certificate_arn"
@@ -80,6 +94,9 @@ aws_resolve_inputs() {
     "/$PROJECT_NAME/bootstrap/route53/fqdn"
     "/$PROJECT_NAME/persistent/argocd/admin_password_bcrypt"
     "/$PROJECT_NAME/persistent/backups/bucket_name"
+    "/$PROJECT_NAME/persistent/ahorro-cognito/user_pool_id"
+    "/$PROJECT_NAME/persistent/ahorro-cognito/client_id"
+    "/$PROJECT_NAME/persistent/ahorro-cognito/issuer"
   )
   SSM_BATCH_NAMES=()
   SSM_BATCH_VALUES=()
@@ -98,6 +115,7 @@ aws_resolve_inputs() {
   LAB_FQDN="$(ssm_output "/$PROJECT_NAME/bootstrap/route53/fqdn")"
   ADMIN_PASSWORD_BCRYPT_HASH="$(ssm_output "/$PROJECT_NAME/persistent/argocd/admin_password_bcrypt")"
   BACKUP_BUCKET="$(ssm_output "/$PROJECT_NAME/persistent/backups/bucket_name")"
+  ahorro_resolve_cognito
   backup_resolve_generation
   configure_kubeconfig "$KUBECONFIG"
 }
@@ -147,6 +165,9 @@ civo_resolve_inputs() {
     "/$PROJECT_NAME/bootstrap/rolesanywhere/role_arn/external-dns"
     "/$PROJECT_NAME/bootstrap/rolesanywhere/role_arn/cert-manager"
     "/$PROJECT_NAME/bootstrap/rolesanywhere/role_arn/pgbackup"
+    "/$PROJECT_NAME/persistent/ahorro-cognito/user_pool_id"
+    "/$PROJECT_NAME/persistent/ahorro-cognito/client_id"
+    "/$PROJECT_NAME/persistent/ahorro-cognito/issuer"
   )
   local civo_ssm_batch_names=() civo_ssm_batch_values=()
   local batch_start=0
@@ -184,6 +205,9 @@ civo_resolve_inputs() {
       */rolesanywhere/role_arn/cert-manager) CERT_MANAGER_ROLE_ARN="$found" ;;
       */rolesanywhere/role_arn/pgbackup) PGBACKUP_ROLE_ARN="$found" ;;
       */backups/bucket_name) BACKUP_BUCKET="$found" ;;
+      */ahorro-cognito/user_pool_id) AHORRO_COGNITO_USER_POOL_ID="$found" ;;
+      */ahorro-cognito/client_id) AHORRO_COGNITO_CLIENT_ID="$found" ;;
+      */ahorro-cognito/issuer) AHORRO_COGNITO_ISSUER="$found" ;;
     esac
   done
 
@@ -214,7 +238,7 @@ local_resolve_inputs() {
   require_local_context
 }
 
-# Thirteen names against a get-parameters cap of ten, so this batches the way
+# Sixteen names against a get-parameters cap of ten, so this batches the way
 # civo_resolve_inputs does and reuses the aws-side ssm_output lookup. It was one
 # call until the autoscaler's two took it over the cap; its third, the worker
 # cloud-init, is read below instead. The load balancer's location is not one of
@@ -241,6 +265,9 @@ hetzner_resolve_inputs() {
     "/$PROJECT_NAME/bootstrap/rolesanywhere/role_arn/pgbackup"
     "/$PROJECT_NAME/persistent-hetzner/ssh-key/ssh_key_id"
     "/$PROJECT_NAME/persistent-hetzner/network/subnet_ip_range"
+    "/$PROJECT_NAME/persistent/ahorro-cognito/user_pool_id"
+    "/$PROJECT_NAME/persistent/ahorro-cognito/client_id"
+    "/$PROJECT_NAME/persistent/ahorro-cognito/issuer"
   )
   SSM_BATCH_NAMES=()
   SSM_BATCH_VALUES=()
@@ -266,6 +293,7 @@ hetzner_resolve_inputs() {
   CERT_MANAGER_ROLE_ARN="$(ssm_output "/$PROJECT_NAME/bootstrap/rolesanywhere/role_arn/cert-manager")"
   PGBACKUP_ROLE_ARN="$(ssm_output "/$PROJECT_NAME/bootstrap/rolesanywhere/role_arn/pgbackup")"
   BACKUP_BUCKET="$(ssm_output "/$PROJECT_NAME/persistent/backups/bucket_name")"
+  ahorro_resolve_cognito
   backup_resolve_generation
   SSH_KEY_ID="$(ssm_output "/$PROJECT_NAME/persistent-hetzner/ssh-key/ssh_key_id")"
   # Stated rather than left to Hetzner's default: the network holds one subnet
@@ -662,6 +690,9 @@ aws_install_root_application() {
     --set envoyGateway.acmCertificateArn="$ACM_CERTIFICATE_ARN" \
     --set envoyGateway.nlbSubnetIds="$NODE_SUBNET_ID" \
     --set envoyGateway.fqdn="$LAB_FQDN" \
+    --set ahorro.cognito.userPoolId="$AHORRO_COGNITO_USER_POOL_ID" \
+    --set ahorro.cognito.clientId="$AHORRO_COGNITO_CLIENT_ID" \
+    --set ahorro.cognito.issuer="$AHORRO_COGNITO_ISSUER" \
     --set postgres.backup.enabled=true \
     --set postgres.backup.bucket="$BACKUP_BUCKET" \
     --set postgres.backup.serverName="$BACKUP_SERVER_NAME" \
@@ -752,6 +783,9 @@ civo_install_root_application() {
     --set postgres.backup.recoverServerName="$RECOVER_SERVER_NAME" \
     --set tls.issuer="${TLS_ISSUER:-letsencrypt-prod}" \
     --set tls.acmeEmail="${TLS_ACME_EMAIL:-}" \
+    --set ahorro.cognito.userPoolId="$AHORRO_COGNITO_USER_POOL_ID" \
+    --set ahorro.cognito.clientId="$AHORRO_COGNITO_CLIENT_ID" \
+    --set ahorro.cognito.issuer="$AHORRO_COGNITO_ISSUER" \
     --set tls.hostedZoneId="$ROUTE53_ZONE_ID"
 }
 
@@ -858,6 +892,9 @@ hetzner_install_root_application() {
     --set postgres.backup.recoverServerName="$RECOVER_SERVER_NAME" \
     --set tls.issuer="${TLS_ISSUER:-letsencrypt-prod}" \
     --set tls.acmeEmail="${TLS_ACME_EMAIL:-}" \
+    --set ahorro.cognito.userPoolId="$AHORRO_COGNITO_USER_POOL_ID" \
+    --set ahorro.cognito.clientId="$AHORRO_COGNITO_CLIENT_ID" \
+    --set ahorro.cognito.issuer="$AHORRO_COGNITO_ISSUER" \
     --set tls.hostedZoneId="$ROUTE53_ZONE_ID"
 }
 

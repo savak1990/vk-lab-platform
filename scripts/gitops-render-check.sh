@@ -140,7 +140,8 @@ BackendTrafficPolicy__observability__grafana-traffic-policy \
 RoleBinding__observability__e2e-test-readonly \
 Application__argocd__cluster-autoscaler ServiceMonitor__kube-system__cluster-autoscaler \
 PodMonitor__cnpg-system__cnpg-postgres ServiceMonitor__argocd__argocd \
-Namespace__cluster__e2e ServiceAccount__e2e__e2e-test"
+Namespace__cluster__e2e ServiceAccount__e2e__e2e-test \
+AppProject__argocd__vk-ahorro Application__argocd__vk-ahorro"
 REQUIRED_OBJECTS_LOCAL="EnvoyProxy__envoy__envoy-proxy-config \
 Gateway__envoy__platform-gateway GatewayClass__cluster__envoy-gateway \
 HTTPRoute__argocd__argocd Cluster__cnpg-system__lab-postgres \
@@ -154,6 +155,8 @@ HTTPRoute__observability__grafana \
 Namespace__cluster__e2e ServiceAccount__e2e__e2e-test \
 RoleBinding__observability__e2e-test-readonly \
 RoleBinding__envoy__e2e-test-readonly"
+# The application is gated off this target until spec 107 wires it.
+FORBIDDEN_OBJECTS_LOCAL_EXTRA="AppProject__argocd__vk-ahorro"
 FORBIDDEN_KINDS_LOCAL="StorageClass VolumeSnapshotClass VolumeSnapshotContent VolumeSnapshot \
 ClusterSecretStore ExternalSecret NodePool EC2NodeClass \
 ObjectStore ScheduledBackup"
@@ -161,10 +164,11 @@ FORBIDDEN_KINDS_CIVO="StorageClass VolumeSnapshotClass VolumeSnapshotContent Vol
 NodePool EC2NodeClass"
 FORBIDDEN_APPLICATIONS_LOCAL="aws-load-balancer-controller cert-manager ebs-csi-driver karpenter \
 external-snapshotter external-snapshotter-crds \
-external-dns barman-cloud-plugin"
+external-dns barman-cloud-plugin vk-ahorro"
 FORBIDDEN_APPLICATIONS_CIVO="aws-load-balancer-controller ebs-csi-driver karpenter \
 external-snapshotter external-snapshotter-crds"
-FORBIDDEN_OBJECTS_LOCAL="BackendTrafficPolicy__observability__grafana-traffic-policy \
+FORBIDDEN_OBJECTS_LOCAL="$FORBIDDEN_OBJECTS_LOCAL_EXTRA \
+BackendTrafficPolicy__observability__grafana-traffic-policy \
 ExternalSecret__observability__grafana-admin-credentials \
 ServiceMonitor__kube-system__karpenter \
 ConfigMap__observability__dashboard-karpenter-capacity"
@@ -201,7 +205,8 @@ Application__argocd__alloy \
 ExternalSecret__observability__grafana-admin-credentials \
 RoleBinding__observability__e2e-test-readonly \
 PodMonitor__cnpg-system__cnpg-postgres ServiceMonitor__argocd__argocd \
-Namespace__cluster__e2e ServiceAccount__e2e__e2e-test"
+Namespace__cluster__e2e ServiceAccount__e2e__e2e-test \
+AppProject__argocd__vk-ahorro Application__argocd__vk-ahorro"
 FORBIDDEN_KINDS_HETZNER="VolumeSnapshotClass VolumeSnapshotContent VolumeSnapshot \
 NodePool EC2NodeClass"
 FORBIDDEN_APPLICATIONS_HETZNER="aws-load-balancer-controller ebs-csi-driver karpenter \

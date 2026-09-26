@@ -63,3 +63,12 @@ awsIdentity:
       external-dns: ""
       cert-manager: ""
       pgbackup: ""
+
+# The Ahorro application's Cognito identifiers, read from SSM by
+# scripts/argo-up.sh. Public, but one pool per project, so the application
+# repository cannot commit them (its ADR 0004).
+ahorro:
+  cognito:
+    userPoolId: ""
+    clientId: ""
+    issuer: ""

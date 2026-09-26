@@ -1,0 +1,40 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  annotations:
+    # The last wave: the application starts after every platform component,
+    # which tops out at 4.
+    argocd.argoproj.io/sync-wave: "5"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  name: vk-ahorro
+  namespace: argocd
+spec:
+  destination:
+    namespace: argocd
+    server: https://kubernetes.default.svc
+  project: vk-ahorro
+  # A reference, not application code: the repository below owns its own
+  # app-of-apps and fans out to one Application per service (ADR 0015).
+  source:
+    helm:
+      parameters:
+        - name: fqdn
+          value: ""
+        - name: cognito.userPoolId
+          value: ""
+        - name: cognito.clientId
+          value: ""
+        - name: cognito.issuer
+          value: ""
+    path: gitops
+    repoURL: https://github.com/savak1990/vk-ahorro
+    targetRevision: main
+  syncPolicy:
+    # selfHeal is off by the application's own choice: its operator installs
+    # those charts by hand. prune stays on, so a removed service disappears.
+    automated:
+      prune: true
+      selfHeal: false
+    syncOptions:
+      - ServerSideApply=true
