@@ -165,10 +165,10 @@ account-down: clear-cache
 ## Creates Bootstrap-lifecycle resources for this project: its own state
 ## bucket, then the lab DNS zone/delegation + ACM cert.
 ifeq ($(PROVIDER),local)
-bootstrap-up:
+bootstrap-up: clear-cache
 	@echo "PROVIDER=local owns no cloud resources - nothing to create."
 else
-bootstrap-up:
+bootstrap-up: clear-cache
 	./scripts/bootstrap-up.sh
 endif
 
@@ -176,10 +176,10 @@ endif
 ## cert, then its own state bucket. Guarded (CONFIRM_DESTROY must match
 ## PROJECT_NAME) and refuses while Persistent/Disposable state still exists.
 ifeq ($(PROVIDER),local)
-bootstrap-down:
+bootstrap-down: clear-cache
 	@echo "PROVIDER=local owns no cloud resources - nothing to destroy."
 else
-bootstrap-down:
+bootstrap-down: clear-cache
 	./scripts/bootstrap-down.sh
 endif
 
@@ -189,16 +189,16 @@ endif
 ## one - see ADR 0014); bootstrap-up already generates/requires these plus
 ## root-domain, so this is normally a no-op repeat.
 ifeq ($(PROVIDER),civo)
-persistent-up: require-valid-node-config
+persistent-up: clear-cache require-valid-node-config
 	./scripts/persistent-up-civo.sh
 else ifeq ($(PROVIDER),hetzner)
-persistent-up: require-valid-node-config
+persistent-up: clear-cache require-valid-node-config
 	./scripts/persistent-up-hetzner.sh
 else ifeq ($(PROVIDER),local)
-persistent-up: require-valid-node-config
+persistent-up: clear-cache require-valid-node-config
 	@echo "PROVIDER=local owns no cloud resources - nothing to create."
 else
-persistent-up: require-valid-node-config
+persistent-up: clear-cache require-valid-node-config
 	./scripts/generate-secrets.sh
 	./scripts/require-persistent-secrets.sh
 	cd terraform/live/persistent && terragrunt run --all --non-interactive -- apply -auto-approve
@@ -212,10 +212,10 @@ endif
 ## destroy, since they're Persistent-lifecycle data.
 ## Usage: CONFIRM_DESTROY=vk-lab-platform make persistent-down
 ifeq ($(PROVIDER),local)
-persistent-down: require-valid-node-config
+persistent-down: clear-cache require-valid-node-config
 	@echo "PROVIDER=local owns no cloud resources - nothing to destroy."
 else
-persistent-down: require-valid-node-config
+persistent-down: clear-cache require-valid-node-config
 	./scripts/persistent-down.sh
 endif
 
@@ -224,18 +224,18 @@ endif
 ## Persistent layer doesn't exist yet - never creates it (constitution §17).
 ## Run `make argo-up` after this to install Argo CD and the platform.
 ifeq ($(PROVIDER),civo)
-cluster-up: require-valid-node-config
+cluster-up: clear-cache require-valid-node-config
 	./scripts/require-persistent.sh
 	@bash -c 'source scripts/lib/region.sh; source scripts/lib/provider.sh; civo_token; cd terraform/live/$(CLUSTER_DIR) && terragrunt run --all --non-interactive -- apply -auto-approve'
 else ifeq ($(PROVIDER),hetzner)
-cluster-up: require-valid-node-config
+cluster-up: clear-cache require-valid-node-config
 	./scripts/require-persistent.sh
 	@bash -c 'source scripts/lib/region.sh; source scripts/lib/provider.sh; hcloud_token; use_isolated_kubeconfig; cd terraform/live/$(CLUSTER_DIR) && terragrunt run --all --non-interactive -- apply -auto-approve && configure_kubeconfig "$$KUBECONFIG" && wait_for_nodes_ready'
 else ifeq ($(PROVIDER),local)
-cluster-up: require-valid-node-config
+cluster-up: clear-cache require-valid-node-config
 	./scripts/cluster-up-local.sh
 else
-cluster-up: require-valid-node-config
+cluster-up: clear-cache require-valid-node-config
 	./scripts/require-persistent.sh
 	cd terraform/live/$(CLUSTER_DIR) && terragrunt run --all --non-interactive -- apply -auto-approve
 endif
@@ -246,10 +246,10 @@ endif
 ## Configures its own kubeconfig if the cluster exists; skips straight to
 ## `terragrunt destroy` if it doesn't.
 ifeq ($(PROVIDER),local)
-cluster-down:
+cluster-down: clear-cache
 	./scripts/cluster-down-local.sh
 else
-cluster-down:
+cluster-down: clear-cache
 	./scripts/cluster-down.sh
 endif
 
@@ -304,7 +304,7 @@ node-ssh:
 ## Installs Argo CD and the root Application onto the disposable EKS
 ## cluster (ADR 0012 - a script, not Terraform), then blocks until the
 ## whole platform is Synced/Healthy. Run after `make cluster-up`.
-argo-up:
+argo-up: clear-cache
 	./scripts/argo-up.sh
 
 ## Switches your own kubectl context to the disposable cluster as the E2E
@@ -377,14 +377,15 @@ test-kubeconfig-isolated:
 ## `make cluster-down`, always. Configures its own kubeconfig (like
 ## argo-up.sh) after confirming via the AWS API that the cluster exists -
 ## a CI runner starts with none, and no cluster means nothing to cascade.
-argo-down:
+argo-down: clear-cache
 	./scripts/argo-down.sh
 
-## Clears every .terragrunt-cache dir under terraform/live/. Run as the
-## first step of every composite *-up/*-down target below - a cache left
-## over from a different PROJECT_NAME/SUBDOMAIN bakes its old backend
-## config into the cached working directory, which then makes terraform
-## refuse to proceed ("Backend configuration has changed").
+## Clears every .terragrunt-cache dir under terraform/live/. A prerequisite of
+## every lifecycle target, composite and standalone alike, so it runs once per
+## invocation whichever one you call - a cache left over from a different
+## PROJECT_NAME/SUBDOMAIN bakes its old backend config into the cached working
+## directory, which then makes terraform refuse to proceed ("Backend
+## configuration has changed").
 ## Rejects a PROJECT_NAME whose derived resource names would be invalid.
 ## A prerequisite of every composite target, so CI and a local
 ## `PROJECT_NAME=foo make up` are guarded identically.
