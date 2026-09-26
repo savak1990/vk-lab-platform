@@ -140,26 +140,26 @@ clusters:
 ## Creates this project's own state bucket directly. Usually invoked via
 ## `make bootstrap-up`, not directly - kept as its own target for manual/
 ## debugging use.
-state-up:
+state-up: clear-cache
 	./scripts/state-up.sh
 
 ## Destroys this project's own state bucket directly. Usually invoked via
 ## `make bootstrap-down`, not directly - kept as its own target for manual/
 ## debugging use. Only for ci/cd or a full manual teardown.
-state-down:
+state-down: clear-cache
 	./scripts/state-down.sh
 
 ## Creates account-global resources (shared secrets KMS key, shared lab-role,
 ## GitHub OIDC provider, eks-access-identity) in their own dedicated state
 ## bucket, then sets lab.yml's vars.AWS_ROLE_ARN. Run
 ## once per AWS account - deliberately in no composite target.
-account-up:
+account-up: clear-cache
 	./scripts/account-up.sh
 
 ## Destroys account-global resources, including their own dedicated state
 ## bucket. Guarded (CONFIRM_DESTROY), expected to run essentially never -
 ## every project in the account shares these.
-account-down:
+account-down: clear-cache
 	./scripts/account-down.sh
 
 ## Creates Bootstrap-lifecycle resources for this project: its own state
