@@ -282,6 +282,44 @@ data "aws_iam_policy_document" "permissions" {
     resources = ["arn:aws:ssm:*::parameter/aws/service/eks/optimized-ami/*"]
   }
 
+  # CreateUserPool has no resource-level form - no ARN exists before the pool
+  # does, the same AWS IAM limitation as s3:CreateBucket and ec2:Create* above.
+  statement {
+    sid       = "AhorroCognitoCreateUserPool"
+    actions   = ["cognito-idp:CreateUserPool"]
+    resources = ["*"]
+  }
+
+  # The Ahorro user pool (terraform/live/persistent/ahorro-cognito). Scoped to
+  # userpool ARNs in this account. No ListUserPools: every call addresses the
+  # pool by the id already in state.
+  statement {
+    sid = "AhorroCognitoUserPool"
+    actions = [
+      "cognito-idp:DeleteUserPool",
+      "cognito-idp:DescribeUserPool",
+      "cognito-idp:UpdateUserPool",
+      "cognito-idp:GetUserPoolMfaConfig",
+      "cognito-idp:SetUserPoolMfaConfig",
+      "cognito-idp:CreateUserPoolClient",
+      "cognito-idp:DeleteUserPoolClient",
+      "cognito-idp:DescribeUserPoolClient",
+      "cognito-idp:UpdateUserPoolClient",
+      "cognito-idp:ListUserPoolClients",
+      "cognito-idp:AdminCreateUser",
+      "cognito-idp:AdminDeleteUser",
+      "cognito-idp:AdminGetUser",
+      "cognito-idp:AdminSetUserPassword",
+      "cognito-idp:AdminUpdateUserAttributes",
+      "cognito-idp:ListUsers",
+      "cognito-idp:TagResource",
+      "cognito-idp:UntagResource",
+      "cognito-idp:ListTagsForResource",
+    ]
+    resources = ["arn:aws:cognito-idp:*:${local.account}:userpool/*"]
+  }
+
+
   # Scoped by path shape, not project name - this role is account-global
   # and shared across every project, with no PROJECT_NAME input of its own
   # (see StateBucket's own project-agnostic bucket_arn above for the same

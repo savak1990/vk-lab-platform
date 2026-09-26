@@ -12,9 +12,9 @@
 # Two modes, chosen by FIXED_TEST_PASSWORDS:
 #   - unset/false (default, the real lab): passwords get real random
 #     values via AWS Secrets Manager. Called automatically by persistent-up.
-#   - true (CI/test, via `make generate-secrets`): passwords get the
-#     fixed, publicly-known value "test" - never use this for the
-#     personal lab's own PROJECT_NAME.
+#   - true (CI/test, via `make generate-secrets`): passwords get a fixed,
+#     publicly-known value, "test" unless the consumer's own policy
+#     rejects it - never use this for the personal lab's own PROJECT_NAME.
 # root-domain.enc is never randomly generated either way - it's a real
 # external domain value. It's generated from $ROOT_DOMAIN if that's set
 # and the file is still missing; otherwise this script leaves it alone and
@@ -49,15 +49,17 @@ generate_if_missing() {
 
 # Password value is only computed (an AWS API call, in the random case) if
 # the file is actually missing - never wasted on an already-generated one.
+# $2 overrides the fixed test value for a consumer that rejects "test": the
+# Cognito pool enforces 8 characters with upper, lower and a digit.
 generate_password_if_missing() {
-  local name="$1"
+  local name="$1" fixed="${2:-test}"
   if [ -f "$SECRETS_DIR/$name.enc" ]; then
     echo "Skipping $name - $SECRETS_DIR/$name.enc already exists"
     return
   fi
   local value
   if [ "$FIXED_TEST_PASSWORDS" = "true" ]; then
-    value="test"
+    value="$fixed"
   else
     value="$(random_password)"
   fi
@@ -70,6 +72,7 @@ fi
 
 generate_password_if_missing postgres-app-password
 generate_password_if_missing grafana-admin-password
+generate_password_if_missing ahorro-test-user-password Test1234
 
 # Every non-EKS target reaches AWS through Roles Anywhere and so needs the
 # CA; aws uses Pod Identity and never touches these files.

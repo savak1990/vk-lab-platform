@@ -69,6 +69,7 @@ LIVE_UNITS=(
   persistent-civo/reserved-ip
   persistent-hetzner/network
   persistent-hetzner/ssh-key
+  persistent/ahorro-cognito
   persistent/backups
   persistent/secrets
   persistent/vpc
