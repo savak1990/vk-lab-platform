@@ -4,9 +4,10 @@
 
 # Lifecycle: state -> bootstrap -> persistence -> cluster -> argo
 
-# Selects the provider's project/stack defaults and dispatch. aws is the
-# default; behavior is unchanged from before this variable existed.
-export PROVIDER ?= aws
+# Selects the provider's project/stack defaults and dispatch. hetzner is the
+# default because it is the target the lab actually runs on; every other
+# target is one PROVIDER= away.
+export PROVIDER ?= hetzner
 ifeq ($(filter aws civo hetzner local,$(PROVIDER)),)
 $(error PROVIDER must be aws, civo, hetzner or local, got '$(PROVIDER)')
 endif
