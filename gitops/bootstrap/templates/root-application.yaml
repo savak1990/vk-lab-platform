@@ -83,6 +83,12 @@ spec:
           value: {{ .Values.postgres.backup.serverName | quote }}
         - name: postgres.backup.recoverServerName
           value: {{ .Values.postgres.backup.recoverServerName | quote }}
+        - name: ahorro.cognito.userPoolId
+          value: {{ .Values.ahorro.cognito.userPoolId | quote }}
+        - name: ahorro.cognito.clientId
+          value: {{ .Values.ahorro.cognito.clientId | quote }}
+        - name: ahorro.cognito.issuer
+          value: {{ .Values.ahorro.cognito.issuer | quote }}
       # karpenter.{spot,onDemand}.instanceTypes are lists - `parameters`
       # only carries scalar string overrides (Argo CD's own documented
       # limitation), so these go through valuesObject instead, which Argo

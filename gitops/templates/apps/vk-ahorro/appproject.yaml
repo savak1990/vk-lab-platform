@@ -1,0 +1,30 @@
+{{- if ne .Values.target "local" }}
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: vk-ahorro
+  namespace: argocd
+  annotations:
+    # Before the pointer at wave 5: an Application naming a project that does
+    # not exist yet is rejected outright, not retried.
+    argocd.argoproj.io/sync-wave: "4"
+spec:
+  description: The Ahorro application. Its own repository owns everything below the pointer.
+  sourceRepos:
+    - https://github.com/savak1990/vk-ahorro
+    - ghcr.io/savak1990/vk-ahorro/charts
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: ahorro
+    # The child Applications are objects in argocd, so the project must allow
+    # that namespace as well as the one the workloads land in.
+    - server: https://kubernetes.default.svc
+      namespace: argocd
+  clusterResourceWhitelist:
+    # CreateNamespace=true on the children needs this and nothing else.
+    - group: ""
+      kind: Namespace
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"
+{{- end }}
