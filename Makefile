@@ -1,4 +1,4 @@
-.PHONY: up down full-up full-down platform-up platform-down state-up state-down status clusters require-valid-project-name require-valid-node-config require-valid-recover-from account-up account-down bootstrap-up bootstrap-down secret-encrypt secret-decrypt secrets-check node-config-check scripts-check generate-secrets ca-init ssh-key-init persistent-up persistent-down clear-cache cluster-up cluster-down park unpark kubeconfig node-ssh test-kubeconfig test-kubeconfig-isolated argo-up argo-down test go-check terraform-check forward-up forward-down
+.PHONY: up down full-up full-down platform-up platform-down state-up state-down status clusters require-valid-project-name require-valid-node-config require-valid-recover-from account-up account-down bootstrap-up bootstrap-down secret-encrypt secret-decrypt secrets-check node-config-check scripts-check generate-secrets ca-init ssh-key-init persistent-up persistent-down clear-cache cluster-up cluster-down park unpark kubeconfig node-ssh test-kubeconfig test-kubeconfig-isolated argo-up argo-down test go-check terraform-check forward-up forward-down help
 
 .NOTPARALLEL:
 
@@ -94,6 +94,7 @@ export BOOTSTRAP_EXCLUDE :=
 export PERSISTENT_EXCLUDE :=
 endif
 
+### Routine lifecycle
 ## Brings up the cluster + Argo CD onto an existing Persistent layer.
 ## Fails fast (naming `make persistent-up`) if Persistent doesn't exist yet -
 ## never creates it (constitution §17). For a from-scratch environment use
@@ -130,6 +131,7 @@ platform-up: require-valid-project-name require-valid-node-config require-valid-
 ## above it. Reaches persistent-down, so requires CONFIRM_DESTROY=PROJECT_NAME.
 platform-down: require-valid-project-name require-valid-node-config clear-cache argo-down cluster-down persistent-down
 
+### Inspection, read-only
 ## Reports which lifecycle layers currently have state in the shared bucket.
 status:
 	./scripts/status.sh
@@ -138,6 +140,7 @@ status:
 clusters:
 	./scripts/clusters.sh
 
+### One lifecycle layer at a time
 ## Creates this project's own state bucket directly. Usually invoked via
 ## `make bootstrap-up`, not directly - kept as its own target for manual/
 ## debugging use.
@@ -254,6 +257,7 @@ cluster-down: clear-cache
 	./scripts/cluster-down.sh
 endif
 
+### Parked cluster
 ## Takes the worker nodes to zero, leaving the control plane, etcd, every Argo CD
 ## object, the volumes and the load balancer with its DNS records untouched. The
 ## cluster still answers kubectl and schedules nothing, so every platform
@@ -271,6 +275,7 @@ park:
 unpark:
 	./scripts/park.sh unpark
 
+### Argo CD, cluster access and tests
 ## Switches your own kubectl context to the disposable cluster. On aws, every
 ## kubectl call re-assumes eks-access-identity via --role-arn (baked into
 ## the generated kubeconfig's exec plugin), so access never depends on
@@ -307,6 +312,15 @@ node-ssh:
 ## whole platform is Synced/Healthy. Run after `make cluster-up`.
 argo-up: clear-cache
 	./scripts/argo-up.sh
+
+## Cascades away everything Argo CD manages (Karpenter, CNPG, EBS CSI,
+## Postgres CRs, ...), then removes Argo CD itself - before
+## `make cluster-down` touches the EKS cluster. Run before
+## `make cluster-down`, always. Configures its own kubeconfig (like
+## argo-up.sh) after confirming via the AWS API that the cluster exists -
+## a CI runner starts with none, and no cluster means nothing to cascade.
+argo-down: clear-cache
+	./scripts/argo-down.sh
 
 ## Switches your own kubectl context to the disposable cluster as the E2E
 ## suite's read-only identity (rbac/e2e-test-readonly.yaml), never
@@ -351,6 +365,7 @@ forward-up:
 forward-down:
 	./scripts/forward-down-local.sh
 
+### Offline validation
 ## Formats, then validates every Terraform module and every live unit that
 ## runs without a backend. Needs no cluster and no credentials - every init
 ## is -backend=false. PARALLEL=<n> sets how many run at once (default 4,
@@ -367,26 +382,12 @@ go-check:
 	go test ./tests/e2e/framework/...
 	@echo "GO-CHECK: the Go layer is valid."
 
+### Internal prerequisites
 ## Internal: the same read-only identity as test-kubeconfig, written to
 ## $(LAB_TEST_KUBECONFIG) instead of your own kubeconfig.
 test-kubeconfig-isolated:
 	@bash -c 'source scripts/lib/region.sh; source scripts/lib/provider.sh; use_isolated_kubeconfig $(LAB_TEST_KUBECONFIG); configure_test_kubeconfig "$$KUBECONFIG"'
 
-## Cascades away everything Argo CD manages (Karpenter, CNPG, EBS CSI,
-## Postgres CRs, ...), then removes Argo CD itself - before
-## `make cluster-down` touches the EKS cluster. Run before
-## `make cluster-down`, always. Configures its own kubeconfig (like
-## argo-up.sh) after confirming via the AWS API that the cluster exists -
-## a CI runner starts with none, and no cluster means nothing to cascade.
-argo-down: clear-cache
-	./scripts/argo-down.sh
-
-## Clears every .terragrunt-cache dir under terraform/live/. A prerequisite of
-## every lifecycle target, composite and standalone alike, so it runs once per
-## invocation whichever one you call - a cache left over from a different
-## PROJECT_NAME/SUBDOMAIN bakes its old backend config into the cached working
-## directory, which then makes terraform refuse to proceed ("Backend
-## configuration has changed").
 ## Rejects a PROJECT_NAME whose derived resource names would be invalid.
 ## A prerequisite of every composite target, so CI and a local
 ## `PROJECT_NAME=foo make up` are guarded identically.
@@ -405,9 +406,16 @@ require-valid-node-config:
 require-valid-recover-from:
 	@bash -c 'source scripts/lib/require-valid-recover-from.sh; require_valid_recover_from'
 
+## Clears every .terragrunt-cache dir under terraform/live/. A prerequisite of
+## every lifecycle target, composite and standalone alike, so it runs once per
+## invocation whichever one you call - a cache left over from a different
+## PROJECT_NAME/SUBDOMAIN bakes its old backend config into the cached working
+## directory, which then makes terraform refuse to proceed ("Backend
+## configuration has changed").
 clear-cache:
 	find terraform/live -type d -name .terragrunt-cache -prune -exec rm -rf {} +
 
+### Secrets and key material
 ## Encrypts a value with the shared account-global KMS key into
 ## secrets/$(PROJECT_NAME)/<NAME>.enc (SCOPE=project, the default) or
 ## secrets/<NAME>.enc (SCOPE=global: one value for every project in the account).
@@ -425,6 +433,34 @@ secret-decrypt: export SECRET_SCOPE := $(SCOPE)
 secret-decrypt:
 	@./scripts/secret-decrypt.sh "$(NAME)"
 
+## Generates the Roles Anywhere root CA: a public cert (secrets/$(PROJECT_NAME)/$(PROVIDER)-ca-cert.pem)
+## and its KMS-encrypted private key. Refuses to overwrite; set ROTATE=1 for a rotation candidate.
+## Usage: PROVIDER=civo|hetzner make ca-init [PROJECT_NAME=vk-civo-lab] [ROTATE=1]
+ca-init: export PROJECT_NAME := $(PROJECT_NAME)
+ca-init: export ROTATE := $(ROTATE)
+ca-init:
+	@./scripts/ca-init.sh
+
+## Generates the Hetzner node SSH key: a public key (secrets/$(PROJECT_NAME)/hetzner-ssh-key.pub)
+## and its KMS-encrypted private key. Refuses to overwrite; set ROTATE=1 for a rotation candidate.
+## Usage: PROVIDER=hetzner make ssh-key-init [PROJECT_NAME=vk-hetzner-lab] [ROTATE=1]
+ssh-key-init: export PROJECT_NAME := $(PROJECT_NAME)
+ssh-key-init: export ROTATE := $(ROTATE)
+ssh-key-init:
+	@./scripts/ssh-key-init.sh
+
+## Generates throwaway secrets/$(PROJECT_NAME)/ files for a CI/test
+## environment: root-domain from ROOT_DOMAIN and fixed, publicly-known
+## passwords ("test"). Never use this for the personal lab - persistent-up
+## calls the same script directly (without FIXED_TEST_PASSWORDS) to
+## auto-generate real random passwords instead.
+## Usage: PROJECT_NAME=vk-lab-ci ROOT_DOMAIN=<domain> make generate-secrets
+generate-secrets: export ROOT_DOMAIN := $(ROOT_DOMAIN)
+generate-secrets: export FIXED_TEST_PASSWORDS := true
+generate-secrets:
+	@./scripts/generate-secrets.sh
+
+### Offline checks
 ## Runs the KMS-free path-resolution test for secret-encrypt/secret-decrypt.
 ## Usage: make secrets-check
 secrets-check:
@@ -453,33 +489,6 @@ pr-gate-check:
 argo-up-dispatch-check:
 	@./tests/scripts/argo-up-dispatch-test.sh
 
-## Generates throwaway secrets/$(PROJECT_NAME)/ files for a CI/test
-## environment: root-domain from ROOT_DOMAIN and fixed, publicly-known
-## passwords ("test"). Never use this for the personal lab - persistent-up
-## calls the same script directly (without FIXED_TEST_PASSWORDS) to
-## auto-generate real random passwords instead.
-## Usage: PROJECT_NAME=vk-lab-ci ROOT_DOMAIN=<domain> make generate-secrets
-generate-secrets: export ROOT_DOMAIN := $(ROOT_DOMAIN)
-generate-secrets: export FIXED_TEST_PASSWORDS := true
-generate-secrets:
-	@./scripts/generate-secrets.sh
-
-## Generates the Roles Anywhere root CA: a public cert (secrets/$(PROJECT_NAME)/$(PROVIDER)-ca-cert.pem)
-## and its KMS-encrypted private key. Refuses to overwrite; set ROTATE=1 for a rotation candidate.
-## Usage: PROVIDER=civo|hetzner make ca-init [PROJECT_NAME=vk-civo-lab] [ROTATE=1]
-ca-init: export PROJECT_NAME := $(PROJECT_NAME)
-ca-init: export ROTATE := $(ROTATE)
-ca-init:
-	@./scripts/ca-init.sh
-
-## Generates the Hetzner node SSH key: a public key (secrets/$(PROJECT_NAME)/hetzner-ssh-key.pub)
-## and its KMS-encrypted private key. Refuses to overwrite; set ROTATE=1 for a rotation candidate.
-## Usage: PROVIDER=hetzner make ssh-key-init [PROJECT_NAME=vk-hetzner-lab] [ROTATE=1]
-ssh-key-init: export PROJECT_NAME := $(PROJECT_NAME)
-ssh-key-init: export ROTATE := $(ROTATE)
-ssh-key-init:
-	@./scripts/ssh-key-init.sh
-
 ## Renders gitops/ and gitops/bootstrap/ for aws/civo/local and verifies:
 ## the aws render against the committed golden baseline (tests/golden/gitops-aws),
 ## and civo/local structurally (expected objects present, aws-only kinds absent).
@@ -496,3 +505,16 @@ specs-check:
 ## tests/scripts/*-test.sh. Usage: make scripts-check
 scripts-check:
 	@./scripts/scripts-check.sh
+
+### Help
+## Lists every target under its group heading, with the first line of the
+## target's own documentation. `make help-<target>` prints the whole block.
+## Usage: make help [or] make help-park
+help:
+	@./scripts/help.sh
+
+help-%:
+	@./scripts/help.sh "$*"
+
+# Bare `make` used to run `up`, which creates a cluster and bills for it.
+.DEFAULT_GOAL := help
