@@ -27,3 +27,14 @@ configs:
         end
       end
       return hs
+    # The CRD schema defaults these six fields. A chart that omits them applies
+    # client-side with no last-applied-configuration annotation, so each default
+    # reads as drift forever. Only defaults are ignored; route drift still shows.
+    resource.customizations.ignoreDifferences.gateway.networking.k8s.io_HTTPRoute: |
+      jqPathExpressions:
+        - '.spec.parentRefs[]?.group'
+        - '.spec.parentRefs[]?.kind'
+        - '.spec.rules[]?.backendRefs[]?.group'
+        - '.spec.rules[]?.backendRefs[]?.kind'
+        - '.spec.rules[]?.backendRefs[]?.weight'
+        - '.spec.rules[]?.matches'
