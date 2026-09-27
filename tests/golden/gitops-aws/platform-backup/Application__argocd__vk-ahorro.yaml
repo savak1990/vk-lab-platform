@@ -23,19 +23,17 @@ spec:
   # a running cluster, and on a running test. The lifecycle test pins a SHA.
   source:
     helm:
+      # Every optional parameter is omitted rather than passed empty. `value`
+      # is optional in the Application CRD, so the API server drops
+      # `value: ""` on write; Argo then compares the stored object against a
+      # manifest that still carries it and reports OutOfSync for ever. On the
+      # local target, where all four below are empty, that wedged the whole
+      # root sync until its watch budget ran out.
       parameters:
         # The application cannot infer the target from an empty fqdn: its own
         # hostname template would render "ahorro." and pass every guard.
         - name: target
           value: aws
-        - name: fqdn
-          value: ""
-        - name: cognito.userPoolId
-          value: ""
-        - name: cognito.clientId
-          value: ""
-        - name: cognito.issuer
-          value: ""
     path: gitops
     repoURL: https://github.com/savak1990/vk-ahorro
     targetRevision: main

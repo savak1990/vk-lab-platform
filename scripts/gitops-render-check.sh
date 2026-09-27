@@ -24,6 +24,21 @@ render_and_normalize() {
   local raw="$WORK_DIR/raw-$$-$RANDOM.yaml"
   helm template "$chart_dir" --set "target=$target" "$@" > "$raw"
 
+  # `value` is optional in the Application CRD, so the API server drops
+  # `value: ""` on write. Argo then compares the stored object against a
+  # manifest that still carries it and reports OutOfSync for ever - which an
+  # Application with selfHeal off never corrects. Omit the parameter instead.
+  #
+  # Only for the chart Argo renders. The bootstrap chart's root Application is
+  # installed by Helm and reconciled against nothing, so its empty parameters
+  # cannot drift.
+  if [ "$(basename "$chart_dir")" != bootstrap ] && grep -q '^ *value: ""$' "$raw"; then
+    echo "GITOPS-RENDER-CHECK: $target renders an empty helm parameter:" >&2
+    grep -B1 '^ *value: ""$' "$raw" >&2
+    echo "GITOPS-RENDER-CHECK: omit it - an empty value never round-trips." >&2
+    exit 1
+  fi
+
   awk -v out_dir="$out_dir" '
     /^---$/ { n++; file=sprintf("%s/doc-%03d.yaml", out_dir, n); next }
     /^# Source:/ { next }
