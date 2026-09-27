@@ -24,6 +24,21 @@ render_and_normalize() {
   local raw="$WORK_DIR/raw-$$-$RANDOM.yaml"
   helm template "$chart_dir" --set "target=$target" "$@" > "$raw"
 
+  # `value` is optional in the Application CRD, so the API server drops
+  # `value: ""` on write. Argo then compares the stored object against a
+  # manifest that still carries it and reports OutOfSync for ever - which an
+  # Application with selfHeal off never corrects. Omit the parameter instead.
+  #
+  # Only for the chart Argo renders. The bootstrap chart's root Application is
+  # installed by Helm and reconciled against nothing, so its empty parameters
+  # cannot drift.
+  if [ "$(basename "$chart_dir")" != bootstrap ] && grep -q '^ *value: ""$' "$raw"; then
+    echo "GITOPS-RENDER-CHECK: $target renders an empty helm parameter:" >&2
+    grep -B1 '^ *value: ""$' "$raw" >&2
+    echo "GITOPS-RENDER-CHECK: omit it - an empty value never round-trips." >&2
+    exit 1
+  fi
+
   awk -v out_dir="$out_dir" '
     /^---$/ { n++; file=sprintf("%s/doc-%03d.yaml", out_dir, n); next }
     /^# Source:/ { next }
@@ -118,6 +133,7 @@ verify_no_snapshot_path
 REQUIRED_OBJECTS="Application__argocd__envoy-gateway Application__argocd__cnpg-operator \
 Application__argocd__external-secrets PriorityClass__cluster__postgres-critical \
 ClusterRole__cluster__e2e-test-readonly \
+Namespace__cluster__ahorro RoleBinding__ahorro__e2e-test-readonly \
 RoleBinding__cnpg-system__e2e-test-readonly RoleBinding__argocd__e2e-test-readonly"
 REQUIRED_OBJECTS_CIVO="EnvoyProxy__envoy__envoy-proxy-config Gateway__envoy__platform-gateway \
 GatewayClass__cluster__envoy-gateway Application__argocd__cert-manager \
@@ -154,9 +170,8 @@ Application__argocd__loki Application__argocd__alloy \
 HTTPRoute__observability__grafana \
 Namespace__cluster__e2e ServiceAccount__e2e__e2e-test \
 RoleBinding__observability__e2e-test-readonly \
-RoleBinding__envoy__e2e-test-readonly"
-# The application is gated off this target until spec 107 wires it.
-FORBIDDEN_OBJECTS_LOCAL_EXTRA="AppProject__argocd__vk-ahorro"
+RoleBinding__envoy__e2e-test-readonly \
+AppProject__argocd__vk-ahorro Application__argocd__vk-ahorro"
 FORBIDDEN_KINDS_LOCAL="StorageClass VolumeSnapshotClass VolumeSnapshotContent VolumeSnapshot \
 ClusterSecretStore ExternalSecret NodePool EC2NodeClass \
 ObjectStore ScheduledBackup"
@@ -164,11 +179,10 @@ FORBIDDEN_KINDS_CIVO="StorageClass VolumeSnapshotClass VolumeSnapshotContent Vol
 NodePool EC2NodeClass"
 FORBIDDEN_APPLICATIONS_LOCAL="aws-load-balancer-controller cert-manager ebs-csi-driver karpenter \
 external-snapshotter external-snapshotter-crds \
-external-dns barman-cloud-plugin vk-ahorro"
+external-dns barman-cloud-plugin"
 FORBIDDEN_APPLICATIONS_CIVO="aws-load-balancer-controller ebs-csi-driver karpenter \
 external-snapshotter external-snapshotter-crds"
-FORBIDDEN_OBJECTS_LOCAL="$FORBIDDEN_OBJECTS_LOCAL_EXTRA \
-BackendTrafficPolicy__observability__grafana-traffic-policy \
+FORBIDDEN_OBJECTS_LOCAL="BackendTrafficPolicy__observability__grafana-traffic-policy \
 ExternalSecret__observability__grafana-admin-credentials \
 ServiceMonitor__kube-system__karpenter \
 ConfigMap__observability__dashboard-karpenter-capacity"

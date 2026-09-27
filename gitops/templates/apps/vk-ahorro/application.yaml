@@ -1,4 +1,3 @@
-{{- if ne .Values.target "local" }}
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -14,20 +13,47 @@ spec:
   project: vk-ahorro
   # A reference, not application code: the repository below owns its own
   # app-of-apps and fans out to one Application per service (ADR 0015).
+  #
+  # `argocd app sync root --local` reaches the platform chart only, so even a
+  # local bring-up runs that repository's merged code rather than a working
+  # tree. A branch here is therefore resolved at sync time: a merge lands on
+  # a running cluster, and on a running test. The lifecycle test pins a SHA.
   source:
     repoURL: https://github.com/savak1990/vk-ahorro
     path: gitops
-    targetRevision: main
+    targetRevision: {{ .Values.ahorro.targetRevision | quote }}
     helm:
+      # Every optional parameter is omitted rather than passed empty. `value`
+      # is optional in the Application CRD, so the API server drops
+      # `value: ""` on write; Argo then compares the stored object against a
+      # manifest that still carries it and reports OutOfSync for ever. On the
+      # local target, where all four below are empty, that wedged the whole
+      # root sync until its watch budget ran out.
       parameters:
+        # The application cannot infer the target from an empty fqdn: its own
+        # hostname template would render "ahorro." and pass every guard.
+        - name: target
+          value: {{ .Values.target | quote }}
+{{- if .Values.envoyGateway.fqdn }}
         - name: fqdn
           value: {{ .Values.envoyGateway.fqdn | quote }}
+{{- end }}
+{{- if .Values.ahorro.cognito.userPoolId }}
         - name: cognito.userPoolId
           value: {{ .Values.ahorro.cognito.userPoolId | quote }}
+{{- end }}
+{{- if .Values.ahorro.cognito.clientId }}
         - name: cognito.clientId
           value: {{ .Values.ahorro.cognito.clientId | quote }}
+{{- end }}
+{{- if .Values.ahorro.cognito.issuer }}
         - name: cognito.issuer
           value: {{ .Values.ahorro.cognito.issuer | quote }}
+{{- end }}
+{{- if .Values.ahorro.cognito.region }}
+        - name: cognito.region
+          value: {{ .Values.ahorro.cognito.region | quote }}
+{{- end }}
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd
@@ -39,4 +65,3 @@ spec:
       selfHeal: false
     syncOptions:
       - ServerSideApply=true
-{{- end }}

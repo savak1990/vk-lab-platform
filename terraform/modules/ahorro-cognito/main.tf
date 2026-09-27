@@ -111,6 +111,16 @@ resource "aws_ssm_parameter" "issuer" {
   description = "Ahorro Cognito issuer URL; the application derives its JWKS endpoint from it."
 }
 
+# Published even though the project fixes one region: the Amplify client needs
+# it beside the pool id, and reading it here keeps the application from
+# carrying a second copy of a value this layer already owns.
+resource "aws_ssm_parameter" "region" {
+  name        = "${local.ssm_prefix}/region"
+  value       = data.aws_region.current.region
+  type        = "String"
+  description = "Region the Ahorro Cognito pool lives in."
+}
+
 resource "aws_ssm_parameter" "test_user_email" {
   name        = "${local.ssm_prefix}/test_user_email"
   value       = var.test_user_email

@@ -28,6 +28,7 @@ const (
 type Environment interface {
 	KubernetesClient() kubernetes.Interface
 	ServiceURL(service string) string
+	ForwardedServiceURL(namespace, service string, port int) string
 	PostgresDSN(cluster string) string
 	Close()
 }
@@ -110,6 +111,30 @@ func (e *ClusterEnvironment) forwardGateway() int {
 	e.portForwards = append(e.portForwards, stopCh)
 	e.gatewayPort = bound
 	return bound
+}
+
+// ForwardedServiceURL reaches a Service that publishes no HTTPRoute, by
+// forwarding to one of its ready pods. ServiceURL cannot serve these: it
+// resolves through a route, and an application that renders none on this
+// target has nothing for it to read.
+func (e *ClusterEnvironment) ForwardedServiceURL(namespace, service string, port int) string {
+	ctx := context.Background()
+
+	selector, err := ServiceSelector(ctx, e.clientset, namespace, service)
+	if err != nil {
+		panic(fmt.Sprintf("framework: resolving %s/%s selector: %v", namespace, service, err))
+	}
+	podName, err := FirstReadyPod(ctx, e.clientset, namespace, selector)
+	if err != nil {
+		panic(fmt.Sprintf("framework: finding a ready pod for %s/%s: %v", namespace, service, err))
+	}
+
+	bound, stopCh, err := PortForward(e.restConfig, e.clientset, namespace, podName, port, 0)
+	if err != nil {
+		panic(fmt.Sprintf("framework: port-forwarding to %s: %v", podName, err))
+	}
+	e.portForwards = append(e.portForwards, stopCh)
+	return fmt.Sprintf("http://127.0.0.1:%d", bound)
 }
 
 // PostgresDSN opens a port-forward to the named CNPG cluster's primary

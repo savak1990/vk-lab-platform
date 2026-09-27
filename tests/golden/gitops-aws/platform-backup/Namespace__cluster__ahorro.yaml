@@ -1,0 +1,15 @@
+# Ahorro's checks port-forward its two Services rather than using a route, so
+# they need this on every target, not only the one where Ahorro publishes no
+# route at all. pods/portforward is granted per namespace.
+#
+# The namespace is created here rather than left to the children's
+# CreateNamespace: those arrive at wave 5, and a RoleBinding whose namespace
+# does not exist fails the apply, which SkipDryRunOnMissingResource does not
+# cover. CreateNamespace is idempotent and tracks nothing, so nothing is
+# owned twice.
+apiVersion: v1
+kind: Namespace
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  name: ahorro

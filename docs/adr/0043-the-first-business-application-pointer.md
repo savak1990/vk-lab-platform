@@ -2,7 +2,11 @@
 
 ## Status
 
-Accepted
+Accepted. Narrowed by
+[ADR 0044](0044-the-ahorro-pointer-reaches-the-local-target.md): the `local`
+gate this document places on the pointer is lifted, now that the application
+renders no route and skips sign-in on that target. Every other decision here
+stands.
 
 Implements the pointer half of [ADR 0015](0015-business-app-gitops-topology.md)
 and carries the identifiers [ADR 0042](0042-app-owned-cognito-in-the-persistent-layer.md)

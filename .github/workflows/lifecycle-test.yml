@@ -626,6 +626,18 @@ jobs:
           kind: true
           argocd: true
 
+      # The Ahorro pointer tracks a branch of another repository, so a merge
+      # there mid-run changes the desired state underneath this job and the
+      # result reflects neither the old code nor the new. Resolving the branch
+      # to a SHA once, here, freezes the run.
+      - name: Resolve the Ahorro revision
+        run: |
+          set -euo pipefail
+          sha="$(git ls-remote https://github.com/savak1990/vk-ahorro main | cut -f1)"
+          test -n "$sha" || { echo "could not resolve vk-ahorro main" >&2; exit 1; }
+          echo "AHORRO_TARGET_REVISION=$sha" >> "$GITHUB_ENV"
+          echo "pinned vk-ahorro to $sha"
+
       - name: Create the cluster and reconcile the platform
         run: make up
         env:

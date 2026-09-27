@@ -8,6 +8,12 @@ updated: "2026-09-26"
 **Status note:** Implemented; becomes DONE once a bring-up shows the
 application Synced and Healthy against a real cluster.
 
+**Since:** the pointer no longer excludes the `local` target. It carries a
+`target` Helm parameter, and the platform creates `Namespace/ahorro` plus an
+e2e `RoleBinding` there so the smoke checks can port-forward. See
+[ADR 0044](../../../docs/adr/0044-the-ahorro-pointer-reaches-the-local-target.md)
+and that repository's spec 107. `scripts/argo-up.sh` needed no change.
+
 **Complexity:** Small
 **Risk:** Medium — a broken pointer wedges the `root` Application until its retry budget runs out, roughly sixteen minutes.
 **Estimated cost:** ~0.5 day · AWS runtime cost: none. The objects are Disposable and live in the cluster `make up` already pays for.

@@ -94,6 +94,37 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
 {{- end }}
 ---
+# Ahorro's checks port-forward its two Services rather than using a route, so
+# they need this on every target, not only the one where Ahorro publishes no
+# route at all. pods/portforward is granted per namespace.
+#
+# The namespace is created here rather than left to the children's
+# CreateNamespace: those arrive at wave 5, and a RoleBinding whose namespace
+# does not exist fails the apply, which SkipDryRunOnMissingResource does not
+# cover. CreateNamespace is idempotent and tracks nothing, so nothing is
+# owned twice.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ahorro
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: e2e-test-readonly
+  namespace: ahorro
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+subjects:
+  {{- include "platform.e2eTestSubject" . | nindent 2 }}
+roleRef:
+  kind: ClusterRole
+  name: e2e-test-readonly
+  apiGroup: rbac.authorization.k8s.io
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:

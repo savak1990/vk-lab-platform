@@ -25,6 +25,10 @@ HCCM_CHART_VERSION="${HCCM_CHART_VERSION:-1.37.0}"
 # an autoscaled node boots that pool's cloud-init and would fail on another OS.
 HCLOUD_NODE_IMAGE="${HCLOUD_NODE_IMAGE:-ubuntu-24.04}"
 TARGET_REVISION="${TARGET_REVISION:-main}"
+# The Ahorro pointer's revision. A branch is resolved at sync time, so a
+# merge to it lands on a running cluster and on a running test; the
+# lifecycle test passes a commit SHA to freeze the run.
+AHORRO_TARGET_REVISION="${AHORRO_TARGET_REVISION:-main}"
 REPO_URL="${REPO_URL:-https://github.com/savak1990/vk-lab-platform}"
 # local target only. Fixed and publicly known on purpose, like
 # FIXED_TEST_PASSWORDS: the cluster is throwaway and holds nothing real.
@@ -79,13 +83,15 @@ ahorro_resolve_cognito() {
   AHORRO_COGNITO_USER_POOL_ID="$(ssm_output "/$PROJECT_NAME/persistent/ahorro-cognito/user_pool_id")"
   AHORRO_COGNITO_CLIENT_ID="$(ssm_output "/$PROJECT_NAME/persistent/ahorro-cognito/client_id")"
   AHORRO_COGNITO_ISSUER="$(ssm_output "/$PROJECT_NAME/persistent/ahorro-cognito/issuer")"
+  AHORRO_COGNITO_REGION="$(ssm_output "/$PROJECT_NAME/persistent/ahorro-cognito/region")"
 }
 
-# One batched get-parameters call, not nine round trips. --with-decryption
+# Batched get-parameters calls, not one round trip per name. --with-decryption
 # is a no-op on the plain String ones, so this serves both types uniformly.
-# Bash 3.2 compatible (no associative arrays) - linear scan over 9 items.
-# Nine against a get-parameters cap of ten: a tenth name still fits, an
-# eleventh needs the batching loop civo_resolve_inputs already has.
+# Bash 3.2 compatible (no associative arrays) - linear scan over the results.
+# Sliced in tens because that is the cap get-parameters enforces; the list
+# reached exactly ten when the Cognito region joined it, so the next name
+# added here would have failed the call outright.
 aws_resolve_inputs() {
   local ssm_names=(
     "/$PROJECT_NAME/bootstrap/acm/certificate_arn"
@@ -97,14 +103,20 @@ aws_resolve_inputs() {
     "/$PROJECT_NAME/persistent/ahorro-cognito/user_pool_id"
     "/$PROJECT_NAME/persistent/ahorro-cognito/client_id"
     "/$PROJECT_NAME/persistent/ahorro-cognito/issuer"
+    "/$PROJECT_NAME/persistent/ahorro-cognito/region"
   )
   SSM_BATCH_NAMES=()
   SSM_BATCH_VALUES=()
-  while IFS=$'\t' read -r name value; do
-    SSM_BATCH_NAMES+=("$name")
-    SSM_BATCH_VALUES+=("$value")
-  done < <(aws ssm get-parameters --region "$LAB_REGION" --with-decryption \
-    --names "${ssm_names[@]}" --query 'Parameters[].[Name,Value]' --output text)
+  local batch_start=0
+  while [ "$batch_start" -lt "${#ssm_names[@]}" ]; do
+    while IFS=$'\t' read -r name value; do
+      SSM_BATCH_NAMES+=("$name")
+      SSM_BATCH_VALUES+=("$value")
+    done < <(aws ssm get-parameters --region "$LAB_REGION" --with-decryption \
+      --names "${ssm_names[@]:$batch_start:10}" \
+      --query 'Parameters[].[Name,Value]' --output text)
+    batch_start=$((batch_start + 10))
+  done
 
   CLUSTER_NAME="$(eks_output cluster_name)"
   ACM_CERTIFICATE_ARN="$(ssm_output "/$PROJECT_NAME/bootstrap/acm/certificate_arn")"
@@ -168,6 +180,7 @@ civo_resolve_inputs() {
     "/$PROJECT_NAME/persistent/ahorro-cognito/user_pool_id"
     "/$PROJECT_NAME/persistent/ahorro-cognito/client_id"
     "/$PROJECT_NAME/persistent/ahorro-cognito/issuer"
+    "/$PROJECT_NAME/persistent/ahorro-cognito/region"
   )
   local civo_ssm_batch_names=() civo_ssm_batch_values=()
   local batch_start=0
@@ -208,6 +221,7 @@ civo_resolve_inputs() {
       */ahorro-cognito/user_pool_id) AHORRO_COGNITO_USER_POOL_ID="$found" ;;
       */ahorro-cognito/client_id) AHORRO_COGNITO_CLIENT_ID="$found" ;;
       */ahorro-cognito/issuer) AHORRO_COGNITO_ISSUER="$found" ;;
+      */ahorro-cognito/region) AHORRO_COGNITO_REGION="$found" ;;
     esac
   done
 
@@ -268,6 +282,7 @@ hetzner_resolve_inputs() {
     "/$PROJECT_NAME/persistent/ahorro-cognito/user_pool_id"
     "/$PROJECT_NAME/persistent/ahorro-cognito/client_id"
     "/$PROJECT_NAME/persistent/ahorro-cognito/issuer"
+    "/$PROJECT_NAME/persistent/ahorro-cognito/region"
   )
   SSM_BATCH_NAMES=()
   SSM_BATCH_VALUES=()
@@ -690,9 +705,11 @@ aws_install_root_application() {
     --set envoyGateway.acmCertificateArn="$ACM_CERTIFICATE_ARN" \
     --set envoyGateway.nlbSubnetIds="$NODE_SUBNET_ID" \
     --set envoyGateway.fqdn="$LAB_FQDN" \
+    --set ahorro.targetRevision="$AHORRO_TARGET_REVISION" \
     --set ahorro.cognito.userPoolId="$AHORRO_COGNITO_USER_POOL_ID" \
     --set ahorro.cognito.clientId="$AHORRO_COGNITO_CLIENT_ID" \
     --set ahorro.cognito.issuer="$AHORRO_COGNITO_ISSUER" \
+    --set ahorro.cognito.region="$AHORRO_COGNITO_REGION" \
     --set postgres.backup.enabled=true \
     --set postgres.backup.bucket="$BACKUP_BUCKET" \
     --set postgres.backup.serverName="$BACKUP_SERVER_NAME" \
@@ -783,9 +800,11 @@ civo_install_root_application() {
     --set postgres.backup.recoverServerName="$RECOVER_SERVER_NAME" \
     --set tls.issuer="${TLS_ISSUER:-letsencrypt-prod}" \
     --set tls.acmeEmail="${TLS_ACME_EMAIL:-}" \
+    --set ahorro.targetRevision="$AHORRO_TARGET_REVISION" \
     --set ahorro.cognito.userPoolId="$AHORRO_COGNITO_USER_POOL_ID" \
     --set ahorro.cognito.clientId="$AHORRO_COGNITO_CLIENT_ID" \
     --set ahorro.cognito.issuer="$AHORRO_COGNITO_ISSUER" \
+    --set ahorro.cognito.region="$AHORRO_COGNITO_REGION" \
     --set tls.hostedZoneId="$ROUTE53_ZONE_ID"
 }
 
@@ -855,6 +874,7 @@ local_install_root_application() {
     --set project="$PROJECT_NAME" \
     --set repoURL="$REPO_URL" \
     --set targetRevision="$TARGET_REVISION" \
+    --set ahorro.targetRevision="$AHORRO_TARGET_REVISION" \
     --set postgres.storageSize="$POSTGRES_STORAGE_SIZE"
   local_sync_root
 }
@@ -892,9 +912,11 @@ hetzner_install_root_application() {
     --set postgres.backup.recoverServerName="$RECOVER_SERVER_NAME" \
     --set tls.issuer="${TLS_ISSUER:-letsencrypt-prod}" \
     --set tls.acmeEmail="${TLS_ACME_EMAIL:-}" \
+    --set ahorro.targetRevision="$AHORRO_TARGET_REVISION" \
     --set ahorro.cognito.userPoolId="$AHORRO_COGNITO_USER_POOL_ID" \
     --set ahorro.cognito.clientId="$AHORRO_COGNITO_CLIENT_ID" \
     --set ahorro.cognito.issuer="$AHORRO_COGNITO_ISSUER" \
+    --set ahorro.cognito.region="$AHORRO_COGNITO_REGION" \
     --set tls.hostedZoneId="$ROUTE53_ZONE_ID"
 }
 
