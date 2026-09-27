@@ -133,6 +133,7 @@ verify_no_snapshot_path
 REQUIRED_OBJECTS="Application__argocd__envoy-gateway Application__argocd__cnpg-operator \
 Application__argocd__external-secrets PriorityClass__cluster__postgres-critical \
 ClusterRole__cluster__e2e-test-readonly \
+Namespace__cluster__ahorro RoleBinding__ahorro__e2e-test-readonly \
 RoleBinding__cnpg-system__e2e-test-readonly RoleBinding__argocd__e2e-test-readonly"
 REQUIRED_OBJECTS_CIVO="EnvoyProxy__envoy__envoy-proxy-config Gateway__envoy__platform-gateway \
 GatewayClass__cluster__envoy-gateway Application__argocd__cert-manager \
@@ -170,8 +171,7 @@ HTTPRoute__observability__grafana \
 Namespace__cluster__e2e ServiceAccount__e2e__e2e-test \
 RoleBinding__observability__e2e-test-readonly \
 RoleBinding__envoy__e2e-test-readonly \
-AppProject__argocd__vk-ahorro Application__argocd__vk-ahorro \
-Namespace__cluster__ahorro RoleBinding__ahorro__e2e-test-readonly"
+AppProject__argocd__vk-ahorro Application__argocd__vk-ahorro"
 FORBIDDEN_KINDS_LOCAL="StorageClass VolumeSnapshotClass VolumeSnapshotContent VolumeSnapshot \
 ClusterSecretStore ExternalSecret NodePool EC2NodeClass \
 ObjectStore ScheduledBackup"
