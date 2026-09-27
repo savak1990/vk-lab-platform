@@ -83,11 +83,15 @@ spec:
           value: ""
         - name: postgres.backup.recoverServerName
           value: ""
+        - name: ahorro.targetRevision
+          value: main
         - name: ahorro.cognito.userPoolId
           value: ""
         - name: ahorro.cognito.clientId
           value: ""
         - name: ahorro.cognito.issuer
+          value: ""
+        - name: ahorro.cognito.region
           value: ""
       # karpenter.{spot,onDemand}.instanceTypes are lists - `parameters`
       # only carries scalar string overrides (Argo CD's own documented

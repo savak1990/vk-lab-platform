@@ -14,13 +14,14 @@ spec:
   # A reference, not application code: the repository below owns its own
   # app-of-apps and fans out to one Application per service (ADR 0015).
   #
-  # targetRevision is a branch, and `argocd app sync root --local` reaches the
-  # platform chart only, so even a local bring-up runs that repository's
-  # merged code rather than anything in a working tree.
+  # `argocd app sync root --local` reaches the platform chart only, so even a
+  # local bring-up runs that repository's merged code rather than a working
+  # tree. A branch here is therefore resolved at sync time: a merge lands on
+  # a running cluster, and on a running test. The lifecycle test pins a SHA.
   source:
     repoURL: https://github.com/savak1990/vk-ahorro
     path: gitops
-    targetRevision: main
+    targetRevision: {{ .Values.ahorro.targetRevision | quote }}
     helm:
       parameters:
         # The application cannot infer the target from an empty fqdn: its own
@@ -35,6 +36,13 @@ spec:
           value: {{ .Values.ahorro.cognito.clientId | quote }}
         - name: cognito.issuer
           value: {{ .Values.ahorro.cognito.issuer | quote }}
+{{- if .Values.ahorro.cognito.region }}
+        # Omitted rather than passed empty when there is no pool to read it
+        # from, so the application keeps its own default instead of rendering
+        # a client with no region at all.
+        - name: cognito.region
+          value: {{ .Values.ahorro.cognito.region | quote }}
+{{- end }}
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd

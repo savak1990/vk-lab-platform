@@ -68,7 +68,9 @@ awsIdentity:
 # scripts/argo-up.sh. Public, but one pool per project, so the application
 # repository cannot commit them (its ADR 0004).
 ahorro:
+  targetRevision: main
   cognito:
     userPoolId: ""
     clientId: ""
     issuer: ""
+    region: ""

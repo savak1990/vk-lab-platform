@@ -17,9 +17,10 @@ spec:
   # A reference, not application code: the repository below owns its own
   # app-of-apps and fans out to one Application per service (ADR 0015).
   #
-  # targetRevision is a branch, and `argocd app sync root --local` reaches the
-  # platform chart only, so even a local bring-up runs that repository's
-  # merged code rather than anything in a working tree.
+  # `argocd app sync root --local` reaches the platform chart only, so even a
+  # local bring-up runs that repository's merged code rather than a working
+  # tree. A branch here is therefore resolved at sync time: a merge lands on
+  # a running cluster, and on a running test. The lifecycle test pins a SHA.
   source:
     helm:
       parameters:

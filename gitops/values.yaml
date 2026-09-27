@@ -204,7 +204,13 @@ workloadIdentity:
 # scripts/argo-up.sh. Public, but one pool per project, so the application
 # repository cannot commit them (its ADR 0004).
 ahorro:
+  # Which revision of the application repository the pointer tracks. A branch
+  # is resolved at sync time, so a merge there changes a running cluster and,
+  # worse, changes a running test underneath itself. Set a commit SHA to
+  # freeze it; the lifecycle test does exactly that.
+  targetRevision: main
   cognito:
     userPoolId: ""
     clientId: ""
     issuer: ""
+    region: ""
