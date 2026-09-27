@@ -16,9 +16,17 @@ spec:
   project: vk-ahorro
   # A reference, not application code: the repository below owns its own
   # app-of-apps and fans out to one Application per service (ADR 0015).
+  #
+  # targetRevision is a branch, and `argocd app sync root --local` reaches the
+  # platform chart only, so even a local bring-up runs that repository's
+  # merged code rather than anything in a working tree.
   source:
     helm:
       parameters:
+        # The application cannot infer the target from an empty fqdn: its own
+        # hostname template would render "ahorro." and pass every guard.
+        - name: target
+          value: aws
         - name: fqdn
           value: ""
         - name: cognito.userPoolId

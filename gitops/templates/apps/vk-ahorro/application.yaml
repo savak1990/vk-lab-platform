@@ -1,4 +1,3 @@
-{{- if ne .Values.target "local" }}
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -14,12 +13,20 @@ spec:
   project: vk-ahorro
   # A reference, not application code: the repository below owns its own
   # app-of-apps and fans out to one Application per service (ADR 0015).
+  #
+  # targetRevision is a branch, and `argocd app sync root --local` reaches the
+  # platform chart only, so even a local bring-up runs that repository's
+  # merged code rather than anything in a working tree.
   source:
     repoURL: https://github.com/savak1990/vk-ahorro
     path: gitops
     targetRevision: main
     helm:
       parameters:
+        # The application cannot infer the target from an empty fqdn: its own
+        # hostname template would render "ahorro." and pass every guard.
+        - name: target
+          value: {{ .Values.target | quote }}
         - name: fqdn
           value: {{ .Values.envoyGateway.fqdn | quote }}
         - name: cognito.userPoolId
@@ -39,4 +46,3 @@ spec:
       selfHeal: false
     syncOptions:
       - ServerSideApply=true
-{{- end }}
