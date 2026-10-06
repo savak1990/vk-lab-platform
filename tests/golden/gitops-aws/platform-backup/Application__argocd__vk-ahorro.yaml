@@ -38,10 +38,11 @@ spec:
     repoURL: https://github.com/savak1990/vk-ahorro
     targetRevision: main
   syncPolicy:
-    # selfHeal is off by the application's own choice: its operator installs
-    # those charts by hand. prune stays on, so a removed service disappears.
+    # selfHeal is on by the application's own choice (its ADR 0009): hand
+    # installs moved to namespaces ahorro-dev and ahorro-pr, which Argo does
+    # not watch, so drift in namespace ahorro is now always a mistake.
     automated:
       prune: true
-      selfHeal: false
+      selfHeal: true
     syncOptions:
       - ServerSideApply=true

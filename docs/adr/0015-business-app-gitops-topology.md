@@ -2,7 +2,12 @@
 
 ## Status
 
-Accepted
+Accepted. Amended by
+[ADR 0045](0045-the-ahorro-pipeline-deploys-to-its-own-namespaces.md) in one
+bullet: "CD handoff is a git commit, not a live cluster call." That still
+holds for the namespace Argo owns, and no longer holds for the two namespaces
+an application's own pipeline owns, which did not exist when this was written.
+Every other decision here stands.
 
 ## Context
 

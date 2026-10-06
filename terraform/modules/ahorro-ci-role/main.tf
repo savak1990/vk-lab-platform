@@ -7,7 +7,24 @@ data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 
 locals {
-  root_domain_parameter_arn = "arn:aws:ssm:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:parameter/account/root_domain"
+  ssm_prefix                = "arn:aws:ssm:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:parameter"
+  root_domain_parameter_arn = "${local.ssm_prefix}/account/root_domain"
+
+  # Wildcarded on the project, not on the path: one role serves every lab
+  # project, and the project a run targets is its own input. Both paths stay
+  # pinned to their last two segments, so widening either one is a visible
+  # change here rather than a silent reach into a sibling prefix.
+  deploy_credential_parameter_arn = "${local.ssm_prefix}/*/cluster/ahorro-deploy/*"
+
+  # Named one by one rather than wildcarded, because the same prefix holds
+  # test_user_password. The client reads these four and has no use for the
+  # fifth.
+  cognito_parameter_arns = [
+    "${local.ssm_prefix}/*/persistent/ahorro-cognito/user_pool_id",
+    "${local.ssm_prefix}/*/persistent/ahorro-cognito/client_id",
+    "${local.ssm_prefix}/*/persistent/ahorro-cognito/issuer",
+    "${local.ssm_prefix}/*/persistent/ahorro-cognito/region",
+  ]
 }
 
 resource "aws_iam_role" "this" {
@@ -22,6 +39,23 @@ data "aws_iam_policy_document" "permissions" {
     sid       = "AllowReadRootDomainParameter"
     actions   = ["ssm:GetParameter"]
     resources = [local.root_domain_parameter_arn]
+  }
+
+  # Read only, and only these two prefixes. The pipeline deploys to namespaces
+  # ahorro-dev and ahorro-pr; what stops it reaching namespace ahorro is the
+  # cluster RBAC this token carries, not this policy.
+  statement {
+    sid       = "AllowReadAhorroDeployCredential"
+    actions   = ["ssm:GetParameter", "ssm:GetParameters"]
+    resources = [local.deploy_credential_parameter_arn]
+  }
+
+  # The user pool is shared by every environment: there is one pool and one
+  # app client per project, because the API's verifier pins a single client id.
+  statement {
+    sid       = "AllowReadAhorroCognitoIdentifiers"
+    actions   = ["ssm:GetParameter", "ssm:GetParameters"]
+    resources = local.cognito_parameter_arns
   }
 }
 

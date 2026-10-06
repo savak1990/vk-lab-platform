@@ -1,0 +1,70 @@
+# Two Roles, not one ClusterRole bound twice: a ClusterRole is a cluster object
+# and this grant must never be bindable into namespace ahorro by accident.
+#
+# The verbs are what Helm needs, not a wildcard. The charts render four kinds;
+# secrets carry Helm's own release history; pods and replicasets are what
+# `--wait` polls; pods/log is what makes a failed rollout diagnosable.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-wave: "2"
+  name: ahorro-deploy
+  namespace: ahorro-dev
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+      - services
+      - secrets
+      - serviceaccounts
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+      - events
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - pods/log
+    verbs:
+      - get
+  - apiGroups:
+      - apps
+    resources:
+      - deployments
+      - replicasets
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+  - apiGroups:
+      - gateway.networking.k8s.io
+    resources:
+      - httproutes
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete

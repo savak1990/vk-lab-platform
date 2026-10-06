@@ -134,6 +134,10 @@ REQUIRED_OBJECTS="Application__argocd__envoy-gateway Application__argocd__cnpg-o
 Application__argocd__external-secrets PriorityClass__cluster__postgres-critical \
 ClusterRole__cluster__e2e-test-readonly \
 Namespace__cluster__ahorro RoleBinding__ahorro__e2e-test-readonly \
+Namespace__cluster__ahorro-dev Namespace__cluster__ahorro-pr \
+ServiceAccount__ahorro-dev__ahorro-deploy \
+Role__ahorro-dev__ahorro-deploy RoleBinding__ahorro-dev__ahorro-deploy \
+Role__ahorro-pr__ahorro-deploy RoleBinding__ahorro-pr__ahorro-deploy \
 RoleBinding__cnpg-system__e2e-test-readonly RoleBinding__argocd__e2e-test-readonly"
 REQUIRED_OBJECTS_CIVO="EnvoyProxy__envoy__envoy-proxy-config Gateway__envoy__platform-gateway \
 GatewayClass__cluster__envoy-gateway Application__argocd__cert-manager \

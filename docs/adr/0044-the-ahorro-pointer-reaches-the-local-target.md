@@ -53,8 +53,12 @@ exists for the same reason. `CreateNamespace=true` is idempotent and tracks
 nothing, so nothing is owned twice and a prune on either side removes nothing
 the other needs.
 
-Both objects are gated to local. The cloud targets reach the application over
-its public hostnames and need no forward.
+Both objects are ungated. This paragraph read "gated to local" on the
+reasoning that local is where the application publishes no route, but
+`tests/e2e/ahorro_test.go` carries no such gate and runs wherever `make test`
+runs, so the grant is needed on every target. The `envoy` RoleBinding beside
+them stays local-only, which is correct: only that target reaches the gateway
+by forwarding.
 
 ### 3. The checks are a smoke test, not an authentication test
 
