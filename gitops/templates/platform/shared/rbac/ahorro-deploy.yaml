@@ -1,0 +1,109 @@
+# The identity Ahorro's pipeline deploys with. It reaches ahorro-dev and
+# ahorro-pr and nothing else: namespace ahorro holds the released version,
+# which only Argo writes, so a pipeline fault cannot reach it.
+#
+# The namespaces are created here rather than left to `helm --create-namespace`
+# for the reason Namespace/ahorro is: a RoleBinding whose namespace does not
+# exist fails the apply, and SkipDryRunOnMissingResource covers the dry run
+# only. Creating them is also what lets the first deploy be an upgrade.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ahorro-dev
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ahorro-pr
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+---
+# In ahorro-dev rather than a namespace of its own: the identity needs to live
+# somewhere, and a fourth namespace holding one object earns nothing.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ahorro-deploy
+  namespace: ahorro-dev
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+---
+# Two Roles, not one ClusterRole bound twice: a ClusterRole is a cluster object
+# and this grant must never be bindable into namespace ahorro by accident.
+#
+# The verbs are what Helm needs, not a wildcard. The charts render four kinds;
+# secrets carry Helm's own release history; pods and replicasets are what
+# `--wait` polls; pods/log is what makes a failed rollout diagnosable.
+{{- range $ns := list "ahorro-dev" "ahorro-pr" }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ahorro-deploy
+  namespace: {{ $ns }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps", "services", "secrets", "serviceaccounts"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["pods", "events"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["httproutes"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ahorro-deploy
+  namespace: {{ $ns }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+subjects:
+  - kind: ServiceAccount
+    name: ahorro-deploy
+    namespace: ahorro-dev
+roleRef:
+  kind: Role
+  name: ahorro-deploy
+  apiGroup: rbac.authorization.k8s.io
+---
+{{- end }}
+# Reading its own namespaces is what lets `helm list` and `helm upgrade`
+# report a clear error rather than a permission failure.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: ahorro-deploy-namespace-read
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: ahorro-deploy-namespace-read
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+subjects:
+  - kind: ServiceAccount
+    name: ahorro-deploy
+    namespace: ahorro-dev
+roleRef:
+  kind: ClusterRole
+  name: ahorro-deploy-namespace-read
+  apiGroup: rbac.authorization.k8s.io

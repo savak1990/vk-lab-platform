@@ -5,8 +5,11 @@
 Accepted. Narrowed by
 [ADR 0044](0044-the-ahorro-pointer-reaches-the-local-target.md): the `local`
 gate this document places on the pointer is lifted, now that the application
-renders no route and skips sign-in on that target. Every other decision here
-stands.
+renders no route and skips sign-in on that target. Narrowed again by
+[ADR 0045](0045-the-ahorro-pipeline-deploys-to-its-own-namespaces.md): the
+pointer's `selfHeal: false`, recorded here as the application's call, is now
+`selfHeal: true` by that same application's later call. Every other decision
+here stands.
 
 Implements the pointer half of [ADR 0015](0015-business-app-gitops-topology.md)
 and carries the identifiers [ADR 0042](0042-app-owned-cognito-in-the-persistent-layer.md)

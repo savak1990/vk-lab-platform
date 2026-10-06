@@ -1,0 +1,16 @@
+# Reading its own namespaces is what lets `helm list` and `helm upgrade`
+# report a clear error rather than a permission failure.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+  name: ahorro-deploy-namespace-read
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - namespaces
+    verbs:
+      - get
+      - list

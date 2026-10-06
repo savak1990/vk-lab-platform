@@ -1,0 +1,14 @@
+# The identity Ahorro's pipeline deploys with. It reaches ahorro-dev and
+# ahorro-pr and nothing else: namespace ahorro holds the released version,
+# which only Argo writes, so a pipeline fault cannot reach it.
+#
+# The namespaces are created here rather than left to `helm --create-namespace`
+# for the reason Namespace/ahorro is: a RoleBinding whose namespace does not
+# exist fails the apply, and SkipDryRunOnMissingResource covers the dry run
+# only. Creating them is also what lets the first deploy be an upgrade.
+apiVersion: v1
+kind: Namespace
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  name: ahorro-dev
