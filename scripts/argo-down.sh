@@ -21,6 +21,8 @@ STUCK_APP_DWELL="${ARGO_DOWN_STUCK_APP_DWELL:-180}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$REPO_ROOT/scripts/lib/region.sh"
 source "$REPO_ROOT/scripts/lib/provider.sh"
+# shellcheck source=lib/ahorro-deploy.sh
+source "$REPO_ROOT/scripts/lib/ahorro-deploy.sh"
 
 # Keeps kubectl and helm on a repo-local kubeconfig: a lifecycle run must never
 # change the context the operator is working in.
@@ -375,5 +377,9 @@ for release in root-application argocd; do
     helm uninstall "$release" -n argocd --wait
   fi
 done
+
+# The ServiceAccount this credential names went with the cascade, so the
+# parameters now describe a cluster that is not there.
+ahorro_forget_deploy_credential || true
 
 echo "ARGO-DOWN: Argo CD removed."
