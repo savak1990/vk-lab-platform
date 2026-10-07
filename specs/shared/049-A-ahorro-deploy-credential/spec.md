@@ -78,10 +78,15 @@ jobs, which only `kind-integration` does today.
 9. Publication MUST be skipped on the local target, which no pipeline deploys to.
 9a. `argo-down.sh` MUST delete all four parameters after the Argo cascade. A credential that outlives its cluster is worse than a missing one: the pipeline builds a kubeconfig that looks valid and then waits out a TCP timeout against an endpoint nobody answers, which reads as a pipeline bug. Absent fails in a second and names the cause. The delete MUST be guarded and MUST NOT fail the teardown.
 10. `ahorro-ci-role` MUST gain read on `/*/cluster/ahorro-deploy/*` and on the four Cognito identifiers the client needs. It MUST NOT be granted the enclosing Cognito prefix, which also holds `test_user_password`.
+10a. It MUST also gain `kms:Decrypt` on the `alias/lab-secrets` key. The token is a `SecureString`, so the parameter grant alone is not enough and the read fails as `AccessDenied` - verified with `simulate-principal-policy`, which returned `implicitDeny`. The grant MUST name the key's **underlying ARN**: an alias ARN in a resource element grants nothing. It MUST carry a `kms:EncryptionContext:PARAMETER_ARN` condition scoping it to the token parameter alone, because the same key encrypts other projects' secrets and this project's `test_user_password`. `StringLike`, not `StringEquals`, because the project segment is a wildcard.
 11. The pointer MUST set `selfHeal: true`, by the application's own ADR 0009. ADR 0043 recorded `false` and recorded that the choice is the application's.
 12. The eight new objects MUST join `REQUIRED_OBJECTS` in `scripts/gitops-render-check.sh`, and the aws golden MUST be regenerated in the same commit.
 
 ## 5. Implementation hints
+
+`terraform/modules/external-secrets-pod-identity/main.tf` already pairs
+`kms:Decrypt` with an `EncryptionContext` condition; copy that shape.
+`terraform/modules/lab-role/main.tf` carries the note about alias ARNs.
 
 The admin kubeconfig is already current when `argo-up.sh` runs, so
 `kubectl config current-context` is enough — no provider branch is needed to
