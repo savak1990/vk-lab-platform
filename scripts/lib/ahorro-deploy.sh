@@ -77,5 +77,34 @@ ahorro_publish_deploy_credential() {
   ahorro_deploy_put ca "$ca" String || return 1
   ahorro_deploy_put token "$token" SecureString || return 1
 
+  # The pipeline builds its own hostnames and needs the domain to do it. It is
+  # copied here rather than granted at the source because the application's CI
+  # role already holds a wildcard over this prefix, so the copy costs no new
+  # IAM; that role can read neither the fqdn parameter nor the subdomain it is
+  # built from. Never echoed, like everywhere else this value appears.
+  if [ -n "${LAB_FQDN:-}" ]; then
+    ahorro_deploy_put fqdn "$LAB_FQDN" String || return 1
+  else
+    echo "AHORRO-DEPLOY: no LAB_FQDN in scope - the pipeline cannot build hostnames until the next argo-up." >&2
+  fi
+
   echo "AHORRO-DEPLOY: published the deploy credential to $(ahorro_deploy_ssm_prefix)/ (requested $AHORRO_DEPLOY_TOKEN_DURATION)."
+}
+
+# Called from cluster teardown. A parameter that outlives its cluster is worse
+# than a missing one: the pipeline builds a kubeconfig that looks valid and
+# then waits out a TCP timeout against an endpoint nobody answers. Absent
+# fails in a second and says why.
+ahorro_forget_deploy_credential() {
+  if [ "$PROVIDER" = local ]; then
+    return 0
+  fi
+
+  local name
+  for name in token ca endpoint fqdn; do
+    aws ssm delete-parameter \
+      --region "$LAB_REGION" \
+      --name "$(ahorro_deploy_ssm_prefix)/$name" >/dev/null 2>&1 || true
+  done
+  echo "AHORRO-DEPLOY: removed the deploy credential; the pipeline now reports the cluster gone instead of timing out."
 }

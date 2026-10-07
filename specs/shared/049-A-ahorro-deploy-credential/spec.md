@@ -70,11 +70,13 @@ jobs, which only `kind-integration` does today.
 2. The grant MUST be two `Role` objects, never one `ClusterRole` bound twice, so it cannot be bound into namespace `ahorro` by a later edit. It MUST NOT use a wildcard verb or resource. It MUST grant nothing in namespace `ahorro`.
 3. The ServiceAccount MUST be able to `get` and `list` namespaces cluster-wide, so a `helm` failure reports a clear error rather than a permission denial. That is the only cluster-scoped grant.
 4. `scripts/lib/ahorro-deploy.sh` MUST mint a token for that ServiceAccount, read the API endpoint and certificate authority from the admin kubeconfig, and write `/<project>/cluster/ahorro-deploy/{token,ca,endpoint}`. The token MUST be a `SecureString`; the other two are plain strings. The token MUST be masked when `GITHUB_ACTIONS` is set.
+4a. It MUST also write `/<project>/cluster/ahorro-deploy/fqdn`, as a plain string, from the `LAB_FQDN` the script already resolved. The pipeline builds its own hostnames and cannot read `/<project>/bootstrap/route53/fqdn` or the `subdomain` it is composed from, so it has nothing to compose from. Copying it under this prefix costs no new IAM, because requirement 10's grant is a wildcard over the whole prefix. The value MUST NOT be echoed, here or anywhere (ADR 0023).
 5. A token request MUST be used, not a `kubernetes.io/service-account-token` Secret. The Secret never expires, but the token controller writes into an object Argo would manage, and an object Argo diffs against a manifest that no longer matches is what wedged the local target once already.
 6. The requested duration MUST exceed any lab cluster's life. The API server caps it at its own maximum, so the script MUST echo what it requested rather than claim what it was granted.
 7. `argo-up.sh` MUST call the publication from **both** arms — the fast path at the idempotency guard, and the end of the script. The fast path exits roughly four hundred lines early, so a run that synced but died before publishing would otherwise leave the parameters missing behind a healthy-looking cluster.
 8. The `put-parameter` MUST be guarded in the shape `export_tls_secret` uses. Under `set -euo pipefail` an unguarded write turns a transient SSM failure into a failed bring-up, and the next `argo-up` republishes anyway. The call site MUST NOT fail the bring-up.
 9. Publication MUST be skipped on the local target, which no pipeline deploys to.
+9a. `argo-down.sh` MUST delete all four parameters after the Argo cascade. A credential that outlives its cluster is worse than a missing one: the pipeline builds a kubeconfig that looks valid and then waits out a TCP timeout against an endpoint nobody answers, which reads as a pipeline bug. Absent fails in a second and names the cause. The delete MUST be guarded and MUST NOT fail the teardown.
 10. `ahorro-ci-role` MUST gain read on `/*/cluster/ahorro-deploy/*` and on the four Cognito identifiers the client needs. It MUST NOT be granted the enclosing Cognito prefix, which also holds `test_user_password`.
 11. The pointer MUST set `selfHeal: true`, by the application's own ADR 0009. ADR 0043 recorded `false` and recorded that the choice is the application's.
 12. The eight new objects MUST join `REQUIRED_OBJECTS` in `scripts/gitops-render-check.sh`, and the aws golden MUST be regenerated in the same commit.
@@ -99,8 +101,9 @@ exist until it is re-run from a workstation.
 1. `./scripts/gitops-render-check.sh` green for civo, hetzner, local and the aws golden.
 2. `make scripts-check` green, including shellcheck over the new library.
 3. `terraform validate` and `terraform fmt -check` green for the module.
-4. On a live cluster, `aws ssm get-parameters` returns all three parameters, and a kubeconfig built from them runs `helm -n ahorro-dev list` successfully.
-5. That same kubeconfig is **refused** by `kubectl -n ahorro get deploy`.
+4. On a live cluster, `aws ssm get-parameters` returns all four parameters, and a kubeconfig built from them runs `helm -n ahorro-dev list` successfully.
+5. That same kubeconfig is **refused** by `kubectl -n ahorro get deploy`. *(Verified 2026-10-07 on the hetzner lab, against a token minted for the ServiceAccount: `helm -n ahorro-dev list` succeeded and `kubectl -n ahorro get deploy` returned `Forbidden`, naming `system:serviceaccount:ahorro-dev:ahorro-deploy`. Twenty-four `kubectl auth can-i` probes also behaved as designed, including refusal on `argocd`, `kube-system`, `envoy`, nodes, ClusterRoleBindings and namespace deletion.)*
+5a. After `make down`, none of the four parameters exists, so a pipeline run reports the cluster gone rather than timing out.
 6. `make argo-up` twice: the second run takes the fast path and the parameters are still refreshed.
 7. Deleting the token parameter and re-running `make argo-up` on an already-healthy cluster restores it — the case requirement 7 exists for.
 8. `make down` then `make up`: the parameters carry a new token and the pipeline still deploys.
