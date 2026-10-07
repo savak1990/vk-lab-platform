@@ -6,9 +6,17 @@ module "github_oidc_trust" {
 data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 
+# kms:Decrypt authorization in an identity policy is checked against the
+# underlying key's ARN, not an alias ARN - an alias-ARN resource element would
+# silently grant nothing.
+data "aws_kms_alias" "secrets" {
+  name = "alias/lab-secrets"
+}
+
 locals {
-  ssm_prefix                = "arn:aws:ssm:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:parameter"
-  root_domain_parameter_arn = "${local.ssm_prefix}/account/root_domain"
+  ssm_prefix                 = "arn:aws:ssm:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:parameter"
+  root_domain_parameter_arn  = "${local.ssm_prefix}/account/root_domain"
+  deploy_token_parameter_arn = "${local.ssm_prefix}/*/cluster/ahorro-deploy/token"
 
   # Wildcarded on the project, not on the path: one role serves every lab
   # project, and the project a run targets is its own input. Both paths stay
@@ -56,6 +64,27 @@ data "aws_iam_policy_document" "permissions" {
     sid       = "AllowReadAhorroCognitoIdentifiers"
     actions   = ["ssm:GetParameter", "ssm:GetParameters"]
     resources = local.cognito_parameter_arns
+  }
+
+  # The deploy token is a SecureString, so reading it needs the key as well as
+  # the parameter. Without this the read fails as AccessDenied and the pipeline
+  # cannot reach the cluster at all.
+  #
+  # alias/lab-secrets also encrypts other projects' passwords, including this
+  # project's Cognito test user. SSM sets an EncryptionContext of the
+  # parameter's own ARN, so the condition keeps Decrypt scoped to the one
+  # parameter this role may read rather than to the whole shared key. StringLike,
+  # not StringEquals, because the project segment is a wildcard here.
+  statement {
+    sid       = "AllowDecryptAhorroDeployToken"
+    actions   = ["kms:Decrypt"]
+    resources = [data.aws_kms_alias.secrets.target_key_arn]
+
+    condition {
+      test     = "StringLike"
+      variable = "kms:EncryptionContext:PARAMETER_ARN"
+      values   = [local.deploy_token_parameter_arn]
+    }
   }
 }
 
