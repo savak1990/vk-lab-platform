@@ -1,0 +1,10 @@
+# Namespace for the future vk-llm-on-demand app. Created here, ahead of the
+# app itself, the same reasoning as Namespace/ahorro-dev: an ExternalSecret
+# apply into a namespace that does not exist yet fails the apply, and
+# SkipDryRunOnMissingResource covers only the dry run.
+apiVersion: v1
+kind: Namespace
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  name: llm
