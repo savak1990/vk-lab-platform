@@ -75,10 +75,21 @@ and RBAC were a separate spec (`035`/`036`) from its secrets.
   structural check still reports the expected object set.
 ## Evidence
 
-- `make terraform-check`: passed (see PR).
-- `make gitops-check`: passed against the regenerated golden baseline (see PR).
-- Outstanding, not yet run as of this PR: `make persistent-up` on the live
-  Hetzner lab, then `kubectl -n llm get externalsecret,secret` showing both
-  `ExternalSecret`s `SecretSynced` and both `Secret`s populated with a
-  `value` key; `aws ssm get-parameter --with-decryption` on both new paths
-  confirming the plaintext round-trips from the committed ciphertext.
+- `make terraform-check`: passed (see #101).
+- `make gitops-check`: passed against the regenerated golden baseline (see #101).
+- `make persistent-up` ran on the live Hetzner lab: `aws ssm
+  get-parameters-by-path --path /vk-hetzner-lab/persistent/llm` returned both
+  `SecureString` parameters, confirming the plaintext round-trips from the
+  committed ciphertext.
+- The first live `make bootstrap-up`/`persistent-up` pass surfaced a real
+  gap, not covered by `terraform-check`: the `eso` Roles Anywhere role's IAM
+  policy (`terraform/modules/rolesanywhere/main.tf`) allowlists SSM parameter
+  ARNs explicitly rather than by path prefix, so the two new parameters were
+  denied (`AccessDeniedException` on `ssm:GetParameter`) until #102 added
+  their ARNs to that allowlist (and to the AWS EKS Pod Identity equivalent,
+  `external-secrets-pod-identity`, for parity). Fixed in #102.
+- After `bootstrap-up` (IAM fix) and `persistent-up` (SSM parameters) both
+  ran: `kubectl -n llm get externalsecret,secret` shows both `ExternalSecret`s
+  `SecretSynced`/`Ready: True`, and both `Secret`s (`vast-ai-api-key`,
+  `vk-llm-api-token`) exist with a one-entry `value` key, 64 bytes each,
+  matching the committed plaintext length.
