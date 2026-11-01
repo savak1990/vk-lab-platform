@@ -12,6 +12,8 @@ locals {
 
   postgres_password_arn = "arn:aws:ssm:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:parameter/${var.project}/persistent/postgres/app_password"
   grafana_password_arn  = "arn:aws:ssm:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:parameter/${var.project}/persistent/grafana/admin_password"
+  vast_ai_api_key_arn   = "arn:aws:ssm:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:parameter/${var.project}/persistent/llm/vast_ai_api_key"
+  llm_api_token_arn     = "arn:aws:ssm:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:parameter/${var.project}/persistent/llm/api_token"
 
   # Built as a literal rather than read from the bucket's own state: the
   # bucket lives in the persistent stack, which is applied after this one.
@@ -124,12 +126,12 @@ data "aws_iam_policy_document" "eso" {
   statement {
     sid       = "AllowReadPlatformSecretParameters"
     actions   = ["ssm:GetParameter"]
-    resources = [local.postgres_password_arn, local.grafana_password_arn]
+    resources = [local.postgres_password_arn, local.grafana_password_arn, local.vast_ai_api_key_arn, local.llm_api_token_arn]
   }
 
   # alias/lab-secrets also encrypts other projects' password parameters -
   # SSM sets an EncryptionContext of the parameter's own ARN, so this
-  # condition keeps Decrypt scoped to just the two parameters this role can
+  # condition keeps Decrypt scoped to just the parameters this role can
   # read, not the whole shared key.
   statement {
     sid       = "AllowDecryptPlatformSecretParameters"
@@ -139,7 +141,7 @@ data "aws_iam_policy_document" "eso" {
     condition {
       test     = "StringEquals"
       variable = "kms:EncryptionContext:PARAMETER_ARN"
-      values   = [local.postgres_password_arn, local.grafana_password_arn]
+      values   = [local.postgres_password_arn, local.grafana_password_arn, local.vast_ai_api_key_arn, local.llm_api_token_arn]
     }
   }
 }
