@@ -7,6 +7,14 @@ data "aws_kms_secrets" "this" {
     name    = "grafana_admin_password"
     payload = filebase64(var.grafana_admin_password_secret_path)
   }
+  secret {
+    name    = "vast_ai_api_key"
+    payload = filebase64(var.vast_ai_api_key_secret_path)
+  }
+  secret {
+    name    = "llm_api_token"
+    payload = filebase64(var.llm_api_token_secret_path)
+  }
 }
 
 resource "aws_ssm_parameter" "postgres_app_password" {
@@ -23,6 +31,22 @@ resource "aws_ssm_parameter" "grafana_admin_password" {
   type        = "SecureString"
   key_id      = "alias/lab-secrets"
   description = "Grafana admin password."
+}
+
+resource "aws_ssm_parameter" "vast_ai_api_key" {
+  name        = "/${var.project}/persistent/llm/vast_ai_api_key"
+  value       = data.aws_kms_secrets.this.plaintext["vast_ai_api_key"]
+  type        = "SecureString"
+  key_id      = "alias/lab-secrets"
+  description = "vast.ai API key (instance read/write scope) used by vk-llm-on-demand."
+}
+
+resource "aws_ssm_parameter" "llm_api_token" {
+  name        = "/${var.project}/persistent/llm/api_token"
+  value       = data.aws_kms_secrets.this.plaintext["llm_api_token"]
+  type        = "SecureString"
+  key_id      = "alias/lab-secrets"
+  description = "Static bearer token authorizing callers of vk-llm-on-demand's own API."
 }
 
 # A one-way bcrypt hash, never encrypted before or after this - it isn't a
