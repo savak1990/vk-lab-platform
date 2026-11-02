@@ -48,11 +48,12 @@ resource "hcloud_server" "control_plane" {
   firewall_ids = [var.firewall_id]
   user_data    = local.control_plane_user_data
 
-  # IPv4 is not optional: SSM has no IPv6 endpoint and Hetzner sells no
-  # managed NAT.
+  # IPv4 is required (SSM has no IPv6 endpoint, no managed NAT). IPv6 is off:
+  # nothing uses it, and each address counts against the project's primary IP
+  # limit, which the lab and CI clusters share.
   public_net {
     ipv4_enabled = true
-    ipv6_enabled = true
+    ipv6_enabled = false
   }
 
   network {
@@ -65,11 +66,11 @@ resource "hcloud_server" "control_plane" {
 
   shutdown_before_deletion = true
 
-  # Replacing this server is cluster loss, so a cloud-init edit or an image
-  # rename must never trigger one. A version change ships as a teardown and a
-  # fresh bring-up instead.
+  # Replacing or power-cycling this server is cluster loss, so a cloud-init,
+  # image or public_net edit must never trigger one. Such a change ships as a
+  # teardown and a fresh bring-up instead.
   lifecycle {
-    ignore_changes = [user_data, image, ssh_keys]
+    ignore_changes = [user_data, image, ssh_keys, public_net]
 
     precondition {
       condition     = length(local.control_plane_user_data) < 32768
@@ -91,7 +92,7 @@ resource "hcloud_server" "worker" {
 
   public_net {
     ipv4_enabled = true
-    ipv6_enabled = true
+    ipv6_enabled = false
   }
 
   network {
@@ -107,7 +108,7 @@ resource "hcloud_server" "worker" {
   # No depends_on against the control plane: the agent unit retries until the
   # API answers, so ordering the creates would only lengthen the apply.
   lifecycle {
-    ignore_changes = [user_data, image, ssh_keys]
+    ignore_changes = [user_data, image, ssh_keys, public_net]
 
     precondition {
       condition     = length(local.worker_user_data) < 32768

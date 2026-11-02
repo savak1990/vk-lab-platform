@@ -29,10 +29,30 @@ argo_conditions_from() {
   jq -r '[.status.conditions[]? | "\(.type): \(.message // "" | gsub("\n"; " "))"] | join(" | ")' <<< "$1"
 }
 
+# A resource that applied but then went Degraded keeps status Synced and fails
+# through hookPhase instead, so both fields are checked.
 argo_sync_failed_from() {
   jq -r '.status.operationState.syncResult.resources[]?
-    | select(.status == "SyncFailed")
+    | select(.status == "SyncFailed" or .hookPhase == "Failed")
     | "  \(.kind)/\(.name): \(.message // "" | gsub("\n"; " "))"' <<< "$1"
+}
+
+argo_print_gateway_status() {
+  echo "ARGO-UP: Gateway conditions:"
+  kubectl get gateway -A -o json 2>/dev/null \
+    | jq -r '.items[]? | "  \(.metadata.name): " + ([.status.conditions[]? | "\(.type)=\(.status)(\(.reason)) \(.message // "")"] | join(" | "))' \
+    || echo "  (unavailable)"
+  echo "ARGO-UP: envoy Services:"
+  kubectl get svc -n envoy -o wide --no-headers 2>/dev/null | sed 's/^/  /' || true
+  echo "ARGO-UP: last envoy namespace events:"
+  kubectl get events -n envoy --sort-by=.lastTimestamp \
+    -o custom-columns='TIME:.lastTimestamp,OBJECT:.involvedObject.name,REASON:.reason,MESSAGE:.message' --no-headers 2>/dev/null \
+    | tail -15 | sed 's/^/  /' || true
+  if [ "${PROVIDER:-}" = hetzner ]; then
+    echo "ARGO-UP: hcloud cloud controller manager log tail:"
+    kubectl -n kube-system logs -l app.kubernetes.io/name=hcloud-cloud-controller-manager --tail=30 2>/dev/null \
+      | sed 's/^/  /' || true
+  fi
 }
 
 argo_print_app_status() {
@@ -252,9 +272,10 @@ argo_dump_diagnostics() {
     | tail -5 | sed 's/^/  /' || true
   failed="$(argo_sync_failed_from "$1")"
   if [ -n "$failed" ]; then
-    echo "ARGO-UP: resources SyncFailed in root's last operation:"
+    echo "ARGO-UP: resources failed in root's last operation:"
     echo "$failed"
   fi
+  argo_print_gateway_status
   argo_autoscaler_summary
   argo_autoscaler_events
   argo_scaleup_timeline

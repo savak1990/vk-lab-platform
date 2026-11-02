@@ -13,9 +13,17 @@ write_files:
         ethernets:
           ${nic}:
             dhcp4: true
+  # Kernel default (128) is shared per-UID across every pod on the node, and
+  # one busy node starves every controller that watches a file for reload
+  # (e.g. the barman-cloud plugin's cert watcher) with "too many open files".
+  - path: /etc/sysctl.d/99-inotify.conf
+    permissions: '0644'
+    content: |
+      fs.inotify.max_user_instances = 8192
 runcmd:
   - |
     set -eu
+    sysctl -p /etc/sysctl.d/99-inotify.conf
     for _ in $(seq 1 60); do
       if ip link show ${nic} >/dev/null 2>&1; then break; fi
       sleep 2
