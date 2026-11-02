@@ -53,7 +53,8 @@ spec:
         extraEnv:
           HCLOUD_SSH_KEY: {{ .Values.capacity.autoscaler.sshKeyId | quote }}
           HCLOUD_PUBLIC_IPV4: "true"
-          HCLOUD_PUBLIC_IPV6: "true"
+          # Matches the fixed nodes: an unused IPv6 still spends primary IP quota.
+          HCLOUD_PUBLIC_IPV6: "false"
         extraArgs:
           # Without the first two, every scale-down is blocked: external-dns
           # runs in kube-system with no PodDisruptionBudget, and several
