@@ -31,8 +31,8 @@ data "aws_iam_policy_document" "this" {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
       values = [
-        "repo:${var.github_repo}:*",
-        "repo:${replace(var.github_repo, "/", "@*/")}@*:*",
+        "repo:${var.github_repo}:${var.sub_suffix}",
+        "repo:${replace(var.github_repo, "/", "@*/")}@*:${var.sub_suffix}",
       ]
     }
   }
