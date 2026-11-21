@@ -12,10 +12,17 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/secret-scope.sh"
 
-scope_of() { [ "$1" = root-domain ] && echo global || echo project; }
+scope_of() {
+  case "$1" in
+    root-domain|vast-ai-api-key|llm-on-demand-*) echo global ;;
+    *) echo project ;;
+  esac
+}
 
 missing=()
-for name in root-domain postgres-app-password grafana-admin-password ahorro-test-user-password; do
+for name in root-domain postgres-app-password grafana-admin-password ahorro-test-user-password \
+            vast-ai-api-key llm-on-demand-api-token \
+            llm-on-demand-worker-seed llm-on-demand-ssh-private-key; do
   test -f "$(secret_path "$name" "$(scope_of "$name")")" || missing+=("$name")
 done
 
