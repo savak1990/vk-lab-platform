@@ -27,3 +27,13 @@ variable "argocd_admin_password_bcrypt_path" {
   description = "Absolute path to the committed, plaintext bcrypt hash of the Argo CD admin password (never KMS-encrypted - it's a one-way hash, not a reversible credential)."
   type        = string
 }
+
+variable "llm_worker_seed_secret_path" {
+  description = "Absolute path to the KMS-encrypted ciphertext file holding vk-llm-on-demand's 32-byte worker seed, global scope."
+  type        = string
+}
+
+variable "llm_ssh_private_key_secret_path" {
+  description = "Absolute path to the KMS-encrypted ciphertext file holding vk-llm-on-demand's ed25519 private key, global scope."
+  type        = string
+}

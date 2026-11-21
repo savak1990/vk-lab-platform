@@ -17,4 +17,6 @@ inputs = {
   argocd_admin_password_bcrypt_path  = "${get_repo_root()}/secrets/${local.project}/argocd-admin-password.bcrypt"
   vast_ai_api_key_secret_path        = "${get_repo_root()}/secrets/vast-ai-api-key.enc"
   llm_api_token_secret_path          = "${get_repo_root()}/secrets/llm-on-demand-api-token.enc"
+  llm_worker_seed_secret_path        = "${get_repo_root()}/secrets/llm-on-demand-worker-seed.enc"
+  llm_ssh_private_key_secret_path    = "${get_repo_root()}/secrets/llm-on-demand-ssh-private-key.enc"
 }

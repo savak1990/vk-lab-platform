@@ -15,6 +15,14 @@ data "aws_kms_secrets" "this" {
     name    = "llm_api_token"
     payload = filebase64(var.llm_api_token_secret_path)
   }
+  secret {
+    name    = "llm_worker_seed"
+    payload = filebase64(var.llm_worker_seed_secret_path)
+  }
+  secret {
+    name    = "llm_ssh_private_key"
+    payload = filebase64(var.llm_ssh_private_key_secret_path)
+  }
 }
 
 resource "aws_ssm_parameter" "postgres_app_password" {
@@ -46,7 +54,23 @@ resource "aws_ssm_parameter" "llm_api_token" {
   value       = data.aws_kms_secrets.this.plaintext["llm_api_token"]
   type        = "SecureString"
   key_id      = "alias/lab-secrets"
-  description = "Static bearer token authorizing callers of vk-llm-on-demand's own API."
+  description = "Inference client keys and management tokens (sk-vkllm-…, one shared value for now) vk-llm-on-demand's /v1 and /api/v1/gpu routes accept."
+}
+
+resource "aws_ssm_parameter" "llm_worker_seed" {
+  name        = "/${var.project}/persistent/llm/worker_seed"
+  value       = data.aws_kms_secrets.this.plaintext["llm_worker_seed"]
+  type        = "SecureString"
+  key_id      = "alias/lab-secrets"
+  description = "32-byte seed vk-llm-on-demand derives per-instance worker keys from. Byte-exact: no trailing newline."
+}
+
+resource "aws_ssm_parameter" "llm_ssh_private_key" {
+  name        = "/${var.project}/persistent/llm/ssh_private_key"
+  value       = data.aws_kms_secrets.this.plaintext["llm_ssh_private_key"]
+  type        = "SecureString"
+  key_id      = "alias/lab-secrets"
+  description = "ed25519 private key vk-llm-on-demand uses to tunnel into rented vast.ai instances; the public half is registered on the vast.ai account."
 }
 
 # A one-way bcrypt hash, never encrypted before or after this - it isn't a
