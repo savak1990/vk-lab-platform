@@ -28,7 +28,7 @@ specification rewrite and nothing else.
 
 ADR 0024 named the blocker as one SSM/KMS co-region failure and ADR 0039 proposed
 to fix it with a new key. Investigation for that migration found the coupling is
-wider than either record states. Verified live against account `753939038916` on
+wider than either record states. Verified live against account `<account-id>` on
 2026-09-21:
 
 **The secrets key is account-layer and single-region.** `alias/lab-secrets`

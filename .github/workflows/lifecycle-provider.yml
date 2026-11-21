@@ -100,6 +100,15 @@ jobs:
           [ -n "${{ inputs.control_plane_node_type }}" ] && echo "CONTROL_PLANE_NODE_TYPE=${{ inputs.control_plane_node_type }}" >> "$GITHUB_ENV"
           exit 0
 
+      # The root domain is hygiene data, not a credential, but it names the
+      # public Argo CD and Grafana hosts of this run. Masked once per job.
+      - name: Register the root domain mask
+        run: |
+          set -euo pipefail
+          root_domain="$(SECRET_SCOPE=global scripts/secret-decrypt.sh root-domain)"
+          test -n "$root_domain"
+          echo "::add-mask::$root_domain"
+
       - name: Register the cloud token mask
         if: inputs.provider != 'aws'
         run: bash -c 'source scripts/lib/region.sh; source scripts/lib/provider.sh; case "$PROVIDER" in civo) civo_token ;; hetzner) hcloud_token ;; esac'
@@ -148,6 +157,15 @@ jobs:
           [ -n "${{ inputs.control_plane_node_type }}" ] && echo "CONTROL_PLANE_NODE_TYPE=${{ inputs.control_plane_node_type }}" >> "$GITHUB_ENV"
           exit 0
 
+      # The root domain is hygiene data, not a credential, but it names the
+      # public Argo CD and Grafana hosts of this run. Masked once per job.
+      - name: Register the root domain mask
+        run: |
+          set -euo pipefail
+          root_domain="$(SECRET_SCOPE=global scripts/secret-decrypt.sh root-domain)"
+          test -n "$root_domain"
+          echo "::add-mask::$root_domain"
+
       - name: Register the cloud token mask
         if: inputs.provider != 'aws'
         run: bash -c 'source scripts/lib/region.sh; source scripts/lib/provider.sh; case "$PROVIDER" in civo) civo_token ;; hetzner) hcloud_token ;; esac'
@@ -193,6 +211,15 @@ jobs:
           [ -n "${{ inputs.worker_node_type }}" ] && echo "WORKER_NODE_TYPE=${{ inputs.worker_node_type }}" >> "$GITHUB_ENV"
           [ -n "${{ inputs.control_plane_node_type }}" ] && echo "CONTROL_PLANE_NODE_TYPE=${{ inputs.control_plane_node_type }}" >> "$GITHUB_ENV"
           exit 0
+
+      # The root domain is hygiene data, not a credential, but it names the
+      # public Argo CD and Grafana hosts of this run. Masked once per job.
+      - name: Register the root domain mask
+        run: |
+          set -euo pipefail
+          root_domain="$(SECRET_SCOPE=global scripts/secret-decrypt.sh root-domain)"
+          test -n "$root_domain"
+          echo "::add-mask::$root_domain"
 
       - name: Register the cloud token mask
         if: inputs.provider != 'aws'

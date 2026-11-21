@@ -140,7 +140,7 @@ Revert the values. The secrets remain as last synced.
     `eso-ra-cert` Secret mounted with the sidecar's `--role-arn` pointed
     at the `external-dns` role instead of `eso`'s own. Sidecar log:
     `AccessDeniedException: Unable to assume role for
-    arn:aws:iam::753939038916:role/vk-civo-lab-ra-external-dns` — denied
+    arn:aws:iam::<account-id>:role/vk-civo-lab-ra-external-dns` — denied
     at `CreateSession` itself, before any SSM call was attempted (a
     stronger guarantee than "denied on SSM" as §6 step 4 literally
     phrased it). Reproduces, with the real production ESO cert this time,

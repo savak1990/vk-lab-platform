@@ -37,7 +37,7 @@ EXISTING_ZONE_ID="$(aws route53 list-hosted-zones-by-name \
   --query "HostedZones[?Name=='${FQDN}.'].Id" --output text)"
 
 if [ -z "$EXISTING_ZONE_ID" ] || [ "$EXISTING_ZONE_ID" = "None" ]; then
-  echo "REQUIRE-UNIQUE-SUBDOMAIN: no existing zone for $FQDN - clear to proceed."
+  echo "REQUIRE-UNIQUE-SUBDOMAIN: no existing zone for $SUBDOMAIN.<root-domain> - clear to proceed."
   exit 0
 fi
 
@@ -45,7 +45,7 @@ TMP_STATE="$(mktemp)"
 trap 'rm -f "$TMP_STATE"' EXIT
 
 if ! aws s3api get-object --bucket "$STATE_BUCKET" --key "$STATE_KEY" --region "$LAB_REGION" "$TMP_STATE" >/dev/null 2>&1; then
-  echo "REQUIRE-UNIQUE-SUBDOMAIN: refusing - a Route53 zone for $FQDN already exists ($EXISTING_ZONE_ID)," >&2
+  echo "REQUIRE-UNIQUE-SUBDOMAIN: refusing - a Route53 zone for $SUBDOMAIN.<root-domain> already exists ($EXISTING_ZONE_ID)," >&2
   echo "but PROJECT_NAME=$PROJECT_NAME has no bootstrap/route53 state - it doesn't own this zone." >&2
   echo "Pick a different SUBDOMAIN for this project, e.g.: SUBDOMAIN=$PROJECT_NAME make bootstrap-up" >&2
   exit 1
@@ -56,10 +56,10 @@ fi
 # back and the comparison below can never match.
 TRACKED_ZONE_ID="$(jq -r '.resources[] | select(.mode=="managed" and .type=="aws_route53_zone") | .instances[0].attributes.zone_id // ""' "$TMP_STATE")"
 if [ "$TRACKED_ZONE_ID" != "${EXISTING_ZONE_ID#/hostedzone/}" ]; then
-  echo "REQUIRE-UNIQUE-SUBDOMAIN: refusing - a Route53 zone for $FQDN already exists ($EXISTING_ZONE_ID)," >&2
+  echo "REQUIRE-UNIQUE-SUBDOMAIN: refusing - a Route53 zone for $SUBDOMAIN.<root-domain> already exists ($EXISTING_ZONE_ID)," >&2
   echo "but it doesn't match what PROJECT_NAME=$PROJECT_NAME's own state tracks (${TRACKED_ZONE_ID:-none})." >&2
   echo "Pick a different SUBDOMAIN for this project, e.g.: SUBDOMAIN=$PROJECT_NAME make bootstrap-up" >&2
   exit 1
 fi
 
-echo "REQUIRE-UNIQUE-SUBDOMAIN: $FQDN is already owned by PROJECT_NAME=$PROJECT_NAME's own state - clear to proceed."
+echo "REQUIRE-UNIQUE-SUBDOMAIN: $SUBDOMAIN.<root-domain> is already owned by PROJECT_NAME=$PROJECT_NAME's own state - clear to proceed."
