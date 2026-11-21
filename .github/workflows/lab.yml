@@ -226,9 +226,6 @@ jobs:
           aws-region: eu-west-1
           role-duration-seconds: 14400 # full-up/full-down can run close to/over an hour; matches the role's own max_session_duration
 
-      # After the AWS credentials: the token is KMS ciphertext in the repo, so
-      # decrypting it needs the assumed role. ::add-mask:: must reach the step's
-      # own stdout, never a $(...) capture, and is per job.
       # The root domain is hygiene data, not a credential, but it names the
       # public Argo CD and Grafana hosts of this run. Masked once per job.
       - name: Register the root domain mask
@@ -238,6 +235,9 @@ jobs:
           test -n "$root_domain"
           echo "::add-mask::$root_domain"
 
+      # After the AWS credentials: the token is KMS ciphertext in the repo, so
+      # decrypting it needs the assumed role. ::add-mask:: must reach the step's
+      # own stdout, never a $(...) capture, and is per job.
       - name: Register the Civo token mask
         if: inputs.provider != 'aws'
         run: bash -c 'source scripts/lib/region.sh; source scripts/lib/provider.sh; case "$PROVIDER" in civo) civo_token ;; hetzner) hcloud_token ;; esac'
