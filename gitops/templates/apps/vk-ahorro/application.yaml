@@ -56,7 +56,7 @@ spec:
 {{- end }}
   destination:
     server: https://kubernetes.default.svc
-    namespace: argocd
+    namespace: ahorro
   syncPolicy:
     # selfHeal is on by the application's own choice (its ADR 0009): hand
     # installs moved to namespaces ahorro-dev and ahorro-pr, which Argo does

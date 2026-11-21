@@ -14,6 +14,11 @@ e2e `RoleBinding` there so the smoke checks can port-forward. See
 [ADR 0044](../../../docs/adr/0044-the-ahorro-pointer-reaches-the-local-target.md)
 and that repository's spec 107. `scripts/argo-up.sh` needed no change.
 
+**Since:** requirements 1 and 2 below are superseded. The AppProject no
+longer lists `argocd` as a destination, and the pointer's own destination is
+`ahorro`, not `argocd`. See
+[ADR 0046](../../../docs/adr/0046-business-app-children-live-in-their-own-namespace.md).
+
 **Complexity:** Small
 **Risk:** Medium — a broken pointer wedges the `root` Application until its retry budget runs out, roughly sixteen minutes.
 **Estimated cost:** ~0.5 day · AWS runtime cost: none. The objects are Disposable and live in the cluster `make up` already pays for.
