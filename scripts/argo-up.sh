@@ -591,6 +591,7 @@ install_argocd() {
     -f "$REPO_ROOT/gitops/argocd/values.yaml" \
     --set server.service.type=ClusterIP \
     --set configs.params."server\.insecure"=true \
+    --set configs.params."application\.namespaces"=ahorro \
     --set dex.enabled=false \
     --set configs.secret.argocdServerAdminPassword="$ADMIN_PASSWORD_BCRYPT_HASH" \
     --set configs.secret.argocdServerAdminPasswordMtime="2026-08-20T00:00:00Z" \
@@ -854,7 +855,7 @@ local_sync_root() {
 local_wait_for_children() {
   local watch_seconds="${LOCAL_CHILDREN_WATCH_SECONDS:-900}" elapsed=0 unready last=""
   while [ "$elapsed" -lt "$watch_seconds" ]; do
-    unready="$(kubectl get application -n argocd \
+    unready="$(kubectl get application -A \
       -o jsonpath='{range .items[*]}{.metadata.name}={.status.sync.status}/{.status.health.status} {end}' 2>/dev/null \
       | tr ' ' '\n' | grep -v '=Synced/Healthy$' | grep -v '^$' | tr '\n' ' ')"
     if [ -z "$unready" ]; then

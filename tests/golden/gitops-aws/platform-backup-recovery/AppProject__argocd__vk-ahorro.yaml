@@ -16,13 +16,13 @@ spec:
   destinations:
     - namespace: ahorro
       server: https://kubernetes.default.svc
-    # The child Applications are objects in argocd, so the project must allow
-    # that namespace as well as the one the workloads land in.
-    - namespace: argocd
-      server: https://kubernetes.default.svc
   namespaceResourceWhitelist:
     - group: '*'
       kind: '*'
+  # The child Applications live in ahorro too, never in argocd: an Application
+  # in the control-plane namespace could name any project.
+  sourceNamespaces:
+    - ahorro
   sourceRepos:
     - https://github.com/savak1990/vk-ahorro
     - ghcr.io/savak1990/vk-ahorro/charts

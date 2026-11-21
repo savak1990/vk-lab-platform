@@ -11,7 +11,7 @@ metadata:
   namespace: argocd
 spec:
   destination:
-    namespace: argocd
+    namespace: ahorro
     server: https://kubernetes.default.svc
   project: vk-ahorro
   # A reference, not application code: the repository below owns its own
