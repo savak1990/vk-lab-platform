@@ -107,7 +107,7 @@ kubectl get applications -A -o json 2>/dev/null \
       echo "ARGO-DOWN: aborting in-flight sync operation on application/$app (namespace $ns)..."
       kubectl patch application "$app" -n "$ns" --type=merge \
         -p '{"status":{"operationState":{"phase":"Terminating"}}}' >/dev/null 2>&1 || true
-    done
+    done || true
 
 OP_CLEAR_DWELL="${ARGO_DOWN_OP_CLEAR_DWELL:-60}"
 op_elapsed=0
@@ -330,7 +330,7 @@ if kubectl get application root -n argocd >/dev/null 2>&1; then
             echo "ARGO-DOWN: application/$stuck_app (namespace $stuck_ns) deleting for ${cascade_elapsed}s with no resources left - releasing its finalizer."
             kubectl patch application "$stuck_app" -n "$stuck_ns" --type=merge \
               -p '{"metadata":{"finalizers":[]}}' >/dev/null 2>&1 || true
-          done
+          done || true
     fi
   done
 
