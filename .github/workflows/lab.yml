@@ -226,6 +226,15 @@ jobs:
           aws-region: eu-west-1
           role-duration-seconds: 14400 # full-up/full-down can run close to/over an hour; matches the role's own max_session_duration
 
+      # The root domain is hygiene data, not a credential, but it names the
+      # public Argo CD and Grafana hosts of this run. Masked once per job.
+      - name: Register the root domain mask
+        run: |
+          set -euo pipefail
+          root_domain="$(SECRET_SCOPE=global scripts/secret-decrypt.sh root-domain)"
+          test -n "$root_domain"
+          echo "::add-mask::$root_domain"
+
       # After the AWS credentials: the token is KMS ciphertext in the repo, so
       # decrypting it needs the assumed role. ::add-mask:: must reach the step's
       # own stdout, never a $(...) capture, and is per job.
@@ -321,6 +330,15 @@ jobs:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: eu-west-1
           role-duration-seconds: 14400 # was previously omitted here, silently defaulting to 3600s unlike the lifecycle job
+
+      # The root domain is hygiene data, not a credential, but it names the
+      # public Argo CD and Grafana hosts of this run. Masked once per job.
+      - name: Register the root domain mask
+        run: |
+          set -euo pipefail
+          root_domain="$(SECRET_SCOPE=global scripts/secret-decrypt.sh root-domain)"
+          test -n "$root_domain"
+          echo "::add-mask::$root_domain"
 
       - name: Register the Civo token mask
         if: inputs.provider != 'aws'

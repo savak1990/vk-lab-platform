@@ -244,7 +244,7 @@ FQDN="${SUBDOMAIN}.${ROOT_DOMAIN}"
 ZONE_ID="$(aws route53 list-hosted-zones-by-name --dns-name "$FQDN" --region "$LAB_REGION" \
   --query "HostedZones[?Name=='${FQDN}.'].Id" --output text 2>/dev/null || true)"
 if [ -z "$ZONE_ID" ] || [ "$ZONE_ID" = "None" ]; then
-    echo "ARGO-DOWN: WARNING - could not resolve hosted zone for $FQDN, skipping wait." >&2
+    echo "ARGO-DOWN: WARNING - could not resolve hosted zone for the lab zone, skipping wait." >&2
   else
     DNS_WAIT_TIMEOUT="${ARGO_DOWN_DNS_TIMEOUT:-180}"
     dns_elapsed=0
@@ -261,7 +261,7 @@ if [ -z "$ZONE_ID" ] || [ "$ZONE_ID" = "None" ]; then
         break
       fi
       if [ "$dns_elapsed" -ge "$DNS_WAIT_TIMEOUT" ]; then
-        echo "ARGO-DOWN: $remaining_count ExternalDNS-owned record(s) still present in $FQDN after ${DNS_WAIT_TIMEOUT}s - refusing to proceed." >&2
+        echo "ARGO-DOWN: $remaining_count ExternalDNS-owned record(s) still present in the lab zone after ${DNS_WAIT_TIMEOUT}s - refusing to proceed." >&2
         echo "ARGO-DOWN: check 'aws route53 list-resource-record-sets --hosted-zone-id $ZONE_ID' before retrying." >&2
         exit 1
       fi
