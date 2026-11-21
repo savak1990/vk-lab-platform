@@ -855,7 +855,7 @@ local_sync_root() {
 local_wait_for_children() {
   local watch_seconds="${LOCAL_CHILDREN_WATCH_SECONDS:-900}" elapsed=0 unready last=""
   while [ "$elapsed" -lt "$watch_seconds" ]; do
-    unready="$(kubectl get application -n argocd \
+    unready="$(kubectl get application -A \
       -o jsonpath='{range .items[*]}{.metadata.name}={.status.sync.status}/{.status.health.status} {end}' 2>/dev/null \
       | tr ' ' '\n' | grep -v '=Synced/Healthy$' | grep -v '^$' | tr '\n' ' ')"
     if [ -z "$unready" ]; then

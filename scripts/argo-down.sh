@@ -63,11 +63,12 @@ fi
 # controller already picked up is aborted by setting its status phase to
 # Terminating, the same thing Argo's own terminate-op does.
 DISARMED=0
-for app in $(kubectl get applications -n argocd -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
-  kubectl patch application "$app" -n argocd --type=merge -p '{"spec":{"syncPolicy":{"automated":null}}}' >/dev/null
-  kubectl patch application "$app" -n argocd --type=merge -p '{"operation":null}' >/dev/null 2>&1
+while read -r ns app; do
+  [ -n "$app" ] || continue
+  kubectl patch application "$app" -n "$ns" --type=merge -p '{"spec":{"syncPolicy":{"automated":null}}}' >/dev/null
+  kubectl patch application "$app" -n "$ns" --type=merge -p '{"operation":null}' >/dev/null 2>&1
   DISARMED=$((DISARMED + 1))
-done
+done < <(kubectl get applications -A -o json 2>/dev/null | jq -r '.items[]? | "\(.metadata.namespace) \(.metadata.name)"')
 
 # Before terminating anything: release hook objects Argo has stamped for
 # deletion but still holds its own finalizer on. Terminating first is what
@@ -98,27 +99,30 @@ release_orphaned_hooks
 # blocked on a vanished hook never does. So after a dwell, drop the stale
 # operation state outright: no finalizer, root's included, is ever processed
 # while an operation is in flight, and that is what deadlocks the cascade.
-for app in $(kubectl get applications -n argocd -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
-  if [ "$(kubectl get application "$app" -n argocd -o jsonpath='{.status.operationState.phase}' 2>/dev/null)" = "Running" ]; then
-    echo "ARGO-DOWN: aborting in-flight sync operation on application/$app..."
-    kubectl patch application "$app" -n argocd --type=merge \
-      -p '{"status":{"operationState":{"phase":"Terminating"}}}' >/dev/null 2>&1 || true
-  fi
-done
+kubectl get applications -A -o json 2>/dev/null \
+  | jq -r '.items[]? | select(.status.operationState.phase == "Running")
+      | "\(.metadata.namespace) \(.metadata.name)"' \
+  | while read -r ns app; do
+      [ -n "$app" ] || continue
+      echo "ARGO-DOWN: aborting in-flight sync operation on application/$app (namespace $ns)..."
+      kubectl patch application "$app" -n "$ns" --type=merge \
+        -p '{"status":{"operationState":{"phase":"Terminating"}}}' >/dev/null 2>&1 || true
+    done
 
 OP_CLEAR_DWELL="${ARGO_DOWN_OP_CLEAR_DWELL:-60}"
 op_elapsed=0
 while [ "$op_elapsed" -lt "$OP_CLEAR_DWELL" ]; do
-  stuck_ops="$(kubectl get applications -n argocd -o json 2>/dev/null \
+  stuck_ops="$(kubectl get applications -A -o json 2>/dev/null \
     | jq -r '.items[]? | select((.status.operationState.phase // "") | test("Running|Terminating"))
-        | .metadata.name' 2>/dev/null || true)"
+        | "\(.metadata.namespace) \(.metadata.name)"' 2>/dev/null || true)"
   [ -z "$stuck_ops" ] && break
   sleep "$POLL_INTERVAL"
   op_elapsed=$((op_elapsed + POLL_INTERVAL))
 done
-for app in ${stuck_ops:-}; do
-  echo "ARGO-DOWN: operation on application/$app did not wind down in ${OP_CLEAR_DWELL}s - dropping its stale operation state."
-  kubectl patch application "$app" -n argocd --type=json \
+printf '%s\n' "${stuck_ops:-}" | while read -r stuck_ns stuck_app; do
+  [ -n "$stuck_app" ] || continue
+  echo "ARGO-DOWN: operation on application/$stuck_app (namespace $stuck_ns) did not wind down in ${OP_CLEAR_DWELL}s - dropping its stale operation state."
+  kubectl patch application "$stuck_app" -n "$stuck_ns" --type=json \
     -p '[{"op":"remove","path":"/status/operationState"}]' >/dev/null 2>&1 || true
 done
 
@@ -316,15 +320,15 @@ if kubectl get application root -n argocd >/dev/null 2>&1; then
     # cascade past. The empty-resources check is the safety: never drop this
     # finalizer while Argo still believes it owns live objects.
     if [ "$cascade_elapsed" -ge "$STUCK_APP_DWELL" ]; then
-      kubectl get applications -n argocd -o json 2>/dev/null \
+      kubectl get applications -A -o json 2>/dev/null \
         | jq -r '.items[]? | select(.metadata.deletionTimestamp)
             | select((.metadata.finalizers // []) == ["resources-finalizer.argocd.argoproj.io"])
             | select(((.status.resources // []) | length) == 0)
-            | .metadata.name' 2>/dev/null \
-        | while read -r stuck_app; do
+            | "\(.metadata.namespace) \(.metadata.name)"' 2>/dev/null \
+        | while read -r stuck_ns stuck_app; do
             [ -n "$stuck_app" ] || continue
-            echo "ARGO-DOWN: application/$stuck_app deleting for ${cascade_elapsed}s with no resources left - releasing its finalizer."
-            kubectl patch application "$stuck_app" -n argocd --type=merge \
+            echo "ARGO-DOWN: application/$stuck_app (namespace $stuck_ns) deleting for ${cascade_elapsed}s with no resources left - releasing its finalizer."
+            kubectl patch application "$stuck_app" -n "$stuck_ns" --type=merge \
               -p '{"metadata":{"finalizers":[]}}' >/dev/null 2>&1 || true
           done
     fi
