@@ -57,6 +57,7 @@ fi
 LIVE_UNITS=(
   account-state
   account/ahorro-ci-role
+  account/vk-llm-ci-role
   account/eks-access-identity
   account/eks-test-identity
   account/github-oidc
