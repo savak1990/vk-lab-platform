@@ -24,6 +24,7 @@ locals {
   # ahorro-ci-role - one role serves every lab project, and the project a
   # run targets is its own input, not this role's concern.
   management_tokens_parameter_arn = "${local.ssm_prefix}/*/persistent/llm/management_tokens"
+  fqdn_parameter_arn              = "${local.ssm_prefix}/*/bootstrap/route53/fqdn"
 }
 
 resource "aws_iam_role" "this" {
@@ -38,6 +39,14 @@ data "aws_iam_policy_document" "permissions" {
     sid       = "AllowReadLlmManagementTokens"
     actions   = ["ssm:GetParameter"]
     resources = [local.management_tokens_parameter_arn]
+  }
+
+  # The workflow builds its API endpoint from the lab fqdn instead of storing
+  # a URL in GitHub. A plain String, so no kms:Decrypt is needed.
+  statement {
+    sid       = "AllowReadLabFqdn"
+    actions   = ["ssm:GetParameter"]
+    resources = [local.fqdn_parameter_arn]
   }
 
   # The parameter is a SecureString, so reading it needs the key as well as
