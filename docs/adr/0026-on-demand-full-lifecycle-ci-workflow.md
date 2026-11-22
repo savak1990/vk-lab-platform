@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted
+Accepted. Amended 2026-11-22: section 3, the fixed `test` password for CI
+runs, is withdrawn; see the note in that section.
 
 ## Context
 
@@ -95,6 +96,16 @@ environment is short-lived, holds only synthetic CI data, and is destroyed at
 the end of every run - but it is a real exposure, not a hygiene-only concern,
 and should not be copied into any longer-lived environment without
 reconsidering it.
+
+**Withdrawn 2026-11-22.** The premise "holds only synthetic CI data" stopped
+being true when the CI projects started to receive the account-wide Hetzner
+token (`kube-system/hcloud`) and the global vast.ai key and LLM token
+(namespace `llm`). A public `test` login on a hostname that is committed to
+this repository was then a path from the internet to the personal lab's
+servers. The mode is deleted, not disabled: `generate-secrets.sh` has one
+path, the random one every lab already uses. Grafana's password stays
+readable from SSM for the run's lifetime. Argo CD on a CI cluster is reached
+with `kubectl` under `lab-role`, not with a browser login.
 
 ## Consequences
 
