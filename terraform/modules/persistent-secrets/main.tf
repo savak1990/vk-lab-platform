@@ -23,6 +23,10 @@ data "aws_kms_secrets" "this" {
     name    = "llm_ssh_private_key"
     payload = filebase64(var.llm_ssh_private_key_secret_path)
   }
+  secret {
+    name    = "llm_management_tokens"
+    payload = filebase64(var.llm_management_tokens_secret_path)
+  }
 }
 
 resource "aws_ssm_parameter" "postgres_app_password" {
@@ -54,7 +58,7 @@ resource "aws_ssm_parameter" "llm_api_token" {
   value       = data.aws_kms_secrets.this.plaintext["llm_api_token"]
   type        = "SecureString"
   key_id      = "alias/lab-secrets"
-  description = "Inference client keys and management tokens (sk-vkllm-…, one shared value for now) vk-llm-on-demand's /v1 and /api/v1/gpu routes accept."
+  description = "Inference client keys (sk-vkllm-…, one per line) callers present to vk-llm-on-demand's /v1 routes."
 }
 
 resource "aws_ssm_parameter" "llm_worker_seed" {
@@ -71,6 +75,14 @@ resource "aws_ssm_parameter" "llm_ssh_private_key" {
   type        = "SecureString"
   key_id      = "alias/lab-secrets"
   description = "ed25519 private key vk-llm-on-demand uses to tunnel into rented vast.ai instances; the public half is registered on the vast.ai account."
+}
+
+resource "aws_ssm_parameter" "llm_management_tokens" {
+  name        = "/${var.project}/persistent/llm/management_tokens"
+  value       = data.aws_kms_secrets.this.plaintext["llm_management_tokens"]
+  type        = "SecureString"
+  key_id      = "alias/lab-secrets"
+  description = "Management tokens (one per line) for vk-llm-on-demand's /api/v1/gpu routes: the CLI and the GitHub Actions workflow. Never the same value as api_token."
 }
 
 # A one-way bcrypt hash, never encrypted before or after this - it isn't a
