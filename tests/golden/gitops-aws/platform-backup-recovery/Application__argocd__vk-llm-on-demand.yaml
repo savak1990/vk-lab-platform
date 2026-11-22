@@ -1,0 +1,33 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  annotations:
+    # The last wave: after every platform component, which tops out at 4.
+    argocd.argoproj.io/sync-wave: "5"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  name: vk-llm-on-demand
+  namespace: argocd
+spec:
+  # The child Application the repository renders lands here, in the app's
+  # own namespace, never in argocd.
+  destination:
+    namespace: llm
+    server: https://kubernetes.default.svc
+  project: vk-llm-on-demand
+  # A reference, not application code: the repository below renders one
+  # child Application that pins the gpu-on-demand chart version (its ADR 0008).
+  source:
+    helm:
+      # fqdn is omitted rather than passed empty: `value: ""` is dropped by
+      # the API server and leaves the Application OutOfSync for ever.
+      parameters:
+    path: gitops
+    repoURL: https://github.com/savak1990/vk-llm-on-demand
+    targetRevision: main
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true

@@ -1,0 +1,23 @@
+{{- if ne .Values.target "local" }}
+# Explicit mode only: no request ever waits for a cold start, so the route
+# timeout is generationTimeout (600 s) + 60 s. Envoy Gateway v1.2.1 exposes
+# no stream idle timeout on this policy; the default applies.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: gpu-on-demand-traffic-policy
+  namespace: llm
+  annotations:
+    # One after the pointer; the HTTPRoute is created by the child
+    # Application, so SkipDryRun plus selfHeal cover a first-apply miss.
+    argocd.argoproj.io/sync-wave: "6"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: gpu-on-demand
+  timeout:
+    http:
+      requestTimeout: 660s
+{{- end }}

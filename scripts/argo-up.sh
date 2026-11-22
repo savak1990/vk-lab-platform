@@ -591,7 +591,7 @@ install_argocd() {
     -f "$REPO_ROOT/gitops/argocd/values.yaml" \
     --set server.service.type=ClusterIP \
     --set configs.params."server\.insecure"=true \
-    --set configs.params."application\.namespaces"=ahorro \
+    --set configs.params."application\.namespaces"="ahorro\,llm" \
     --set dex.enabled=false \
     --set configs.secret.argocdServerAdminPassword="$ADMIN_PASSWORD_BCRYPT_HASH" \
     --set configs.secret.argocdServerAdminPasswordMtime="2026-08-20T00:00:00Z" \
