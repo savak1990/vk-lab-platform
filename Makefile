@@ -13,7 +13,8 @@ $(error PROVIDER must be aws, civo, hetzner or local, got '$(PROVIDER)')
 endif
 
 # One shared copy of each provider instead of ~780 MB and ~15 s per unit.
-# Off in CI, where every runner starts cold and the cache only adds overhead.
+# Off in CI: the lock files carry only this workstation's h1 hash, which is
+# all a cached install can be checked against; CI installs stay signed.
 ifndef CI
 export TG_PROVIDER_CACHE ?= 1
 endif

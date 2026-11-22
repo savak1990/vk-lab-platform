@@ -478,14 +478,28 @@ Two rules the tooling enforces for you:
 Run `make clear-cache` when switching between projects in one checkout — every
 composite target already does.
 
-Outside CI, every `make` target turns on Terragrunt's provider cache
-(`TG_PROVIDER_CACHE=1`). Each provider is downloaded once into the user cache
-directory (`~/Library/Caches/terragrunt/providers` on macOS) and linked into
-every unit, so `clear-cache` no longer costs a fresh ~780 MB download per unit.
-Provider integrity still rests on the committed `.terraform.lock.hcl`
-checksums; Terraform logs these installs as `(unauthenticated)` because they
-come from Terragrunt's local cache server, not straight from the registry.
-Turn it off for one run with `TG_PROVIDER_CACHE=false make <target>`.
+Outside CI, `make` turns on Terragrunt's provider cache
+(`TG_PROVIDER_CACHE=1`) for every Terragrunt unit. Each provider is downloaded
+once into the user cache directory (`~/Library/Caches/terragrunt/providers` on
+macOS) and linked into every unit, so `clear-cache` no longer costs a fresh
+~780 MB download per unit. The module loop of `make terraform-check` runs plain
+`terraform init` and is not covered.
+
+- Terraform logs these installs as `(unauthenticated)` because it installs them
+  from a local mirror, not straight from the registry. It still checks each
+  install against the `h1:` hash in the committed `.terraform.lock.hcl`, so a
+  tampered cache fails `init`.
+- The lock files carry the `h1:` hash for macOS arm64 only, which is why the
+  cache is off in CI. On another platform, turn it off with
+  `TG_PROVIDER_CACHE=false make <target>`.
+- Upgrade a provider (`init -upgrade`, a new lock file) with
+  `TG_PROVIDER_CACHE=false`, so the new checksums come from a signed registry
+  install.
+- While units wait for one download, Terragrunt logs
+  `ERROR Acquiring lock file … Retry 0 of 60`. That is expected.
+- The cache keeps every provider version ever used. Free it with
+  `rm -rf ~/Library/Caches/terragrunt/providers`; the next `make` target
+  downloads again.
 
 ### Running a lifecycle target from GitHub Actions
 
