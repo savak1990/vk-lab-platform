@@ -478,6 +478,15 @@ Two rules the tooling enforces for you:
 Run `make clear-cache` when switching between projects in one checkout — every
 composite target already does.
 
+Outside CI, every `make` target turns on Terragrunt's provider cache
+(`TG_PROVIDER_CACHE=1`). Each provider is downloaded once into the user cache
+directory (`~/Library/Caches/terragrunt/providers` on macOS) and linked into
+every unit, so `clear-cache` no longer costs a fresh ~780 MB download per unit.
+Provider integrity still rests on the committed `.terraform.lock.hcl`
+checksums; Terraform logs these installs as `(unauthenticated)` because they
+come from Terragrunt's local cache server, not straight from the registry.
+Turn it off for one run with `TG_PROVIDER_CACHE=false make <target>`.
+
 ### Running a lifecycle target from GitHub Actions
 
 `lab.yml` is dispatched by hand (Actions → **lab** → *Run workflow*) and maps

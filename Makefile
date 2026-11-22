@@ -12,6 +12,12 @@ ifeq ($(filter aws civo hetzner local,$(PROVIDER)),)
 $(error PROVIDER must be aws, civo, hetzner or local, got '$(PROVIDER)')
 endif
 
+# One shared copy of each provider instead of ~780 MB and ~15 s per unit.
+# Off in CI, where every runner starts cold and the cache only adds overhead.
+ifndef CI
+export TG_PROVIDER_CACHE ?= 1
+endif
+
 # Overridable so CI/integration runs can use a disposable, randomly
 # generated name instead of the personal lab's, e.g.
 # PROJECT_NAME=vk-lab-ci-1234 make bootstrap-up
