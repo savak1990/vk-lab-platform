@@ -16,6 +16,7 @@ locals {
   llm_api_token_arn       = "arn:aws:ssm:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:parameter/${var.project}/persistent/llm/api_token"
   llm_worker_seed_arn     = "arn:aws:ssm:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:parameter/${var.project}/persistent/llm/worker_seed"
   llm_ssh_private_key_arn = "arn:aws:ssm:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:parameter/${var.project}/persistent/llm/ssh_private_key"
+  llm_client_keys_arn     = "arn:aws:ssm:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:parameter/${var.project}/persistent/llm/client_keys"
 
   # Built as a literal rather than read from the bucket's own state: the
   # bucket lives in the persistent stack, which is applied after this one.
@@ -128,7 +129,7 @@ data "aws_iam_policy_document" "eso" {
   statement {
     sid       = "AllowReadPlatformSecretParameters"
     actions   = ["ssm:GetParameter"]
-    resources = [local.postgres_password_arn, local.grafana_password_arn, local.vast_ai_api_key_arn, local.llm_api_token_arn, local.llm_worker_seed_arn, local.llm_ssh_private_key_arn]
+    resources = [local.postgres_password_arn, local.grafana_password_arn, local.vast_ai_api_key_arn, local.llm_api_token_arn, local.llm_client_keys_arn, local.llm_worker_seed_arn, local.llm_ssh_private_key_arn]
   }
 
   # alias/lab-secrets also encrypts other projects' password parameters -
@@ -143,7 +144,7 @@ data "aws_iam_policy_document" "eso" {
     condition {
       test     = "StringEquals"
       variable = "kms:EncryptionContext:PARAMETER_ARN"
-      values   = [local.postgres_password_arn, local.grafana_password_arn, local.vast_ai_api_key_arn, local.llm_api_token_arn, local.llm_worker_seed_arn, local.llm_ssh_private_key_arn]
+      values   = [local.postgres_password_arn, local.grafana_password_arn, local.vast_ai_api_key_arn, local.llm_api_token_arn, local.llm_client_keys_arn, local.llm_worker_seed_arn, local.llm_ssh_private_key_arn]
     }
   }
 }

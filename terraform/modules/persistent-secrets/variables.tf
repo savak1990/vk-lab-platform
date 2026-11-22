@@ -28,6 +28,11 @@ variable "argocd_admin_password_bcrypt_path" {
   type        = string
 }
 
+variable "llm_client_keys_secret_path" {
+  description = "Absolute path to the KMS-encrypted ciphertext file holding vk-llm-on-demand's inference client keys, global scope."
+  type        = string
+}
+
 variable "llm_worker_seed_secret_path" {
   description = "Absolute path to the KMS-encrypted ciphertext file holding vk-llm-on-demand's 32-byte worker seed, global scope."
   type        = string

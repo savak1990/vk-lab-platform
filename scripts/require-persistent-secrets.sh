@@ -21,7 +21,7 @@ scope_of() {
 
 missing=()
 for name in root-domain postgres-app-password grafana-admin-password ahorro-test-user-password \
-            vast-ai-api-key llm-on-demand-api-token \
+            vast-ai-api-key llm-on-demand-api-token llm-on-demand-client-keys \
             llm-on-demand-worker-seed llm-on-demand-ssh-private-key; do
   test -f "$(secret_path "$name" "$(scope_of "$name")")" || missing+=("$name")
 done

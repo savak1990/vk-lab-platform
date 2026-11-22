@@ -16,6 +16,10 @@ data "aws_kms_secrets" "this" {
     payload = filebase64(var.llm_api_token_secret_path)
   }
   secret {
+    name    = "llm_client_keys"
+    payload = filebase64(var.llm_client_keys_secret_path)
+  }
+  secret {
     name    = "llm_worker_seed"
     payload = filebase64(var.llm_worker_seed_secret_path)
   }
@@ -54,7 +58,18 @@ resource "aws_ssm_parameter" "llm_api_token" {
   value       = data.aws_kms_secrets.this.plaintext["llm_api_token"]
   type        = "SecureString"
   key_id      = "alias/lab-secrets"
-  description = "Inference client keys and management tokens (sk-vkllm-…, one shared value for now) vk-llm-on-demand's /v1 and /api/v1/gpu routes accept."
+  description = "Management token (sk-vkllm-…) vk-llm-on-demand's /api/v1/gpu routes accept; the gpu-control GitHub Actions workflow reads it via OIDC."
+}
+
+# Kept apart from api_token on purpose: the app refuses to start when one key
+# is in both client-keys and management-tokens, so an inference key can never
+# start GPUs or change the budget.
+resource "aws_ssm_parameter" "llm_client_keys" {
+  name        = "/${var.project}/persistent/llm/client_keys"
+  value       = data.aws_kms_secrets.this.plaintext["llm_client_keys"]
+  type        = "SecureString"
+  key_id      = "alias/lab-secrets"
+  description = "Inference client keys (sk-vkllm-…, one per line) vk-llm-on-demand's /v1 routes accept, e.g. for OpenCode."
 }
 
 resource "aws_ssm_parameter" "llm_worker_seed" {
