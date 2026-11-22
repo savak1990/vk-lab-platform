@@ -449,14 +449,12 @@ ssh-key-init: export ROTATE := $(ROTATE)
 ssh-key-init:
 	@./scripts/ssh-key-init.sh
 
-## Generates throwaway secrets/$(PROJECT_NAME)/ files for a CI/test
-## environment: root-domain from ROOT_DOMAIN and fixed, publicly-known
-## passwords ("test"). Never use this for the personal lab - persistent-up
-## calls the same script directly (without FIXED_TEST_PASSWORDS) to
-## auto-generate real random passwords instead.
+## Generates any missing secrets/$(PROJECT_NAME)/ files (random passwords,
+## the Roles Anywhere CA, the SSH key) and secrets/root-domain.enc from
+## ROOT_DOMAIN. persistent-up runs the same script; this target exists for
+## a CI/test project that needs its files before the first persistent-up.
 ## Usage: PROJECT_NAME=vk-lab-ci ROOT_DOMAIN=<domain> make generate-secrets
 generate-secrets: export ROOT_DOMAIN := $(ROOT_DOMAIN)
-generate-secrets: export FIXED_TEST_PASSWORDS := true
 generate-secrets:
 	@./scripts/generate-secrets.sh
 

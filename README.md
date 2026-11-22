@@ -139,7 +139,7 @@ sequence.
 | `make ca-init` | Generates the Roles Anywhere CA for a non-AWS target. `PROVIDER=civo\|hetzner`, `ROTATE=1` for a candidate |
 | `make ssh-key-init` | Generates the Hetzner node SSH key. `PROVIDER=hetzner`, `ROTATE=1` for a candidate |
 | `make secret-encrypt` / `secret-decrypt` | One value in or out of `secrets/`, through the shared KMS key |
-| `make generate-secrets` | Throwaway secrets for a CI project. **Writes the publicly known password `test`** — never for a real lab |
+| `make generate-secrets` | Generates any missing secrets for a project (random passwords) before its first `persistent-up` |
 | `make kubeconfig` / `test-kubeconfig` | The only commands that touch your own kubectl context |
 | `make status` | Which layers currently hold state, for this `PROJECT_NAME` |
 | `make clusters` | Every platform cluster live on every provider, across all projects |
@@ -173,7 +173,6 @@ Those tests keep their own targets for running one at a time —
 | `CONFIRM_DESTROY` | unset | must equal `PROJECT_NAME`, on guarded targets |
 | `ROTATE` | unset | `1`, on `ca-init` and `ssh-key-init` |
 | `ROOT_DOMAIN` | unset | only used to seed `secrets/root-domain.enc` when missing |
-| `FIXED_TEST_PASSWORDS` | unset | `true` for CI only |
 
 Defaults are listed `aws` / `civo` / `hetzner`. `PROVIDER=local` owns no cloud
 resources, so it **ignores** the region and node variables — leaving them
@@ -454,10 +453,9 @@ PROJECT_NAME=vk-lab-two SUBDOMAIN=two make full-up
 ```
 
 That is the whole sequence — `bootstrap-up` creates the new project's state
-bucket and generates its secrets (real random passwords) before anything needs
-them. Do **not** run `make generate-secrets` first: that target forces
-`FIXED_TEST_PASSWORDS=true` and writes publicly-known `"test"` passwords, and is
-only for throwaway CI environments.
+bucket and generates its secrets (random passwords) before anything needs
+them. `make generate-secrets` runs the same generator and is only needed when
+a project's files must exist before its first `persistent-up`.
 
 No IAM change is needed — `lab-role` is shared and scopes by naming convention.
 Two rules the tooling enforces for you:
