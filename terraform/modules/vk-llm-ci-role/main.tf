@@ -23,7 +23,7 @@ locals {
   # Wildcarded on the project, not on the path: same reasoning as
   # ahorro-ci-role - one role serves every lab project, and the project a
   # run targets is its own input, not this role's concern.
-  api_token_parameter_arn = "${local.ssm_prefix}/*/persistent/llm/api_token"
+  management_tokens_parameter_arn = "${local.ssm_prefix}/*/persistent/llm/management_tokens"
 }
 
 resource "aws_iam_role" "this" {
@@ -31,27 +31,27 @@ resource "aws_iam_role" "this" {
   assume_role_policy = module.github_oidc_trust.json
 }
 
-# gpu-control.yml's only AWS call: read the one management-API bearer token
-# vk-llm-on-demand's GitHub Actions remote control needs. Nothing else.
+# Reads only the LLM management token; never api_token, which holds the
+# inference keys and is rejected by the management API.
 data "aws_iam_policy_document" "permissions" {
   statement {
-    sid       = "AllowReadLlmApiToken"
+    sid       = "AllowReadLlmManagementTokens"
     actions   = ["ssm:GetParameter"]
-    resources = [local.api_token_parameter_arn]
+    resources = [local.management_tokens_parameter_arn]
   }
 
   # The parameter is a SecureString, so reading it needs the key as well as
   # the parameter. The EncryptionContext condition keeps Decrypt scoped to
   # this one parameter pattern, not the whole shared key.
   statement {
-    sid       = "AllowDecryptLlmApiToken"
+    sid       = "AllowDecryptLlmManagementTokens"
     actions   = ["kms:Decrypt"]
     resources = [data.aws_kms_alias.secrets.target_key_arn]
 
     condition {
       test     = "StringLike"
       variable = "kms:EncryptionContext:PARAMETER_ARN"
-      values   = [local.api_token_parameter_arn]
+      values   = [local.management_tokens_parameter_arn]
     }
   }
 }
