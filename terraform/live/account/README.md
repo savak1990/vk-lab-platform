@@ -47,8 +47,10 @@ own workload identity is a separate role, with its own trust),
 `vk-llm-ci-role` (the role the `vk-llm-on-demand` repository's `gpu-control`
 GitHub Actions workflow assumes; trusted only to the `gpu-control`
 Environment's OIDC `sub` claim, not a wildcard branch — see
-`vk-llm-ci-role/main.tf`; it reads `/*/persistent/llm/api_token` only). Does not qualify: this project's own state
-bucket, the lab DNS zone + ACM cert (both per-project, in `bootstrap/`).
+`terraform/modules/vk-llm-ci-role/main.tf`; it reads
+`/*/persistent/llm/management_tokens` only). Does not qualify: this project's
+own state bucket, the lab DNS zone + ACM cert (both per-project, in
+`bootstrap/`).
 
 ## Prerequisite: this layer's own dedicated state bucket
 
