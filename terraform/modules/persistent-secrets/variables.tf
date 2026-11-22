@@ -37,3 +37,8 @@ variable "llm_ssh_private_key_secret_path" {
   description = "Absolute path to the KMS-encrypted ciphertext file holding vk-llm-on-demand's ed25519 private key, global scope."
   type        = string
 }
+
+variable "llm_management_tokens_secret_path" {
+  description = "Absolute path to the KMS-encrypted ciphertext file holding vk-llm-on-demand's management tokens, global scope."
+  type        = string
+}
