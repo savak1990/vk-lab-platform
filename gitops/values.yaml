@@ -214,3 +214,8 @@ ahorro:
     clientId: ""
     issuer: ""
     region: ""
+
+# Same contract as ahorro: the pointer tracks a branch, resolved at sync
+# time. The application repository pins chart and image versions itself.
+vkllm:
+  targetRevision: main

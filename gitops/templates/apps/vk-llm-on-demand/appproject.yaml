@@ -1,0 +1,31 @@
+{{- if ne .Values.target "local" }}
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: vk-llm-on-demand
+  namespace: argocd
+  annotations:
+    # Before the pointer at wave 5: an Application naming a project that does
+    # not exist yet is rejected outright, not retried.
+    argocd.argoproj.io/sync-wave: "4"
+spec:
+  description: The vk-llm-on-demand application. Its own repository owns everything below the pointer.
+  sourceRepos:
+    - https://github.com/savak1990/vk-llm-on-demand
+    - ghcr.io/savak1990/vk-llm-on-demand/charts
+  # The child Application lives in llm too, never in argocd: an Application
+  # in the control-plane namespace could name any project.
+  sourceNamespaces:
+    - llm
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: llm
+  clusterResourceWhitelist:
+    # CreateNamespace=true on the child needs this and nothing else; llm
+    # already exists (shared/llm/secrets.yaml), so it is a no-op here.
+    - group: ""
+      kind: Namespace
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"
+{{- end }}
