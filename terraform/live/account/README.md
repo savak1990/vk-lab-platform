@@ -43,7 +43,11 @@ CI test job never runs with cluster-admin access; see
 `terraform/modules/eks/main.tf`), `ahorro-ci-role` (the role the
 `vk-ahorro` repository's CI assumes; today it reads `/account/root_domain`
 only, so that value reaches the app without ever being committed. The app's
-own workload identity is a separate role, with its own trust). Does not qualify: this project's own state
+own workload identity is a separate role, with its own trust),
+`vk-llm-ci-role` (the role the `vk-llm-on-demand` repository's `gpu-control`
+GitHub Actions workflow assumes; trusted only to the `gpu-control`
+Environment's OIDC `sub` claim, not a wildcard branch — see
+`vk-llm-ci-role/main.tf`; it reads `/*/persistent/llm/api_token` only). Does not qualify: this project's own state
 bucket, the lab DNS zone + ACM cert (both per-project, in `bootstrap/`).
 
 ## Prerequisite: this layer's own dedicated state bucket

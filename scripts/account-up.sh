@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # Creates account-global resources (the shared secrets KMS key, the shared
 # lab-role every project's GitHub Actions run assumes, the GitHub OIDC
-# provider, eks-access-identity, eks-test-identity, root-domain), then wires
-# lab.yml's repo variable: vars.AWS_ROLE_ARN (lab-role's own ARN - set once,
-# ever, not per-project). Run once per AWS account from a workstation -
-# never from CI. Deliberately not part of `make up` or `make full-up`.
+# provider, eks-access-identity, eks-test-identity, root-domain,
+# vk-llm-ci-role), then wires lab.yml's repo variable: vars.AWS_ROLE_ARN
+# (lab-role's own ARN - set once, ever, not per-project) and
+# vk-llm-on-demand's vars.AWS_ROLE_ARN (vk-llm-ci-role's own ARN). Run once
+# per AWS account from a workstation - never from CI. Deliberately not part
+# of `make up` or `make full-up`.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -60,6 +62,9 @@ echo "Applying root-domain ..."
 echo "Applying ahorro-ci-role ..."
 (cd "$REPO_ROOT/terraform/live/account/ahorro-ci-role" && terragrunt apply --non-interactive -auto-approve)
 
+echo "Applying vk-llm-ci-role ..."
+(cd "$REPO_ROOT/terraform/live/account/vk-llm-ci-role" && terragrunt apply --non-interactive -auto-approve)
+
 # --- absorbed from the now-deleted scripts/github-vars-up.sh ---
 
 role_arn=$(aws iam get-role --role-name lab-role --query Role.Arn --output text)
@@ -70,5 +75,10 @@ ahorro_repo="${AHORRO_GITHUB_REPO:-savak1990/vk-ahorro}"
 ahorro_role_arn=$(aws iam get-role --role-name ahorro-ci-role --query Role.Arn --output text)
 gh variable set AWS_ROLE_ARN --repo "$ahorro_repo" --body "$ahorro_role_arn"
 echo "Set $ahorro_repo vars.AWS_ROLE_ARN = $ahorro_role_arn"
+
+llm_repo="${VK_LLM_GITHUB_REPO:-savak1990/vk-llm-on-demand}"
+llm_role_arn=$(aws iam get-role --role-name vk-llm-ci-role --query Role.Arn --output text)
+gh variable set AWS_ROLE_ARN --repo "$llm_repo" --body "$llm_role_arn"
+echo "Set $llm_repo vars.AWS_ROLE_ARN = $llm_role_arn"
 
 echo "Still manual: create the ephemeral-teardown Environment (Settings > Environments) with a required reviewer - not scriptable via gh for this repo."
