@@ -44,9 +44,17 @@ copying it.
 4. Namespace `llm-dev`'s ExternalSecrets MUST read production's
    `/<project>/persistent/llm/*` SSM parameters — the same parameters
    namespace `llm` already reads.
-5. A `BackendTrafficPolicy` MUST set `requestTimeout: 660s` on HTTPRoute
+5. The `llm-deploy` Role in `llm-dev` MUST cover exactly the kinds the dev
+   values render: `get`, `list`, `watch`, `create`, `update`, `patch` and
+   `delete` on ConfigMap, Secret (Helm's release storage), Service,
+   ServiceAccount, Deployment, Role, RoleBinding, HTTPRoute and
+   ServiceMonitor; `get`, `list` and `watch` on ReplicaSet, Pod and Event;
+   and `get` on `pods/log`. It MUST NOT grant `bind`, `escalate` or
+   `impersonate` — the chart's own Role grants only ConfigMap get/update,
+   which the deploy identity already holds.
+6. A `BackendTrafficPolicy` MUST set `requestTimeout: 660s` on HTTPRoute
    `gpu-on-demand` in namespace `llm-dev`.
-6. `vk-llm-ci-role` MUST gain `ssm:GetParameter` on
+7. `vk-llm-ci-role` MUST gain `ssm:GetParameter` on
    `/*/cluster/llm-deploy/*` and `/*/persistent/llm/api_token`, and
    `kms:Decrypt` limited by a `kms:EncryptionContext:PARAMETER_ARN`
    condition to `management_tokens`, `api_token` and
@@ -61,3 +69,5 @@ copying it.
    deployments -n llm-dev` answers `yes`.
 4. `kubectl auth can-i --as=system:serviceaccount:llm-dev:llm-deploy get
    configmaps -n llm` answers `no`.
+5. `kubectl auth can-i --as=system:serviceaccount:llm-dev:llm-deploy
+   escalate roles -n llm-dev` answers `no`.
