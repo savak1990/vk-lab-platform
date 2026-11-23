@@ -1,7 +1,7 @@
 {{- if ne .Values.target "local" }}
-# One after the pointer; the HTTPRoutes come from the chat chart, so
-# SkipDryRun plus selfHeal cover a first-apply miss. A chat request can wait
-# up to 600 s for the GPU to start plus up to 600 s of generation.
+# One after the pointer; the HTTPRoutes come from the chat chart. A policy
+# whose target route does not exist yet applies and takes effect once the route
+# appears. A chat request can wait up to 600 s for the GPU to start plus up to 600 s of generation.
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: BackendTrafficPolicy
 metadata:
