@@ -20,6 +20,7 @@
 - `REGION` names the state bucket, so a retry MUST NOT change it. The per-attempt location is `HCLOUD_LOCATION`.
 - Fallback signals: the output text `resource_unavailable` or `unsupported location for server type`. Never the bare code `invalid_input`.
 - Load balancer annotation: `load-balancer.hetzner.cloud/network-zone`, never together with `load-balancer.hetzner.cloud/location`.
+- `envoyGateway.networkZone` is `required` in the template: a live root still passing `envoyGateway.location` must fail to render (nothing pruned), never render an empty zone onto a live Service.
 - Autoscaler `nodeConfigs` keys: `workers-<location>` for every location of the zone (no `workers` key any more).
 - Code comments: only where non-obvious, at most 3 lines, never naming a spec, ADR or ticket (repo `CLAUDE.md`).
 - Commit trailer on every commit:
@@ -961,7 +962,7 @@ with:
 ```yaml
   # Immutable, and exclusive with the location annotation: changing either
   # recreates the load balancer with a new IPv4. Hetzner picks the location.
-  load-balancer.hetzner.cloud/network-zone: {{ .Values.envoyGateway.networkZone | quote }}
+  load-balancer.hetzner.cloud/network-zone: {{ required "envoyGateway.networkZone is set by argo-up" .Values.envoyGateway.networkZone | quote }}
 ```
 
 In `gitops/values.yaml` and `gitops/bootstrap/values.yaml`, in the `envoyGateway` block, change `location: ""` to `networkZone: ""`.
@@ -1194,7 +1195,7 @@ git push -u origin hetz-176-part-b
 gh pr create --title "HETZ-176 part B: REGION is a network zone on Hetzner" --label ci:skip-lifecycle --body-file <body>
 gh pr edit --remove-label ci:skip-lifecycle --add-label ci:lifecycle-hetzner
 ```
-The body states: what changed, ADR 0047, the validation run, and the rollout order below with the warning that **auto-merge must not be enabled before step 2 is done**. A cancelled first run is expected; `gh run rerun <id>` it.
+The body states: what changed, ADR 0047, the validation run, and the rollout order below with the warning that **auto-merge must not be enabled before step 2 is done**. Alternative order the operator may choose: do step 2 first, then push PR 2 (frees the account's servers for CI; the lab is down about 1 to 1.5 h instead of 1 h). A cancelled first run is expected; `gh run rerun <id>` it.
 
 - [ ] **Step 2: Tear the live lab down with the old code (operator, before merge)**
 
@@ -1218,7 +1219,7 @@ If every location refuses the worker type, run again with `WORKER_NODE_TYPE=cx33
 - AC1: `aws s3 ls | grep vk-hetzner-lab` shows `vk-hetzner-lab-eu-central-tf-state` and `vk-hetzner-lab-eu-central-postgres-backups`.
 - AC2: `kubectl -n envoy get svc -o yaml | grep 'load-balancer.hetzner.cloud/'` shows `network-zone: eu-central` and no `location:`; `curl -sI https://argocd.hz.lab.<root-domain>` answers over TLS.
 - AC3: autoscaler args and priority ConfigMap as in Part A, from the zone.
-- The `HETZNER-APPLY: trying location ...` lines in the full-up output (AC6 live).
+- The `HETZNER-APPLY: trying location ...` lines in the full-up output (AC6 live). When there is more than one, `hcloud server list -l project=vk-hetzner-lab` must show exactly one server per name (a failed create must not leave a ghost server that blocks the retry by name); record what you see in §14.
 - AC8: `make down`, then `make up`, then `make verify-no-leaks`.
 
 - [ ] **Step 5: Record**
