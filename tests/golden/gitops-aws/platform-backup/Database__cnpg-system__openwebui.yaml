@@ -1,0 +1,14 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    # After the Cluster (wave 3) has reconciled the openwebui role.
+    argocd.argoproj.io/sync-wave: "4"
+  name: openwebui
+  namespace: cnpg-system
+spec:
+  cluster:
+    name: lab-postgres
+  name: openwebui
+  owner: openwebui

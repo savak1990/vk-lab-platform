@@ -163,7 +163,8 @@ PodMonitor__cnpg-system__cnpg-postgres ServiceMonitor__argocd__argocd \
 Namespace__cluster__e2e ServiceAccount__e2e__e2e-test \
 AppProject__argocd__vk-ahorro Application__argocd__vk-ahorro \
 AppProject__argocd__vk-llm-on-demand Application__argocd__vk-llm-on-demand \
-BackendTrafficPolicy__llm__gpu-on-demand-traffic-policy"
+BackendTrafficPolicy__llm__gpu-on-demand-traffic-policy \
+ExternalSecret__cnpg-system__openwebui-db Database__cnpg-system__openwebui"
 REQUIRED_OBJECTS_LOCAL="EnvoyProxy__envoy__envoy-proxy-config \
 Gateway__envoy__platform-gateway GatewayClass__cluster__envoy-gateway \
 HTTPRoute__argocd__argocd Cluster__cnpg-system__lab-postgres \
@@ -191,7 +192,8 @@ external-snapshotter external-snapshotter-crds"
 FORBIDDEN_OBJECTS_LOCAL="BackendTrafficPolicy__observability__grafana-traffic-policy \
 ExternalSecret__observability__grafana-admin-credentials \
 ServiceMonitor__kube-system__karpenter \
-ConfigMap__observability__dashboard-karpenter-capacity"
+ConfigMap__observability__dashboard-karpenter-capacity \
+ExternalSecret__cnpg-system__openwebui-db Database__cnpg-system__openwebui"
 FORBIDDEN_OBJECTS_CIVO="ServiceMonitor__kube-system__karpenter \
 ConfigMap__observability__dashboard-karpenter-capacity \
 RoleBinding__envoy__e2e-test-readonly"
@@ -228,7 +230,8 @@ PodMonitor__cnpg-system__cnpg-postgres ServiceMonitor__argocd__argocd \
 Namespace__cluster__e2e ServiceAccount__e2e__e2e-test \
 AppProject__argocd__vk-ahorro Application__argocd__vk-ahorro \
 AppProject__argocd__vk-llm-on-demand Application__argocd__vk-llm-on-demand \
-BackendTrafficPolicy__llm__gpu-on-demand-traffic-policy"
+BackendTrafficPolicy__llm__gpu-on-demand-traffic-policy \
+ExternalSecret__cnpg-system__openwebui-db Database__cnpg-system__openwebui"
 FORBIDDEN_KINDS_HETZNER="VolumeSnapshotClass VolumeSnapshotContent VolumeSnapshot \
 NodePool EC2NodeClass"
 FORBIDDEN_APPLICATIONS_HETZNER="aws-load-balancer-controller ebs-csi-driver karpenter \
