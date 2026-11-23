@@ -295,7 +295,7 @@ jobs:
           helm template gitops/ \
             --set target=hetzner \
             --set envoyGateway.fqdn=lab.example.com \
-            --set envoyGateway.location=fsn1 \
+            --set envoyGateway.networkZone=eu-central \
             --set "capacity.autoscaler.locations=fsn1 nbg1 hel1" \
             --set capacity.autoscaler.maxNodesTotal=3 \
             > rendered-hetzner.yaml

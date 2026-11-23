@@ -256,8 +256,8 @@ local_resolve_inputs() {
 # Sixteen names against a get-parameters cap of ten, so this batches the way
 # civo_resolve_inputs does and reuses the aws-side ssm_output lookup. It was one
 # call until the autoscaler's two took it over the cap; its third, the worker
-# cloud-init, is read below instead. The load balancer's location is not one of
-# them: it comes from the REGION operator input, which no Terraform layer owns.
+# cloud-init, is read below instead. The load balancer's network zone is not one
+# of them: it is the REGION operator input, which no Terraform layer owns.
 #
 # No reserved IP: this target has none. No firewall id either, because nothing
 # reads it. The backup bucket comes from the shared persistent layer, which
@@ -894,8 +894,7 @@ local_install_root_application() {
 
 # The civo installer less the values this target has no source for: no
 # reserved IP, no LB firewall id, and no backup bucket until HETZ-115/120.
-# REGION rather than HCLOUD_LOCATION: region.sh is sourced before provider.sh
-# canonicalises the case, and the hcloud API wants it lowercase.
+# REGION is the network zone here, canonicalised by provider.sh.
 hetzner_install_root_application() {
   helm upgrade --install root-application "$REPO_ROOT/gitops/bootstrap" \
     --namespace argocd \
@@ -906,7 +905,7 @@ hetzner_install_root_application() {
     --set targetRevision="$TARGET_REVISION" \
     --set postgres.storageSize="$POSTGRES_STORAGE_SIZE" \
     --set envoyGateway.fqdn="$LAB_FQDN" \
-    --set envoyGateway.location="$REGION" \
+    --set envoyGateway.networkZone="$REGION" \
     --set capacity.autoscaler.min=0 \
     --set capacity.autoscaler.max=$(( MAX_WORKER_NODES - MIN_WORKER_NODES )) \
     --set capacity.autoscaler.nodeType="$WORKER_NODE_TYPE" \
