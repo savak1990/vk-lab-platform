@@ -47,7 +47,8 @@ spec:
         - name: open-webui
           port: 80
 ---
-# The gateway's generation timeout (600 s) plus 60 s, like the GPU route.
+# A chat request can wait up to 600 s for the GPU to start (on-demand
+# mode) plus up to 600 s of generation, like the GPU route.
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: BackendTrafficPolicy
 metadata:
@@ -63,7 +64,7 @@ spec:
       name: open-webui
   timeout:
     http:
-      requestTimeout: 660s
+      requestTimeout: 1200s
 ---
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: BackendTrafficPolicy
@@ -88,5 +89,5 @@ spec:
             unit: Second
   timeout:
     http:
-      requestTimeout: 660s
+      requestTimeout: 1200s
 {{- end }}

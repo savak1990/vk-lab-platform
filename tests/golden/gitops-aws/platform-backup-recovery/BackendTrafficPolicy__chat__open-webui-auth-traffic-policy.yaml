@@ -21,4 +21,4 @@ spec:
       name: open-webui-auth
   timeout:
     http:
-      requestTimeout: 660s
+      requestTimeout: 1200s
