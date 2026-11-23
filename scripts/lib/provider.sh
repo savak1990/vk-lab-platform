@@ -366,8 +366,6 @@ hetzner_kubeconfig() {
   kubectl --kubeconfig "$target" config use-context "$ctx" >/dev/null
 }
 
-# On civo, renames context to ${PROJECT_NAME}-civo (no --context-name flag); deletes target context first
-# to guard against reruns. On AWS, uses update-kubeconfig with the eks-access-identity role.
 # Applies the hetzner cluster stack, one location of the zone at a time. A
 # stock-out or a withdrawn type moves on; servers an earlier attempt created
 # keep their location, so the control plane and a worker can differ.
@@ -403,6 +401,8 @@ hetzner_apply() {
   return 1
 }
 
+# On civo, renames context to ${PROJECT_NAME}-civo (no --context-name flag); deletes target context first
+# to guard against reruns. On AWS, uses update-kubeconfig with the eks-access-identity role.
 configure_kubeconfig() {
   local kubeconfig="${1:-}"
   local kcfg=()

@@ -85,13 +85,13 @@
 # key and state-up's region-change guard all read it.
 #
 # Region lists carry their own constraints. Hetzner's REGION is the network
-# zone, eu-central, because the private network HETZ-025 creates is
-# eu-central and a server outside that zone cannot attach to it; the zone's
-# locations are listed below and any of them can host any server. Hetzner
-# location/type availability is HETZ-020's real creates on 2026-09-21
-# (hetzner/research.md:144), not Hetzner's published catalogue, which
-# proved unreliable in both directions. Civo regions are `civo region ls`,
-# 2026-09-21, spelled uppercase to match CIVO_REGION in region.sh.
+# zone, eu-central, because the platform's private network is in eu-central
+# and a server outside that zone cannot attach to it; the zone's locations
+# are listed below and any of them can host any server. Hetzner
+# location/type availability was measured by real creates on 2026-09-21, not
+# Hetzner's published catalogue, which proved unreliable in both directions.
+# Civo regions are `civo region ls`, 2026-09-21, spelled uppercase to match
+# CIVO_REGION in region.sh.
 #
 # Spellings differ between clouds - Civo answers lon1 from its own CLI but
 # the platform has always passed LON1, while Hetzner and AWS are lowercase.

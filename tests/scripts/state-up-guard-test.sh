@@ -54,7 +54,7 @@ run_case() {
 
 out="$(run_case full)"; rc=$?
 if [ "$rc" -ne 0 ] && printf '%s' "$out" | grep -q "s3://vk-fake-hz-fsn1-tf-state" \
-  && printf '%s' "$out" | grep -q "a020ba9" && [ ! -s "$CALLS" ]; then
+  && printf '%s' "$out" | grep -q "318ba5c" && [ ! -s "$CALLS" ]; then
   echo "ok   a location-named bucket with objects refuses, names the old checkout, applies nothing"
 else
   echo "FAIL legacy bucket with objects: rc=$rc"; echo "$out"; fails=$((fails + 1))
@@ -69,8 +69,34 @@ for mode in empty absent; do
   fi
 done
 
+# Calls the function directly, as argo-down.sh/cluster-down.sh do on hetzner,
+# rather than through the whole of state-up.sh.
+run_guard_directly() {
+  ( cd "$TMP/repo" && PATH="$TMP/bin:/usr/bin:/bin" LEGACY="$1" \
+      PROVIDER=hetzner PROJECT_NAME=vk-fake-hz REGION=eu-central AWS_PROFILE=fake bash -c '
+      set -euo pipefail
+      source scripts/lib/region.sh
+      source scripts/lib/catalog.sh
+      source scripts/lib/region-guard.sh
+      require_no_other_region_state' 2>&1 )
+}
+
+out="$(run_guard_directly full)"; rc=$?
+if [ "$rc" -ne 0 ] && printf '%s' "$out" | grep -q "s3://vk-fake-hz-fsn1-tf-state"; then
+  echo "ok   require_no_other_region_state called directly refuses on a full legacy bucket"
+else
+  echo "FAIL require_no_other_region_state direct call, full: rc=$rc"; echo "$out"; fails=$((fails + 1))
+fi
+
+out="$(run_guard_directly absent)"; rc=$?
+if [ "$rc" -eq 0 ]; then
+  echo "ok   require_no_other_region_state called directly returns 0 with no legacy bucket"
+else
+  echo "FAIL require_no_other_region_state direct call, absent: rc=$rc"; echo "$out"; fails=$((fails + 1))
+fi
+
 if [ "$fails" -gt 0 ]; then
   echo "state-up-guard-test: $fails case(s) failed" >&2
   exit 1
 fi
-echo "state-up-guard-test: all 3 cases passed"
+echo "state-up-guard-test: all 5 cases passed"

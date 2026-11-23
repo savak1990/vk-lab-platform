@@ -9,6 +9,8 @@ PROJECT_NAME="${PROJECT_NAME:-vk-lab-platform}"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/region.sh"
 # shellcheck source=lib/catalog.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib/catalog.sh"
+# shellcheck source=lib/region-guard.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/region-guard.sh"
 BUCKET="${PROJECT_NAME}-${LAB_PROVIDER_REGION}-tf-state"
 
 cd "$UNIT_DIR"
@@ -38,42 +40,7 @@ if ! aws sts get-caller-identity >/dev/null 2>&1; then
   exit 1
 fi
 
-# A new region means a new bucket while the old platform keeps billing, unseen.
-# Candidates come from the catalogue, not a name prefix that could match a longer
-# project name; hetzner buckets were once named after a location, so those too.
-candidates="$(catalog_regions "$PROVIDER")"
-if [ "$PROVIDER" = hetzner ]; then
-  for zone in $(catalog_regions hetzner); do
-    candidates="$candidates $(catalog_zone_locations "$zone")"
-  done
-fi
-for candidate_region in $candidates; do
-  candidate_lower="$(catalog_lower "$candidate_region")"
-  [ "$candidate_lower" = "$LAB_PROVIDER_REGION" ] && continue
-  other_bucket="${PROJECT_NAME}-${candidate_lower}-tf-state"
-  aws s3api head-bucket --bucket "$other_bucket" --region "$LAB_REGION" >/dev/null 2>&1 || continue
-
-  other_count="$(aws s3api list-objects-v2 --bucket "$other_bucket" --region "$LAB_REGION" \
-    --query 'length(Contents)' --output text 2>/dev/null || echo 0)"
-  [ "$other_count" = "None" ] && other_count=0
-  [ "$other_count" -gt 0 ] || continue
-
-  {
-    echo "Refusing: this project already exists in $candidate_region."
-    echo "  s3://$other_bucket still holds $other_count object(s)."
-    echo "Changing REGION does not move a platform - it would build a second one"
-    echo "and leave the first running and billing, invisible to the new state."
-    echo "Destroy the existing one first:"
-    if [ "$PROVIDER" = hetzner ] && catalog_zone_of "$candidate_region" >/dev/null; then
-      echo "  (a location-named bucket: only the code before REGION became a zone can name it)"
-      echo "  git worktree add /tmp/platform-a020ba9 a020ba9 && cd /tmp/platform-a020ba9"
-      echo "  PROVIDER=hetzner REGION=$candidate_region PROJECT_NAME=$PROJECT_NAME CONFIRM_DESTROY=$PROJECT_NAME make full-down"
-    else
-      echo "  REGION=$candidate_region CONFIRM_DESTROY=$PROJECT_NAME make full-down"
-    fi
-  } >&2
-  exit 1
-done
+require_no_other_region_state || exit 1
 
 head_error="$(aws s3api head-bucket --bucket "$BUCKET" --region "$LAB_REGION" 2>&1)" && head_rc=0 || head_rc=$?
 

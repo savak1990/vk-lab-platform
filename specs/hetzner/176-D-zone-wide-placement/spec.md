@@ -528,6 +528,10 @@ Accepted risks:
   location-named buckets, ADR 0047. Evidence: node-config-test (all pass,
   AC7 offline), state-up-guard-test 3/3 (AC4 offline), hetzner-apply-test
   9/9 with and without pipefail (AC6 offline), autoscaler-config-test
-  12/12, gitops-check (aws golden: one parameter renamed — AC9). Outstanding
+  12/12, gitops-check (aws golden: one parameter renamed — AC9). The
+  region guard moved into scripts/lib/region-guard.sh and now also runs
+  before argo-down and cluster-down on hetzner, so new code cannot
+  half-tear-down a lab still in a location-named bucket. Outstanding
   until the live rollout (§11 PR 2): AC1, AC2, AC3 (zone), AC4 live, AC5,
-  AC8.
+  AC6 live, AC8, and the §4.6 check whether a failed create leaves a
+  tainted or ghost server.

@@ -1200,8 +1200,8 @@ The body states: what changed, ADR 0047, the validation run, and the rollout ord
 - [ ] **Step 2: Tear the live lab down with the old code (operator, before merge)**
 
 ```bash
-git -C /Users/margo/Proj/Lab/vk-lab-platform worktree add /tmp/platform-a020ba9 a020ba9
-cd /tmp/platform-a020ba9
+git -C /Users/margo/Proj/Lab/vk-lab-platform worktree add /tmp/platform-318ba5c 318ba5c
+cd /tmp/platform-318ba5c
 AWS_PROFILE=viacheslav-dev PROVIDER=hetzner PROJECT_NAME=vk-hetzner-lab CONFIRM_DESTROY=vk-hetzner-lab make full-down
 ```
 Then check nothing remains: `hcloud server list`, `hcloud load-balancer list`, `hcloud volume list`, `hcloud network list` show no `vk-hetzner-lab` resource; `aws s3 ls | grep vk-hetzner-lab` is empty.
