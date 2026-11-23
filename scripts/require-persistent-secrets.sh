@@ -14,7 +14,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/secret-scope.sh"
 
 scope_of() {
   case "$1" in
-    root-domain|vast-ai-api-key|llm-on-demand-*) echo global ;;
+    root-domain|vast-ai-api-key|llm-on-demand-*|chat-*) echo global ;;
     *) echo project ;;
   esac
 }
@@ -22,7 +22,9 @@ scope_of() {
 missing=()
 for name in root-domain postgres-app-password grafana-admin-password ahorro-test-user-password \
             vast-ai-api-key llm-on-demand-api-token llm-on-demand-management-tokens \
-            llm-on-demand-worker-seed llm-on-demand-ssh-private-key; do
+            llm-on-demand-worker-seed llm-on-demand-ssh-private-key \
+            chat-inference-key chat-db-password chat-webui-secret-key \
+            chat-admin-email chat-admin-password; do
   test -f "$(secret_path "$name" "$(scope_of "$name")")" || missing+=("$name")
 done
 

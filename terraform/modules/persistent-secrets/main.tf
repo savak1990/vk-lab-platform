@@ -27,6 +27,26 @@ data "aws_kms_secrets" "this" {
     name    = "llm_management_tokens"
     payload = filebase64(var.llm_management_tokens_secret_path)
   }
+  secret {
+    name    = "chat_inference_key"
+    payload = filebase64(var.chat_inference_key_secret_path)
+  }
+  secret {
+    name    = "chat_db_password"
+    payload = filebase64(var.chat_db_password_secret_path)
+  }
+  secret {
+    name    = "chat_webui_secret_key"
+    payload = filebase64(var.chat_webui_secret_key_secret_path)
+  }
+  secret {
+    name    = "chat_admin_email"
+    payload = filebase64(var.chat_admin_email_secret_path)
+  }
+  secret {
+    name    = "chat_admin_password"
+    payload = filebase64(var.chat_admin_password_secret_path)
+  }
 }
 
 resource "aws_ssm_parameter" "postgres_app_password" {
@@ -83,6 +103,46 @@ resource "aws_ssm_parameter" "llm_management_tokens" {
   type        = "SecureString"
   key_id      = "alias/lab-secrets"
   description = "Management tokens (one per line) for vk-llm-on-demand's /api/v1/gpu routes: the CLI and the GitHub Actions workflow. Never the same value as api_token."
+}
+
+resource "aws_ssm_parameter" "chat_inference_key" {
+  name        = "/${var.project}/persistent/chat/inference_key"
+  value       = data.aws_kms_secrets.this.plaintext["chat_inference_key"]
+  type        = "SecureString"
+  key_id      = "alias/lab-secrets"
+  description = "Open WebUI's own sk-vkllm- inference key; the gateway's client-keys also lists it."
+}
+
+resource "aws_ssm_parameter" "chat_db_password" {
+  name        = "/${var.project}/persistent/chat/db_password"
+  value       = data.aws_kms_secrets.this.plaintext["chat_db_password"]
+  type        = "SecureString"
+  key_id      = "alias/lab-secrets"
+  description = "Password of the openwebui role in lab-postgres. Hex only, so it is safe inside a DATABASE_URL."
+}
+
+resource "aws_ssm_parameter" "chat_webui_secret_key" {
+  name        = "/${var.project}/persistent/chat/webui_secret_key"
+  value       = data.aws_kms_secrets.this.plaintext["chat_webui_secret_key"]
+  type        = "SecureString"
+  key_id      = "alias/lab-secrets"
+  description = "Open WebUI WEBUI_SECRET_KEY (session signing); SearXNG reuses it as SEARXNG_SECRET."
+}
+
+resource "aws_ssm_parameter" "chat_admin_email" {
+  name        = "/${var.project}/persistent/chat/admin_email"
+  value       = data.aws_kms_secrets.this.plaintext["chat_admin_email"]
+  type        = "SecureString"
+  key_id      = "alias/lab-secrets"
+  description = "Open WebUI admin email, read only when the database has no users."
+}
+
+resource "aws_ssm_parameter" "chat_admin_password" {
+  name        = "/${var.project}/persistent/chat/admin_password"
+  value       = data.aws_kms_secrets.this.plaintext["chat_admin_password"]
+  type        = "SecureString"
+  key_id      = "alias/lab-secrets"
+  description = "Open WebUI first-start admin password; later changes happen in the admin panel."
 }
 
 # A one-way bcrypt hash, never encrypted before or after this - it isn't a
