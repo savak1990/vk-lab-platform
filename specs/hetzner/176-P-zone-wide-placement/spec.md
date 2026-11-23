@@ -216,7 +216,10 @@ only because the live lab is recreated (§11).
   `capacity.autoscaler.location`; Argo `parameters` carry only scalar
   strings, and `helm --set` splits on commas), and writes one `nodeConfigs`
   key per group from the same list. The template fails to render when the
-  value is empty (`required`).
+  value is empty (`required`). Part A also keeps a `workers` key: the
+  provider looks keys up by group name only, so an extra key is ignored and
+  the Secret stays valid for a root that still runs the single group. Part B
+  drops it.
   Two lists built separately could disagree, and a missing key crashes the
   autoscaler.
 - `extraArgs.expander: priority`; `expanderPriorities` gives the first
@@ -427,7 +430,9 @@ PR 1 (Part A), on the live lab, which keeps running:
 4. `PROJECT_NAME=vk-hetzner-lab WORKER_NODE_TYPE=cx33 make argo-up`. The root
    is not `Synced/Healthy`, so argo-up skips its fast path and installs the
    root with the new parameters. Before the merge a re-run takes the fast
-   path and changes nothing, so the live check follows the merge.
+   path: it rewrites the autoscaler Secret but not the root parameters, so
+   the live check follows the merge. Do not run this step while the root
+   still reads `Synced/Healthy`.
 5. Check the autoscaler args and the priority ConfigMap (AC3).
 
 A full `make down` → `make up` is not run for PR 1: it has no server

@@ -8,7 +8,7 @@
 
 **Tech Stack:** Bash, jq, Helm 3 templates (sprig), Argo CD Applications, cluster-autoscaler chart 9.59.0 / image v1.36.1 (hetzner provider).
 
-**Spec:** `specs/hetzner/176-P-zone-wide-placement/spec.md` (§4.5, §5 Part A, §6 steps 1–4, §11 PR 1).
+**Spec:** `specs/hetzner/176-P-zone-wide-placement/spec.md` (§4.5, §5 Part A, §6 steps 1–4, §11 PR 1). Task 3 renames the folder to `176-A-zone-wide-placement`.
 
 ## Global Constraints
 
@@ -19,6 +19,7 @@
 - `extraArgs.max-nodes-total` = `1 + MAX_WORKER_NODES` (it counts every node: control plane, fixed workers, autoscaled workers).
 - `extraArgs.expander: priority`; `expanderPriorities` keys are `(len - index) * 10`, values one anchored regex `^workers-<location>$`.
 - The location list is space-separated, never comma-separated (`helm --set` splits on commas).
+- `nodeConfigs` also keeps a `workers` key in this PR. The provider looks keys up by group name only (`hetzner_cloud_provider.go:244` at v1.36.1), so an extra key is ignored, while a missing one is fatal. This makes the Secret safe for both the old `workers` group and the new groups. Part B removes it.
 - Code comments: only where the code is not obvious, at most 3 lines, never naming a spec, ADR or ticket (repo `CLAUDE.md`).
 - Commit trailer on every commit:
   ```
@@ -261,7 +262,7 @@ EOF
 
 **Interfaces:**
 - Consumes: Task 1's values `capacity.autoscaler.locations`, `capacity.autoscaler.maxNodesTotal`; `catalog_regions` and `catalog_node_types` from `scripts/lib/catalog.sh` (already sourced through `provider.sh`).
-- Produces: `hetzner_autoscaler_locations` (reads `REGION`, `WORKER_NODE_TYPE`; prints a space-separated list, `REGION` first); global `AUTOSCALER_LOCATIONS`; `ensure_autoscaler_config` now reads `AUTOSCALER_LOCATIONS` and writes `nodeConfigs` keyed `workers-<location>`. Part B replaces the body of `hetzner_autoscaler_locations`.
+- Produces: `hetzner_autoscaler_locations` (reads `REGION`, `WORKER_NODE_TYPE`; prints a space-separated list, `REGION` first); global `AUTOSCALER_LOCATIONS`; `ensure_autoscaler_config` now reads `AUTOSCALER_LOCATIONS` and writes `nodeConfigs` keyed `workers-<location>` plus the legacy `workers`. Part B replaces the body of `hetzner_autoscaler_locations` and drops `workers`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -313,6 +314,7 @@ check_locations() {
 check_locations "REGION first, then every location selling the type" fsn1 cx33 "fsn1 nbg1 hel1"
 check_locations "a location that does not sell the type is left out" fsn1 cx43 "fsn1 nbg1"
 check_locations "the REGION location leads whichever it is" hel1 cx33 "hel1 nbg1 fsn1"
+check_locations "only the REGION location sells it" nbg1 cx53 "nbg1"
 
 # Shaped like the real render: multi-line, with a tab inside a command, which
 # is what would break a tab-delimited batch read.
@@ -334,8 +336,8 @@ export AUTOSCALER_LOCATIONS="fsn1 nbg1 hel1"
 ensure_autoscaler_config
 JSON="$(base64 -d < "$CAP")"
 
-check "one node config per --nodes group, named the same" \
-  '.nodeConfigs | keys == ["workers-fsn1","workers-hel1","workers-nbg1"]'
+check "one node config per --nodes group, plus the old single group" \
+  '.nodeConfigs | keys == ["workers","workers-fsn1","workers-hel1","workers-nbg1"]'
 check "all five serverLabels are present in every group" \
   '[.nodeConfigs[].serverLabels | keys] | unique == [["lifecycle","managed_by","project","role","scope"]]'
 check "project=<project>      - firewall selector and teardown sweep" \
@@ -363,13 +365,13 @@ if [ "$fails" -gt 0 ]; then
   echo "autoscaler-config-test: $fails case(s) failed" >&2
   exit 1
 fi
-echo "autoscaler-config-test: all 12 cases passed"
+echo "autoscaler-config-test: all 13 cases passed"
 ```
 
 - [ ] **Step 2: Run it to make sure it fails**
 
 Run: `bash tests/scripts/autoscaler-config-test.sh`
-Expected: FAIL. The three `check_locations` cases fail (`hetzner_autoscaler_locations: command not found`) and `one node config per --nodes group` fails (keys are `["workers"]`); exit code 1.
+Expected: FAIL. The four `check_locations` cases fail (`hetzner_autoscaler_locations: command not found`) and `one node config per --nodes group` fails (keys are `["workers"]`); exit code 1.
 
 - [ ] **Step 3: Add the location list function**
 
@@ -404,8 +406,8 @@ In `ensure_autoscaler_config`, replace the `jq -cn` call (from `config="$(jq -cn
     '{
       imagesForArch: {amd64: $image, arm64: $image},
       defaultSubnetIPRange: $subnet,
-      nodeConfigs: ($locations | split(" ") | map({
-        key: ("workers-" + .),
+      nodeConfigs: (($locations | split(" ") | map("workers-" + .)) + ["workers"] | map({
+        key: .,
         value: {
           cloudInit: $cloudInit,
           serverLabels: {
@@ -424,7 +426,8 @@ In the comment block above the function, after the line `# cannot drift from the
 
 ```bash
 # Keyed from the same list as the --nodes groups: a group with no key here
-# makes the autoscaler exit at start.
+# makes the autoscaler exit at start. "workers" stays for a root that still
+# runs the single group; extra keys are ignored.
 ```
 
 - [ ] **Step 5: Set the list at the call site**
@@ -468,7 +471,7 @@ Run:
 bash tests/scripts/autoscaler-config-test.sh
 make scripts-check
 ```
-Expected: `autoscaler-config-test: all 12 cases passed`; `scripts-check` passes (shellcheck clean, every `tests/scripts/*-test.sh` green).
+Expected: `autoscaler-config-test: all 13 cases passed`; `scripts-check` passes (shellcheck clean, every `tests/scripts/*-test.sh` green).
 
 - [ ] **Step 8: Commit**
 
@@ -480,7 +483,8 @@ HETZ-176: argo-up builds one location list for groups and node configs
 hetzner_autoscaler_locations lists REGION, then every other catalog location
 that sells the worker type. The same list becomes the root's
 capacity.autoscaler.locations and the Secret's nodeConfigs keys, because a
---nodes group with no matching key makes the autoscaler exit at start.
+--nodes group with no matching key makes the autoscaler exit at start. The
+old "workers" key stays, so a root not yet reinstalled keeps working.
 The cap is 1 + MAX_WORKER_NODES: max-nodes-total counts every node.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
@@ -515,7 +519,7 @@ In the spec front matter set `status: "IN_PROGRESS"` and `updated: "2026-11-23"`
 ```markdown
 - <date> — Part A implemented (PR 1): one autoscaler group per location,
   priority expander, `max-nodes-total = 1 + MAX_WORKER_NODES`. Evidence:
-  `make gitops-check` (hetzner asserts), `autoscaler-config-test.sh` 12/12.
+  `make gitops-check` (hetzner asserts), `autoscaler-config-test.sh` 13/13.
   Outstanding: AC3 live check after the merge (§11 PR 1 steps 4–5).
 ```
 
@@ -562,6 +566,9 @@ a second PR, so the spec stays IN_PROGRESS.
 The live root fails to render once this merges (the new values are required),
 which takes argo-up off its fast path:
 `PROJECT_NAME=vk-hetzner-lab WORKER_NODE_TYPE=cx33 make argo-up`.
+A re-run before that takes the fast path: it rewrites the autoscaler Secret
+but not the root parameters. The Secret keeps the old `workers` key, so that
+is harmless.
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 
@@ -593,18 +600,21 @@ hcloud server list -l managed_by=autoscaler
 ```
 Expected: an empty table. If a server is listed, wait for it to scale down (10 min unneeded) before merging; it belongs to the old `workers` group, which no new group owns.
 
-- [ ] **Step 2: Merge PR 1, then confirm the root left Synced/Healthy**
+- [ ] **Step 2: Merge PR 1, then confirm the root left Synced/Healthy (hard gate)**
+
+Do Steps 2 and 3 back to back: the live root stays in `ComparisonError` until Step 3.
 
 ```bash
+cd /Users/margo/Proj/Lab/vk-lab-platform-hetz176 && git fetch origin && git checkout --detach origin/main
+PROJECT_NAME=vk-hetzner-lab make kubeconfig
 kubectl --kubeconfig .kube/vk-hetzner-lab.config get application root -n argocd \
   -o jsonpath='{.status.sync.status}/{.status.health.status}{"\n"}'
 ```
-Expected (within about 3 minutes of the merge): anything except `Synced/Healthy` (a `ComparisonError` naming `capacity.autoscaler.locations`). If it still reads `Synced/Healthy`, run `kubectl -n argocd annotate application root argocd.argoproj.io/refresh=hard --overwrite` and check again.
+Expected (within about 3 minutes of the merge): anything except `Synced/Healthy` (a `ComparisonError` naming `capacity.autoscaler.locations`). If it still reads `Synced/Healthy`, run `kubectl --kubeconfig .kube/vk-hetzner-lab.config -n argocd annotate application root argocd.argoproj.io/refresh=hard --overwrite` and check again. Do not run Step 3 while it reads `Synced/Healthy`: argo-up would take its fast path and leave the root parameters unchanged.
 
 - [ ] **Step 3: Install the root with the new parameters**
 
 ```bash
-cd /Users/margo/Proj/Lab/vk-lab-platform-hetz176 && git fetch origin && git checkout --detach origin/main
 PROJECT_NAME=vk-hetzner-lab WORKER_NODE_TYPE=cx33 make argo-up
 ```
 Expected: argo-up does not print `root Application already Synced/Healthy`; it ends with the root Synced/Healthy.
