@@ -27,8 +27,8 @@ spec:
         # bumping either alone leaves them on different minors.
         image:
           tag: v1.36.1
-        # These groups are separate from the fixed pool, so their bounds are a
-        # delta: argo-up passes 0 and MAX_WORKER_NODES - MIN_WORKER_NODES.
+        # These groups are separate from the fixed pool, so their bounds are
+        # deltas: argo-up passes 0 and MAX_WORKER_NODES - MIN_WORKER_NODES.
         # Civo's autoscaler owns the pool it created and takes absolutes.
         autoscalingGroups:
         {{- range $locations }}
