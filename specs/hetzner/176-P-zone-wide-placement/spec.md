@@ -1,14 +1,14 @@
 ---
 id: "HETZ-176"
 title: "REGION is a network zone; servers and autoscaled workers fall back across its locations"
-status: "DRAFT"
+status: "READY"
 priority: "P1"
 milestone: "M2"
 type: "implementation"
 difficulty: "M"
 recommended_model_tier: "strongest"
-model_rationale: "Touches state bucket naming, the region guard and a live cluster that must not be replaced; the judgement is in what must not change"
-effort_estimate: "Two sessions (part A 2–3 h, part B 4–6 h)"
+model_rationale: "Renames the state bucket namespace, rewrites the region guard and adds a retrying apply; the judgement is in the teardown order and in what a retry must not change"
+effort_estimate: "Two sessions (part A 2–3 h, part B 4–6 h), plus a live full-down → full-up of about 1 h"
 estimate_confidence: "medium"
 depends_on: ["HETZ-170", "HETZ-178", "HETZ-200", "SHARED-044"]
 blocked_by: []
@@ -23,13 +23,13 @@ completed: ""
 ## 1. Outcome and rationale
 
 On Hetzner, `REGION` names a network zone (`eu-central`), not one location.
-The control plane, the fixed workers and the autoscaled workers can each be
-created in any location of that zone (`fsn1`, `nbg1`, `hel1`). When the first
-location is out of stock, the next one is tried. The live cluster is adopted
-with no server, load balancer, volume or bucket replaced.
+The operator sets only `REGION`. The platform places the control plane, the
+fixed workers and the autoscaled workers in any location of that zone
+(`fsn1`, `nbg1`, `hel1`). When one location is out of stock, the next one is
+tried. Every name that was keyed by the location is keyed by the zone.
 
 Why: on 2026-11-23 a create of `cx33` and of `cx43` in fsn1 both returned
-`resource_unavailable`, while the lab's only worker (a `cx33`, fsn1) sits at
+`resource_unavailable`, while the lab's only worker (a `cx33`, fsn1) sat at
 88% memory. The autoscaler's one group is `0:1:CX33:FSN1:workers`, so it
 cannot add capacity until fsn1 restocks. nbg1 and hel1 are in the same
 private network zone and a node there can join the cluster today; only the
@@ -39,28 +39,34 @@ Hetzner terms, because the platform's name for them is misleading:
 
 | Hetzner | Example | Today's platform name | After this spec |
 |---|---|---|---|
-| Network zone | `eu-central` | (hardcoded, unnamed) | `REGION` |
-| Location | `fsn1`, `nbg1`, `hel1` | `REGION` | `HOME_LOCATION` (one) and the fallback list |
+| Network zone | `eu-central` | `HCLOUD_NETWORK_ZONE` (`region.sh:42`, unread), `network_zone` (Terraform default) | `REGION` |
+| Location | `fsn1`, `nbg1`, `hel1` | `REGION` | chosen by the platform; `HCLOUD_LOCATION` is the location of one apply attempt |
 | Datacenter | `fsn1-dc14` | — | not selectable since 2025-12-16 |
 
 ## 2. Scope and non-goals
 
 In scope, Hetzner only:
 
-- Part A (ships first, stands alone): one autoscaler node group per location
-  of the zone, home location preferred, with a total cap.
-- Part B: `REGION` becomes the network zone; a home location anchors the
-  load balancer and the state and backup namespace; the control plane and
-  fixed workers fall back across locations at create time.
-- A new ADR recording the changed meaning of `REGION` on Hetzner.
+- Part A (PR 1, stands alone): one autoscaler node group per location that
+  sells the worker type, `REGION` location first, with a total node cap.
+- Part B (PR 2): `REGION` becomes the network zone. The state bucket, the
+  backup bucket and the rolesanywhere bucket ARN are keyed by the zone. The
+  load balancer is placed by network zone. The control plane and the fixed
+  workers fall back across locations through a new apply wrapper.
+- ADR 0047 recording the changed meaning of `REGION` on Hetzner.
 
 Not in scope:
 
 - Civo and AWS. Their `REGION` keeps its meaning and code path.
-- Server-type fallback (`cx33` → `cpx32`). HETZ-175 keeps it. This spec owns
-  location fallback only.
-- Zones other than `eu-central`. They are refused until create probes
-  prove what they sell (the platform's rule: only a real create is proof).
+- A `HOME_LOCATION` input. The operator never names a location (decided
+  2026-11-23).
+- Migrating the live lab's state. The live lab is moved by `make full-down`
+  on the old code and `make full-up` on the new code (§11). Its Postgres
+  data, barman backups and Cognito users are not kept (accepted 2026-11-23).
+- Server-type fallback (`cx33` → `cpx32`). HETZ-175 keeps it; it can extend
+  the wrapper from §4.6.
+- Zones other than `eu-central`. They are refused until create probes prove
+  what they sell (the platform's rule: only a real create is proof).
 - Moving a volume between locations. Hetzner volumes cannot move.
 - The control plane's type: it stays one `cx23`, tainted (HETZ-178).
 
@@ -78,6 +84,10 @@ Live lab, 2026-11-23:
 - `hcloud location list`: `fsn1`, `nbg1`, `hel1` are network zone
   `eu-central`; `ash` is `us-east`, `hil` is `us-west`, `sin` is
   `ap-southeast`.
+- State bucket `vk-hetzner-lab-fsn1-tf-state` holds `bootstrap/route53`,
+  `bootstrap/rolesanywhere`, `persistent/{secrets,backups,ahorro-cognito}`,
+  `persistent-hetzner/{network,ssh-key}`, `cluster-hetzner/{firewall,k8s}`
+  and `state/`. Backup bucket `vk-hetzner-lab-fsn1-postgres-backups`.
 
 Create probes, fsn1, 2026-11-23 (server created stopped, IPv6 only, deleted
 at once):
@@ -93,245 +103,390 @@ at once):
 The flag stays unusable as a pre-flight (HETZ-175 §3). `GET /v1/datacenters`
 now returns `deprecated_api_endpoint`.
 
-Error codes (HETZ-175 §3): `resource_unavailable` is a temporary shortage
+Error texts (HETZ-175 §3): `resource_unavailable` is a temporary shortage
 (cx43 in nbg1 became orderable 20 minutes later on 2026-09-22).
-`unsupported location for server type` (`invalid_input`) means the type is
-withdrawn from that location.
+`unsupported location for server type` (code `invalid_input`) means the type
+is withdrawn from that location. `invalid_input` alone is generic (a bad
+image or IP gives it too) and is not a location signal.
+
+Code facts verified for this spec (worktree at `121840e`):
+
+- Cluster autoscaler: chart `9.59.0`, image `v1.36.1`. The chart renders each
+  `autoscalingGroups` entry as `--nodes=min:max:TYPE:LOCATION:name`; the
+  hcloud provider creates the server in that group's location.
+- `HCLOUD_CLUSTER_CONFIG` reaches the pod by `envFrom` of Secret
+  `hcloud-autoscaler-config`, written by `argo-up.sh` `ensure_autoscaler_config`.
+  The provider calls `klog.Fatalf` when a `--nodes` group has no
+  `nodeConfigs` key, or when `nodeConfigs` is empty.
+- `--max-nodes-total` counts every node in the cluster, including the control
+  plane and the fixed workers (`static_autoscaler.go` builds the count from
+  all nodes; nothing excludes the control plane).
+- Chart 9.59.0 renders ConfigMap `cluster-autoscaler-priority-expander` and
+  its RBAC only when `extraArgs.expander` contains `priority` and
+  `expanderPriorities` is set.
+- The provider's node template already sets `csi.hetzner.cloud/location` to
+  the group's location. A pod bound to a volume therefore only triggers the
+  group in that volume's location. No repo change is needed for this.
+- hcloud provider `1.69.0`: `hcloud_server.location` is ForceNew;
+  `server_type` is updated in place (power-off resize);
+  `hcloud_network_subnet.network_zone` is ForceNew.
+- The Hetzner apply is one inline command at `Makefile:244`; `park.sh:75-80`
+  `terragrunt_apply` is a second path. Nothing parses `resource_unavailable`.
+- `region.sh:52` does not lowercase the Hetzner name, while `root.hcl`
+  does, so `REGION=FSN1` gives a script one bucket name and Terraform another.
+- The TLS certificate survives teardown in SSM
+  (`/<project>/persistent/hetzner/tls/platform-public`, written by
+  `argo-down`, not deleted by `persistent-down`), so a `full-up` imports it
+  and orders no new certificate.
 
 ## 4. Design and contracts
 
-### 4.1 Home location
+### 4.1 Zone and locations
 
-`HOME_LOCATION` is one location inside `REGION`. Default: the first entry of
-the zone's location list in `catalog.sh` (`eu-central` → `fsn1`). It anchors
-everything that cannot move:
+`catalog.sh`:
 
-- The state bucket and the Postgres backup bucket keep the pattern
-  `<project>-<home>-...`. For the live lab that is the existing
-  `-fsn1-tf-state` and `-fsn1-postgres-backups`: zero migration.
-  `LAB_PROVIDER_REGION` becomes `HOME_LOCATION` on Hetzner.
-- The load balancer keeps `load-balancer.hetzner.cloud/location: <home>`.
-  It MUST NOT switch to the `network-zone` annotation: the two are mutually
-  exclusive and the location annotation is immutable, so a switch recreates
-  the load balancer with a new IP.
-- The first location tried for every server, and the highest autoscaler
-  priority.
+- `catalog_regions hetzner` → `eu-central`.
+- New `catalog_zone_locations eu-central` → `fsn1 nbg1 hel1`. This order is
+  the placement order everywhere: the apply wrapper, the autoscaler groups and
+  the expander priorities. fsn1 stays first because every real cycle has run
+  there.
+- The per-location type lists stay (hel1 does not sell `cx43`), renamed
+  `catalog_location_node_types`. `catalog_node_types hetzner eu-central` is
+  the union of its locations' lists, so a type is valid for a zone when at
+  least one location sells it.
+- `catalog_default_region hetzner` → `eu-central`. The default worker type
+  for `eu-central` stays `cx43`.
+- New `catalog_locations_selling <zone> <type>`: the zone's locations, in
+  order, whose list contains the type. Both the wrapper and the autoscaler
+  read it.
 
-### 4.2 Location list per zone
+`REGION=fsn1` (or any location) is refused by `require-valid-node-config.sh`
+with: `REGION is a network zone on hetzner; fsn1 is a location in
+eu-central - use REGION=eu-central`. Zones other than `eu-central` are
+refused with the existing "not valid" message.
 
-`catalog.sh` gains `catalog_zone_locations eu-central` → `fsn1 nbg1 hel1`,
-home first. `catalog_node_types` stays keyed by location (hel1 does not sell
-`cx43`). A type is valid for a zone when at least one location lists it. The
-zone's default worker type is the location default of `HOME_LOCATION`.
+### 4.2 Names keyed by the zone
 
-### 4.3 Control plane and fixed workers
+- `root.hcl`: `provider_region` on Hetzner is `lower(REGION)` with default
+  `eu-central`. The state bucket becomes `<project>-eu-central-tf-state`,
+  the backup bucket `<project>-eu-central-postgres-backups`, and the
+  rolesanywhere bucket ARN follows (`persistent/backups/terragrunt.hcl:13`,
+  `bootstrap/rolesanywhere/terragrunt.hcl:40` read the same local).
+- `region.sh`: on Hetzner `LAB_PROVIDER_REGION` is the lowercased zone. The
+  lowercase fix applies to every script that rebuilds a bucket name
+  (`state-up`, `state-down`, `status`, `require-persistent`,
+  `require-unique-subdomain`, `bootstrap-down`, `account-down`,
+  `persistent-down`, `verify-no-leaks`); they need no other change.
+  `HCLOUD_NETWORK_ZONE` is the zone. `HCLOUD_LOCATION` is no longer derived
+  from `REGION`.
+- `persistent-hetzner/network/terragrunt.hcl` passes `network_zone =
+  lower(REGION)`. The value is `eu-central`, as today.
 
-- `hcloud-nodes` takes `location` per server class: `control_plane_location`
-  and `worker_location`, each the location to use for a *new* server.
-- Both server resources add `location` to `lifecycle.ignore_changes`. An
-  existing server never moves and is never replaced because the variable
-  changed. Today `location` is not ignored, so a changed value replaces the
-  server, and replacing the control plane is cluster loss.
-- The apply wrapper tries `HOME_LOCATION` first. On `resource_unavailable` it
-  re-runs the apply with the next location of the zone that lists the type.
-  On `invalid_input` it skips that location without counting it as a stock
-  failure. When every location fails it stops with the HETZ-175 message.
-- The worker template already joins over the control plane's private IP and
-  reads its own IP from metadata, so it renders the same in any location.
+### 4.3 Load balancer
 
-### 4.4 Autoscaler (part A)
+`gitops/templates/_helpers.tpl:133` changes from
+`load-balancer.hetzner.cloud/location` to
+`load-balancer.hetzner.cloud/network-zone`, fed by `envoyGateway.networkZone`
+(renamed from `envoyGateway.location` in `gitops/values.yaml`,
+`gitops/bootstrap/values.yaml`, `root-application.yaml` and `argo-up.sh:902`).
+The two annotations are mutually exclusive and immutable; the switch is safe
+only because the live lab is recreated (§11).
 
-- One `autoscalingGroups` entry per location that lists `WORKER_NODE_TYPE`,
-  named `workers-<location>`, `minSize: 0`, `maxSize: MAX_WORKER_NODES -
-  MIN_WORKER_NODES`.
-- `ensure_autoscaler_config` emits one `nodeConfigs` entry per group, each
-  with the same cloud-init and server labels.
-- Priority expander: home location highest, then the zone order. A failed
-  create puts that group in backoff and the next group is tried.
-- A total cap keeps the sum of all groups at `MAX_WORKER_NODES -
-  MIN_WORKER_NODES`, so the 5-server account cap shared with CI still holds.
-  Verify at implementation: whether `--max-nodes-total` in CA v1.36 counts
-  the control plane, and the expander-priorities value key in chart 9.59.0.
-- The node template carries `csi.hetzner.cloud/location`, so a pod bound to a
-  fsn1 volume only triggers `workers-fsn1`. Pods without a volume can land in
-  any location.
+### 4.4 Control plane and fixed workers
 
-### 4.5 The region-change guard
+- `hcloud-nodes` keeps one `location` variable. It is the location for a
+  *new* server only.
+- Both server resources add `location` to `lifecycle.ignore_changes`
+  (`main.tf:72-73` control plane, `:110-111` worker). An existing server never
+  moves and is never replaced because the variable changed.
+- `cluster-hetzner/k8s/terragrunt.hcl:42` reads `get_env("HCLOUD_LOCATION",
+  "fsn1")`, not `REGION`. `REGION` names the state bucket, so a retry that
+  changed it would apply against a different, empty bucket. The default only
+  serves plan and destroy, where `ignore_changes` makes it irrelevant.
+- The worker template joins over the control plane's private IP and reads its
+  own IPs from metadata, so it renders the same in any location.
 
-`state-up.sh:41-64` finds other platforms by checking a bucket for each value
-of `catalog_regions`. Once that returns zones it would check `-eu-central-`
-names that never exist and miss a live `-fsn1-` bucket, so a second platform
-could be built. The guard MUST keep scanning one bucket per location of every
-zone.
+### 4.5 Autoscaler
 
-### 4.6 Old input
+- One `autoscalingGroups` entry per location from `catalog_locations_selling
+  <zone> <WORKER_NODE_TYPE>`, named `workers-<location>`, `minSize: 0`,
+  `maxSize: MAX_WORKER_NODES - MIN_WORKER_NODES`.
+- `argo-up.sh` builds the location list once. It passes it to Argo as one
+  comma-separated string, `capacity.autoscaler.locations` (renamed from
+  `capacity.autoscaler.location`; Argo `parameters` carry only scalar
+  strings), and writes one `nodeConfigs` key per group from the same list.
+  Two lists built separately could disagree, and a missing key crashes the
+  autoscaler.
+- `extraArgs.expander: priority`; `expanderPriorities` gives the first
+  location the highest number, with anchored patterns (`^workers-fsn1$`). A
+  failed create puts that group in backoff and the next group is tried.
+- `extraArgs.max-nodes-total: 1 + MAX_WORKER_NODES` (the control plane, the
+  fixed workers and the autoscaled workers), passed as
+  `capacity.autoscaler.maxNodesTotal`. This keeps the 5-server account cap
+  shared with CI.
+- Part A ships before Part B, while `REGION` is still a location. In Part A
+  the list is `REGION` first, then the other catalog locations that sell the
+  type. Part B replaces it with `catalog_locations_selling`.
 
-`REGION=fsn1` (a location) is refused with a message that names the new form:
-`REGION=eu-central HOME_LOCATION=fsn1`. To be confirmed: refuse or alias
-(§12).
+### 4.6 Apply wrapper
 
-### 4.7 Volumes
+A new function, `hetzner_apply`, in `scripts/lib/provider.sh` replaces the
+inline apply at `Makefile:244` and `park.sh` `terragrunt_apply` on Hetzner.
+
+- For each location of `catalog_locations_selling <zone> <WORKER_NODE_TYPE>`
+  that also sells `CONTROL_PLANE_NODE_TYPE`, in order: export
+  `HCLOUD_LOCATION`, run `terragrunt run --all --non-interactive -- apply
+  -auto-approve` under `cluster-hetzner`, and keep a copy of the output.
+- Success: stop.
+- Output contains `resource_unavailable` or `unsupported location for server
+  type`: try the next location. Servers created by an earlier attempt stay
+  where they are (`ignore_changes`), so the control plane can be in fsn1 and
+  a worker in nbg1.
+- Any other failure: stop at once with the apply's exit code.
+- Every location failed: stop, print each location with its error text, and
+  suggest another `WORKER_NODE_TYPE`.
+- To verify at implementation: whether a failed create leaves a tainted
+  server in state. If it does, the next attempt replaces it, which is
+  correct.
+
+### 4.7 The region-change guard
+
+`state-up.sh:41-64` keeps refusing when another bucket of this project holds
+objects. Its candidates are each zone from `catalog_regions` and, for Hetzner,
+each legacy location name from `catalog_zone_locations` (`<project>-fsn1-tf-state`
+and the rest). The legacy check keeps today's rule (more than 0 objects), not
+"bucket exists". Its message names the fix: `make full-down` from a checkout
+before HETZ-176 (the new code cannot name a `-fsn1-` bucket).
+
+### 4.8 Volumes
 
 A volume stays in the location where it was created. A fresh cluster creates
-the Postgres volume where its pod first lands (`WaitForFirstConsumer`). A
-retained volume (park, unpark) pins Postgres to that location: if no node
-exists there, Postgres stays Pending until the autoscaler's group for that
-location gets stock. Accepted risk, recorded in §12.
+the Postgres, Loki and Prometheus volumes where their pods first land
+(`WaitForFirstConsumer`, set by the hcloud-csi chart). `make down` deletes
+them (`reclaimPolicy: Delete`); only park keeps them. On unpark the worker can
+land in fsn1 while the volumes are in nbg1; those pods then wait for an
+autoscaled nbg1 node. Accepted risk (§12).
 
 ## 5. Files/components affected
 
-Paths relative to the repository root.
+Paths relative to the repository root, lines at `121840e`.
 
 Part A:
 
 - `gitops/templates/platform/hetzner/autoscaler/application.yaml:32-37`
-  (one group), extraArgs (no expander, no total cap).
-- `scripts/argo-up.sh:433-462` (`ensure_autoscaler_config`, `nodeConfigs`),
-  `:904-908` (`capacity.autoscaler.*`).
-- `gitops/values.yaml:166`, `gitops/bootstrap/values.yaml:46`,
-  `gitops/bootstrap/templates/root-application.yaml:56-57`.
-- `tests/scripts/autoscaler-config-test.sh:69` asserts `nodeConfigs` keys are
-  exactly `["workers"]`.
+  (one group → a range over the split list), `:58-64` (extraArgs: expander,
+  `max-nodes-total`), new `expanderPriorities`.
+- `scripts/argo-up.sh:432-461` (`ensure_autoscaler_config`, `nodeConfigs`
+  per location), `:903-907` (`capacity.autoscaler.*`).
+- `gitops/values.yaml:28-34`, `gitops/bootstrap/values.yaml:31-38`,
+  `gitops/bootstrap/templates/root-application.yaml:34-45`
+  (`location` → `locations`, new `maxNodesTotal`).
+- `tests/golden/gitops-aws/bootstrap/Application__argocd__root.yaml:34-45`
+  (parameter names only; regenerate with `scripts/gitops-render-check.sh update`).
+- `scripts/gitops-render-check.sh`: a Hetzner `assert_helm_values` on
+  `cluster-autoscaler` (groups, expander, cap), on the pattern used for
+  `local` at `:242-255`.
+- `tests/scripts/autoscaler-config-test.sh`: `workers` is hard-coded at
+  `:69, 71, 73, 75, 77, 79, 85`; keys must equal the location list.
 
 Part B:
 
-- `Makefile:55` (`REGION ?= fsn1`), comments `:56-59`, help `:404`, `:477`.
-- `scripts/lib/region.sh:31-35` (`HCLOUD_LOCATION=$REGION`), `:42`
-  (`HCLOUD_NETWORK_ZONE=eu-central`, unread), `:52` (`LAB_PROVIDER_REGION`).
-- `scripts/lib/catalog.sh:104` (`catalog_regions`), `:115-117`
-  (`catalog_node_types`), `:126` (default region), `:138-139` (default worker
-  type), comments `:72-93`.
-- `scripts/lib/provider.sh:57-72`; `scripts/lib/require-valid-node-config.sh:19-24`,
-  `:29-68`, `:74-79`.
-- `terraform/live/root.hcl:16`, `:43` (bucket name), `:49-51`, `:82`.
+- `Makefile:55` (`REGION ?= eu-central` on Hetzner), comments `:56-59`, help
+  `:404`, `:475`; `:244` (cluster-up calls the wrapper).
+- `scripts/lib/catalog.sh:70-93` (comments), `:104`, `:115-117`, `:126`,
+  `:138-139`, new functions (§4.1).
+- `scripts/lib/region.sh:31-35`, `:42`, `:52`.
+- `scripts/lib/provider.sh:56-75` (derivations from `REGION`), new
+  `hetzner_apply`.
+- `scripts/lib/require-valid-node-config.sh:19-24`, `:41-69`, `:73-81`.
+- `terraform/live/root.hcl:16-21`, `:49-51`, `:80-82`.
 - `terraform/live/cluster-hetzner/k8s/terragrunt.hcl:42`.
-- `terraform/modules/hcloud-nodes/main.tf:46`, `:88`, `:111` (lifecycle),
-  `variables.tf:43-47`.
-- `terraform/modules/hcloud-network/main.tf:18`, `variables.tf:18-22`
-  (`network_zone`, to be fed from `REGION`).
-- `persistent/backups/terragrunt.hcl:13`, `bootstrap/rolesanywhere/terragrunt.hcl:40`
-  (both must keep the home-location name).
-- `scripts/state-up.sh:12`, `:41-64` (guard); bucket-name rebuilds in
-  `state-down.sh:11`, `status.sh:11`, `require-persistent.sh:9`,
-  `require-unique-subdomain.sh:24`, `bootstrap-down.sh:16`,
-  `account-down.sh:17`, `force-clean-ci.sh:44`, `persistent-down.sh:29,123`,
-  `verify-no-leaks.sh:69`.
-- `scripts/argo-up.sh:903` (`envoyGateway.location`), comments `:260-261`,
-  `:891-892`; `gitops/templates/_helpers.tpl:133`.
-- `scripts/park.sh:73-78` (unpark apply), `scripts/clusters.sh:179` (shows
-  only the first server's location).
-- CI: `.github/workflows/lab.yml:21-22`, `:67-77`, `:173`, `:191`, `:306`,
-  `:312`; `lifecycle-test.yml:298`, `:559`.
+- `terraform/modules/hcloud-nodes/main.tf:72-73`, `:110-111`;
+  `variables.tf:43-47` (description).
+- `terraform/live/persistent-hetzner/network/terragrunt.hcl` (`network_zone`).
+- `scripts/state-up.sh:41-64` (guard, message at `:62`).
+- `scripts/argo-up.sh:902` (`envoyGateway.networkZone`), `:259-260`,
+  `:890-891` (comments); `gitops/templates/_helpers.tpl:131-133`;
+  `gitops/values.yaml:166`, `gitops/bootstrap/values.yaml:46`,
+  `root-application.yaml:56-57`; the aws golden again.
+- `scripts/park.sh:75-80`; `scripts/clusters.sh:179` (unchanged; shows the
+  first server's location).
+- CI: `.github/workflows/lab.yml:67-73` (region input comment);
+  `lifecycle-test.yml:298` (`envoyGateway.networkZone=eu-central`).
 - Tests: `tests/scripts/node-config-test.sh:65-68`, `:104-109`, `:150-157`,
-  `:199-225`; `park-test.sh:157`; `clusters-test.sh:46-55`, `:133`;
-  `recover-from-test.sh:14`, `:39-69`.
-- Docs: `CLAUDE.md:154`; `README.md:167`, `:322`, `:525`;
-  `specs/hetzner/architecture.md:58-59`, `:97`; `specs/hetzner/research.md`;
-  `specs/shared/044-D-node-and-region-inputs/spec.md`;
-  `docs/adr/0039-project-region-as-operator-input.md`.
+  `:199-225` (the lab.yml dropdown is built from zones × types);
+  `park-test.sh:157`; `clusters-test.sh:46-55`, `:133`;
+  `recover-from-test.sh:14`, `:39-69`; new `hetzner-apply-test.sh` with a
+  stubbed `terragrunt`.
+- Docs: `CLAUDE.md:154`; `README.md:167`, `:198-203`, `:233`, `:321`,
+  `:513-525`; `specs/hetzner/architecture.md:58-59`, `:97`;
+  `specs/shared/044-D-node-and-region-inputs/spec.md` (amendment);
+  `docs/adr/0039-project-region-as-operator-input.md` (pointer);
+  `scripts/require-valid-recover-from.sh:64` (help text).
 - New: `docs/adr/0047-hetzner-region-is-a-network-zone.md`.
 
 ## 6. Implementation steps
 
-Part A (one PR):
+Part A (PR 1):
 
-1. Autoscaler template: a list of groups from a `capacity.autoscaler.locations`
-   value; priority expander; total cap. Check: `make gitops-check`.
-2. `argo-up.sh`: pass the zone's locations that list the type, home first;
-   one `nodeConfigs` entry per group. Check: `autoscaler-config-test.sh`
-   updated and green.
-3. Live: re-run argo-up. Check: autoscaler args show one `--nodes` per
-   location; a Pending pod without a volume brings up a node in nbg1 or hel1
-   while fsn1 is out of stock.
+1. Autoscaler template: groups from `capacity.autoscaler.locations`,
+   priority expander, `max-nodes-total`. Check: the new Hetzner
+   `assert_helm_values` in `make gitops-check`.
+2. Values plumbing: `location` → `locations`, `maxNodesTotal`; regenerate the
+   aws golden. Check: `make gitops-check` shows only the parameter lines.
+3. `argo-up.sh`: one list, `REGION` first; one `nodeConfigs` key per
+   location. Check: `autoscaler-config-test.sh`.
+4. Live (§11 PR 1). Spec to `IN_PROGRESS` in this PR.
 
-Part B (one PR):
+Part B (PR 2):
 
-4. ADR 0047 and SHARED-044 amendment.
-5. `catalog.sh`, `region.sh`, `provider.sh`, `require-valid-node-config.sh`:
-   zones, `HOME_LOCATION`, the location list. Check: `node-config-test.sh`.
-6. `root.hcl` and every bucket-name rebuild: Hetzner namespace from
-   `HOME_LOCATION`. Check: the computed bucket name for the live lab is
-   unchanged.
-7. `state-up.sh` guard scans every location of every zone. Check: the test in
-   AC4.
-8. `hcloud-nodes`: per-class location variables, `location` in
-   `ignore_changes`; `hcloud-network`: `network_zone` from `REGION`. Check:
-   AC1 plan.
-9. Apply wrapper: location fallback on `resource_unavailable`. Check: a unit
-   test with a stubbed apply that fails once.
-10. argo-up, park, clusters, CI inputs, docs.
+5. ADR 0047 and the SHARED-044 amendment.
+6. `catalog.sh`, `region.sh`, `provider.sh`, `require-valid-node-config.sh`:
+   zone input, location functions, refusal message, lowercase fix. Check:
+   `node-config-test.sh`.
+7. `root.hcl`, `persistent-hetzner/network`: names from the zone. Check: the
+   computed bucket name is `<project>-eu-central-tf-state`.
+8. `state-up.sh` guard: zones plus legacy locations. Check: a test with
+   stubbed `aws` (AC4).
+9. `hcloud-nodes` `ignore_changes`, k8s unit reads `HCLOUD_LOCATION`. Check:
+   `terraform validate`.
+10. `hetzner_apply`, called from `Makefile:244` and `park.sh`. Check:
+    `hetzner-apply-test.sh` (fails once with `resource_unavailable`, then
+    succeeds in the second location; skips on `unsupported location`; stops
+    on another error).
+11. Autoscaler list from `catalog_locations_selling`; load balancer
+    annotation; CI, docs. Spec to `DONE` in this PR.
+12. Live (§11 PR 2).
 
 ## 7. Dependencies and blockers
 
 - HETZ-170 (autoscaler), HETZ-178 (control plane), HETZ-200 (park),
   SHARED-044 (region inputs) are DONE.
-- HETZ-175 is READY and independent; its §4 pre-flight on the `available`
-  flag is disproven and MUST NOT be reused here.
+- HETZ-175 is READY and independent. Its §4 pre-flight on the `available`
+  flag is disproven and MUST NOT be reused here. If it lands later, it adds
+  type fallback to `hetzner_apply`.
 - SHARED-045 (one project, two regions) is unaffected: a project still has one
-  zone and one home location.
+  zone.
 
 ## 8. Acceptance criteria
 
-- AC1. On the live lab, `terragrunt plan` for `cluster-hetzner/k8s` after
-  part B shows 0 to change and 0 to destroy for `cp-1` and `worker-1`.
-- AC2. The load balancer keeps its ID and IP; its annotation is still
-  `location: fsn1`.
-- AC3. The state bucket, the backup bucket and the rolesanywhere bucket ARN
-  keep their current names.
-- AC4. With a `-fsn1-tf-state` bucket present, `make up` with
-  `HOME_LOCATION=nbg1` is refused by the guard.
-- AC5. With fsn1 out of stock for the worker type, a Pending pod with no
-  volume gets a node in nbg1 or hel1 within `max-node-provision-time`.
-- AC6. The autoscaler never runs more than `MAX_WORKER_NODES -
-  MIN_WORKER_NODES` nodes in total across groups.
-- AC7. On a fresh `make up` where the home location refuses the worker type
-  with `resource_unavailable`, the worker is created in the next location and
-  the cluster comes up.
-- AC8. `REGION=fsn1` is refused with the message from §4.6; `REGION=us-east`
-  is refused as not yet probed.
-- AC9. Civo and AWS: render check, node-config test and lifecycle CI
-  unchanged.
+- AC1. `make full-up` with the default `REGION` creates
+  `<project>-eu-central-tf-state` and `<project>-eu-central-postgres-backups`;
+  the rolesanywhere policy names the new backup bucket.
+- AC2. The Envoy Gateway Service carries
+  `load-balancer.hetzner.cloud/network-zone: eu-central` and no `location`
+  annotation; the lab hosts answer over TLS.
+- AC3. The autoscaler runs one `--nodes` per location that sells the worker
+  type, the priority ConfigMap orders them `fsn1`, `nbg1`, `hel1`, and
+  `--max-nodes-total` is `1 + MAX_WORKER_NODES`.
+- AC4. With `<project>-fsn1-tf-state` holding objects, `make state-up` (and so
+  `make full-up`) is refused by the guard with the §4.7 message.
+- AC5. With fsn1 out of stock for the worker type, a Pending pod
+  with no volume gets a node in another location within
+  `max-node-provision-time`. Recorded as outstanding if no stock-out occurs
+  during the live run; the expander config from AC3 is the evidence then.
+- AC6. `hetzner-apply-test.sh` proves the fallback, skip and stop rules. On the
+  live run, the wrapper's log shows which location each attempt used.
+- AC7. `REGION=fsn1` is refused with the §4.1 message; `REGION=us-east` is
+  refused as not valid.
+- AC8. After AC1–AC3, `make down` then `make up` succeeds and
+  `make verify-no-leaks` passes.
+- AC9. Civo and AWS: `make gitops-check` (the aws golden differs only in the
+  renamed parameters), `node-config-test.sh` and lifecycle CI unchanged.
 
 ## 9. Validation
 
-`make specs-check`, `make gitops-check`, `tests/scripts/*-test.sh`, the
-Hetzner lifecycle CI job, and the live checks in AC1–AC5.
+`make specs-check`, `make gitops-check`, `tests/scripts/*-test.sh`,
+`terraform fmt`/`validate`, the Hetzner lifecycle CI job on PR 2
+(`ci:lifecycle-hetzner`), and the live checks in §11.
 
 ## 10. AWS regression protection
 
 AWS refuses `REGION` today (`require-valid-node-config.sh:49-53`); that stays.
-The render check and the aws golden MUST show no diff from part A or B.
+AWS behavior MUST NOT change. The aws golden changes only in the bootstrap
+`root` Application's parameter names (`capacity.autoscaler.locations`,
+`capacity.autoscaler.maxNodesTotal`, `envoyGateway.networkZone`); any other
+golden diff is a regression.
 
 ## 11. Rollout and rollback/recovery
 
-- Part A first. Rollback: revert the template; argo-up restores one group.
-- Part B: run `terragrunt plan` read-only before any apply; stop on any
-  change or destroy for an existing server. Rollback: revert; nothing outside
-  Git changed, because the bucket names and servers are untouched.
+PR 1 (Part A), on the live lab, which keeps running:
 
-## 12. Risks and unresolved questions
+1. `TARGET_REVISION=<pr1-branch> WORKER_NODE_TYPE=cx33 make argo-up`
+   (the child Applications render from Git, and the live worker type was a
+   command-line value).
+2. Check the autoscaler args and the priority ConfigMap (AC3).
+3. Merge PR 1.
 
-| Question | Default until decided |
+A full `make down` → `make up` is not run for PR 1: it has no server
+fallback, and on 2026-11-23 fsn1 refused `cx33` and `cx43`.
+
+PR 2 (Part B):
+
+1. Label `ci:lifecycle-hetzner`: CI runs a fresh `full-up` → `full-down` with
+   the new code and its own project.
+2. From main, before the merge (old code, `REGION` default `fsn1`):
+   `PROJECT_NAME=vk-hetzner-lab CONFIRM_DESTROY=vk-hetzner-lab make full-down`.
+3. Check that nothing of the project remains: `hcloud server list`,
+   `hcloud load-balancer list`, `hcloud volume list`, `hcloud network list`,
+   `aws s3 ls | grep vk-hetzner-lab`.
+4. Merge PR 2.
+5. From main: `PROJECT_NAME=vk-hetzner-lab make full-up`. If every location
+   refuses the worker type, run again with `WORKER_NODE_TYPE=cx33` or
+   `cpx32`.
+6. AC1–AC3, then AC8.
+
+The lab is down between steps 2 and 5, about 1 hour. Nothing exists then, so
+old and new code never see each other's buckets.
+
+Effects of the full-down accepted on 2026-11-23:
+
+- The `lab.<root-domain>` zone gets new name servers. A resolver that cached
+  the old ones (delegation TTL `172800`) can fail to resolve the lab names for
+  up to 48 h. The TLS certificate is imported from SSM, so no ACME order
+  depends on the new zone.
+- Postgres data, barman backups and Cognito users are lost. The Cognito pool
+  gets a new ID; vk-ahorro reads it from SSM, and a mobile build needs
+  `make ui-config` again.
+- Passwords, LLM secrets, the SSH key and the rolesanywhere CA come back with
+  the same values from their `.enc` files.
+
+Rollback: PR 1 — revert; argo-up restores one group. PR 2 — after step 2 the
+old code can `make full-up` again from a revert; before step 2 nothing outside
+Git has changed.
+
+## 12. Risks and decisions
+
+Decided 2026-11-23:
+
+| Question | Decision |
 |---|---|
-| `REGION=fsn1`: refuse or treat as `eu-central` + `HOME_LOCATION=fsn1`? CI `lab.yml` depends on it | refuse with a message |
-| Zones other than `eu-central` in the catalog now? | refused until probed |
-| `HOME_LOCATION`: operator input or always the catalog's first location? | operator input, default first |
-| Does `--max-nodes-total` count the control plane in CA v1.36? | verify at implementation |
-| Priority expander key in chart 9.59.0 | verify at implementation |
+| `REGION=fsn1` after Part B | refuse, naming `REGION=eu-central` |
+| A `HOME_LOCATION` input | none; the operator sets only `REGION` |
+| Bucket names | keyed by the zone (`-eu-central-`); the live lab is recreated, not migrated |
+| Load balancer placement | `network-zone` annotation |
+| Zones other than `eu-central` | refused until probed |
+| Does `--max-nodes-total` count the control plane? | yes, every node; cap is `1 + MAX_WORKER_NODES` |
+| Priority expander key in chart 9.59.0 | `expanderPriorities`, with `extraArgs.expander: priority` |
 
 Accepted risks:
 
-- A retained Postgres volume pins Postgres to its location; it waits for
-  stock there (§4.7).
-- A worker in hel1 is about 25 ms from the fsn1 load balancer and Postgres.
+- On unpark, the worker can land away from the retained volumes; those pods
+  wait for an autoscaled node in the volumes' location (§4.8).
+- A worker in hel1 is about 25 ms from a control plane or load balancer in
+  fsn1.
+- Up to 48 h of stale DNS after the full-down (§11).
 
 ## 13. Definition of done
 
-- [ ] AC1–AC9 met and recorded
+- [ ] AC1–AC9 met and recorded (AC5 may be outstanding, §8)
 - [ ] ADR 0047 Accepted; SHARED-044 amended
-- [ ] Index updated; status `DONE`
+- [ ] Index updated; status `DONE` in PR 2
 
 ## 14. Execution evidence and status history
 
 - 2026-11-23 — created as DRAFT from the CORE-230 capacity work in
   `vk-llm-on-demand`. Evidence in §3.
+- 2026-11-23 — design reviewed against the code; `HOME_LOCATION` dropped,
+  buckets keyed by the zone, live lab recreated by full-down → full-up,
+  autoscaler cap corrected. Status READY.
