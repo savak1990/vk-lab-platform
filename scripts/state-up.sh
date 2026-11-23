@@ -38,11 +38,9 @@ if ! aws sts get-caller-identity >/dev/null 2>&1; then
   exit 1
 fi
 
-# Changing REGION migrates nothing. The bucket name carries the region, so a
-# new region means a new bucket while the old platform keeps billing,
-# invisible to this project's state. Candidates come from the catalogue, not
-# a name prefix, which would false-match a longer project name. Hetzner
-# buckets were once named after a location, so those names are candidates too.
+# A new region means a new bucket while the old platform keeps billing, unseen.
+# Candidates come from the catalogue, not a name prefix that could match a longer
+# project name; hetzner buckets were once named after a location, so those too.
 candidates="$(catalog_regions "$PROVIDER")"
 if [ "$PROVIDER" = hetzner ]; then
   for zone in $(catalog_regions hetzner); do
