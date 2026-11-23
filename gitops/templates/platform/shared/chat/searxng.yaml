@@ -5,7 +5,7 @@ metadata:
   name: searxng
   namespace: chat
   annotations:
-    argocd.argoproj.io/sync-wave: "2"
+    argocd.argoproj.io/sync-wave: "5"
 data:
   settings.yml: |
     use_default_settings: true
@@ -23,7 +23,7 @@ metadata:
   name: searxng
   namespace: chat
   annotations:
-    argocd.argoproj.io/sync-wave: "3"
+    argocd.argoproj.io/sync-wave: "5"
 spec:
   replicas: 1
   selector:
@@ -76,7 +76,7 @@ metadata:
   name: searxng
   namespace: chat
   annotations:
-    argocd.argoproj.io/sync-wave: "3"
+    argocd.argoproj.io/sync-wave: "5"
 spec:
   selector:
     app.kubernetes.io/name: searxng
