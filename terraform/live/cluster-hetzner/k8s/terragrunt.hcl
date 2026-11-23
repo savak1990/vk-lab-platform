@@ -39,7 +39,8 @@ inputs = {
   min_worker_nodes        = tonumber(get_env("MIN_WORKER_NODES", "1"))
   worker_node_type        = get_env("WORKER_NODE_TYPE", "cx43")
   control_plane_node_type = get_env("CONTROL_PLANE_NODE_TYPE", "cx23")
-  location                = get_env("REGION", "fsn1")
+  # Set per attempt by hetzner_apply. Never REGION: that names the state bucket.
+  location                = get_env("HCLOUD_LOCATION", "fsn1")
   network_id      = dependency.persistent_network.outputs.network_id
   subnet_ip_range = dependency.persistent_network.outputs.subnet_ip_range
   ssh_key_id      = dependency.ssh_key.outputs.ssh_key_id

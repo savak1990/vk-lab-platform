@@ -52,11 +52,10 @@ export WORKER_NODE_TYPE ?= g4s.kube.medium
 export MIN_WORKER_NODES ?= 3
 export MAX_WORKER_NODES ?= 4
 else ifeq ($(PROVIDER),hetzner)
-export REGION ?= fsn1
-# No WORKER_NODE_TYPE literal: hetzner's default depends on the region, since
-# hel1 does not sell cx43, and every hetzner recipe reaches terragrunt through
-# provider.sh, which resolves it. A literal here would override that and make
-# REGION=hel1 fail the gate on a type the operator never chose.
+# The network zone, not a location: the platform picks the location per server.
+export REGION ?= eu-central
+# No WORKER_NODE_TYPE literal: every hetzner recipe reaches terragrunt through
+# provider.sh, which takes the zone's default from the catalogue.
 export MIN_WORKER_NODES ?= 1
 export MAX_WORKER_NODES ?= 2
 export CONTROL_PLANE_NODE_TYPE ?= cx23
@@ -241,7 +240,7 @@ cluster-up: clear-cache require-valid-node-config
 else ifeq ($(PROVIDER),hetzner)
 cluster-up: clear-cache require-valid-node-config
 	./scripts/require-persistent.sh
-	@bash -c 'source scripts/lib/region.sh; source scripts/lib/provider.sh; hcloud_token; use_isolated_kubeconfig; cd terraform/live/$(CLUSTER_DIR) && terragrunt run --all --non-interactive -- apply -auto-approve && configure_kubeconfig "$$KUBECONFIG" && wait_for_nodes_ready'
+	@bash -c 'source scripts/lib/region.sh; source scripts/lib/provider.sh; hcloud_token; use_isolated_kubeconfig; hetzner_apply && configure_kubeconfig "$$KUBECONFIG" && wait_for_nodes_ready'
 else ifeq ($(PROVIDER),local)
 cluster-up: clear-cache require-valid-node-config
 	./scripts/cluster-up-local.sh

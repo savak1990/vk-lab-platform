@@ -23,6 +23,12 @@ source "$REPO_ROOT/scripts/lib/region.sh"
 source "$REPO_ROOT/scripts/lib/provider.sh"
 # shellcheck source=lib/ahorro-deploy.sh
 source "$REPO_ROOT/scripts/lib/ahorro-deploy.sh"
+# shellcheck source=lib/region-guard.sh
+source "$REPO_ROOT/scripts/lib/region-guard.sh"
+
+if [ "$PROVIDER" = hetzner ]; then
+  require_no_other_region_state || exit 1
+fi
 
 # Keeps kubectl and helm on a repo-local kubeconfig: a lifecycle run must never
 # change the context the operator is working in.

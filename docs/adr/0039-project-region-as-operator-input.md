@@ -15,7 +15,8 @@
 ## Status
 
 Accepted for the Civo and Hetzner targets. The AWS arm is withdrawn by
-[ADR 0040](0040-the-aws-region-stays-fixed.md).
+[ADR 0040](0040-the-aws-region-stays-fixed.md). Amended by ADR 0047 (on
+Hetzner, REGION is a network zone).
 
 This record originally superseded [ADR 0024](0024-single-fixed-aws-region.md)
 **for the project layer only**. That supersession is withdrawn: ADR 0024 was

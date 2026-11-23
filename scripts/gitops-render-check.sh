@@ -318,6 +318,16 @@ verify_object_set() {
       '.expanderPriorities.10[0]=^workers-hel1$' \
       '.extraArgs.expander=priority' \
       '.extraArgs."max-nodes-total"=3' || return 1
+    local lb
+    lb="$(grep -rh 'load-balancer.hetzner.cloud/' "$dir" || true)"
+    if ! printf '%s' "$lb" | grep -q 'load-balancer.hetzner.cloud/network-zone: "\{0,1\}eu-central'; then
+      echo "GITOPS-RENDER-CHECK: target=$target renders no network-zone annotation for the load balancer" >&2
+      return 1
+    fi
+    if printf '%s' "$lb" | grep -q 'load-balancer.hetzner.cloud/location:'; then
+      echo "GITOPS-RENDER-CHECK: target=$target renders a location annotation, which excludes network-zone" >&2
+      return 1
+    fi
   fi
   case "$target" in civo | hetzner | local)
     local hits
@@ -410,6 +420,7 @@ for t in civo hetzner local; do
       --set capacity.autoscaler.min=0
       --set capacity.autoscaler.max=1
       --set capacity.autoscaler.maxNodesTotal=3
+      --set envoyGateway.networkZone=eu-central
     )
   fi
   render_and_normalize "$REPO_ROOT/gitops" "$STRUCT_DIR/$t" "$t" "${extra_sets[@]+"${extra_sets[@]}"}"

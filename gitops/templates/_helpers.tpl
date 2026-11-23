@@ -128,9 +128,9 @@ annotations:
 {{- else if eq .Values.target "hetzner" -}}
 type: LoadBalancer
 annotations:
-  # Immutable - changing it deletes and recreates the load balancer, which
-  # gets a new public IPv4. Carried from the REGION operator input.
-  load-balancer.hetzner.cloud/location: {{ .Values.envoyGateway.location | quote }}
+  # Immutable, and exclusive with the location annotation: changing either
+  # recreates the load balancer with a new IPv4. Hetzner picks the location.
+  load-balancer.hetzner.cloud/network-zone: {{ required "envoyGateway.networkZone is set by argo-up" .Values.envoyGateway.networkZone | quote }}
   load-balancer.hetzner.cloud/type: lb11
   # Without this the load balancer is named an opaque hash. The cloud
   # controller manager applies no labels either, so this name is the only

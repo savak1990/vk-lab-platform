@@ -18,8 +18,8 @@ name: lab
 # listing every type the catalogue sells, each labelled with the provider that
 # sells it: GitHub has no dependent dropdowns, so one flat list is as close as
 # the form gets. A label naming another provider is dropped in the resolve step
-# below, but the list cannot express that cx43 sells in nbg1 and not in hel1,
-# so a type the chosen region does not sell is still possible - and the offline
+# below, but the list cannot express that a region sells only some types, so
+# a type the chosen region does not sell is still possible - and the offline
 # gate refuses it in the job's first seconds rather than deep inside an apply. `control_plane_node_type` sizes the one server the
 # platform owns itself, on hetzner alone.
 on:
@@ -65,16 +65,15 @@ on:
         type: string
         default: ""
       # civo and hetzner only. Blank uses the provider's default - LON1 on
-      # civo, fsn1 on hetzner. aws refuses a value here: its region is fixed
-      # at eu-west-1, and the offline gate says so in the job's first seconds.
+      # civo, the eu-central network zone on hetzner. aws refuses a value here: its
+      # region is fixed at eu-west-1, and the offline gate says so in the job's first seconds.
       region:
         description: "region (civo/hetzner only)"
         type: string
         default: ""
       # Preselected to the hetzner worker, so a default dispatch needs no
       # edit here. The first option keeps the provider's default instead -
-      # g4s.kube.medium on civo, t4g.medium on aws, cx33 in hetzner hel1,
-      # which is the one region the preselected cx43 does not sell. The rest
+      # g4s.kube.medium on civo, t4g.medium on aws, cx43 on hetzner. The rest
       # are every type scripts/lib/catalog.sh sells, and node-config-test.sh
       # fails if this list and that one drift apart.
       worker_node_type:
@@ -92,9 +91,9 @@ on:
           - "hetzner: cx23"
           - "hetzner: cx33"
           - "hetzner: cx43"
-          - "hetzner: cx53"
           - "hetzner: cpx32"
           - "hetzner: cpx42"
+          - "hetzner: cx53"
         default: "hetzner: cx43"
       # Worker nodes only, never a control plane. Blank uses the provider's
       # default: 3-4 on civo, 1-2 on hetzner, 1-3 on aws. On aws the ceiling is
@@ -120,9 +119,9 @@ on:
           - "hetzner: cx23"
           - "hetzner: cx33"
           - "hetzner: cx43"
-          - "hetzner: cx53"
           - "hetzner: cpx32"
           - "hetzner: cpx42"
+          - "hetzner: cx53"
         default: "hetzner: cx23"
       # civo only, inert on aws. Untick for a throwaway project: staging
       # spares the production quota shared with the personal lab.

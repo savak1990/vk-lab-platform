@@ -41,7 +41,7 @@ variable "control_plane_count" {
 }
 
 variable "location" {
-  description = "The Hetzner location every server is created in. Must sit inside the private network's zone."
+  description = "The Hetzner location for a server this apply creates. A server keeps its location afterwards; the variable may differ per apply attempt."
   type        = string
   default     = "fsn1"
 }

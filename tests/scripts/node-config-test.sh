@@ -64,8 +64,12 @@ expect pass   civo    FRA1
 expect pass   civo    fra1
 expect refuse civo    nbg1
 expect pass   hetzner ""
-expect pass   hetzner hel1
-expect pass   hetzner fsn1
+expect pass   hetzner eu-central
+expect pass   hetzner EU-CENTRAL
+# A location was the input before REGION became the zone; the refusal names the fix.
+expect refuse hetzner fsn1      "use REGION=eu-central"
+expect refuse hetzner HEL1      "use REGION=eu-central"
+expect refuse hetzner us-east   "is not valid"
 expect refuse hetzner LON1
 
 # local owns no cloud resources and ignores all three inputs.
@@ -101,12 +105,11 @@ expect_cp() {
 
 CP_RULE="CONTROL_PLANE_NODE_TYPE is not an input for PROVIDER"
 
-expect_cp pass   hetzner fsn1      ""
-expect_cp pass   hetzner fsn1      cx23
-expect_cp pass   hetzner fsn1      CX23
-expect_cp pass   hetzner hel1      cx23
-expect_cp refuse hetzner hel1      cx43 "not allowed in 'hel1'"
-expect_cp refuse hetzner fsn1      cax11 "not allowed in 'fsn1'"
+expect_cp pass   hetzner eu-central ""
+expect_cp pass   hetzner eu-central cx23
+expect_cp pass   hetzner eu-central CX23
+expect_cp pass   hetzner eu-central cx53
+expect_cp refuse hetzner eu-central cax11 "not allowed in 'eu-central'"
 expect_cp pass   aws     ""        ""
 expect_cp refuse aws     ""        t4g.medium "$CP_RULE"
 expect_cp pass   civo    FRA1      ""
@@ -147,14 +150,14 @@ expect_mm pass   civo    ""   ""  ""
 expect_mm pass   aws     ""   ""  ""
 expect_mm pass   local   ""   ""  ""
 
-expect_mm pass   hetzner fsn1 1   2
-expect_mm pass   hetzner fsn1 1   3
-expect_mm pass   hetzner fsn1 2   2
-expect_mm refuse hetzner fsn1 1   4 "5 server"
-expect_mm refuse hetzner fsn1 2   1 "at least MIN_WORKER_NODES"
-expect_mm refuse hetzner fsn1 0   2 "positive integer"
-expect_mm refuse hetzner fsn1 one 2 "positive integer"
-expect_mm refuse hetzner fsn1 1   x "positive integer"
+expect_mm pass   hetzner eu-central 1   2
+expect_mm pass   hetzner eu-central 1   3
+expect_mm pass   hetzner eu-central 2   2
+expect_mm refuse hetzner eu-central 1   4 "5 server"
+expect_mm refuse hetzner eu-central 2   1 "at least MIN_WORKER_NODES"
+expect_mm refuse hetzner eu-central 0   2 "positive integer"
+expect_mm refuse hetzner eu-central one 2 "positive integer"
+expect_mm refuse hetzner eu-central 1   x "positive integer"
 
 # civo and aws have no per-account server cap, so only the pair is checked.
 expect_mm pass   civo    FRA1 3   4
@@ -165,6 +168,36 @@ expect_mm refuse aws     ""   3   1 "at least MIN_WORKER_NODES"
 
 # local owns no cloud resources and ignores these too.
 expect_mm pass   local   ""   9   1
+
+# The zone's answers are derived from its locations' lists, so they are pinned
+# here rather than trusted.
+expect_catalog() {
+  local label="$1" got="$2" want="$3"
+  if [ "$got" = "$want" ]; then
+    echo "ok: $label"
+  else
+    echo "FAIL: $label: got '$got', want '$want'"
+    fails=$((fails + 1))
+  fi
+}
+catalog_eval() { ( cd "$REPO_ROOT" && bash -c "source scripts/lib/catalog.sh; $1" ); }
+
+expect_catalog "eu-central locations, placement order" \
+  "$(catalog_eval 'catalog_zone_locations eu-central')" "fsn1 nbg1 hel1"
+expect_catalog "eu-central sells the union of its locations" \
+  "$(catalog_eval 'catalog_node_types hetzner eu-central')" "cx23 cx33 cx43 cpx32 cpx42 cx53"
+expect_catalog "cx43 sells in fsn1 and nbg1 only" \
+  "$(catalog_eval 'catalog_locations_selling eu-central cx43')" "fsn1 nbg1"
+expect_catalog "cx53 sells in nbg1 only" \
+  "$(catalog_eval 'catalog_locations_selling eu-central cx53')" "nbg1"
+expect_catalog "an unsold type sells nowhere" \
+  "$(catalog_eval 'catalog_locations_selling eu-central cax11')" ""
+expect_catalog "a location maps back to its zone" \
+  "$(catalog_eval 'catalog_zone_of HEL1')" "eu-central"
+expect_catalog "the hetzner default region is the zone" \
+  "$(catalog_eval 'catalog_default_region hetzner')" "eu-central"
+expect_catalog "the zone's default worker type" \
+  "$(catalog_eval 'catalog_default_worker_node_type hetzner eu-central')" "cx43"
 
 # lab.yml lists the node types in two dropdowns. That list is a second copy of
 # the catalogue and drifts silently, so it is compared here rather than trusted.

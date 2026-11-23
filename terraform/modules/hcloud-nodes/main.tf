@@ -67,10 +67,10 @@ resource "hcloud_server" "control_plane" {
   shutdown_before_deletion = true
 
   # Replacing or power-cycling this server is cluster loss, so a cloud-init,
-  # image or public_net edit must never trigger one. Such a change ships as a
-  # teardown and a fresh bring-up instead.
+  # image, public_net or location change must never trigger one. Such a change
+  # ships as a teardown and a fresh bring-up instead.
   lifecycle {
-    ignore_changes = [user_data, image, ssh_keys, public_net]
+    ignore_changes = [user_data, image, ssh_keys, public_net, location]
 
     precondition {
       condition     = length(local.control_plane_user_data) < 32768
@@ -108,7 +108,7 @@ resource "hcloud_server" "worker" {
   # No depends_on against the control plane: the agent unit retries until the
   # API answers, so ordering the creates would only lengthen the apply.
   lifecycle {
-    ignore_changes = [user_data, image, ssh_keys, public_net]
+    ignore_changes = [user_data, image, ssh_keys, public_net, location]
 
     precondition {
       condition     = length(local.worker_user_data) < 32768

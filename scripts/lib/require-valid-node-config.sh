@@ -52,7 +52,12 @@ require_valid_node_config() {
       errors+=("REGION is not an input for PROVIDER=aws; the AWS region is fixed at $canonical_region. REGION selects a region only on civo and hetzner")
     fi
   elif ! canonical_region="$(catalog_canonical_region "$provider" "$region")"; then
-    errors+=("REGION '$region' is not valid for PROVIDER '$provider'")
+    local zone
+    if [ "$provider" = "hetzner" ] && zone="$(catalog_zone_of "$region")"; then
+      errors+=("REGION is a network zone on hetzner; '$region' is a location in $zone - use REGION=$zone")
+    else
+      errors+=("REGION '$region' is not valid for PROVIDER '$provider'")
+    fi
   fi
 
   if [ -n "$canonical_region" ]; then

@@ -1,7 +1,7 @@
 ---
 id: "HETZ-176"
 title: "REGION is a network zone; servers and autoscaled workers fall back across its locations"
-status: "IN_PROGRESS"
+status: "DONE"
 priority: "P1"
 milestone: "M2"
 type: "implementation"
@@ -15,7 +15,7 @@ blocked_by: []
 supersedes: []
 created: "2026-11-23"
 updated: "2026-11-23"
-completed: ""
+completed: "2026-11-23"
 ---
 
 # HETZ-176 — Zone-wide placement
@@ -503,8 +503,8 @@ Accepted risks:
 ## 13. Definition of done
 
 - [ ] AC1–AC9 met and recorded (AC5 may be outstanding, §8)
-- [ ] ADR 0047 Accepted; SHARED-044 amended
-- [ ] Index updated; status `DONE` in PR 2
+- [x] ADR 0047 Accepted; SHARED-044 amended
+- [x] Index updated; status `DONE` in PR 2
 
 ## 14. Execution evidence and status history
 
@@ -517,3 +517,21 @@ Accepted risks:
   priority expander, `max-nodes-total = 1 + MAX_WORKER_NODES`. Evidence:
   `make gitops-check` (hetzner asserts), `autoscaler-config-test.sh` 13/13.
   Outstanding: AC3 live check after the merge (§11 PR 1 steps 4–5).
+- 2026-11-23 — PR 1 (#117, `a020ba9`) live check on vk-hetzner-lab: after the
+  merge the root failed to render ("capacity.autoscaler.locations is set by
+  argo-up"), argo-up took the full path, and the autoscaler ran
+  `--nodes=0:1:CX33:{FSN1,NBG1,HEL1}:workers-{fsn1,nbg1,hel1}`,
+  `--expander=priority`, `--max-nodes-total=3`, priorities 30/20/10, pod
+  Running with no restarts. AC3 met for part A.
+- 2026-11-23 — Part B implemented (PR 2): REGION is the zone, zone-named buckets,
+  network-zone load balancer, hetzner_apply location fallback, guard for
+  location-named buckets, ADR 0047. Evidence: node-config-test (all pass,
+  AC7 offline), state-up-guard-test 5/5 (AC4 offline), hetzner-apply-test
+  9/9 with and without pipefail (AC6 offline), autoscaler-config-test
+  12/12, gitops-check (aws golden: one parameter renamed — AC9). The
+  region guard moved into scripts/lib/region-guard.sh and now also runs
+  before argo-down and cluster-down on hetzner, so new code cannot
+  half-tear-down a lab still in a location-named bucket. Outstanding
+  until the live rollout (§11 PR 2): AC1, AC2, AC3 (zone), AC4 live, AC5,
+  AC6 live, AC8, and the §4.6 check whether a failed create leaves a
+  tainted or ghost server.

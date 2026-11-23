@@ -12,8 +12,8 @@
 # because renaming either would touch ~80 call sites to change nothing.
 #
 # REGION is the provider's region, validated against scripts/lib/catalog.sh
-# before any of this is read. It selects a Civo region or a Hetzner location
-# only; on aws it is refused, so nothing here reads it.
+# before any of this is read. It selects a Civo region or a Hetzner network
+# zone only; on aws it is refused, so nothing here reads it.
 #
 # Deliberately not named AWS_REGION and deliberately not exported: an
 # exported AWS_REGION would let the AWS CLI resolve a region ambiently and
@@ -28,18 +28,13 @@ else
   CIVO_REGION="LON1"
 fi
 
+# Lowercased here because some callers source this before provider.sh
+# canonicalises REGION, and the bucket name must not depend on that order.
 if [ "${PROVIDER:-}" = "hetzner" ] && [ -n "${REGION:-}" ]; then
-  HCLOUD_LOCATION="$REGION"
+  HCLOUD_NETWORK_ZONE="$(printf '%s' "$REGION" | tr '[:upper:]' '[:lower:]')"
 else
-  HCLOUD_LOCATION="fsn1"
+  HCLOUD_NETWORK_ZONE="eu-central"
 fi
-
-# Not derived from REGION: every location the catalogue allows is in this
-# zone, and one outside it could not attach to the private network at all.
-# Terraform carries the same default, so nothing here reads this. It stays
-# because the zone is a documented property of the platform's Hetzner network.
-# shellcheck disable=SC2034
-HCLOUD_NETWORK_ZONE="eu-central"
 
 # The provider's own region, lowercased: what namespaces this project's
 # Terraform state. A state bucket is an AWS resource and lives in
@@ -49,6 +44,6 @@ HCLOUD_NETWORK_ZONE="eu-central"
 # shellcheck disable=SC2034  # read by the scripts that source this file
 case "${PROVIDER:-aws}" in
   civo) LAB_PROVIDER_REGION="$(printf '%s' "$CIVO_REGION" | tr '[:upper:]' '[:lower:]')" ;;
-  hetzner) LAB_PROVIDER_REGION="$HCLOUD_LOCATION" ;;
+  hetzner) LAB_PROVIDER_REGION="$HCLOUD_NETWORK_ZONE" ;;
   *) LAB_PROVIDER_REGION="$LAB_REGION" ;;
 esac

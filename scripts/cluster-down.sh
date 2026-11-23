@@ -23,6 +23,12 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=lib/provider.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib/provider.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/region.sh"
+# shellcheck source=lib/region-guard.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/region-guard.sh"
+
+if [ "$PROVIDER" = hetzner ]; then
+  require_no_other_region_state || exit 1
+fi
 
 # Keeps kubectl and helm on a repo-local kubeconfig: a lifecycle run must never
 # change the context the operator is working in.

@@ -151,7 +151,7 @@ Never use a real root domain in code, tfvars, Helm values, or docs — use place
 
 The platform targets exactly one AWS region, `eu-west-1`, declared once per layer and never derived from an environment variable or workflow input. Every AWS resource lives there whatever the target, including a Civo or Hetzner project's state bucket, SSM parameters and Roles Anywhere chain. See `docs/adr/0024-single-fixed-aws-region.md` and `docs/adr/0040-the-aws-region-stays-fixed.md`; `specs/aws/031-Z-non-home-region-cluster/` costs the non-home-region work, permanently declined.
 
-The `REGION` operator input selects the Civo region or the Hetzner location only, validated offline against `scripts/lib/catalog.sh` (ADR 0039, as narrowed by ADR 0040). On `aws` it is refused; on `local` it is ignored.
+The `REGION` operator input selects the Civo region or the Hetzner network zone only (ADR 0047: the platform picks the Hetzner location per server), validated offline against `scripts/lib/catalog.sh` (ADR 0039, as narrowed by ADR 0040). On `aws` it is refused; on `local` it is ignored.
 
 ---
 

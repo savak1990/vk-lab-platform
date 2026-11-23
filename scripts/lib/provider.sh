@@ -366,6 +366,41 @@ hetzner_kubeconfig() {
   kubectl --kubeconfig "$target" config use-context "$ctx" >/dev/null
 }
 
+# Applies the hetzner cluster stack, one location of the zone at a time. A
+# stock-out or a withdrawn type moves on; servers an earlier attempt created
+# keep their location, so the control plane and a worker can differ.
+hetzner_apply() {
+  local location log rc tried=""
+  log="$(mktemp)"
+  for location in $(catalog_locations_selling "$REGION" "$WORKER_NODE_TYPE"); do
+    case " $(catalog_node_types hetzner "$location") " in
+      *" $CONTROL_PLANE_NODE_TYPE "*) ;;
+      *) continue ;;
+    esac
+    echo "HETZNER-APPLY: trying location $location"
+    # PIPESTATUS, not $?: without pipefail a pipeline's status is tee's.
+    if ( cd "$PROVIDER_SH_REPO_ROOT/terraform/live/$CLUSTER_DIR" &&
+      HCLOUD_LOCATION="$location" terragrunt run --all --non-interactive -- apply -auto-approve ) 2>&1 \
+      | tee "$log"; rc=${PIPESTATUS[0]}; [ "$rc" -eq 0 ]; then
+      rm -f "$log"
+      return 0
+    elif grep -q 'resource_unavailable' "$log"; then
+      tried="$tried
+  $location: out of stock (resource_unavailable)"
+    elif grep -q 'unsupported location for server type' "$log"; then
+      tried="$tried
+  $location: type not sold there (unsupported location for server type)"
+    else
+      rm -f "$log"
+      return "$rc"
+    fi
+  done
+  rm -f "$log"
+  echo "HETZNER-APPLY: no location in $REGION could create the servers:$tried" >&2
+  echo "HETZNER-APPLY: try another WORKER_NODE_TYPE; $REGION sells: $(catalog_node_types hetzner "$REGION")" >&2
+  return 1
+}
+
 # On civo, renames context to ${PROJECT_NAME}-civo (no --context-name flag); deletes target context first
 # to guard against reruns. On AWS, uses update-kubeconfig with the eks-access-identity role.
 configure_kubeconfig() {

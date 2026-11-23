@@ -55,8 +55,8 @@ equivalent; **n/a** = not applicable on Hetzner.
 | GitOps gates `eq .Values.target "civo"` (11 sites), `validateTarget`, render-check sets | literal `civo` | `platform.selfManaged` helper (civo, hetzner); `hetzner` in the allowed list; per-target required/forbidden sets | generalise | 016 |
 | Identity chain names | `${project}-civo-workload-ca`, CN `${project}-civo-${consumer}`, `civo-workload-ca` Secret/ClusterIssuer, `secrets/<project>/civo-ca-*`, `make civo-ca-init`, `civoIdentity.consumers` | `${project}-${provider}-…`; Civo strings byte-identical; `make ca-init` with `PROVIDER` | generalise | 018 |
 | State backend | own bucket per project | `vk-hetzner-lab-tf-state` via unchanged `state-up` | reuse | 010 |
-| Provider generation, lifecycle lookup | `provider "civo"` when `path_parts[0]` ∈ civo stacks; `civo_region = "LON1"` | `provider "hcloud" {}` (token from env) for `persistent-hetzner`, `cluster-hetzner`; `hcloud_location = "nbg1"` | mirror | 025 |
-| Region constant | `LON1` in `root.hcl`, `scripts/lib/region.sh` | `nbg1` (`HCLOUD_LOCATION`), network zone `eu-central`; AWS region unchanged | mirror | 025 |
+| Provider generation, lifecycle lookup | `provider "civo"` when `path_parts[0]` ∈ civo stacks; `civo_region = "LON1"` | `provider "hcloud" {}` (token from env) for `persistent-hetzner`, `cluster-hetzner`; `hcloud_location` set per server, defaulting to `fsn1` and tried across the zone on a stock-out (ADR 0047) | mirror | 025 |
+| Region constant | `LON1` in `root.hcl`, `scripts/lib/region.sh` | `eu-central`, the network zone (`root.hcl`, `scripts/lib/region.sh`); the platform picks the location per server (`HCLOUD_LOCATION`, ADR 0047); AWS region unchanged | mirror | 025 |
 | Bootstrap route53 / acm | zone `civo.<root>`; ACM excluded | zone `hz.<root>`; ACM excluded | reuse | 025 |
 | Roles Anywhere unit | per project, guarded by `fileexists` on the CA cert | same unit under the Hetzner project; names from 018 | reuse | 080 |
 | Persistent network | `civo_network`, free | `hcloud_network` + `hcloud_network_subnet` (`eu-central`, `10.0.0.0/16`), free | mirror | 025 |
@@ -71,7 +71,7 @@ equivalent; **n/a** = not applicable on Hetzner.
 | CSI | pre-installed by Civo | Argo Application at wave −3 under `platform/hetzner/`; reads the same `hcloud` Secret | new | 050 |
 | Storage | `civo-volume` (a managed addon, not editable) | `hcloud-volumes` from the CSI chart (Argo-owned; reclaim `Delete`; 10 GB minimum; no snapshot/clone) | mirror | 050 |
 | Snapshot controller | aws-only | aws-only | n/a | 050 |
-| Load balancing | Civo LB via `kubernetes.civo.com/*` | LB11 via `load-balancer.hetzner.cloud/{location,type,name,use-private-ip,ipv6-disabled}`; no firewall on LBs; no bundled LoadBalancer controller | mirror | 060 |
+| Load balancing | Civo LB via `kubernetes.civo.com/*` | LB11 via `load-balancer.hetzner.cloud/{network-zone,type,name,use-private-ip,ipv6-disabled}`; no firewall on LBs; no bundled LoadBalancer controller | mirror | 060 |
 | TLS | HTTP-01 then DNS-01 wildcard (CIVO-075) | start at the DNS-01 end state; HTTP-01 never used | reuse | 070 |
 | DNS | ExternalDNS via sidecar, waits on the reserved IP | same chart; waits use the discovered LB address | reuse + branch | 070 |
 | Workload identity | Roles Anywhere chain, x86 sidecar digest | same chain; CA ceremony and Roles Anywhere unit for the Hetzner project (080); certificates and credential-helper sidecars (085) | reuse | 080, 085 |
@@ -94,7 +94,7 @@ Adds to `docs/civo-high-level-design.md` §5.
 | `SUBDOMAIN` | string | operator input | `hz` | no | via SSM `fqdn` |
 | `HCLOUD_TOKEN` | string | `secrets/hetzner-token.enc` | — | yes | Terraform/CLI env only (the operator's token) |
 | in-cluster Hetzner token | string | its own ciphertext file, a second token in the same project | — | yes | `kube-system/cloud-operator-secret` created by `argo-up`; never the operator's token |
-| Hetzner location | constant | `root.hcl` (`hcloud_location`), `scripts/lib/region.sh` (`HCLOUD_LOCATION`) | `nbg1` | no | `envoyGateway.location` |
+| Hetzner network zone | `REGION` operator input | `root.hcl`, `scripts/lib/region.sh` (`HCLOUD_NETWORK_ZONE`); the location is picked per server (`HCLOUD_LOCATION`, ADR 0047) | `eu-central` | no | `envoyGateway.networkZone` |
 | SSH private key | file | `secrets/<project>/hetzner-ssh-key.enc` | — | yes | never; scripts only |
 | k3s join token | string | Terraform `random_password` (030), regenerated every `make up` | — | yes (disposable) | both servers' `user_data`; SSM `worker_user_data` (`SecureString`); `kube-system/hcloud-autoscaler-config`. Node join only, on the private network, and readable from instance metadata by any `hostNetwork` pod — the exposure ADR 0037 accepts |
 | `controlPlaneIp` | IPv4 | SSM `/<project>/cluster-hetzner/k8s/control_plane_ip` *(proposed)* | — | no | scripts only |
