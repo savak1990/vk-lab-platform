@@ -16,8 +16,8 @@ locals {
   region_input  = get_env("REGION", "")
 
   # Every AWS resource this platform creates lives in the account region,
-  # whatever the target. REGION selects a Civo region or a Hetzner location
-  # and never an AWS one, so no layer varies this.
+  # whatever the target. REGION selects a Civo region or a Hetzner network
+  # zone and never an AWS one, so no layer varies this.
   aws_region = local.account_region
 
   # The account layer's own state (the shared lab-role/kms/github-oidc/
@@ -48,7 +48,7 @@ locals {
   # the second orphan the first's network.
   provider_region = lower(
     local.provider_name == "civo" ? local.civo_region : (
-    local.provider_name == "hetzner" ? local.hcloud_location : local.aws_region)
+    local.provider_name == "hetzner" ? local.hcloud_network_zone : local.aws_region)
   )
 
   # Used by the eks unit for node group placement, pinning it to one fixed
@@ -79,7 +79,7 @@ locals {
 
   # Also declared in scripts/lib/region.sh - Terraform and shell each need
   # their own copy, since neither can read the other's.
-  hcloud_location = local.provider_name == "hetzner" && local.region_input != "" ? local.region_input : "fsn1"
+  hcloud_network_zone = local.provider_name == "hetzner" && local.region_input != "" ? local.region_input : "eu-central"
 
   # Hetzner stacks get an hcloud provider in addition to aws, for the same
   # reason Civo stacks get theirs. The token is read from HCLOUD_TOKEN by the
