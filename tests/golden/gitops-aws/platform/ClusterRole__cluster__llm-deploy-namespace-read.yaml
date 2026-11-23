@@ -1,0 +1,16 @@
+# Namespace read lets `helm upgrade` report a clear error instead of a
+# permission failure.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+  name: llm-deploy-namespace-read
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - namespaces
+    verbs:
+      - get
+      - list

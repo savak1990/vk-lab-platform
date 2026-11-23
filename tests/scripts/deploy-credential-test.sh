@@ -28,10 +28,13 @@ deploy_credential_publish_all
 grep -q -- "create token ahorro-deploy -n ahorro-dev" "$LOG" || { echo "FAIL: no ahorro-deploy token minted"; exit 1; }
 grep -q -- "--name /p/cluster/ahorro-deploy/token --type SecureString" "$LOG" || { echo "FAIL: ahorro token not published"; exit 1; }
 grep -q -- "--name /p/cluster/ahorro-deploy/fqdn --type String" "$LOG" || { echo "FAIL: ahorro fqdn not published"; exit 1; }
+grep -q -- "create token llm-deploy -n llm-dev" "$LOG" || { echo "FAIL: no llm-deploy token minted"; exit 1; }
+grep -q -- "--name /p/cluster/llm-deploy/token --type SecureString" "$LOG" || { echo "FAIL: llm token not published"; exit 1; }
 
 : > "$LOG"
 deploy_credential_forget_all
 grep -q -- "delete-parameter --region eu-west-1 --name /p/cluster/ahorro-deploy/endpoint" "$LOG" || { echo "FAIL: ahorro credential not forgotten"; exit 1; }
+grep -q -- "delete-parameter --region eu-west-1 --name /p/cluster/llm-deploy/endpoint" "$LOG" || { echo "FAIL: llm credential not forgotten"; exit 1; }
 
 : > "$LOG"
 PROVIDER=local deploy_credential_publish_all

@@ -138,7 +138,9 @@ Namespace__cluster__ahorro-dev Namespace__cluster__ahorro-pr \
 ServiceAccount__ahorro-dev__ahorro-deploy \
 Role__ahorro-dev__ahorro-deploy RoleBinding__ahorro-dev__ahorro-deploy \
 Role__ahorro-pr__ahorro-deploy RoleBinding__ahorro-pr__ahorro-deploy \
-RoleBinding__cnpg-system__e2e-test-readonly RoleBinding__argocd__e2e-test-readonly"
+RoleBinding__cnpg-system__e2e-test-readonly RoleBinding__argocd__e2e-test-readonly \
+Namespace__cluster__llm-dev ServiceAccount__llm-dev__llm-deploy \
+Role__llm-dev__llm-deploy RoleBinding__llm-dev__llm-deploy"
 REQUIRED_OBJECTS_CIVO="EnvoyProxy__envoy__envoy-proxy-config Gateway__envoy__platform-gateway \
 GatewayClass__cluster__envoy-gateway Application__argocd__cert-manager \
 ClusterIssuer__cluster__civo-workload-ca Certificate__external-secrets__eso \
@@ -167,7 +169,9 @@ BackendTrafficPolicy__llm__gpu-on-demand-traffic-policy \
 ExternalSecret__cnpg-system__openwebui-db Database__cnpg-system__openwebui \
 Namespace__cluster__chat ExternalSecret__chat__open-webui-env \
 AppProject__argocd__vk-llm-chat Application__argocd__vk-llm-chat \
-BackendTrafficPolicy__chat__open-webui-traffic-policy BackendTrafficPolicy__chat__open-webui-auth-traffic-policy"
+BackendTrafficPolicy__chat__open-webui-traffic-policy BackendTrafficPolicy__chat__open-webui-auth-traffic-policy \
+ExternalSecret__llm-dev__vast-ai-api-key ExternalSecret__llm-dev__vk-llm-api-token \
+ExternalSecret__llm-dev__vk-llm-ssh-key BackendTrafficPolicy__llm-dev__gpu-on-demand-traffic-policy"
 REQUIRED_OBJECTS_LOCAL="EnvoyProxy__envoy__envoy-proxy-config \
 Gateway__envoy__platform-gateway GatewayClass__cluster__envoy-gateway \
 HTTPRoute__argocd__argocd Cluster__cnpg-system__lab-postgres \
@@ -240,7 +244,9 @@ BackendTrafficPolicy__llm__gpu-on-demand-traffic-policy \
 ExternalSecret__cnpg-system__openwebui-db Database__cnpg-system__openwebui \
 Namespace__cluster__chat ExternalSecret__chat__open-webui-env \
 AppProject__argocd__vk-llm-chat Application__argocd__vk-llm-chat \
-BackendTrafficPolicy__chat__open-webui-traffic-policy BackendTrafficPolicy__chat__open-webui-auth-traffic-policy"
+BackendTrafficPolicy__chat__open-webui-traffic-policy BackendTrafficPolicy__chat__open-webui-auth-traffic-policy \
+ExternalSecret__llm-dev__vast-ai-api-key ExternalSecret__llm-dev__vk-llm-api-token \
+ExternalSecret__llm-dev__vk-llm-ssh-key BackendTrafficPolicy__llm-dev__gpu-on-demand-traffic-policy"
 FORBIDDEN_KINDS_HETZNER="VolumeSnapshotClass VolumeSnapshotContent VolumeSnapshot \
 NodePool EC2NodeClass"
 FORBIDDEN_APPLICATIONS_HETZNER="aws-load-balancer-controller ebs-csi-driver karpenter \
