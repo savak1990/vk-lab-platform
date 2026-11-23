@@ -41,8 +41,15 @@ fi
 # Changing REGION migrates nothing. The bucket name carries the region, so a
 # new region means a new bucket while the old platform keeps billing,
 # invisible to this project's state. Candidates come from the catalogue, not
-# a name prefix, which would false-match a longer project name.
-for candidate_region in $(catalog_regions "$PROVIDER"); do
+# a name prefix, which would false-match a longer project name. Hetzner
+# buckets were once named after a location, so those names are candidates too.
+candidates="$(catalog_regions "$PROVIDER")"
+if [ "$PROVIDER" = hetzner ]; then
+  for zone in $(catalog_regions hetzner); do
+    candidates="$candidates $(catalog_zone_locations "$zone")"
+  done
+fi
+for candidate_region in $candidates; do
   candidate_lower="$(catalog_lower "$candidate_region")"
   [ "$candidate_lower" = "$LAB_PROVIDER_REGION" ] && continue
   other_bucket="${PROJECT_NAME}-${candidate_lower}-tf-state"
@@ -59,7 +66,13 @@ for candidate_region in $(catalog_regions "$PROVIDER"); do
     echo "Changing REGION does not move a platform - it would build a second one"
     echo "and leave the first running and billing, invisible to the new state."
     echo "Destroy the existing one first:"
-    echo "  REGION=$candidate_region CONFIRM_DESTROY=$PROJECT_NAME make full-down"
+    if [ "$PROVIDER" = hetzner ] && catalog_zone_of "$candidate_region" >/dev/null; then
+      echo "  (a location-named bucket: only the code before REGION became a zone can name it)"
+      echo "  git worktree add /tmp/platform-a020ba9 a020ba9 && cd /tmp/platform-a020ba9"
+      echo "  PROVIDER=hetzner REGION=$candidate_region PROJECT_NAME=$PROJECT_NAME CONFIRM_DESTROY=$PROJECT_NAME make full-down"
+    else
+      echo "  REGION=$candidate_region CONFIRM_DESTROY=$PROJECT_NAME make full-down"
+    fi
   } >&2
   exit 1
 done
