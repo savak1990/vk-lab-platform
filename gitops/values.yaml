@@ -23,14 +23,15 @@ capacity:
   # they are absolute, while hetzner's owns a group beside the fixed pool, so
   # they are a delta and min is always 0. The pool name "workers" is special to
   # the civo cloud provider - it applies min/max to every pool in the cluster,
-  # which is correct here because there is one. The three below are
+  # which is correct here because there is one. The five below are
   # hetzner-only, from the operator inputs and SSM.
   autoscaler:
     min: 3
     max: 4
     pool: workers
     nodeType: ""
-    location: ""
+    locations: ""
+    maxNodesTotal: ""
     sshKeyId: ""
 
 # aws's current defaults; civo overrides both through the
