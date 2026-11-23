@@ -14,7 +14,6 @@
 # Usage: scripts/park.sh park | scripts/park.sh unpark
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=lib/provider.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib/provider.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/region.sh"
@@ -74,9 +73,7 @@ worker_servers="$(worker_server_names | grep -c . || true)"
 
 terragrunt_apply() {
   log "applying the cluster stack with MIN_WORKER_NODES=$MIN_WORKER_NODES"
-  cd "$REPO_ROOT/terraform/live/$CLUSTER_DIR"
-  terragrunt run --all --non-interactive -- apply -auto-approve
-  cd "$REPO_ROOT"
+  hetzner_apply
 }
 
 if [ "$DIRECTION" = park ]; then

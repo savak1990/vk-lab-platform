@@ -240,7 +240,7 @@ cluster-up: clear-cache require-valid-node-config
 else ifeq ($(PROVIDER),hetzner)
 cluster-up: clear-cache require-valid-node-config
 	./scripts/require-persistent.sh
-	@bash -c 'source scripts/lib/region.sh; source scripts/lib/provider.sh; hcloud_token; use_isolated_kubeconfig; cd terraform/live/$(CLUSTER_DIR) && terragrunt run --all --non-interactive -- apply -auto-approve && configure_kubeconfig "$$KUBECONFIG" && wait_for_nodes_ready'
+	@bash -c 'source scripts/lib/region.sh; source scripts/lib/provider.sh; hcloud_token; use_isolated_kubeconfig; hetzner_apply && configure_kubeconfig "$$KUBECONFIG" && wait_for_nodes_ready'
 else ifeq ($(PROVIDER),local)
 cluster-up: clear-cache require-valid-node-config
 	./scripts/cluster-up-local.sh
