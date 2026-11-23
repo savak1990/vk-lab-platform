@@ -380,11 +380,10 @@ hetzner_apply() {
       *) continue ;;
     esac
     echo "HETZNER-APPLY: trying location $location"
-    rc=0
-    ( cd "$PROVIDER_SH_REPO_ROOT/terraform/live/$CLUSTER_DIR" &&
+    # PIPESTATUS, not $?: without pipefail a pipeline's status is tee's.
+    if ( cd "$PROVIDER_SH_REPO_ROOT/terraform/live/$CLUSTER_DIR" &&
       HCLOUD_LOCATION="$location" terragrunt run --all --non-interactive -- apply -auto-approve ) 2>&1 \
-      | tee "$log" || rc=$?
-    if [ "$rc" -eq 0 ]; then
+      | tee "$log"; rc=${PIPESTATUS[0]}; [ "$rc" -eq 0 ]; then
       rm -f "$log"
       return 0
     elif grep -q 'resource_unavailable' "$log"; then

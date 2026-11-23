@@ -26,11 +26,12 @@ chmod +x "$TMP/bin/terragrunt"
 fails=0
 run_case() {
   local plan="$1" worker="$2" cp="$3"
+  local shell_opts="${4-set -euo pipefail}"
   rm -f "$TMP/attempts"
   ( cd "$REPO_ROOT" && PATH="$TMP/bin:$PATH" ATTEMPTS="$TMP/attempts" PLAN="$plan" \
       PROVIDER_SH_REPO_ROOT="$TMP/repo" CLUSTER_DIR=cluster-hetzner REGION=eu-central \
-      WORKER_NODE_TYPE="$worker" CONTROL_PLANE_NODE_TYPE="$cp" bash -c '
-      set -euo pipefail
+      WORKER_NODE_TYPE="$worker" CONTROL_PLANE_NODE_TYPE="$cp" SHELL_OPTS="$shell_opts" bash -c '
+      eval "$SHELL_OPTS"
       source scripts/lib/catalog.sh
       eval "$(awk "/^hetzner_apply\\(\\) \\{/,/^\\}/" scripts/lib/provider.sh)"
       hetzner_apply' 2>&1 )
@@ -63,9 +64,11 @@ out="$(run_case other cx33 cx23)"; check "any other error stops at once" 1 "fsn1
 out="$(run_case stock,stock cx43 cx23)"; check "every location out of stock fails and says so" 1 "fsn1 nbg1" $? "$out" "try another WORKER_NODE_TYPE"
 out="$(run_case ok cx53 cx23)"; check "only locations selling the worker type are tried" 0 "nbg1" $? "$out"
 out="$(run_case ok cx33 cx53)"; check "only locations selling the control-plane type are tried" 0 "nbg1" $? "$out"
+out="$(run_case stock,ok cx43 cx23 "")"; check "without pipefail, a stock-out still moves on" 0 "fsn1 nbg1" $? "$out"
+out="$(run_case other cx33 cx23 "")"; check "without pipefail, any other error still fails" 1 "fsn1" $? "$out"
 
 if [ "$fails" -gt 0 ]; then
   echo "hetzner-apply-test: $fails case(s) failed" >&2
   exit 1
 fi
-echo "hetzner-apply-test: all 7 cases passed"
+echo "hetzner-apply-test: all 9 cases passed"
