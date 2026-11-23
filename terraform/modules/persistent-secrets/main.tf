@@ -126,7 +126,7 @@ resource "aws_ssm_parameter" "chat_webui_secret_key" {
   value       = data.aws_kms_secrets.this.plaintext["chat_webui_secret_key"]
   type        = "SecureString"
   key_id      = "alias/lab-secrets"
-  description = "Open WebUI WEBUI_SECRET_KEY (session signing); SearXNG reuses it as SEARXNG_SECRET."
+  description = "Open WebUI WEBUI_SECRET_KEY (session signing)."
 }
 
 resource "aws_ssm_parameter" "chat_admin_email" {
