@@ -262,7 +262,7 @@ EOF
 
 **Interfaces:**
 - Consumes: Task 1's values `capacity.autoscaler.locations`, `capacity.autoscaler.maxNodesTotal`; `catalog_regions` and `catalog_node_types` from `scripts/lib/catalog.sh` (already sourced through `provider.sh`).
-- Produces: `hetzner_autoscaler_locations` (reads `REGION`, `WORKER_NODE_TYPE`; prints a space-separated list, `REGION` first); global `AUTOSCALER_LOCATIONS`; `ensure_autoscaler_config` now reads `AUTOSCALER_LOCATIONS` and writes `nodeConfigs` keyed `workers-<location>` plus the legacy `workers`. Part B replaces the body of `hetzner_autoscaler_locations` and drops `workers`.
+- Produces: `hetzner_autoscaler_locations` (reads `REGION`, `WORKER_NODE_TYPE`; prints a space-separated list, `REGION` first); global `AUTOSCALER_LOCATIONS`, which feeds only the root `--set capacity.autoscaler.locations`; `ensure_autoscaler_config` now keys `nodeConfigs` from `catalog_regions hetzner` plus the legacy `workers`, so a group never loses its key regardless of `WORKER_NODE_TYPE`. Part B replaces the body of `hetzner_autoscaler_locations` and drops `workers`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -331,12 +331,12 @@ runcmd:
 export HCLOUD_NODE_IMAGE=ubuntu-24.04
 export HCLOUD_SUBNET_IP_RANGE=10.0.1.0/24
 export PROJECT_NAME=vk-hetzner-lab
-export AUTOSCALER_LOCATIONS="fsn1 nbg1 hel1"
+export WORKER_NODE_TYPE=cx43
 
 ensure_autoscaler_config
 JSON="$(base64 -d < "$CAP")"
 
-check "one node config per --nodes group, plus the old single group" \
+check "a node config for every catalog location and the old single group, whatever the type" \
   '.nodeConfigs | keys == ["workers","workers-fsn1","workers-hel1","workers-nbg1"]'
 check "all five serverLabels are present in every group" \
   '[.nodeConfigs[].serverLabels | keys] | unique == [["lifecycle","managed_by","project","role","scope"]]'
@@ -402,7 +402,7 @@ In `ensure_autoscaler_config`, replace the `jq -cn` call (from `config="$(jq -cn
     --arg subnet "$HCLOUD_SUBNET_IP_RANGE" \
     --arg cloudInit "$cloud_init" \
     --arg project "$PROJECT_NAME" \
-    --arg locations "$AUTOSCALER_LOCATIONS" \
+    --arg locations "$(catalog_regions hetzner)" \
     '{
       imagesForArch: {amd64: $image, arm64: $image},
       defaultSubnetIPRange: $subnet,
@@ -422,12 +422,12 @@ In `ensure_autoscaler_config`, replace the `jq -cn` call (from `config="$(jq -cn
     }' | base64 | tr -d '\n')"
 ```
 
-In the comment block above the function, after the line `# cannot drift from the fixed pool: same k3s version, same flags, same token.`, add:
+Shorten the comment block above the function to:
 
 ```bash
-# Keyed from the same list as the --nodes groups: a group with no key here
-# makes the autoscaler exit at start. "workers" stays for a root that still
-# runs the single group; extra keys are ignored.
+# The node template is Terraform's own worker render, so an autoscaled node
+# cannot drift from the fixed pool. Keys cover every location plus the old
+# "workers" group: a --nodes group with no key makes the autoscaler exit.
 ```
 
 - [ ] **Step 5: Set the list at the call site**

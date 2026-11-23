@@ -438,13 +438,8 @@ hetzner_autoscaler_locations() {
 }
 
 # The node template is Terraform's own worker render, so an autoscaled node
-# cannot drift from the fixed pool: same k3s version, same flags, same token.
-# serverLabels carries five keys because three consumers select on them - the
-# firewall, the teardown sweep and the failure diagnostics - and each needs a
-# different one.
-# Keyed from the same list as the --nodes groups: a group with no key here
-# makes the autoscaler exit at start. "workers" stays for a root that still
-# runs the single group; extra keys are ignored.
+# cannot drift from the fixed pool. Keys cover every location plus the old
+# "workers" group: a --nodes group with no key makes the autoscaler exit.
 ensure_autoscaler_config() {
   local cloud_init config
   cloud_init="$(printf '%s' "$WORKER_USER_DATA" | base64 | tr -d '\n')"
@@ -453,7 +448,7 @@ ensure_autoscaler_config() {
     --arg subnet "$HCLOUD_SUBNET_IP_RANGE" \
     --arg cloudInit "$cloud_init" \
     --arg project "$PROJECT_NAME" \
-    --arg locations "$AUTOSCALER_LOCATIONS" \
+    --arg locations "$(catalog_regions hetzner)" \
     '{
       imagesForArch: {amd64: $image, arm64: $image},
       defaultSubnetIPRange: $subnet,

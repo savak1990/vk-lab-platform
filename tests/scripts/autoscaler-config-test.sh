@@ -80,12 +80,12 @@ runcmd:
 export HCLOUD_NODE_IMAGE=ubuntu-24.04
 export HCLOUD_SUBNET_IP_RANGE=10.0.1.0/24
 export PROJECT_NAME=vk-hetzner-lab
-export AUTOSCALER_LOCATIONS="fsn1 nbg1 hel1"
+export WORKER_NODE_TYPE=cx43
 
 ensure_autoscaler_config
 JSON="$(base64 -d < "$CAP")"
 
-check "one node config per --nodes group, plus the old single group" \
+check "a node config for every catalog location and the old single group, whatever the type" \
   '.nodeConfigs | keys == ["workers","workers-fsn1","workers-hel1","workers-nbg1"]'
 check "all five serverLabels are present in every group" \
   '[.nodeConfigs[].serverLabels | keys] | unique == [["lifecycle","managed_by","project","role","scope"]]'

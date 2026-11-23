@@ -214,14 +214,14 @@ only because the live lab is recreated (§11).
 - `argo-up.sh` builds the location list once. It passes it to Argo as one
   space-separated string, `capacity.autoscaler.locations` (renamed from
   `capacity.autoscaler.location`; Argo `parameters` carry only scalar
-  strings, and `helm --set` splits on commas), and writes one `nodeConfigs`
-  key per group from the same list. The template fails to render when the
-  value is empty (`required`). Part A also keeps a `workers` key: the
-  provider looks keys up by group name only, so an extra key is ignored and
-  the Secret stays valid for a root that still runs the single group. Part B
-  drops it.
-  Two lists built separately could disagree, and a missing key crashes the
-  autoscaler.
+  strings, and `helm --set` splits on commas). The template fails to render
+  when the value is empty (`required`). `nodeConfigs` keys cover every
+  catalog location plus `workers` - a superset of the `--nodes` groups - so a
+  re-run with another worker type can never leave a group without a key.
+  Part A also keeps a `workers` key: the provider looks keys up by group name
+  only, so an extra key is ignored and the Secret stays valid for a root that
+  still runs the single group. Part B switches the superset to the zone's
+  locations and drops it.
 - `extraArgs.expander: priority`; `expanderPriorities` gives the first
   location the highest number, with anchored patterns (`^workers-fsn1$`). A
   failed create puts that group in backoff and the next group is tried.
@@ -341,8 +341,9 @@ Part A (PR 1):
    `assert_helm_values` in `make gitops-check`.
 2. Values plumbing: `location` → `locations`, `maxNodesTotal`; regenerate the
    aws golden. Check: `make gitops-check` shows only the parameter lines.
-3. `argo-up.sh`: one list, `REGION` first; one `nodeConfigs` key per
-   location. Check: `autoscaler-config-test.sh`.
+3. `argo-up.sh`: one list, `REGION` first, for the `--nodes` groups;
+   `nodeConfigs` keyed from every catalog location plus `workers`. Check:
+   `autoscaler-config-test.sh`.
 4. Spec to `IN_PROGRESS` in this PR. Live (§11 PR 1) after the merge.
 
 Part B (PR 2):
@@ -427,12 +428,16 @@ PR 1 (Part A), on the live lab, which keeps running:
 3. Merge PR 1. The live root Application tracks main; it now fails to render
    (`capacity.autoscaler.locations` is required and the live root does not
    pass it), so it leaves `Synced/Healthy`. Nothing is deleted.
-4. `PROJECT_NAME=vk-hetzner-lab WORKER_NODE_TYPE=cx33 make argo-up`. The root
-   is not `Synced/Healthy`, so argo-up skips its fast path and installs the
-   root with the new parameters. Before the merge a re-run takes the fast
-   path: it rewrites the autoscaler Secret but not the root parameters, so
-   the live check follows the merge. Do not run this step while the root
-   still reads `Synced/Healthy`.
+4. Gate: `kubectl get application root -n argocd -o
+   jsonpath='{.status.sync.status}/{.status.health.status}'` must not print
+   `Synced/Healthy`; if it does, hard-refresh (`kubectl -n argocd annotate
+   application root argocd.argoproj.io/refresh=hard --overwrite`) and check
+   again. Then `PROJECT_NAME=vk-hetzner-lab WORKER_NODE_TYPE=cx33 make
+   argo-up`. The root is not `Synced/Healthy`, so argo-up skips its fast path
+   and installs the root with the new parameters. Before the merge a re-run
+   takes the fast path: it rewrites the autoscaler Secret but not the root
+   parameters, so the live check follows the merge. Do not run this step
+   while the root still reads `Synced/Healthy`.
 5. Check the autoscaler args and the priority ConfigMap (AC3).
 
 A full `make down` → `make up` is not run for PR 1: it has no server
