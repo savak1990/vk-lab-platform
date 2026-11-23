@@ -14,6 +14,9 @@ other decision in 0015 stands, including the pointer topology
 Carries the application's own ADR 0009 (three environments, a semver per
 component) and ADR 0010 (the pipeline deploys) into this repository.
 
+Extended (2026-11-23): the credential is generic per application;
+vk-llm-on-demand's pipeline deploys to `llm-dev` the same way (SHARED-220).
+
 ## Context
 
 ADR 0015 chose a commit as the handoff for a good reason, stated there: a push

@@ -1,0 +1,63 @@
+---
+id: "SHARED-220"
+title: "The deploy credential generalizes; vk-llm-on-demand's pipeline deploys to llm-dev"
+status: "READY"
+priority: "P2"
+milestone: "M2"
+type: "implementation"
+difficulty: "M"
+recommended_model_tier: "strong"
+model_rationale: "A second application reuses Ahorro's own IAM and RBAC shape; the risk is a templating mistake that widens Ahorro's existing grant or lets the new namespace read or write llm"
+effort_estimate: "One session (3-4 h)"
+estimate_confidence: "medium"
+depends_on: ["SHARED-049"]
+blocked_by: []
+supersedes: []
+created: "2026-11-23"
+updated: "2026-11-23"
+---
+
+# SHARED-220 — The llm-dev deploy credential
+
+## 1. Outcome
+
+vk-llm-on-demand's pipeline can `helm upgrade` into namespace `llm-dev` and
+cannot touch namespace `llm`. It reads
+`/<project>/cluster/llm-deploy/{endpoint,ca,token,fqdn}` through
+`vk-llm-ci-role`. The application's side is its own ADR 0019 and spec
+CORE-280, in `vk-llm-on-demand`.
+
+This repeats [SHARED-049](../049-A-ahorro-deploy-credential/spec.md)'s shape
+for a second application, generalizing its deploy credential rather than
+copying it.
+
+## 2. Requirements
+
+1. The deploy credential MUST be rendered from one generic template, driven
+   by a `deployCredentials` list in `gitops/values.yaml`, not from an
+   app-specific template per application.
+2. Ahorro's rendered objects MUST keep their names, namespaces and rules
+   unchanged once the template is generalized.
+3. `scripts/lib/ahorro-deploy.sh`'s publish and forget functions MUST become
+   one publisher/forget pair parameterised by app name, called for both
+   Ahorro and vk-llm-on-demand.
+4. Namespace `llm-dev`'s ExternalSecrets MUST read production's
+   `/<project>/persistent/llm/*` SSM parameters — the same parameters
+   namespace `llm` already reads.
+5. A `BackendTrafficPolicy` MUST set `requestTimeout: 660s` on HTTPRoute
+   `gpu-on-demand` in namespace `llm-dev`.
+6. `vk-llm-ci-role` MUST gain `ssm:GetParameter` on
+   `/*/cluster/llm-deploy/*` and `/*/persistent/llm/api_token`, and
+   `kms:Decrypt` limited by a `kms:EncryptionContext:PARAMETER_ARN`
+   condition to `management_tokens`, `api_token` and
+   `cluster/llm-deploy/token`.
+
+## 3. Acceptance
+
+1. `make gitops-check specs-check scripts-check terraform-check` all pass.
+2. The golden diff for Ahorro's deploy objects shows comment lines only:
+   names, namespaces and rules are unchanged.
+3. `kubectl auth can-i --as=system:serviceaccount:llm-dev:llm-deploy create
+   deployments -n llm-dev` answers `yes`.
+4. `kubectl auth can-i --as=system:serviceaccount:llm-dev:llm-deploy get
+   configmaps -n llm` answers `no`.
