@@ -26,8 +26,6 @@ source "$REPO_ROOT/scripts/lib/ahorro-deploy.sh"
 # shellcheck source=lib/region-guard.sh
 source "$REPO_ROOT/scripts/lib/region-guard.sh"
 
-# A location-named state bucket from before REGION became a zone means this
-# lab is still the old platform - cascading Argo here would tear it half down.
 if [ "$PROVIDER" = hetzner ]; then
   require_no_other_region_state || exit 1
 fi

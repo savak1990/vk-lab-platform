@@ -526,7 +526,7 @@ Accepted risks:
 - 2026-11-23 — Part B implemented (PR 2): REGION is the zone, zone-named buckets,
   network-zone load balancer, hetzner_apply location fallback, guard for
   location-named buckets, ADR 0047. Evidence: node-config-test (all pass,
-  AC7 offline), state-up-guard-test 3/3 (AC4 offline), hetzner-apply-test
+  AC7 offline), state-up-guard-test 5/5 (AC4 offline), hetzner-apply-test
   9/9 with and without pipefail (AC6 offline), autoscaler-config-test
   12/12, gitops-check (aws golden: one parameter renamed — AC9). The
   region guard moved into scripts/lib/region-guard.sh and now also runs

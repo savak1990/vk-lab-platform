@@ -26,8 +26,6 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/region.sh"
 # shellcheck source=lib/region-guard.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib/region-guard.sh"
 
-# A location-named state bucket from before REGION became a zone means this
-# lab is still the old platform - destroying here would act on the wrong one.
 if [ "$PROVIDER" = hetzner ]; then
   require_no_other_region_state || exit 1
 fi
