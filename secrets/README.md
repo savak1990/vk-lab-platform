@@ -42,7 +42,7 @@ fails and names the scope where the file does exist. `.gitignore` tracks
 ignore-rule change. For a throwaway
 CI/test environment,
 `make generate-secrets` creates this project's secrets automatically
-(root domain from an argument, a fixed test Postgres password) instead of
+(root domain from an argument, a random Postgres password) instead of
 requiring `make secret-encrypt` to be run by hand — see below.
 
 Rules (constitution §5/§14, architecture.md §18):
@@ -94,11 +94,9 @@ PROJECT_NAME=<ci-project-name> ROOT_DOMAIN=<domain> make generate-secrets
 Creates `secrets/root-domain.enc` (from `ROOT_DOMAIN`, only if missing —
 it's account-global, so an already-existing value from another project is
 left alone), `secrets/$PROJECT_NAME/postgres-app-password.enc`, and
-`secrets/$PROJECT_NAME/grafana-admin-password.enc` (each a fixed value,
-`test`) — everything `make persistent-up` needs for a disposable
-CI/test project, with no manually pre-committed ciphertext. Never use
-this for the personal lab's own `PROJECT_NAME`; these values are fixed
-and publicly known.
+`secrets/$PROJECT_NAME/grafana-admin-password.enc` (each a random value)
+— everything `make persistent-up` needs for a disposable
+CI/test project, with no manually pre-committed ciphertext.
 
 ## Decrypting a value
 

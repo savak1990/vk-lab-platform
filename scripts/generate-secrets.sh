@@ -9,12 +9,8 @@
 # PGDATA without resetting role passwords, so a new password would desync
 # from a recovered database.
 #
-# Two modes, chosen by FIXED_TEST_PASSWORDS:
-#   - unset/false (default, the real lab): passwords get real random
-#     values via AWS Secrets Manager. Called automatically by persistent-up.
-#   - true (CI/test, via `make generate-secrets`): passwords get a fixed,
-#     publicly-known value, "test" unless the consumer's own policy
-#     rejects it - never use this for the personal lab's own PROJECT_NAME.
+# Passwords get random values from AWS Secrets Manager. Called automatically
+# by persistent-up, and by persistent-down for a checkout that never ran it.
 # root-domain.enc is never randomly generated either way - it's a real
 # external domain value. It's generated from $ROOT_DOMAIN if that's set
 # and the file is still missing; otherwise this script leaves it alone and
@@ -25,7 +21,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 ROOT_DOMAIN="${ROOT_DOMAIN:-}"
-FIXED_TEST_PASSWORDS="${FIXED_TEST_PASSWORDS:-false}"
 source "$SCRIPT_DIR/lib/region.sh"
 source "$SCRIPT_DIR/lib/provider.sh"
 source "$SCRIPT_DIR/lib/secret-scope.sh"
@@ -47,23 +42,14 @@ generate_if_missing() {
   fi
 }
 
-# Password value is only computed (an AWS API call, in the random case) if
-# the file is actually missing - never wasted on an already-generated one.
-# $2 overrides the fixed test value for a consumer that rejects "test": the
-# Cognito pool enforces 8 characters with upper, lower and a digit.
+# The AWS call happens only when the file is actually missing.
 generate_password_if_missing() {
-  local name="$1" fixed="${2:-test}"
+  local name="$1"
   if [ -f "$SECRETS_DIR/$name.enc" ]; then
     echo "Skipping $name - $SECRETS_DIR/$name.enc already exists"
     return
   fi
-  local value
-  if [ "$FIXED_TEST_PASSWORDS" = "true" ]; then
-    value="$fixed"
-  else
-    value="$(random_password)"
-  fi
-  SECRET_NAME="$name" SECRET_VALUE="$value" "$SCRIPT_DIR/secret-encrypt.sh"
+  SECRET_NAME="$name" SECRET_VALUE="$(random_password)" "$SCRIPT_DIR/secret-encrypt.sh"
 }
 
 if [ -n "$ROOT_DOMAIN" ]; then
@@ -72,7 +58,7 @@ fi
 
 generate_password_if_missing postgres-app-password
 generate_password_if_missing grafana-admin-password
-generate_password_if_missing ahorro-test-user-password Test1234
+generate_password_if_missing ahorro-test-user-password
 
 # Every non-EKS target reaches AWS through Roles Anywhere and so needs the
 # CA; aws uses Pod Identity and never touches these files.
@@ -108,10 +94,8 @@ generate_ssh_key_if_missing() {
 
 generate_ssh_key_if_missing
 
-# argocd-admin-password.bcrypt is plaintext-committed (not KMS-encrypted -
-# secret-encrypt.sh doesn't apply, see secrets/README.md), generated in
-# both modes so CI gets the same reproducible "test" login as it does for
-# Postgres/Grafana.
+# argocd-admin-password.bcrypt is committed as a hash, so secret-encrypt.sh
+# does not apply; only the hash ever reaches SSM and the cluster.
 generate_bcrypt_if_missing() {
   local name="$1"
   if [ -f "$SECRETS_DIR/$name.bcrypt" ]; then
@@ -119,11 +103,7 @@ generate_bcrypt_if_missing() {
     return
   fi
   local plaintext
-  if [ "$FIXED_TEST_PASSWORDS" = "true" ]; then
-    plaintext="test"
-  else
-    plaintext="$(random_password)"
-  fi
+  plaintext="$(random_password)"
   mkdir -p "$SECRETS_DIR"
   htpasswd -nbBC 10 "" "$plaintext" | cut -d: -f2 | tr -d '\n' > "$SECRETS_DIR/$name.bcrypt.tmp"
   mv "$SECRETS_DIR/$name.bcrypt.tmp" "$SECRETS_DIR/$name.bcrypt"

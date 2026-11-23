@@ -47,10 +47,9 @@ Also required: `secrets/$PROJECT_NAME/postgres-app-password.enc`, via:
 make secret-encrypt NAME=postgres-app-password VALUE=<generated password>
 ```
 
-For a throwaway CI/test `PROJECT_NAME`, `make generate-secrets` creates
-this and `root-domain.enc` in one step (fixed test Postgres password) —
-see `secrets/README.md`. Never use it for the personal lab's own
-`PROJECT_NAME`.
+For a `PROJECT_NAME` that needs its secrets before the first
+`persistent-up`, `make generate-secrets` creates this and `root-domain.enc`
+in one step (a random Postgres password) — see `secrets/README.md`.
 
 ## Usage
 

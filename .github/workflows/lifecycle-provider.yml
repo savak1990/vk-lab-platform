@@ -60,11 +60,6 @@ env:
   PROVIDER: ${{ inputs.provider }}
   PROJECT_NAME: ${{ inputs.project_name }}
   SUBDOMAIN: ${{ inputs.subdomain }}
-  # Known credentials for debugging a failed run, rather than digging a
-  # generated password out of a torn-down cluster. Accepted exposure: ArgoCD and
-  # Grafana admin is the literal string "test", reachable over public HTTPS for
-  # the run's lifetime - see ADR 0026.
-  FIXED_TEST_PASSWORDS: "true"
 
 jobs:
   up:

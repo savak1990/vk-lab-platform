@@ -32,8 +32,8 @@ TARGET_REVISION="${TARGET_REVISION:-main}"
 # lifecycle test passes a commit SHA to freeze the run.
 AHORRO_TARGET_REVISION="${AHORRO_TARGET_REVISION:-main}"
 REPO_URL="${REPO_URL:-https://github.com/savak1990/vk-lab-platform}"
-# local target only. Fixed and publicly known on purpose, like
-# FIXED_TEST_PASSWORDS: the cluster is throwaway and holds nothing real.
+# local target only. Fixed and publicly known on purpose: the kind cluster
+# is throwaway, reachable from this machine only, and holds nothing real.
 LOCAL_ARGOCD_PASSWORD="${LOCAL_ARGOCD_PASSWORD:-test}"
 LOCAL_GRAFANA_PASSWORD="${LOCAL_GRAFANA_PASSWORD:-test}"
 # Comma-separated. spot is general workload capacity (several arm64
@@ -235,9 +235,8 @@ civo_resolve_inputs() {
 }
 
 # Reaches no cloud API at all. Every value the other resolvers read from SSM
-# either has no local equivalent or is generated here, and the password is the
-# publicly-known "test" that FIXED_TEST_PASSWORDS already uses for throwaway
-# environments - nothing on this target is real enough to protect.
+# either has no local equivalent or is generated here, and the password is
+# the publicly-known local "test" - nothing on this target needs protecting.
 local_resolve_inputs() {
   command -v htpasswd >/dev/null 2>&1 || {
     echo "ARGO-UP: htpasswd is required to hash the local Argo CD password." >&2
