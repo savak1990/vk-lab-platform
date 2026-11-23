@@ -1,9 +1,5 @@
-# Two Roles, not one ClusterRole bound twice: a ClusterRole is a cluster object
-# and this grant must never be bindable into namespace ahorro by accident.
-#
-# The verbs are what Helm needs, not a wildcard. The charts render four kinds;
-# secrets carry Helm's own release history; pods and replicasets are what
-# `--wait` polls; pods/log is what makes a failed rollout diagnosable.
+# A Role per namespace, never a ClusterRole: a ClusterRole could be bound
+# into the Argo-owned namespace by accident.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:

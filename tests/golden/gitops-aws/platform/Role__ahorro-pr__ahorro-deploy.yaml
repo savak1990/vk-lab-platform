@@ -1,3 +1,5 @@
+# A Role per namespace, never a ClusterRole: a ClusterRole could be bound
+# into the Argo-owned namespace by accident.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:

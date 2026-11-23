@@ -220,3 +220,28 @@ ahorro:
 # time. The application repository pins chart and image versions itself.
 vkllm:
   targetRevision: main
+
+# Application pipelines that helm-upgrade into their own namespaces. The
+# namespace Argo owns for an application is never listed here, so a pipeline
+# fault cannot reach its released version. The first namespace holds the
+# ServiceAccount; rules are what that app's chart renders, plus Helm's
+# release Secrets and what --rollback-on-failure polls.
+deployCredentials:
+  - app: ahorro
+    namespaces: [ahorro-dev, ahorro-pr]
+    rules:
+      - apiGroups: [""]
+        resources: [configmaps, services, secrets, serviceaccounts]
+        verbs: [get, list, watch, create, update, patch, delete]
+      - apiGroups: [""]
+        resources: [pods, events]
+        verbs: [get, list, watch]
+      - apiGroups: [""]
+        resources: [pods/log]
+        verbs: [get]
+      - apiGroups: [apps]
+        resources: [deployments, replicasets]
+        verbs: [get, list, watch, create, update, patch, delete]
+      - apiGroups: [gateway.networking.k8s.io]
+        resources: [httproutes]
+        verbs: [get, list, watch, create, update, patch, delete]

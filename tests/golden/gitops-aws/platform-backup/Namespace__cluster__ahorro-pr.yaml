@@ -1,3 +1,5 @@
+# Created here, not by `helm --create-namespace`: a RoleBinding whose
+# namespace does not exist fails the apply.
 apiVersion: v1
 kind: Namespace
 metadata:
