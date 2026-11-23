@@ -1,11 +1,13 @@
 {{- if ne .Values.target "local" }}
+# One after the Application, which creates the Service these target;
+# a route whose backend is missing yet reports Degraded and would stall the sync.
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
   name: open-webui
   namespace: chat
   annotations:
-    argocd.argoproj.io/sync-wave: "4"
+    argocd.argoproj.io/sync-wave: "6"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
   parentRefs:
@@ -19,15 +21,15 @@ spec:
         - name: open-webui
           port: 80
 ---
-# Sign-in and sign-up only. The longer prefix wins over the main route, so a
-# cold page load (dozens of parallel assets) never meets the rate limit.
+# All /api/v1/auths/* endpoints. The longer prefix wins over the main route,
+# so a cold page load (dozens of parallel assets) never meets the rate limit.
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
   name: open-webui-auth
   namespace: chat
   annotations:
-    argocd.argoproj.io/sync-wave: "4"
+    argocd.argoproj.io/sync-wave: "6"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
   parentRefs:
@@ -52,7 +54,7 @@ metadata:
   name: open-webui-traffic-policy
   namespace: chat
   annotations:
-    argocd.argoproj.io/sync-wave: "4"
+    argocd.argoproj.io/sync-wave: "6"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
   targetRefs:
@@ -69,7 +71,7 @@ metadata:
   name: open-webui-auth-traffic-policy
   namespace: chat
   annotations:
-    argocd.argoproj.io/sync-wave: "4"
+    argocd.argoproj.io/sync-wave: "6"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
   targetRefs:

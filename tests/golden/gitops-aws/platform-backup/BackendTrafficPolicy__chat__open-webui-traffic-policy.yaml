@@ -4,7 +4,7 @@ kind: BackendTrafficPolicy
 metadata:
   annotations:
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
-    argocd.argoproj.io/sync-wave: "4"
+    argocd.argoproj.io/sync-wave: "6"
   name: open-webui-traffic-policy
   namespace: chat
 spec:

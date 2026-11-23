@@ -1,11 +1,11 @@
-# Sign-in and sign-up only. The longer prefix wins over the main route, so a
-# cold page load (dozens of parallel assets) never meets the rate limit.
+# All /api/v1/auths/* endpoints. The longer prefix wins over the main route,
+# so a cold page load (dozens of parallel assets) never meets the rate limit.
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
   annotations:
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
-    argocd.argoproj.io/sync-wave: "4"
+    argocd.argoproj.io/sync-wave: "6"
   name: open-webui-auth
   namespace: chat
 spec:
