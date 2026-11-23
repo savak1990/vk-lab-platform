@@ -424,11 +424,27 @@ wait_for_dns() {
   return 0
 }
 
+# One autoscaler group per location that sells the worker type, REGION first:
+# the expander tries them in this order, so a stock-out in one is not fatal.
+hetzner_autoscaler_locations() {
+  local location others=()
+  for location in $(catalog_regions hetzner); do
+    [ "$location" = "$REGION" ] && continue
+    case " $(catalog_node_types hetzner "$location") " in
+      *" $WORKER_NODE_TYPE "*) others+=("$location") ;;
+    esac
+  done
+  echo "$REGION${others[*]:+ ${others[*]}}"
+}
+
 # The node template is Terraform's own worker render, so an autoscaled node
 # cannot drift from the fixed pool: same k3s version, same flags, same token.
 # serverLabels carries five keys because three consumers select on them - the
 # firewall, the teardown sweep and the failure diagnostics - and each needs a
 # different one.
+# Keyed from the same list as the --nodes groups: a group with no key here
+# makes the autoscaler exit at start. "workers" stays for a root that still
+# runs the single group; extra keys are ignored.
 ensure_autoscaler_config() {
   local cloud_init config
   cloud_init="$(printf '%s' "$WORKER_USER_DATA" | base64 | tr -d '\n')"
@@ -437,11 +453,13 @@ ensure_autoscaler_config() {
     --arg subnet "$HCLOUD_SUBNET_IP_RANGE" \
     --arg cloudInit "$cloud_init" \
     --arg project "$PROJECT_NAME" \
+    --arg locations "$AUTOSCALER_LOCATIONS" \
     '{
       imagesForArch: {amd64: $image, arm64: $image},
       defaultSubnetIPRange: $subnet,
-      nodeConfigs: {
-        workers: {
+      nodeConfigs: (($locations | split(" ") | map("workers-" + .)) + ["workers"] | map({
+        key: .,
+        value: {
           cloudInit: $cloudInit,
           serverLabels: {
             project: $project,
@@ -451,7 +469,7 @@ ensure_autoscaler_config() {
             role: "worker"
           }
         }
-      }
+      }) | from_entries)
     }' | base64 | tr -d '\n')"
   kubectl create secret generic hcloud-autoscaler-config -n kube-system \
     --from-literal=HCLOUD_CLUSTER_CONFIG="$config" \
@@ -530,6 +548,7 @@ fi
 # that takes the fast path must still refresh this, because the render it
 # copies changes whenever the nodes module re-applies.
 if [ "$PROVIDER" = hetzner ]; then
+  AUTOSCALER_LOCATIONS="$(hetzner_autoscaler_locations)"
   ensure_autoscaler_config
 fi
 
@@ -903,7 +922,8 @@ hetzner_install_root_application() {
     --set capacity.autoscaler.min=0 \
     --set capacity.autoscaler.max=$(( MAX_WORKER_NODES - MIN_WORKER_NODES )) \
     --set capacity.autoscaler.nodeType="$WORKER_NODE_TYPE" \
-    --set capacity.autoscaler.location="$REGION" \
+    --set capacity.autoscaler.locations="$AUTOSCALER_LOCATIONS" \
+    --set capacity.autoscaler.maxNodesTotal=$(( 1 + MAX_WORKER_NODES )) \
     --set capacity.autoscaler.sshKeyId="$SSH_KEY_ID" \
     --set externalDns.txtOwnerId="$PROJECT_NAME" \
     --set awsIdentity.rolesAnywhere.trustAnchorArn="$TRUST_ANCHOR_ARN" \

@@ -18,8 +18,11 @@ CAP="$(mktemp)"
 trap 'rm -f "$CAP"' EXIT
 fails=0
 
-# Just the function, so sourcing argo-up.sh's top level never happens.
+# Just the functions, so sourcing argo-up.sh's top level never happens.
 eval "$(awk '/^ensure_autoscaler_config\(\) \{/,/^\}/' "$REPO_ROOT/scripts/argo-up.sh")"
+eval "$(awk '/^hetzner_autoscaler_locations\(\) \{/,/^\}/' "$REPO_ROOT/scripts/argo-up.sh")"
+# shellcheck source=../../scripts/lib/catalog.sh
+source "$REPO_ROOT/scripts/lib/catalog.sh"
 
 # Reads no stdin. The first kubectl of the pipeline under test would otherwise
 # read this script's own, which is the terminal when a person runs it by hand.
@@ -46,6 +49,22 @@ check() {
   fi
 }
 
+check_locations() {
+  local label="$1" region="$2" type="$3" want="$4" got
+  got="$(REGION="$region" WORKER_NODE_TYPE="$type" hetzner_autoscaler_locations)"
+  if [ "$got" = "$want" ]; then
+    echo "ok   $label"
+  else
+    echo "FAIL $label: got '$got', want '$want'"
+    fails=$((fails + 1))
+  fi
+}
+
+check_locations "REGION first, then every location selling the type" fsn1 cx33 "fsn1 nbg1 hel1"
+check_locations "a location that does not sell the type is left out" fsn1 cx43 "fsn1 nbg1"
+check_locations "the REGION location leads whichever it is" hel1 cx33 "hel1 nbg1 fsn1"
+check_locations "only the REGION location sells it" nbg1 cx53 "nbg1"
+
 # Shaped like the real render: multi-line, with a tab inside a command, which
 # is what would break a tab-delimited batch read.
 WORKER_USER_DATA='#cloud-config
@@ -61,28 +80,29 @@ runcmd:
 export HCLOUD_NODE_IMAGE=ubuntu-24.04
 export HCLOUD_SUBNET_IP_RANGE=10.0.1.0/24
 export PROJECT_NAME=vk-hetzner-lab
+export AUTOSCALER_LOCATIONS="fsn1 nbg1 hel1"
 
 ensure_autoscaler_config
 JSON="$(base64 -d < "$CAP")"
 
-check "the node group is named for the --nodes flag's pool" \
-  '.nodeConfigs | keys == ["workers"]'
-check "all five serverLabels are present" \
-  '.nodeConfigs.workers.serverLabels | keys == ["lifecycle","managed_by","project","role","scope"]'
+check "one node config per --nodes group, plus the old single group" \
+  '.nodeConfigs | keys == ["workers","workers-fsn1","workers-hel1","workers-nbg1"]'
+check "all five serverLabels are present in every group" \
+  '[.nodeConfigs[].serverLabels | keys] | unique == [["lifecycle","managed_by","project","role","scope"]]'
 check "project=<project>      - firewall selector and teardown sweep" \
-  '.nodeConfigs.workers.serverLabels.project == "vk-hetzner-lab"'
+  '[.nodeConfigs[].serverLabels.project] | unique == ["vk-hetzner-lab"]'
 check "scope=platform         - firewall selector" \
-  '.nodeConfigs.workers.serverLabels.scope == "platform"'
+  '[.nodeConfigs[].serverLabels.scope] | unique == ["platform"]'
 check "managed_by=autoscaler  - teardown sweep" \
-  '.nodeConfigs.workers.serverLabels.managed_by == "autoscaler"'
+  '[.nodeConfigs[].serverLabels.managed_by] | unique == ["autoscaler"]'
 check "lifecycle=disposable   - failure diagnostics" \
-  '.nodeConfigs.workers.serverLabels.lifecycle == "disposable"'
+  '[.nodeConfigs[].serverLabels.lifecycle] | unique == ["disposable"]'
 check "the subnet is stated rather than left to the hcloud default" \
   '.defaultSubnetIPRange == "10.0.1.0/24"'
 check "both architectures name the fixed pool's image" \
   '.imagesForArch == {amd64: "ubuntu-24.04", arm64: "ubuntu-24.04"}'
 
-DECODED="$(printf '%s' "$JSON" | jq -r '.nodeConfigs.workers.cloudInit' | base64 -d)"
+DECODED="$(printf '%s' "$JSON" | jq -r '.nodeConfigs["workers-nbg1"].cloudInit' | base64 -d)"
 if [ "$DECODED" = "$WORKER_USER_DATA" ]; then
   echo "ok   the cloud-init round-trips byte-identical, newlines and tab intact"
 else
@@ -94,4 +114,4 @@ if [ "$fails" -gt 0 ]; then
   echo "autoscaler-config-test: $fails case(s) failed" >&2
   exit 1
 fi
-echo "autoscaler-config-test: all 9 cases passed"
+echo "autoscaler-config-test: all 13 cases passed"
