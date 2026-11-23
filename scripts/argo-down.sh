@@ -21,8 +21,8 @@ STUCK_APP_DWELL="${ARGO_DOWN_STUCK_APP_DWELL:-180}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$REPO_ROOT/scripts/lib/region.sh"
 source "$REPO_ROOT/scripts/lib/provider.sh"
-# shellcheck source=lib/ahorro-deploy.sh
-source "$REPO_ROOT/scripts/lib/ahorro-deploy.sh"
+# shellcheck source=lib/deploy-credential.sh
+source "$REPO_ROOT/scripts/lib/deploy-credential.sh"
 # shellcheck source=lib/region-guard.sh
 source "$REPO_ROOT/scripts/lib/region-guard.sh"
 
@@ -390,6 +390,6 @@ done
 
 # The ServiceAccount this credential names went with the cascade, so the
 # parameters now describe a cluster that is not there.
-ahorro_forget_deploy_credential || true
+deploy_credential_forget_all
 
 echo "ARGO-DOWN: Argo CD removed."

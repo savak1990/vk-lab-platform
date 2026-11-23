@@ -13,8 +13,8 @@ source "$REPO_ROOT/scripts/lib/provider.sh"
 source "$REPO_ROOT/scripts/lib/argo-watch.sh"
 # shellcheck source=lib/require-valid-recover-from.sh
 source "$REPO_ROOT/scripts/lib/require-valid-recover-from.sh"
-# shellcheck source=lib/ahorro-deploy.sh
-source "$REPO_ROOT/scripts/lib/ahorro-deploy.sh"
+# shellcheck source=lib/deploy-credential.sh
+source "$REPO_ROOT/scripts/lib/deploy-credential.sh"
 
 # Keeps kubectl and helm on a repo-local kubeconfig: a lifecycle run must never
 # change the context the operator is working in.
@@ -573,7 +573,7 @@ if [ "$EXISTING_STATUS" = "Synced/Healthy" ] && [ "$PROVIDER" != local ]; then
   # Also on the fast path, which exits here rather than reaching the end of
   # the script. A run that synced but died before publishing would otherwise
   # leave the parameters missing for ever behind a healthy-looking cluster.
-  ahorro_publish_deploy_credential || true
+  deploy_credential_publish_all
   exit 0
 fi
 
@@ -986,4 +986,4 @@ fi
 # After argo_watch_root, because the ServiceAccount it mints a token for
 # arrives with the platform sync. Never fatal: the platform is up either way,
 # and the next argo-up republishes.
-ahorro_publish_deploy_credential || true
+deploy_credential_publish_all
