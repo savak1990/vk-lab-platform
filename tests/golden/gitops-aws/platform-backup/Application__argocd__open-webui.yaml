@@ -1,0 +1,98 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  annotations:
+    # After the chat secrets (2), SearXNG (3) and the openwebui database (4),
+    # beside the other app pointers, so nothing platform-level waits on it.
+    argocd.argoproj.io/sync-wave: "5"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  name: open-webui
+  namespace: argocd
+spec:
+  destination:
+    namespace: chat
+    server: https://kubernetes.default.svc
+  project: default
+  source:
+    chart: open-webui
+    helm:
+      values: |
+        ollama:
+          enabled: false
+        pipelines:
+          enabled: false
+        tika:
+          enabled: false
+        # In-memory websocket manager: one replica needs no Redis.
+        websocket:
+          enabled: true
+          manager: ""
+          redis:
+            enabled: false
+        persistence:
+          enabled: false
+        image:
+          tag: v0.13.4-slim
+        resources:
+          requests:
+            cpu: 25m
+            memory: 256Mi
+          limits:
+            memory: 768Mi
+        logging:
+          level: info
+        enableOpenaiApi: true
+        openaiBaseApiUrl: http://gpu-on-demand.llm.svc/v1
+        openaiApiKeyExistingSecret: open-webui-env
+        openaiApiKeyExistingSecretKey: OPENAI_API_KEY
+        extraEnvFrom:
+          - secretRef:
+              name: open-webui-env
+        extraEnvVars:
+          - name: WEBUI_URL
+            value: "https://chat."
+          - name: ENABLE_PERSISTENT_CONFIG
+            value: "false"
+          - name: ENABLE_SIGNUP
+            value: "false"
+          - name: DEFAULT_MODELS
+            value: qwen3.8-27b
+          - name: TASK_MODEL_EXTERNAL
+            value: qwen3.8-27b
+          - name: ENABLE_TITLE_GENERATION
+            value: "true"
+          - name: ENABLE_SEARCH_QUERY_GENERATION
+            value: "true"
+          - name: ENABLE_TAGS_GENERATION
+            value: "false"
+          - name: ENABLE_FOLLOW_UP_GENERATION
+            value: "false"
+          - name: ENABLE_AUTOCOMPLETE_GENERATION
+            value: "false"
+          - name: ENABLE_WEB_SEARCH
+            value: "true"
+          - name: WEB_SEARCH_ENGINE
+            value: searxng
+          - name: SEARXNG_QUERY_URL
+            value: "http://searxng.chat.svc:8080/search?q=<query>"
+          - name: WEB_SEARCH_RESULT_COUNT
+            value: "3"
+          - name: BYPASS_WEB_SEARCH_EMBEDDING_AND_RETRIEVAL
+            value: "true"
+          - name: RAG_EMBEDDING_ENGINE
+            value: openai
+          - name: USER_PERMISSIONS_CHAT_FILE_UPLOAD
+            value: "false"
+          - name: ENABLE_API_KEYS
+            value: "false"
+          - name: USER_PERMISSIONS_FEATURES_API_KEYS
+            value: "false"
+    repoURL: https://helm.openwebui.com/
+    targetRevision: 18.4.0
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true

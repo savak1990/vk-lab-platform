@@ -1,0 +1,19 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-wave: "4"
+  name: open-webui
+  namespace: chat
+spec:
+  hostnames:
+    - chat.
+  parentRefs:
+    - name: platform-gateway
+      namespace: envoy
+      sectionName: https
+  rules:
+    - backendRefs:
+        - name: open-webui
+          port: 80

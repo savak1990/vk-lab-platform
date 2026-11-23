@@ -1,0 +1,17 @@
+# The gateway's generation timeout (600 s) plus 60 s, like the GPU route.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-wave: "4"
+  name: open-webui-traffic-policy
+  namespace: chat
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: open-webui
+  timeout:
+    http:
+      requestTimeout: 660s
