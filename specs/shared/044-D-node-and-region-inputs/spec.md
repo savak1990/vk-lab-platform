@@ -690,3 +690,8 @@ the correct behaviour rather than a limitation to work around.
   and this spec's offline gate is still what refuses a combination that cannot
   be created. The list is a second copy of the catalogue, so
   `node-config-test.sh` now fails when the two differ.
+
+- 2026-11-23 — amended by HETZ-176 and ADR 0047: on Hetzner, `REGION` is the
+  network zone (`eu-central`), not a location. The catalogue maps the zone to
+  its locations; the state and backup buckets are named after the zone; the
+  §3.7 region guard also checks the old location-named buckets.

@@ -164,8 +164,8 @@ Those tests keep their own targets for running one at a time —
 | `PROVIDER` | `aws` | `aws` `civo` `hetzner` `local` |
 | `PROJECT_NAME` | per provider | lowercase letters, digits and hyphens, at most 23 characters |
 | `SUBDOMAIN` | per provider | must differ per project |
-| `REGION` | `LON1` / `fsn1` | `civo` and `hetzner` only, see below; matched case-insensitively. Refused on `aws` |
-| `WORKER_NODE_TYPE` | `t4g.medium` / `g4s.kube.medium` / `cx43` | see below; the hetzner default is `cx43`, or `cx33` in `hel1`, which sells no `cx43` |
+| `REGION` | `LON1` / `eu-central` | `civo` and `hetzner` only (on hetzner the network zone; a location is refused), see below; matched case-insensitively. Refused on `aws` |
+| `WORKER_NODE_TYPE` | `t4g.medium` / `g4s.kube.medium` / `cx43` | see below; a hetzner type must sell in at least one location of the zone |
 | `CONTROL_PLANE_NODE_TYPE` | `cx23` | `hetzner` only — the one target whose control plane this platform owns and pays for |
 | `MIN_WORKER_NODES` | `1` / `3` / `1` | a positive integer, workers only; a control plane is never counted |
 | `MAX_WORKER_NODES` | `3` / `4` / `2` | a positive integer, at least `MIN_WORKER_NODES` |
@@ -195,13 +195,14 @@ copy of each cloud's catalogue.
 |---|---|---|
 | `aws` | fixed at `eu-west-1`, not an input | `t4g.medium`, `t4g.large`, `m6g.large` |
 | `civo` | `LON1` `NYC1` `FRA1` `MUM1` | `g4s.kube.medium` `g4s.kube.large` `g4m.kube.small` `g4p.kube.small` |
-| `hetzner` | `nbg1` | `cx23` `cx33` `cx43` `cx53` `cpx32` `cpx42` |
-| `hetzner` | `hel1` | `cx23` `cx33` `cpx32` `cpx42` |
-| `hetzner` | `fsn1` | `cx23` `cx33` `cx43` `cpx32` `cpx42` |
+| `hetzner` | `eu-central` (locations `fsn1` `nbg1` `hel1`) | `cx23` `cx33` `cx43` `cpx32` `cpx42` `cx53` |
 
-Node types are listed per region because availability differs: `cx43` sells in
-`nbg1` and `fsn1` but not `hel1`. All four Civo sizes sell in all four Civo
-regions, checked against `civo size ls` per region on 2026-09-22.
+Node types are listed per region. On Hetzner the region is a network zone and
+the platform picks the location: `cx43` sells in `fsn1` and `nbg1` but not
+`hel1`, `cx53` only in `nbg1`, and a server is created in the first location
+of `fsn1`, `nbg1`, `hel1` that sells its type and has stock. All four Civo
+sizes sell in all four Civo regions, checked against `civo size ls` per
+region on 2026-09-22.
 
 Some of the Hetzner and Civo types are above the lab's cost ceiling on a
 monthly basis and are allowed anyway. The Hetzner limit is on server count
@@ -230,8 +231,8 @@ the label is in doubt. See `specs/hetzner/research.md`.
 | `civo` | `g4m.kube.small` | 2 / 16 GiB | USD 78.21 |
 | `civo` | `g4p.kube.small` | 4 / 16 GiB | USD 86.91 |
 | `hetzner` | `cx23` *(default control plane)* | 2 / 4 GiB | USD 7.85 |
-| `hetzner` | `cx33` *(default in `hel1`)* | 4 / 8 GiB | USD 12.09 |
-| `hetzner` | `cx43` *(default elsewhere)* | 8 / 16 GiB | USD 22.37 |
+| `hetzner` | `cx33` | 4 / 8 GiB | USD 12.09 |
+| `hetzner` | `cx43` *(default)* | 8 / 16 GiB | USD 22.37 |
 | `hetzner` | `cx53` | 16 / 32 GiB | USD 42.34 |
 | `hetzner` | `cpx32` | 4 / 8 GiB | USD 50.81 |
 | `hetzner` | `cpx42` | 8 / 16 GiB | USD 99.21 |
@@ -317,14 +318,14 @@ make full-up
 # Civo, in Frankfurt instead of London.
 PROVIDER=civo REGION=FRA1 make full-up
 
-# Hetzner: up to three workers, in Helsinki rather than Frankfurt.
-PROVIDER=hetzner REGION=hel1 MIN_WORKER_NODES=1 MAX_WORKER_NODES=3 make full-up
+# Hetzner: up to three workers.
+PROVIDER=hetzner MIN_WORKER_NODES=1 MAX_WORKER_NODES=3 make full-up
 
 # A bigger AWS system node group. AWS takes no REGION.
 PROVIDER=aws WORKER_NODE_TYPE=t4g.large make up
 
 # Move a database onto this target from another provider's archive.
-RECOVER_FROM=s3://vk-hetzner-lab-fsn1-postgres-backups/lab-postgres-20260101T000000Z \
+RECOVER_FROM=s3://vk-hetzner-lab-eu-central-postgres-backups/lab-postgres-20260101T000000Z \
   PROVIDER=civo make full-up
 
 # One kind cluster locally. No cloud, no credentials.
@@ -343,10 +344,10 @@ another. `RECOVER_FROM` names the archive to start from:
 
 ```sh
 # What is in the source project's bucket?
-aws s3 ls s3://vk-hetzner-lab-fsn1-postgres-backups/
+aws s3 ls s3://vk-hetzner-lab-eu-central-postgres-backups/
 
 # Bring the new target up from one of those generations.
-RECOVER_FROM=s3://vk-hetzner-lab-fsn1-postgres-backups/lab-postgres-20260101T000000Z \
+RECOVER_FROM=s3://vk-hetzner-lab-eu-central-postgres-backups/lab-postgres-20260101T000000Z \
   PROVIDER=civo make full-up
 
 # Confirm the branch before trusting a row.
@@ -513,7 +514,7 @@ macOS) and linked into every unit, so `clear-cache` no longer costs a fresh
 - **`region`** / **`worker_node_type`** / **`min_worker_nodes`** /
   **`max_worker_nodes`** / **`control_plane_node_type`** — leave blank for the
   provider's default (`LON1`/`g4s.kube.medium`/`3`/`4` on Civo,
-  `fsn1`/`cx43`/`1`/`2` plus a `cx23` control plane on Hetzner,
+  `eu-central`/`cx43`/`1`/`2` plus a `cx23` control plane on Hetzner,
   `eu-west-1`/`t4g.medium`/`1`/`3` on AWS). The two node-type inputs are
   dropdowns listing every type the catalogue sells, each labelled with its
   provider — but a dropdown cannot know which region you picked, and which types

@@ -101,6 +101,8 @@ sync (they embed a copy of it, not a live include):
 
 ```
 helm template gitops --set target=hetzner \
+  --set "capacity.autoscaler.locations=fsn1 nbg1" --set capacity.autoscaler.maxNodesTotal=3 \
+  --set envoyGateway.networkZone=eu-central \
   --show-only <scratch-template-path>
 ```
 
