@@ -42,3 +42,28 @@ variable "llm_management_tokens_secret_path" {
   description = "Absolute path to the KMS-encrypted ciphertext file holding vk-llm-on-demand's management tokens, global scope."
   type        = string
 }
+
+variable "chat_inference_key_secret_path" {
+  description = "Absolute path to the KMS-encrypted ciphertext file holding Open WebUI's sk-vkllm- inference key, global scope."
+  type        = string
+}
+
+variable "chat_db_password_secret_path" {
+  description = "Absolute path to the KMS-encrypted ciphertext file holding the openwebui Postgres role password, global scope."
+  type        = string
+}
+
+variable "chat_webui_secret_key_secret_path" {
+  description = "Absolute path to the KMS-encrypted ciphertext file holding Open WebUI's session signing key, global scope."
+  type        = string
+}
+
+variable "chat_admin_email_secret_path" {
+  description = "Absolute path to the KMS-encrypted ciphertext file holding the Open WebUI admin email, global scope."
+  type        = string
+}
+
+variable "chat_admin_password_secret_path" {
+  description = "Absolute path to the KMS-encrypted ciphertext file holding the Open WebUI first-start admin password, global scope."
+  type        = string
+}
