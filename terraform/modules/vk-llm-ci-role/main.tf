@@ -25,6 +25,9 @@ locals {
   # run targets is its own input, not this role's concern.
   management_tokens_parameter_arn = "${local.ssm_prefix}/*/persistent/llm/management_tokens"
   fqdn_parameter_arn              = "${local.ssm_prefix}/*/bootstrap/route53/fqdn"
+  api_token_parameter_arn         = "${local.ssm_prefix}/*/persistent/llm/api_token"
+  deploy_credential_arn           = "${local.ssm_prefix}/*/cluster/llm-deploy/*"
+  deploy_token_parameter_arn      = "${local.ssm_prefix}/*/cluster/llm-deploy/token"
 }
 
 resource "aws_iam_role" "this" {
@@ -32,8 +35,9 @@ resource "aws_iam_role" "this" {
   assume_role_policy = module.github_oidc_trust.json
 }
 
-# Reads only the LLM management token; never api_token, which holds the
-# inference keys and is rejected by the management API.
+# Reads the LLM management token for gpu-control, and for the dev deploy the
+# cluster credential plus one inference key, used only for a read-only
+# GET /v1/models after each deploy.
 data "aws_iam_policy_document" "permissions" {
   statement {
     sid       = "AllowReadLlmManagementTokens"
@@ -49,18 +53,36 @@ data "aws_iam_policy_document" "permissions" {
     resources = [local.fqdn_parameter_arn]
   }
 
+  statement {
+    sid       = "AllowReadLlmApiToken"
+    actions   = ["ssm:GetParameter"]
+    resources = [local.api_token_parameter_arn]
+  }
+
+  # Published by the platform on every bring-up; the role reaches only the
+  # llm-deploy identity, which has no RoleBinding in namespace llm.
+  statement {
+    sid       = "AllowReadLlmDeployCredential"
+    actions   = ["ssm:GetParameter"]
+    resources = [local.deploy_credential_arn]
+  }
+
   # The parameter is a SecureString, so reading it needs the key as well as
   # the parameter. The EncryptionContext condition keeps Decrypt scoped to
   # this one parameter pattern, not the whole shared key.
   statement {
-    sid       = "AllowDecryptLlmManagementTokens"
+    sid       = "AllowDecryptLlmParameters"
     actions   = ["kms:Decrypt"]
     resources = [data.aws_kms_alias.secrets.target_key_arn]
 
     condition {
       test     = "StringLike"
       variable = "kms:EncryptionContext:PARAMETER_ARN"
-      values   = [local.management_tokens_parameter_arn]
+      values = [
+        local.management_tokens_parameter_arn,
+        local.api_token_parameter_arn,
+        local.deploy_token_parameter_arn,
+      ]
     }
   }
 }
