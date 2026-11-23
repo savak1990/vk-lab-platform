@@ -1,7 +1,7 @@
 ---
 id: "HETZ-176"
 title: "REGION is a network zone; servers and autoscaled workers fall back across its locations"
-status: "READY"
+status: "IN_PROGRESS"
 priority: "P1"
 milestone: "M2"
 type: "implementation"
@@ -508,3 +508,7 @@ Accepted risks:
 - 2026-11-23 — design reviewed against the code; `HOME_LOCATION` dropped,
   buckets keyed by the zone, live lab recreated by full-down → full-up,
   autoscaler cap corrected. Status READY.
+- 2026-11-23 — Part A implemented (PR 1): one autoscaler group per location,
+  priority expander, `max-nodes-total = 1 + MAX_WORKER_NODES`. Evidence:
+  `make gitops-check` (hetzner asserts), `autoscaler-config-test.sh` 13/13.
+  Outstanding: AC3 live check after the merge (§11 PR 1 steps 4–5).
