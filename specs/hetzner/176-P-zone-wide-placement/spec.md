@@ -212,9 +212,11 @@ only because the live lab is recreated (§11).
   <zone> <WORKER_NODE_TYPE>`, named `workers-<location>`, `minSize: 0`,
   `maxSize: MAX_WORKER_NODES - MIN_WORKER_NODES`.
 - `argo-up.sh` builds the location list once. It passes it to Argo as one
-  comma-separated string, `capacity.autoscaler.locations` (renamed from
+  space-separated string, `capacity.autoscaler.locations` (renamed from
   `capacity.autoscaler.location`; Argo `parameters` carry only scalar
-  strings), and writes one `nodeConfigs` key per group from the same list.
+  strings, and `helm --set` splits on commas), and writes one `nodeConfigs`
+  key per group from the same list. The template fails to render when the
+  value is empty (`required`).
   Two lists built separately could disagree, and a missing key crashes the
   autoscaler.
 - `extraArgs.expander: priority`; `expanderPriorities` gives the first
@@ -288,6 +290,8 @@ Part A:
   `local` at `:242-255`.
 - `tests/scripts/autoscaler-config-test.sh`: `workers` is hard-coded at
   `:69, 71, 73, 75, 77, 79, 85`; keys must equal the location list.
+- `.github/workflows/lifecycle-test.yml:295-299`: the hetzner `helm template`
+  sets the new required values.
 
 Part B:
 
@@ -336,7 +340,7 @@ Part A (PR 1):
    aws golden. Check: `make gitops-check` shows only the parameter lines.
 3. `argo-up.sh`: one list, `REGION` first; one `nodeConfigs` key per
    location. Check: `autoscaler-config-test.sh`.
-4. Live (§11 PR 1). Spec to `IN_PROGRESS` in this PR.
+4. Spec to `IN_PROGRESS` in this PR. Live (§11 PR 1) after the merge.
 
 Part B (PR 2):
 
@@ -412,11 +416,19 @@ golden diff is a regression.
 
 PR 1 (Part A), on the live lab, which keeps running:
 
-1. `TARGET_REVISION=<pr1-branch> WORKER_NODE_TYPE=cx33 make argo-up`
-   (the child Applications render from Git, and the live worker type was a
-   command-line value).
-2. Check the autoscaler args and the priority ConfigMap (AC3).
-3. Merge PR 1.
+1. Label `ci:lifecycle-hetzner`: CI runs a fresh cycle with the new
+   autoscaler config.
+2. Check that no autoscaled server exists:
+   `hcloud server list -l managed_by=autoscaler`. A server in the old
+   `workers` group would be outside every new group.
+3. Merge PR 1. The live root Application tracks main; it now fails to render
+   (`capacity.autoscaler.locations` is required and the live root does not
+   pass it), so it leaves `Synced/Healthy`. Nothing is deleted.
+4. `PROJECT_NAME=vk-hetzner-lab WORKER_NODE_TYPE=cx33 make argo-up`. The root
+   is not `Synced/Healthy`, so argo-up skips its fast path and installs the
+   root with the new parameters. Before the merge a re-run takes the fast
+   path and changes nothing, so the live check follows the merge.
+5. Check the autoscaler args and the priority ConfigMap (AC3).
 
 A full `make down` → `make up` is not run for PR 1: it has no server
 fallback, and on 2026-11-23 fsn1 refused `cx33` and `cx43`.
@@ -451,7 +463,8 @@ Effects of the full-down accepted on 2026-11-23:
 - Passwords, LLM secrets, the SSH key and the rolesanywhere CA come back with
   the same values from their `.enc` files.
 
-Rollback: PR 1 — revert; argo-up restores one group. PR 2 — after step 2 the
+Rollback: PR 1 — revert, then `make argo-up` (the root fails to render
+until then, as in PR 1 step 3). PR 2 — after step 2 the
 old code can `make full-up` again from a revert; before step 2 nothing outside
 Git has changed.
 
