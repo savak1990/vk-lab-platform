@@ -1,14 +1,14 @@
 # On-demand mode can hold a chat request while the GPU starts, so the route
 # timeout is the 600 s wait plus generationTimeout (600 s). Envoy Gateway
 # v1.2.1 exposes no stream idle timeout on this policy; the default applies.
-# llm-dev's route is installed by the pipeline, not Argo; selfHeal applies this once it exists.
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: BackendTrafficPolicy
 metadata:
   annotations:
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
-    # One after the pointer; the HTTPRoute is created by the child
-    # Application, so SkipDryRun plus selfHeal cover a first-apply miss.
+    # One after the pointer; the HTTPRoute comes later - from the child
+    # Application in llm, from the pipeline in llm-dev - so SkipDryRun
+    # plus selfHeal cover a first-apply miss.
     argocd.argoproj.io/sync-wave: "6"
   name: gpu-on-demand-traffic-policy
   namespace: llm-dev

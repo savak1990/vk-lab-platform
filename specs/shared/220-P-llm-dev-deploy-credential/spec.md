@@ -52,8 +52,9 @@ copying it.
    and `get` on `pods/log`. It MUST NOT grant `bind`, `escalate` or
    `impersonate` — the chart's own Role grants only ConfigMap get/update,
    which the deploy identity already holds.
-6. A `BackendTrafficPolicy` MUST set `requestTimeout: 660s` on HTTPRoute
-   `gpu-on-demand` in namespace `llm-dev`.
+6. A `BackendTrafficPolicy` MUST set the same `requestTimeout` as
+   production's, rendered from the same template (today 1200s), on
+   HTTPRoute `gpu-on-demand` in namespace `llm-dev`.
 7. `vk-llm-ci-role` MUST gain `ssm:GetParameter` on
    `/*/cluster/llm-deploy/*` and `/*/persistent/llm/api_token`, and
    `kms:Decrypt` limited by a `kms:EncryptionContext:PARAMETER_ARN`
