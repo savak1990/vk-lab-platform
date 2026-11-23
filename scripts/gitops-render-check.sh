@@ -305,6 +305,20 @@ verify_object_set() {
       return 1
     fi
   done
+  if [ "$target" = hetzner ]; then
+    assert_helm_values "$target" cluster-autoscaler "$dir" \
+      '.autoscalingGroups | length=3' \
+      '.autoscalingGroups[0].name=workers-fsn1' \
+      '.autoscalingGroups[1].name=workers-nbg1' \
+      '.autoscalingGroups[2].region=HEL1' \
+      '.autoscalingGroups[1].instanceType=CX33' \
+      '.autoscalingGroups[2].minSize=0' \
+      '.autoscalingGroups[2].maxSize=1' \
+      '.expanderPriorities.30[0]=^workers-fsn1$' \
+      '.expanderPriorities.10[0]=^workers-hel1$' \
+      '.extraArgs.expander=priority' \
+      '.extraArgs."max-nodes-total"=3' || return 1
+  fi
   case "$target" in civo | hetzner | local)
     local hits
     local leaks=(-e 'ebs-delete' -e 'karpenter.sh/capacity-type')
@@ -386,6 +400,16 @@ for t in civo hetzner local; do
       --set postgres.backup.enabled=true
       --set postgres.backup.bucket=render-check-bucket
       --set postgres.backup.serverName=render-check-server
+    )
+  fi
+  # argo-up always passes these on hetzner; the template refuses to render without them.
+  if [ "$t" = hetzner ]; then
+    extra_sets+=(
+      --set "capacity.autoscaler.locations=fsn1 nbg1 hel1"
+      --set capacity.autoscaler.nodeType=cx33
+      --set capacity.autoscaler.min=0
+      --set capacity.autoscaler.max=1
+      --set capacity.autoscaler.maxNodesTotal=3
     )
   fi
   render_and_normalize "$REPO_ROOT/gitops" "$STRUCT_DIR/$t" "$t" "${extra_sets[@]+"${extra_sets[@]}"}"

@@ -1,4 +1,5 @@
 {{- if eq .Values.target "hetzner" }}
+{{- $locations := splitList " " (required "capacity.autoscaler.locations is set by argo-up" .Values.capacity.autoscaler.locations) }}
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -26,15 +27,24 @@ spec:
         # bumping either alone leaves them on different minors.
         image:
           tag: v1.36.1
-        # This group is separate from the fixed pool, so its bounds are a
-        # delta: argo-up passes 0 and MAX_WORKER_NODES - MIN_WORKER_NODES.
+        # These groups are separate from the fixed pool, so their bounds are
+        # deltas: argo-up passes 0 and MAX_WORKER_NODES - MIN_WORKER_NODES.
         # Civo's autoscaler owns the pool it created and takes absolutes.
         autoscalingGroups:
-          - name: workers
-            minSize: {{ .Values.capacity.autoscaler.min }}
-            maxSize: {{ .Values.capacity.autoscaler.max }}
-            instanceType: {{ .Values.capacity.autoscaler.nodeType | upper | quote }}
-            region: {{ .Values.capacity.autoscaler.location | upper | quote }}
+        {{- range $locations }}
+          - name: workers-{{ . }}
+            minSize: {{ $.Values.capacity.autoscaler.min }}
+            maxSize: {{ $.Values.capacity.autoscaler.max }}
+            instanceType: {{ $.Values.capacity.autoscaler.nodeType | upper | quote }}
+            region: {{ . | upper | quote }}
+        {{- end }}
+        # One group per location so a stock-out in one is not a stock-out for
+        # the cluster; the first location argo-up lists is tried first.
+        expanderPriorities:
+        {{- range $i, $location := $locations }}
+          {{ mul (sub (len $locations) $i) 10 }}:
+            - ^workers-{{ $location }}$
+        {{- end }}
         # Per key, not envFrom: this Secret's keys are token and network, and
         # envFrom would name the variables after them.
         extraEnvSecrets:
@@ -62,6 +72,9 @@ spec:
           skip-nodes-with-system-pods: false
           skip-nodes-with-local-storage: false
           scale-down-unneeded-time: 10m
+          expander: priority
+          # Counts every node, the control plane and the fixed pool included.
+          max-nodes-total: {{ required "capacity.autoscaler.maxNodesTotal is set by argo-up" .Values.capacity.autoscaler.maxNodesTotal | quote }}
         podAnnotations:
           # Keeps the autoscaler off a node it is draining.
           cluster-autoscaler.kubernetes.io/safe-to-evict: "false"

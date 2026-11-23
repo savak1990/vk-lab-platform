@@ -39,7 +39,9 @@ spec:
           value: workers
         - name: capacity.autoscaler.nodeType
           value: ""
-        - name: capacity.autoscaler.location
+        - name: capacity.autoscaler.locations
+          value: ""
+        - name: capacity.autoscaler.maxNodesTotal
           value: ""
         - name: capacity.autoscaler.sshKeyId
           value: ""

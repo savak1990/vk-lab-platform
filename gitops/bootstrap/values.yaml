@@ -34,7 +34,8 @@ capacity:
     max: 4
     pool: workers
     nodeType: ""
-    location: ""
+    locations: ""
+    maxNodesTotal: ""
     sshKeyId: ""
 
 envoyGateway:
