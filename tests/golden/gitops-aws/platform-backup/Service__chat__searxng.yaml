@@ -1,0 +1,15 @@
+# ClusterIP only: no HTTPRoute ever points here.
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+  name: searxng
+  namespace: chat
+spec:
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+  selector:
+    app.kubernetes.io/name: searxng
