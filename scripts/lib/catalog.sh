@@ -84,10 +84,11 @@
 # than emptying because catalog_default_region, the aws:eu-west-1 node-type
 # key and state-up's region-change guard all read it.
 #
-# Region lists carry their own constraints. Hetzner is limited to the
-# eu-central network zone because the private network HETZ-025 creates is
-# eu-central, and a server outside that zone cannot attach to it. Hetzner
-# region/type availability is HETZ-020's real creates on 2026-09-21
+# Region lists carry their own constraints. Hetzner's REGION is the network
+# zone, eu-central, because the private network HETZ-025 creates is
+# eu-central and a server outside that zone cannot attach to it; the zone's
+# locations are listed below and any of them can host any server. Hetzner
+# location/type availability is HETZ-020's real creates on 2026-09-21
 # (hetzner/research.md:144), not Hetzner's published catalogue, which
 # proved unreliable in both directions. Civo regions are `civo region ls`,
 # 2026-09-21, spelled uppercase to match CIVO_REGION in region.sh.
@@ -101,7 +102,7 @@ catalog_regions() {
   case "$1" in
     aws) echo "eu-west-1" ;;
     civo) echo "LON1 NYC1 FRA1 MUM1" ;;
-    hetzner) echo "nbg1 hel1 fsn1" ;;
+    hetzner) echo "eu-central" ;;
     *) echo "" ;;
   esac
 }
@@ -112,6 +113,7 @@ catalog_node_types() {
   case "$1:$2" in
     aws:eu-west-1) echo "t4g.medium t4g.large m6g.large" ;;
     civo:LON1 | civo:NYC1 | civo:FRA1 | civo:MUM1) echo "g4s.kube.medium g4s.kube.large g4m.kube.small g4p.kube.small" ;;
+    hetzner:eu-central) catalog_zone_node_types eu-central ;;
     hetzner:nbg1) echo "cx23 cx33 cx43 cx53 cpx32 cpx42" ;;
     hetzner:hel1) echo "cx23 cx33 cpx32 cpx42" ;;
     hetzner:fsn1) echo "cx23 cx33 cx43 cpx32 cpx42" ;;
@@ -123,19 +125,17 @@ catalog_default_region() {
   case "$1" in
     aws) echo "eu-west-1" ;;
     civo) echo "LON1" ;;
-    hetzner) echo "fsn1" ;;
+    hetzner) echo "eu-central" ;;
     *) echo "" ;;
   esac
 }
 
 # Keyed by (provider, region) for the same reason catalog_node_types is: a flat
-# default would name a type that cannot be created there. hetzner wants cx43,
-# which hel1 does not sell.
+# default would name a type that cannot be created there.
 catalog_default_worker_node_type() {
   case "$1:$2" in
     aws:*) echo "t4g.medium" ;;
     civo:*) echo "g4s.kube.medium" ;;
-    hetzner:hel1) echo "cx33" ;;
     hetzner:*) echo "cx43" ;;
     *) echo "" ;;
   esac
@@ -229,4 +229,49 @@ catalog_canonical_node_type() {
     fi
   done
   return 1
+}
+
+# Hetzner's REGION is a network zone. Its locations are listed in placement
+# order: servers and autoscaler groups try them first to last.
+catalog_zone_locations() {
+  case "$1" in
+    eu-central) echo "fsn1 nbg1 hel1" ;;
+    *) echo "" ;;
+  esac
+}
+
+catalog_zone_of() {
+  local want zone location
+  want="$(catalog_lower "$1")"
+  for zone in $(catalog_regions hetzner); do
+    for location in $(catalog_zone_locations "$zone"); do
+      if [ "$location" = "$want" ]; then
+        printf '%s' "$zone"
+        return 0
+      fi
+    done
+  done
+  return 1
+}
+
+# A zone sells a type when any of its locations does.
+catalog_zone_node_types() {
+  local location type seen=""
+  for location in $(catalog_zone_locations "$1"); do
+    for type in $(catalog_node_types hetzner "$location"); do
+      case " $seen " in *" $type "*) continue ;; esac
+      seen="$seen $type"
+    done
+  done
+  echo "${seen# }"
+}
+
+catalog_locations_selling() {
+  local location list=""
+  for location in $(catalog_zone_locations "$1"); do
+    case " $(catalog_node_types hetzner "$location") " in
+      *" $2 "*) list="$list $location" ;;
+    esac
+  done
+  echo "${list# }"
 }

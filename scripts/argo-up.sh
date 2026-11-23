@@ -424,22 +424,15 @@ wait_for_dns() {
   return 0
 }
 
-# One autoscaler group per location that sells the worker type, REGION first:
-# the expander tries them in this order, so a stock-out in one is not fatal.
+# One autoscaler group per location of the zone that sells the worker type, in
+# placement order: the expander tries them first to last.
 hetzner_autoscaler_locations() {
-  local location others=()
-  for location in $(catalog_regions hetzner); do
-    [ "$location" = "$REGION" ] && continue
-    case " $(catalog_node_types hetzner "$location") " in
-      *" $WORKER_NODE_TYPE "*) others+=("$location") ;;
-    esac
-  done
-  echo "$REGION${others[*]:+ ${others[*]}}"
+  catalog_locations_selling "$REGION" "$WORKER_NODE_TYPE"
 }
 
 # The node template is Terraform's own worker render, so an autoscaled node
-# cannot drift from the fixed pool. Keys cover every location plus the old
-# "workers" group: a --nodes group with no key makes the autoscaler exit.
+# cannot drift from the fixed pool. Keys cover every location of the zone: a
+# --nodes group with no key makes the autoscaler exit.
 ensure_autoscaler_config() {
   local cloud_init config
   cloud_init="$(printf '%s' "$WORKER_USER_DATA" | base64 | tr -d '\n')"
@@ -448,11 +441,11 @@ ensure_autoscaler_config() {
     --arg subnet "$HCLOUD_SUBNET_IP_RANGE" \
     --arg cloudInit "$cloud_init" \
     --arg project "$PROJECT_NAME" \
-    --arg locations "$(catalog_regions hetzner)" \
+    --arg locations "$(catalog_zone_locations "$REGION")" \
     '{
       imagesForArch: {amd64: $image, arm64: $image},
       defaultSubnetIPRange: $subnet,
-      nodeConfigs: (($locations | split(" ") | map("workers-" + .)) + ["workers"] | map({
+      nodeConfigs: ($locations | split(" ") | map("workers-" + .) | map({
         key: .,
         value: {
           cloudInit: $cloudInit,

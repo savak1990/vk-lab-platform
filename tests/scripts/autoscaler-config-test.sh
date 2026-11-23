@@ -60,10 +60,9 @@ check_locations() {
   fi
 }
 
-check_locations "REGION first, then every location selling the type" fsn1 cx33 "fsn1 nbg1 hel1"
-check_locations "a location that does not sell the type is left out" fsn1 cx43 "fsn1 nbg1"
-check_locations "the REGION location leads whichever it is" hel1 cx33 "hel1 nbg1 fsn1"
-check_locations "only the REGION location sells it" nbg1 cx53 "nbg1"
+check_locations "every location of the zone that sells the type, in order" eu-central cx33 "fsn1 nbg1 hel1"
+check_locations "a location that does not sell the type is left out" eu-central cx43 "fsn1 nbg1"
+check_locations "a type one location sells gets one group" eu-central cx53 "nbg1"
 
 # Shaped like the real render: multi-line, with a tab inside a command, which
 # is what would break a tab-delimited batch read.
@@ -80,13 +79,13 @@ runcmd:
 export HCLOUD_NODE_IMAGE=ubuntu-24.04
 export HCLOUD_SUBNET_IP_RANGE=10.0.1.0/24
 export PROJECT_NAME=vk-hetzner-lab
-export WORKER_NODE_TYPE=cx43
+export REGION=eu-central
 
 ensure_autoscaler_config
 JSON="$(base64 -d < "$CAP")"
 
-check "a node config for every catalog location and the old single group, whatever the type" \
-  '.nodeConfigs | keys == ["workers","workers-fsn1","workers-hel1","workers-nbg1"]'
+check "a node config for every location of the zone, a superset of the groups" \
+  '.nodeConfigs | keys == ["workers-fsn1","workers-hel1","workers-nbg1"]'
 check "all five serverLabels are present in every group" \
   '[.nodeConfigs[].serverLabels | keys] | unique == [["lifecycle","managed_by","project","role","scope"]]'
 check "project=<project>      - firewall selector and teardown sweep" \
@@ -114,4 +113,4 @@ if [ "$fails" -gt 0 ]; then
   echo "autoscaler-config-test: $fails case(s) failed" >&2
   exit 1
 fi
-echo "autoscaler-config-test: all 13 cases passed"
+echo "autoscaler-config-test: all 12 cases passed"

@@ -52,11 +52,10 @@ export WORKER_NODE_TYPE ?= g4s.kube.medium
 export MIN_WORKER_NODES ?= 3
 export MAX_WORKER_NODES ?= 4
 else ifeq ($(PROVIDER),hetzner)
-export REGION ?= fsn1
-# No WORKER_NODE_TYPE literal: hetzner's default depends on the region, since
-# hel1 does not sell cx43, and every hetzner recipe reaches terragrunt through
-# provider.sh, which resolves it. A literal here would override that and make
-# REGION=hel1 fail the gate on a type the operator never chose.
+# The network zone, not a location: the platform picks the location per server.
+export REGION ?= eu-central
+# No WORKER_NODE_TYPE literal: every hetzner recipe reaches terragrunt through
+# provider.sh, which takes the zone's default from the catalogue.
 export MIN_WORKER_NODES ?= 1
 export MAX_WORKER_NODES ?= 2
 export CONTROL_PLANE_NODE_TYPE ?= cx23
