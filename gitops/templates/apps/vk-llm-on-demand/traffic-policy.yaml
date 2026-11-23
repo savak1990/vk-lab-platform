@@ -1,7 +1,7 @@
 {{- if ne .Values.target "local" }}
-# Explicit mode only: no request ever waits for a cold start, so the route
-# timeout is generationTimeout (600 s) + 60 s. Envoy Gateway v1.2.1 exposes
-# no stream idle timeout on this policy; the default applies.
+# On-demand mode can hold a chat request while the GPU starts, so the route
+# timeout is the 600 s wait plus generationTimeout (600 s). Envoy Gateway
+# v1.2.1 exposes no stream idle timeout on this policy; the default applies.
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: BackendTrafficPolicy
 metadata:
@@ -19,5 +19,5 @@ spec:
       name: gpu-on-demand
   timeout:
     http:
-      requestTimeout: 660s
+      requestTimeout: 1200s
 {{- end }}
