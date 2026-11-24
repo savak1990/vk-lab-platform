@@ -70,14 +70,15 @@ copying it.
    names, namespaces and rules are unchanged. *(Verified 2026-11-24:
    `git diff origin/main...HEAD -- tests/golden/gitops-aws` shows 18
    changed Ahorro golden files from the template generalization
-   (da3350e/830404b); for each one, every `+`/`-` line starts with `#` —
-   checked with `git diff ... -- <file> | grep '^[+-][^+-]' | grep -v
-   '^[+-]#'`, empty every time. Names, namespaces and rules did not move.
-   The later replicasets fix (requirement 5, finding 10) re-ran
-   `./scripts/gitops-render-check.sh update` and changed exactly three
-   more files — `Role__llm-dev__llm-deploy.yaml` in the `platform`,
-   `platform-backup` and `platform-backup-recovery` golden sets — and
-   touched no Ahorro file.)*
+   (da3350e/830404b). One glob diff over all 18 at once —
+   `git diff origin/main...HEAD -- 'tests/golden/gitops-aws/*/*ahorro*' |
+   grep '^[+-][^+-]' | grep -v '^[+-]#'` — is empty, so every changed
+   `+`/`-` line across all of them starts with `#`. Names, namespaces and
+   rules did not move. The later replicasets fix (requirement 5, finding
+   10) re-ran `./scripts/gitops-render-check.sh update` and changed
+   exactly three more files — `Role__llm-dev__llm-deploy.yaml` in the
+   `platform`, `platform-backup` and `platform-backup-recovery` golden
+   sets — and touched no Ahorro file.)*
 3. `kubectl auth can-i --as=system:serviceaccount:llm-dev:llm-deploy create
    deployments -n llm-dev` answers `yes`.
 4. `kubectl auth can-i --as=system:serviceaccount:llm-dev:llm-deploy get
