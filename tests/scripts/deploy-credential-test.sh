@@ -39,4 +39,16 @@ grep -q -- "delete-parameter --region eu-west-1 --name /p/cluster/llm-deploy/end
 : > "$LOG"
 PROVIDER=local deploy_credential_publish_all
 [ ! -s "$LOG" ] || { echo "FAIL: local must publish nothing"; exit 1; }
+
+noyq="$tmp/noyq"; mkdir -p "$noyq"
+cat > "$noyq/yq" <<'EOF'
+#!/usr/bin/env bash
+exit 1
+EOF
+chmod +x "$noyq/yq"
+: > "$LOG"
+out="$(PATH="$noyq:$PATH" deploy_credential_publish_all 2>&1)" && { echo "FAIL: publish_all should fail when yq fails"; exit 1; }
+echo "$out" | grep -q "cannot read deployCredentials" || { echo "FAIL: publish_all did not report the yq failure: $out"; exit 1; }
+[ ! -s "$LOG" ] || { echo "FAIL: a failed app list must publish nothing"; exit 1; }
+
 echo "deploy-credential-test: ok"

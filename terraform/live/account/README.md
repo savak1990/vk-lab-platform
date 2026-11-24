@@ -45,11 +45,13 @@ CI test job never runs with cluster-admin access; see
 only, so that value reaches the app without ever being committed. The app's
 own workload identity is a separate role, with its own trust),
 `vk-llm-ci-role` (the role the `vk-llm-on-demand` repository's `gpu-control`
-GitHub Actions workflow assumes; trusted only to the `gpu-control`
-Environment's OIDC `sub` claim, not a wildcard branch — see
+workflow and `deploy.yml`'s dev deploy job both assume; trusted only to the
+`gpu-control` Environment's OIDC `sub` claim, not a wildcard branch — see
 `terraform/modules/vk-llm-ci-role/main.tf`; it reads
-`/*/persistent/llm/management_tokens` and `/*/bootstrap/route53/fqdn` only,
-the token and the host it calls). Does not qualify: this project's
+`/*/persistent/llm/management_tokens` and `/*/bootstrap/route53/fqdn` for
+`gpu-control`, and `/*/persistent/llm/api_token` and `/*/cluster/llm-deploy/*`
+for the dev deploy's cluster credential and read-only smoke check). Does
+not qualify: this project's
 own state bucket, the lab DNS zone + ACM cert (both per-project, in
 `bootstrap/`).
 

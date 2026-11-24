@@ -573,7 +573,7 @@ if [ "$EXISTING_STATUS" = "Synced/Healthy" ] && [ "$PROVIDER" != local ]; then
   # Also on the fast path, which exits here rather than reaching the end of
   # the script. A run that synced but died before publishing would otherwise
   # leave the parameters missing for ever behind a healthy-looking cluster.
-  deploy_credential_publish_all
+  deploy_credential_publish_all || true
   exit 0
 fi
 
@@ -986,4 +986,4 @@ fi
 # After argo_watch_root, because the ServiceAccount it mints a token for
 # arrives with the platform sync. Never fatal: the platform is up either way,
 # and the next argo-up republishes.
-deploy_credential_publish_all
+deploy_credential_publish_all || true

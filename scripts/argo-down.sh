@@ -390,6 +390,6 @@ done
 
 # The ServiceAccount this credential names went with the cascade, so the
 # parameters now describe a cluster that is not there.
-deploy_credential_forget_all
+deploy_credential_forget_all || true
 
 echo "ARGO-DOWN: Argo CD removed."

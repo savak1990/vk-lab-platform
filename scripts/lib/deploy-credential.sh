@@ -95,18 +95,31 @@ deploy_credential_forget() {
 # that script, so a run that synced but died before publishing would
 # otherwise leave the parameters missing for ever behind a healthy cluster.
 deploy_credential_publish_all() {
-  local app ns
+  local app ns apps
+  # Read into a variable first: a failing deploy_credential_apps inside
+  # `done < <(...)` would otherwise just feed the loop zero lines, and
+  # publish_all would report success having published nothing.
+  apps="$(deploy_credential_apps)" || {
+    echo "DEPLOY-CREDENTIAL: cannot read deployCredentials from gitops/values.yaml (is yq installed?)" >&2
+    return 1
+  }
+  [ -n "$apps" ] || return 0
   while read -r app ns; do
     deploy_credential_publish "$app" "$ns" || true
-  done < <(deploy_credential_apps)
+  done <<< "$apps"
 }
 
 # Called from cluster teardown: a parameter that outlives its cluster is
 # worse than a missing one, since the pipeline builds a kubeconfig that
 # looks valid and times out instead of failing fast.
 deploy_credential_forget_all() {
-  local app _ns
+  local app _ns apps
+  apps="$(deploy_credential_apps)" || {
+    echo "DEPLOY-CREDENTIAL: cannot read deployCredentials from gitops/values.yaml (is yq installed?)" >&2
+    return 1
+  }
+  [ -n "$apps" ] || return 0
   while read -r app _ns; do
     deploy_credential_forget "$app"
-  done < <(deploy_credential_apps)
+  done <<< "$apps"
 }

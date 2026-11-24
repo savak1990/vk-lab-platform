@@ -1,7 +1,7 @@
 ---
 id: "SHARED-220"
 title: "The deploy credential generalizes; vk-llm-on-demand's pipeline deploys to llm-dev"
-status: "READY"
+status: "IN_PROGRESS"
 priority: "P2"
 milestone: "M2"
 type: "implementation"
@@ -14,7 +14,7 @@ depends_on: ["SHARED-049"]
 blocked_by: []
 supersedes: []
 created: "2026-11-23"
-updated: "2026-11-23"
+updated: "2026-11-24"
 ---
 
 # SHARED-220 — The llm-dev deploy credential
@@ -64,11 +64,34 @@ copying it.
 ## 3. Acceptance
 
 1. `make gitops-check specs-check scripts-check terraform-check` all pass.
+   *(Verified 2026-11-24: all four green, including the new
+   `deploy-credential-test.sh` case for a failing `yq`.)*
 2. The golden diff for Ahorro's deploy objects shows comment lines only:
-   names, namespaces and rules are unchanged.
+   names, namespaces and rules are unchanged. *(Verified 2026-11-24:
+   `git diff origin/main...HEAD -- tests/golden/gitops-aws` shows 18
+   changed Ahorro golden files from the template generalization
+   (da3350e/830404b); for each one, every `+`/`-` line starts with `#` —
+   checked with `git diff ... -- <file> | grep '^[+-][^+-]' | grep -v
+   '^[+-]#'`, empty every time. Names, namespaces and rules did not move.
+   The later replicasets fix (requirement 5, finding 10) re-ran
+   `./scripts/gitops-render-check.sh update` and changed exactly three
+   more files — `Role__llm-dev__llm-deploy.yaml` in the `platform`,
+   `platform-backup` and `platform-backup-recovery` golden sets — and
+   touched no Ahorro file.)*
 3. `kubectl auth can-i --as=system:serviceaccount:llm-dev:llm-deploy create
    deployments -n llm-dev` answers `yes`.
 4. `kubectl auth can-i --as=system:serviceaccount:llm-dev:llm-deploy get
    configmaps -n llm` answers `no`.
 5. `kubectl auth can-i --as=system:serviceaccount:llm-dev:llm-deploy
    escalate roles -n llm-dev` answers `no`.
+
+Acceptance 3–5 need a live cluster and are deferred to a post-merge PR, run
+after `make account-up` and `make argo-up`.
+
+## 4. Status history
+
+- 2026-11-23 — created, READY.
+- 2026-11-24 — IN_PROGRESS: both pull requests' implementation is in;
+  acceptance 1 and 2 verified above. Acceptance 3–5 wait on a live
+  cluster after merge, so status does not move to DONE in this pull
+  request.

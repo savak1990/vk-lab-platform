@@ -43,7 +43,6 @@ rules:
       - apps
     resources:
       - deployments
-      - replicasets
     verbs:
       - get
       - list
@@ -52,6 +51,14 @@ rules:
       - update
       - patch
       - delete
+  - apiGroups:
+      - apps
+    resources:
+      - replicasets
+    verbs:
+      - get
+      - list
+      - watch
   - apiGroups:
       - rbac.authorization.k8s.io
     resources:
