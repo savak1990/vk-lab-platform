@@ -1,0 +1,31 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  annotations:
+    # With the other app pointers, after every platform component.
+    argocd.argoproj.io/sync-wave: "5"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  name: vk-llm-chat
+  namespace: argocd
+spec:
+  destination:
+    namespace: chat
+    server: https://kubernetes.default.svc
+  project: vk-llm-chat
+  # A reference, not application code: the chart below vendors Open WebUI and
+  # renders directly into namespace chat, so no child Application exists.
+  source:
+    helm:
+      # fqdn is omitted rather than passed empty: `value: ""` is dropped by
+      # the API server and leaves the Application OutOfSync for ever.
+      parameters:
+    path: chat
+    repoURL: https://github.com/savak1990/vk-llm-on-demand
+    targetRevision: main
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true

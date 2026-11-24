@@ -1,0 +1,44 @@
+{{- if ne .Values.target "local" }}
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: openwebui-db
+  namespace: cnpg-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  secretStoreRef:
+    name: aws-parameter-store
+    kind: ClusterSecretStore
+  refreshInterval: 24h
+  target:
+    name: openwebui-db
+    template:
+      type: kubernetes.io/basic-auth
+      metadata:
+        labels:
+          cnpg.io/reload: "true"
+      data:
+        username: openwebui
+        password: "{{ "{{ .password }}" }}"
+  data:
+    - secretKey: password
+      remoteRef:
+        key: /{{ .Values.project }}/persistent/chat/db_password
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: openwebui
+  namespace: cnpg-system
+  annotations:
+    # After the Cluster (wave 3) has reconciled the openwebui role.
+    argocd.argoproj.io/sync-wave: "4"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  name: openwebui
+  owner: openwebui
+  cluster:
+    name: lab-postgres
+{{- end }}

@@ -12,6 +12,15 @@ spec:
   instances: 1
   imageName: {{ .Values.postgres.imageName | quote }}
   priorityClassName: postgres-critical
+  {{- if ne .Values.target "local" }}
+  managed:
+    roles:
+      - name: openwebui
+        ensure: present
+        login: true
+        passwordSecret:
+          name: openwebui-db
+  {{- end }}
   {{- if ne .Values.target "aws" }}
   # CNPG creates a PodDisruptionBudget even for a single instance, and that
   # budget blocks a node from ever draining.

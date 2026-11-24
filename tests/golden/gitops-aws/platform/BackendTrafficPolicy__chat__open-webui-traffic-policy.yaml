@@ -1,0 +1,19 @@
+# One after the pointer; the HTTPRoutes come from the chat chart. A policy
+# whose target route does not exist yet applies and takes effect once the route
+# appears. A chat request can wait up to 600 s for the GPU to start plus up to 600 s of generation.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-wave: "6"
+  name: open-webui-traffic-policy
+  namespace: chat
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: open-webui
+  timeout:
+    http:
+      requestTimeout: 1200s

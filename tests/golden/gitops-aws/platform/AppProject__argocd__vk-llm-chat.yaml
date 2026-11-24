@@ -1,0 +1,20 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  annotations:
+    # Before the pointer at wave 5: an Application naming a project that does
+    # not exist yet is rejected outright, not retried.
+    argocd.argoproj.io/sync-wave: "4"
+  name: vk-llm-chat
+  namespace: argocd
+spec:
+  description: The household chat front end. vk-llm-on-demand's chat/ chart owns everything below the pointer.
+  destinations:
+    - namespace: chat
+      server: https://kubernetes.default.svc
+  # No cluster-scoped kinds: namespace chat is created by the platform.
+  namespaceResourceWhitelist:
+    - group: '*'
+      kind: '*'
+  sourceRepos:
+    - https://github.com/savak1990/vk-llm-on-demand

@@ -1,0 +1,8 @@
+# Explicit, not CreateNamespace: an ExternalSecret apply into a missing
+# namespace fails, and SkipDryRun covers only the dry run.
+apiVersion: v1
+kind: Namespace
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  name: chat

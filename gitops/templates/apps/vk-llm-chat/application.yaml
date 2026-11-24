@@ -1,0 +1,37 @@
+{{- if ne .Values.target "local" }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: vk-llm-chat
+  namespace: argocd
+  annotations:
+    # With the other app pointers, after every platform component.
+    argocd.argoproj.io/sync-wave: "5"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: vk-llm-chat
+  # A reference, not application code: the chart below vendors Open WebUI and
+  # renders directly into namespace chat, so no child Application exists.
+  source:
+    repoURL: https://github.com/savak1990/vk-llm-on-demand
+    path: chat
+    targetRevision: {{ .Values.vkllm.targetRevision | quote }}
+    helm:
+      # fqdn is omitted rather than passed empty: `value: ""` is dropped by
+      # the API server and leaves the Application OutOfSync for ever.
+      parameters:
+{{- if .Values.envoyGateway.fqdn }}
+        - name: fqdn
+          value: {{ .Values.envoyGateway.fqdn | quote }}
+{{- end }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: chat
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+{{- end }}
