@@ -24,7 +24,7 @@ updated: "2026-11-24"
 vk-llm-on-demand's pipeline can `helm upgrade` into namespace `llm-dev` and
 cannot touch namespace `llm`. It reads
 `/<project>/cluster/llm-deploy/{endpoint,ca,token,fqdn}` through
-`vk-llm-ci-role`. The application's side is its own ADR 0020 and spec
+`vk-llm-ci-role`. The application's side is its own ADR 0021 and spec
 CORE-280, in `vk-llm-on-demand`.
 
 This repeats [SHARED-049](../049-A-ahorro-deploy-credential/spec.md)'s shape
