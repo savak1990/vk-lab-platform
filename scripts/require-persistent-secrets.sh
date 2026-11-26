@@ -24,7 +24,8 @@ for name in root-domain postgres-app-password grafana-admin-password ahorro-test
             vast-ai-api-key llm-on-demand-api-token llm-on-demand-management-tokens \
             llm-on-demand-worker-seed llm-on-demand-ssh-private-key \
             chat-inference-key chat-db-password chat-webui-secret-key \
-            chat-admin-email chat-admin-password; do
+            chat-admin-email chat-admin-password \
+            chat-google-client-id chat-google-client-secret; do
   test -f "$(secret_path "$name" "$(scope_of "$name")")" || missing+=("$name")
 done
 
