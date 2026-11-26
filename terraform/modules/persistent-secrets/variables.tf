@@ -67,3 +67,13 @@ variable "chat_admin_password_secret_path" {
   description = "Absolute path to the KMS-encrypted ciphertext file holding the Open WebUI first-start admin password, global scope."
   type        = string
 }
+
+variable "chat_google_client_id_secret_path" {
+  description = "Absolute path to the KMS-encrypted ciphertext file holding the Google OAuth client ID for Open WebUI, global scope."
+  type        = string
+}
+
+variable "chat_google_client_secret_secret_path" {
+  description = "Absolute path to the KMS-encrypted ciphertext file holding the Google OAuth client secret for Open WebUI, global scope."
+  type        = string
+}

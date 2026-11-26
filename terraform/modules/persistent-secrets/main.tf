@@ -47,6 +47,14 @@ data "aws_kms_secrets" "this" {
     name    = "chat_admin_password"
     payload = filebase64(var.chat_admin_password_secret_path)
   }
+  secret {
+    name    = "chat_google_client_id"
+    payload = filebase64(var.chat_google_client_id_secret_path)
+  }
+  secret {
+    name    = "chat_google_client_secret"
+    payload = filebase64(var.chat_google_client_secret_secret_path)
+  }
 }
 
 resource "aws_ssm_parameter" "postgres_app_password" {
@@ -143,6 +151,22 @@ resource "aws_ssm_parameter" "chat_admin_password" {
   type        = "SecureString"
   key_id      = "alias/lab-secrets"
   description = "Open WebUI first-start admin password; later changes happen in the admin panel."
+}
+
+resource "aws_ssm_parameter" "chat_google_client_id" {
+  name        = "/${var.project}/persistent/chat/google_client_id"
+  value       = data.aws_kms_secrets.this.plaintext["chat_google_client_id"]
+  type        = "SecureString"
+  key_id      = "alias/lab-secrets"
+  description = "Google OAuth client ID for Open WebUI's \"Continue with Google\"."
+}
+
+resource "aws_ssm_parameter" "chat_google_client_secret" {
+  name        = "/${var.project}/persistent/chat/google_client_secret"
+  value       = data.aws_kms_secrets.this.plaintext["chat_google_client_secret"]
+  type        = "SecureString"
+  key_id      = "alias/lab-secrets"
+  description = "Google OAuth client secret for Open WebUI's \"Continue with Google\"."
 }
 
 # A one-way bcrypt hash, never encrypted before or after this - it isn't a

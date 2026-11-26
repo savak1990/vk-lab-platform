@@ -25,4 +25,6 @@ inputs = {
   chat_webui_secret_key_secret_path  = "${get_repo_root()}/secrets/chat-webui-secret-key.enc"
   chat_admin_email_secret_path       = "${get_repo_root()}/secrets/chat-admin-email.enc"
   chat_admin_password_secret_path    = "${get_repo_root()}/secrets/chat-admin-password.enc"
+  chat_google_client_id_secret_path     = "${get_repo_root()}/secrets/chat-google-client-id.enc"
+  chat_google_client_secret_secret_path = "${get_repo_root()}/secrets/chat-google-client-secret.enc"
 }
