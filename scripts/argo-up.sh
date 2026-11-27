@@ -58,6 +58,13 @@ RECOVER_FROM="${RECOVER_FROM:-}"
 RECOVER_BUCKET=""
 SPOT_KARPENTER_INSTANCE_TYPES_JSON="$(jq -Rc 'split(",")' <<< "$SPOT_KARPENTER_INSTANCE_TYPES")"
 ON_DEMAND_KARPENTER_INSTANCE_TYPES_JSON="$(jq -Rc 'split(",")' <<< "$ON_DEMAND_KARPENTER_INSTANCE_TYPES")"
+command -v yq >/dev/null || { echo "ARGO-UP: yq is required to read vkllm.instances from gitops/values.yaml" >&2; exit 1; }
+# A function, not inline, so a test can eval this definition alone
+# (see autoscaler-config-test.sh) without sourcing the rest of the script.
+vkllm_namespaces() {
+  yq -r '[.vkllm.instances[].namespace] | join("\\,")' "$1"
+}
+VKLLM_NAMESPACES="$(vkllm_namespaces "$REPO_ROOT/gitops/values.yaml")"
 
 eks_output() {
   terragrunt --working-dir "$REPO_ROOT/terraform/live/cluster/eks" output -raw "$1"
@@ -540,6 +547,45 @@ if [ "$PROVIDER" = hetzner ]; then
   ensure_autoscaler_config
 fi
 
+install_argocd() {
+  local antiaffinity_args=()
+  if [ "$PROVIDER" = aws ]; then
+    antiaffinity_args=(
+      --set global.affinity.nodeAffinity.type=hard
+      --set-json 'global.affinity.nodeAffinity.matchExpressions=[{"key":"karpenter.sh/capacity-type","operator":"NotIn","values":["spot"]}]'
+    )
+  fi
+  # dex.enabled=false below: dex is unused (local bcrypt admin password, no
+  # SSO) and its bundled image segfaults on some clusters. Kept outside the
+  # backslash-continued command below - a `#` comment mid-continuation ends it early.
+  # controller.resources was raised from 512Mi/768Mi: the controller was
+  # OOMKilled twice at the old limit on a live cluster.
+  helm upgrade --install argocd argo-cd \
+    --repo https://argoproj.github.io/argo-helm \
+    --version "$ARGOCD_CHART_VERSION" \
+    --namespace argocd --create-namespace \
+    -f "$REPO_ROOT/gitops/argocd/values.yaml" \
+    --set server.service.type=ClusterIP \
+    --set configs.params."server\.insecure"=true \
+    --set configs.params."application\.namespaces"="ahorro\,$VKLLM_NAMESPACES" \
+    --set dex.enabled=false \
+    --set configs.secret.argocdServerAdminPassword="$ADMIN_PASSWORD_BCRYPT_HASH" \
+    --set configs.secret.argocdServerAdminPasswordMtime="2026-08-20T00:00:00Z" \
+    --set controller.metrics.enabled=true \
+    --set server.metrics.enabled=true \
+    --set repoServer.metrics.enabled=true \
+    --set applicationSet.metrics.enabled=true \
+    --set notifications.metrics.enabled=true \
+    --set-json 'controller.resources={"requests":{"cpu":"20m","memory":"768Mi"},"limits":{"memory":"1152Mi"}}' \
+    --set-json 'repoServer.resources={"requests":{"cpu":"10m","memory":"192Mi"},"limits":{"memory":"320Mi"}}' \
+    --set-json 'server.resources={"requests":{"cpu":"10m","memory":"64Mi"},"limits":{"memory":"128Mi"}}' \
+    --set-json 'applicationSet.resources={"requests":{"cpu":"5m","memory":"48Mi"},"limits":{"memory":"96Mi"}}' \
+    --set-json 'notifications.resources={"requests":{"cpu":"5m","memory":"48Mi"},"limits":{"memory":"96Mi"}}' \
+    --set-json 'redis.resources={"requests":{"cpu":"5m","memory":"32Mi"},"limits":{"memory":"64Mi"}}' \
+    ${antiaffinity_args[@]:+"${antiaffinity_args[@]}"} \
+    --wait
+}
+
 # Idempotency guard: if the root Application is already Synced/Healthy,
 # there's nothing to do beyond confirming DNS - see wait_for_dns above for
 # why a stuck DNS record still needs to be caught even on this fast path.
@@ -555,6 +601,10 @@ fi
 EXISTING_STATUS="$(kubectl get application root -n argocd \
   -o jsonpath='{.status.sync.status}/{.status.health.status}' 2>/dev/null || true)"
 if [ "$EXISTING_STATUS" = "Synced/Healthy" ] && [ "$PROVIDER" != local ]; then
+  # Also on the fast path: a healthy cluster normally takes this exit, so a
+  # namespace added to vkllm.instances would otherwise need a teardown and
+  # recreate to ever reach a running Argo's application.namespaces.
+  install_argocd
   echo "ARGO-UP: root Application already Synced/Healthy - checking DNS."
   case "$PROVIDER" in
     civo|hetzner)
@@ -576,45 +626,6 @@ if [ "$EXISTING_STATUS" = "Synced/Healthy" ] && [ "$PROVIDER" != local ]; then
   ahorro_publish_deploy_credential || true
   exit 0
 fi
-
-install_argocd() {
-  local antiaffinity_args=()
-  if [ "$PROVIDER" = aws ]; then
-    antiaffinity_args=(
-      --set global.affinity.nodeAffinity.type=hard
-      --set-json 'global.affinity.nodeAffinity.matchExpressions=[{"key":"karpenter.sh/capacity-type","operator":"NotIn","values":["spot"]}]'
-    )
-  fi
-  # dex.enabled=false below: dex is unused (local bcrypt admin password, no
-  # SSO) and its bundled image segfaults on some clusters. Kept outside the
-  # backslash-continued command below - a `#` comment mid-continuation ends it early.
-  # controller.resources was raised from 512Mi/768Mi: the controller was
-  # OOMKilled twice at the old limit on a live cluster.
-  helm upgrade --install argocd argo-cd \
-    --repo https://argoproj.github.io/argo-helm \
-    --version "$ARGOCD_CHART_VERSION" \
-    --namespace argocd --create-namespace \
-    -f "$REPO_ROOT/gitops/argocd/values.yaml" \
-    --set server.service.type=ClusterIP \
-    --set configs.params."server\.insecure"=true \
-    --set configs.params."application\.namespaces"="ahorro\,llm" \
-    --set dex.enabled=false \
-    --set configs.secret.argocdServerAdminPassword="$ADMIN_PASSWORD_BCRYPT_HASH" \
-    --set configs.secret.argocdServerAdminPasswordMtime="2026-08-20T00:00:00Z" \
-    --set controller.metrics.enabled=true \
-    --set server.metrics.enabled=true \
-    --set repoServer.metrics.enabled=true \
-    --set applicationSet.metrics.enabled=true \
-    --set notifications.metrics.enabled=true \
-    --set-json 'controller.resources={"requests":{"cpu":"20m","memory":"768Mi"},"limits":{"memory":"1152Mi"}}' \
-    --set-json 'repoServer.resources={"requests":{"cpu":"10m","memory":"192Mi"},"limits":{"memory":"320Mi"}}' \
-    --set-json 'server.resources={"requests":{"cpu":"10m","memory":"64Mi"},"limits":{"memory":"128Mi"}}' \
-    --set-json 'applicationSet.resources={"requests":{"cpu":"5m","memory":"48Mi"},"limits":{"memory":"96Mi"}}' \
-    --set-json 'notifications.resources={"requests":{"cpu":"5m","memory":"48Mi"},"limits":{"memory":"96Mi"}}' \
-    --set-json 'redis.resources={"requests":{"cpu":"5m","memory":"32Mi"},"limits":{"memory":"64Mi"}}' \
-    ${antiaffinity_args[@]:+"${antiaffinity_args[@]}"} \
-    --wait
-}
 
 # The kubelet taints every new node node.cloudprovider.kubernetes.io/uninitialized
 # and k3s's CoreDNS does not tolerate it, so cluster DNS stays Pending until a

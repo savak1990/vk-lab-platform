@@ -220,3 +220,12 @@ ahorro:
 # time. The application repository pins chart and image versions itself.
 vkllm:
   targetRevision: main
+  # One entry per installation of the vk-llm-on-demand chart. Each gets its
+  # own namespace, AppProject (that namespace only), secrets and route policy.
+  instances:
+    - namespace: llm
+      project: vk-llm-on-demand
+      valueFiles: [values.yaml]
+    - namespace: llm-dev
+      project: vk-llm-on-demand-dev
+      valueFiles: [values.yaml, values-dev.yaml]

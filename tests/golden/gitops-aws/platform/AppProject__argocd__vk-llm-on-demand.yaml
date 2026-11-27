@@ -9,8 +9,8 @@ metadata:
   namespace: argocd
 spec:
   clusterResourceWhitelist:
-    # CreateNamespace=true on the child needs this and nothing else; llm
-    # already exists (shared/llm/secrets.yaml), so it is a no-op here.
+    # CreateNamespace=true on the child needs this and nothing else; the
+    # namespace already exists (shared/llm/secrets.yaml), so it is a no-op here.
     - group: ""
       kind: Namespace
   description: The vk-llm-on-demand application. Its own repository owns everything below the pointer.
@@ -20,8 +20,8 @@ spec:
   namespaceResourceWhitelist:
     - group: '*'
       kind: '*'
-  # The child Application lives in llm too, never in argocd: an Application
-  # in the control-plane namespace could name any project.
+  # The child Application lives in this entry's own namespace too, never in
+  # argocd: an Application in the control-plane namespace could name any project.
   sourceNamespaces:
     - llm
   sourceRepos:

@@ -1,4 +1,5 @@
 {{- if ne .Values.target "local" }}
+{{- range $i := .Values.vkllm.instances }}
 # On-demand mode can hold a chat request while the GPU starts, so the route
 # timeout is the 600 s wait plus generationTimeout (600 s). Envoy Gateway
 # v1.2.1 exposes no stream idle timeout on this policy; the default applies.
@@ -6,7 +7,7 @@ apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: BackendTrafficPolicy
 metadata:
   name: gpu-on-demand-traffic-policy
-  namespace: llm
+  namespace: {{ $i.namespace }}
   annotations:
     # One after the pointer; the HTTPRoute is created by the child
     # Application, so SkipDryRun plus selfHeal cover a first-apply miss.
@@ -20,4 +21,6 @@ spec:
   timeout:
     http:
       requestTimeout: 1200s
+---
+{{- end }}
 {{- end }}
