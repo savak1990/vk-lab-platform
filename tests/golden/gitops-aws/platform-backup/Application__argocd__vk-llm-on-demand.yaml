@@ -22,6 +22,8 @@ spec:
       # fqdn is omitted rather than passed empty: `value: ""` is dropped by
       # the API server and leaves the Application OutOfSync for ever.
       parameters:
+      valueFiles:
+        - values.yaml
     path: gitops
     repoURL: https://github.com/savak1990/vk-llm-on-demand
     targetRevision: main

@@ -1,8 +1,9 @@
 {{- if ne .Values.target "local" }}
+{{- range $i := .Values.vkllm.instances }}
 apiVersion: argoproj.io/v1alpha1
 kind: AppProject
 metadata:
-  name: vk-llm-on-demand
+  name: {{ $i.project }}
   namespace: argocd
   annotations:
     # Before the pointer at wave 5: an Application naming a project that does
@@ -13,19 +14,21 @@ spec:
   sourceRepos:
     - https://github.com/savak1990/vk-llm-on-demand
     - ghcr.io/savak1990/vk-llm-on-demand/charts
-  # The child Application lives in llm too, never in argocd: an Application
-  # in the control-plane namespace could name any project.
+  # The child Application lives in this entry's own namespace too, never in
+  # argocd: an Application in the control-plane namespace could name any project.
   sourceNamespaces:
-    - llm
+    - {{ $i.namespace }}
   destinations:
     - server: https://kubernetes.default.svc
-      namespace: llm
+      namespace: {{ $i.namespace }}
   clusterResourceWhitelist:
-    # CreateNamespace=true on the child needs this and nothing else; llm
-    # already exists (shared/llm/secrets.yaml), so it is a no-op here.
+    # CreateNamespace=true on the child needs this and nothing else; the
+    # namespace already exists (shared/llm/secrets.yaml), so it is a no-op here.
     - group: ""
       kind: Namespace
   namespaceResourceWhitelist:
     - group: "*"
       kind: "*"
+---
+{{- end }}
 {{- end }}
