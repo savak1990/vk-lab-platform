@@ -1,7 +1,7 @@
 ---
 id: "SHARED-220"
 title: "vk-llm-on-demand installations as a platform list"
-status: "READY"
+status: "DONE"
 priority: "P2"
 milestone: "M2"
 type: "implementation"
@@ -238,3 +238,26 @@ run, not only `application.namespaces`.
 ## 7. Status history
 
 - 2026-11-27 — created, READY.
+- 2026-11-27 — DONE. Merged as #125, followed by vk-llm-on-demand#71.
+
+## 8. Evidence (2026-11-27)
+
+1. `make gitops-check`, `make scripts-check` and `make specs-check` passed
+   on the branch and in CI on #125.
+2. The `aws` golden diff for production's objects was comment-only plus the
+   explicit `valueFiles: [values.yaml]` (reviewed in #125).
+3. `kubectl get application -n argocd` lists `vk-llm-on-demand` and
+   `vk-llm-on-demand-dev` (both Synced/Healthy); `argocd-cmd-params-cm`
+   `application.namespaces` is `ahorro,llm,llm-dev`.
+4. Fast path: the lab was already `root` Synced/Healthy with
+   `ahorro,llm`. A first `make argo-up` from a checkout older than #125
+   changed nothing (Argo release still revision 1); the re-run from #125's
+   `main` upgraded the Argo release to revision 2 (chart 10.4.0, v3.5.1)
+   and added `llm-dev`, with no teardown.
+5. `open-webui-env` `OPENAI_API_KEYS` decodes to 2 `;`-separated parts,
+   equal and non-empty (checked without printing the key); Open WebUI
+   reached both gateways with them (`inkling-2-mini`, `dev-inkling-2-mini`,
+   both 200).
+6. No Role, RoleBinding, ServiceAccount or IAM change is in #125; the
+   `llm-dev` ExternalSecrets `vast-ai-api-key`, `vk-llm-api-token` and
+   `vk-llm-ssh-key` are Ready through the existing ClusterSecretStore.
