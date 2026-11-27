@@ -164,6 +164,11 @@ Namespace__cluster__e2e ServiceAccount__e2e__e2e-test \
 AppProject__argocd__vk-ahorro Application__argocd__vk-ahorro \
 AppProject__argocd__vk-llm-on-demand Application__argocd__vk-llm-on-demand \
 BackendTrafficPolicy__llm__gpu-on-demand-traffic-policy \
+AppProject__argocd__vk-llm-on-demand-dev Application__argocd__vk-llm-on-demand-dev \
+Namespace__cluster__llm-dev \
+ExternalSecret__llm-dev__vast-ai-api-key ExternalSecret__llm-dev__vk-llm-api-token \
+ExternalSecret__llm-dev__vk-llm-ssh-key \
+BackendTrafficPolicy__llm-dev__gpu-on-demand-traffic-policy \
 ExternalSecret__cnpg-system__openwebui-db Database__cnpg-system__openwebui \
 Namespace__cluster__chat ExternalSecret__chat__open-webui-env \
 AppProject__argocd__vk-llm-chat Application__argocd__vk-llm-chat \
@@ -189,7 +194,7 @@ FORBIDDEN_KINDS_CIVO="StorageClass VolumeSnapshotClass VolumeSnapshotContent Vol
 NodePool EC2NodeClass"
 FORBIDDEN_APPLICATIONS_LOCAL="aws-load-balancer-controller cert-manager ebs-csi-driver karpenter \
 external-snapshotter external-snapshotter-crds \
-external-dns barman-cloud-plugin vk-llm-on-demand vk-llm-chat"
+external-dns barman-cloud-plugin vk-llm-on-demand vk-llm-on-demand-dev vk-llm-chat"
 FORBIDDEN_APPLICATIONS_CIVO="aws-load-balancer-controller ebs-csi-driver karpenter \
 external-snapshotter external-snapshotter-crds"
 FORBIDDEN_OBJECTS_LOCAL="BackendTrafficPolicy__observability__grafana-traffic-policy \
@@ -237,6 +242,11 @@ Namespace__cluster__e2e ServiceAccount__e2e__e2e-test \
 AppProject__argocd__vk-ahorro Application__argocd__vk-ahorro \
 AppProject__argocd__vk-llm-on-demand Application__argocd__vk-llm-on-demand \
 BackendTrafficPolicy__llm__gpu-on-demand-traffic-policy \
+AppProject__argocd__vk-llm-on-demand-dev Application__argocd__vk-llm-on-demand-dev \
+Namespace__cluster__llm-dev \
+ExternalSecret__llm-dev__vast-ai-api-key ExternalSecret__llm-dev__vk-llm-api-token \
+ExternalSecret__llm-dev__vk-llm-ssh-key \
+BackendTrafficPolicy__llm-dev__gpu-on-demand-traffic-policy \
 ExternalSecret__cnpg-system__openwebui-db Database__cnpg-system__openwebui \
 Namespace__cluster__chat ExternalSecret__chat__open-webui-env \
 AppProject__argocd__vk-llm-chat Application__argocd__vk-llm-chat \

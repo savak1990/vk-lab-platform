@@ -226,3 +226,6 @@ vkllm:
     - namespace: llm
       project: vk-llm-on-demand
       valueFiles: [values.yaml]
+    - namespace: llm-dev
+      project: vk-llm-on-demand-dev
+      valueFiles: [values.yaml, values-dev.yaml]
