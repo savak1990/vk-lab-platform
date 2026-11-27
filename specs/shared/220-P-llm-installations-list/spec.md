@@ -193,18 +193,29 @@ because each entry's objects are a separate graph the root `Application`
 creates independently — the wave only orders creation within one entry, not
 across entries.
 
-The platform PR that carries this spec creates the dev pointer with
-`valueFiles: [values.yaml, values-dev.yaml]` before `values-dev.yaml` exists
-on `vk-llm-on-demand`'s `main` (CORE-280's own rollout merges the platform PR
-first). The dev pointer's Helm render fails until that second file lands —
+CORE-280's rollout merges the platform PR first, merges the application PR
+right after, then runs `make argo-up`, cuts a patch release, and opens a
+promotion PR pinning only `chartVersion`. The platform PR that carries this
+spec creates the dev pointer with `valueFiles: [values.yaml,
+values-dev.yaml]` before `values-dev.yaml` exists on `vk-llm-on-demand`'s
+`main`. The dev pointer's Helm render fails until that second file lands —
 visible as the `vk-llm-on-demand-dev` `Application` stuck `Unknown`/
 `ComparisonError`. This is harmless to the rollout: Argo CD dropped the
 built-in `argoproj.io/Application` health check in 1.8, and
 `gitops/argocd/values.yaml` customizes health only for `Gateway`
 (`HTTPRoute` there has only an `ignoreDifferences` entry, no health check),
 so `root`'s own health does not aggregate a child `Application`'s
-comparison error. `make argo-up`'s wait, and production, are unaffected;
-the dev pointer self-heals once the application PR merges.
+comparison error. `make argo-up`'s wait, and production, are unaffected.
+The application PR's merge resolves the missing file, but the dev
+Application still resolves an old-format chart that needs `image.tag`
+until the patch release lands; the `ComparisonError` and Open WebUI's
+errors for the dev connection persist until then.
+
+Before the first `make argo-up` against a cluster, check that
+`helm -n argocd list` shows the chart version `ARGOCD_CHART_VERSION` names
+in `scripts/argo-up.sh`. Otherwise the idempotency fast path's
+unconditional `install_argocd` call also upgrades Argo CD itself on that
+run, not only `application.namespaces`.
 
 ## 6. Testing / acceptance criteria
 

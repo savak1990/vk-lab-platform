@@ -13,7 +13,7 @@ metadata:
 spec:
   project: {{ $i.project }}
   # A reference, not application code: the repository below renders one
-  # child Application that pins the gpu-on-demand chart version (its ADR 0008).
+  # child Application that pins the gpu-on-demand chart version itself.
   source:
     repoURL: https://github.com/savak1990/vk-llm-on-demand
     path: gitops

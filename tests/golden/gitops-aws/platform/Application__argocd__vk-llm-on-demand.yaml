@@ -16,7 +16,7 @@ spec:
     server: https://kubernetes.default.svc
   project: vk-llm-on-demand
   # A reference, not application code: the repository below renders one
-  # child Application that pins the gpu-on-demand chart version (its ADR 0008).
+  # child Application that pins the gpu-on-demand chart version itself.
   source:
     helm:
       # fqdn is omitted rather than passed empty: `value: ""` is dropped by
