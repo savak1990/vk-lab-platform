@@ -138,12 +138,28 @@ A dashboard namespace selector.
 10. The `local` target MUST continue to render none of `vkllm`'s objects —
     the existing `{{- if ne .Values.target "local" }}` guard, preserved
     across the loop, not duplicated per file.
-11. `scripts/gitops-render-check.sh`'s `REQUIRED_OBJECTS` and the `aws`
-    golden fixtures (`tests/golden/gitops-aws`) MUST gain the dev entry's
-    seven rendered objects (`Application`, `AppProject`, `Namespace`, three
-    `ExternalSecret`s, `BackendTrafficPolicy`), bringing the total for
-    `vkllm` from seven to fourteen, regenerated in the same commit, so the
-    golden diff for production's objects stays comment-only (requirement 4).
+11. `scripts/gitops-render-check.sh`'s checks MUST gain the dev entry's
+    objects, regenerated/edited in the same commit, so the golden diff for
+    production's objects stays comment-only (requirement 4):
+    - The `aws` golden fixtures (`tests/golden/gitops-aws`) gain the dev
+      entry's seven rendered objects (`Application`, `AppProject`,
+      `Namespace`, three `ExternalSecret`s, `BackendTrafficPolicy`),
+      bringing the golden total for `vkllm` from seven to fourteen.
+    - `REQUIRED_OBJECTS_CIVO` and `REQUIRED_OBJECTS_HETZNER`, which today
+      assert only production's three (`AppProject__argocd__
+      vk-llm-on-demand`, `Application__argocd__vk-llm-on-demand`,
+      `BackendTrafficPolicy__llm__gpu-on-demand-traffic-policy`), each gain
+      the dev entry's seven: `AppProject__argocd__vk-llm-on-demand-dev`,
+      `Application__argocd__vk-llm-on-demand-dev`,
+      `Namespace__cluster__llm-dev`,
+      `ExternalSecret__llm-dev__vast-ai-api-key`,
+      `ExternalSecret__llm-dev__vk-llm-api-token`,
+      `ExternalSecret__llm-dev__vk-llm-ssh-key`,
+      `BackendTrafficPolicy__llm-dev__gpu-on-demand-traffic-policy`.
+      Production's three stay as they are.
+    - `FORBIDDEN_APPLICATIONS_LOCAL` gains `vk-llm-on-demand-dev` beside
+      the existing `vk-llm-on-demand`, so the `local` target's structural
+      check still refuses both installations' child `Application`s.
 
 ## 5. Implementation hints
 
@@ -184,10 +200,11 @@ first). The dev pointer's Helm render fails until that second file lands —
 visible as the `vk-llm-on-demand-dev` `Application` stuck `Unknown`/
 `ComparisonError`. This is harmless to the rollout: Argo CD dropped the
 built-in `argoproj.io/Application` health check in 1.8, and
-`gitops/argocd/values.yaml` customizes health only for `Gateway` and
-`HTTPRoute`, so `root`'s own health does not aggregate a child
-`Application`'s comparison error. `make argo-up`'s wait, and production,
-are unaffected; the dev pointer self-heals once the application PR merges.
+`gitops/argocd/values.yaml` customizes health only for `Gateway`
+(`HTTPRoute` there has only an `ignoreDifferences` entry, no health check),
+so `root`'s own health does not aggregate a child `Application`'s
+comparison error. `make argo-up`'s wait, and production, are unaffected;
+the dev pointer self-heals once the application PR merges.
 
 ## 6. Testing / acceptance criteria
 
