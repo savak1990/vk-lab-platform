@@ -97,9 +97,9 @@ A dashboard namespace selector.
    existing single-installation templates hardcode `vk-llm-on-demand`, and
    placed in `.namespace` where they hardcode `llm`.
 4. Production's entry MUST render byte-for-byte the objects rendered today,
-   except comments and the now-explicit `valueFiles: [values.yaml]` Helm
-   parameter on its pointer — Argo's own default, made visible by the loop
-   needing a list to range over (ADR 0021 §1).
+   except comments and the now-explicit `source.helm.valueFiles:
+   [values.yaml]` on its pointer — Argo's own default, made visible by the
+   loop needing a list to range over (ADR 0021 §1).
 5. Each entry's `AppProject` MUST set `sourceNamespaces` and
    `destinations.namespace` to that entry's own namespace only; no entry's
    `AppProject` MUST reference another entry's namespace (ADR 0021 §5).
@@ -114,6 +114,14 @@ A dashboard namespace selector.
    `gitops/values.yaml` with `yq` as a preflight before the `helm upgrade`
    that installs Argo CD — never hand-typed — so a third installation needs
    no change here.
+7a. The same computation MUST also run on the idempotency fast path (the
+    branch that `exit 0`s when `root` is already `Synced/Healthy`), not only
+    inside `install_argocd` below it — matching the "both arms" shape
+    `SHARED-049` R7 already uses for the Ahorro deploy credential's
+    publication. On the live personal lab, `root` is normally already
+    `Synced/Healthy`, so a run that only updated the main-path computation
+    would never reach it, and `llm-dev` would never join
+    `application.namespaces` without a full teardown and recreate.
 8. `gitops/templates/platform/shared/chat/secrets.yaml`'s `open-webui-env`
    `ExternalSecret` MUST template an `OPENAI_API_KEYS` key: the chat
    inference key (the same value templated into `OPENAI_API_KEY` today),
@@ -132,10 +140,10 @@ A dashboard namespace selector.
     across the loop, not duplicated per file.
 11. `scripts/gitops-render-check.sh`'s `REQUIRED_OBJECTS` and the `aws`
     golden fixtures (`tests/golden/gitops-aws`) MUST gain the dev entry's
-    twelve rendered objects (`Application`, `AppProject`, `Namespace`, three
-    `ExternalSecret`s, `BackendTrafficPolicy` — the same six kinds twice),
-    regenerated in the same commit, so the golden diff for production's
-    objects stays comment-only (requirement 4).
+    seven rendered objects (`Application`, `AppProject`, `Namespace`, three
+    `ExternalSecret`s, `BackendTrafficPolicy`), bringing the total for
+    `vkllm` from seven to fourteen, regenerated in the same commit, so the
+    golden diff for production's objects stays comment-only (requirement 4).
 
 ## 5. Implementation hints
 
@@ -150,7 +158,13 @@ read outside the loop variable once inside `range`.
 value from `yq '.vkllm.instances[].namespace' gitops/values.yaml`, joined
 with `ahorro`, keeps the same `--set` call shape with a computed right-hand
 side. `yq` is already a dependency of this script and of
-`gitops-render-check.sh`.
+`gitops-render-check.sh`. `install_argocd` itself is called only once, after
+the idempotency guard's `exit 0` — the guard exists for speed, not
+correctness (the comment above it notes the chart's own `helm upgrade` is
+already safe to repeat), so requirement 7a's fast-path computation can call
+`install_argocd` unconditionally, or diff the computed list against
+`argocd-cmd-params-cm`'s current value and skip the call when unchanged;
+either satisfies the requirement.
 
 The withdrawn branch's `ExternalSecret` names
 (`vast-ai-api-key`/`vk-llm-api-token`/`vk-llm-ssh-key`) need no per-entry
@@ -168,8 +182,12 @@ The platform PR that carries this spec creates the dev pointer with
 on `vk-llm-on-demand`'s `main` (CORE-280's own rollout merges the platform PR
 first). The dev pointer's Helm render fails until that second file lands —
 visible as the `vk-llm-on-demand-dev` `Application` stuck `Unknown`/
-`ComparisonError`, not as a failure of production or of `make argo-up`
-itself, which polls only the root `Application`'s own propagated health.
+`ComparisonError`. This is harmless to the rollout: Argo CD dropped the
+built-in `argoproj.io/Application` health check in 1.8, and
+`gitops/argocd/values.yaml` customizes health only for `Gateway` and
+`HTTPRoute`, so `root`'s own health does not aggregate a child
+`Application`'s comparison error. `make argo-up`'s wait, and production,
+are unaffected; the dev pointer self-heals once the application PR merges.
 
 ## 6. Testing / acceptance criteria
 
@@ -181,9 +199,12 @@ itself, which polls only the root `Application`'s own propagated health.
    `vk-llm-on-demand` and `vk-llm-on-demand-dev`, and
    `kubectl -n argocd get cm argocd-cmd-params-cm -o jsonpath='{.data.application\.namespaces}'`
    contains `llm` and `llm-dev`.
-4. `kubectl -n chat get secret open-webui-env -o jsonpath='{.data.OPENAI_API_KEYS}' | base64 -d`
+4. On a cluster already `root` `Synced/Healthy` with `application.namespaces`
+   still `ahorro,llm` (the fast-path case), re-running `make argo-up` adds
+   `llm-dev` without a teardown and recreate (requirement 7a).
+5. `kubectl -n chat get secret open-webui-env -o jsonpath='{.data.OPENAI_API_KEYS}' | base64 -d`
    decodes to the chat inference key repeated twice, `;`-joined.
-5. No `Role`, `RoleBinding`, `ServiceAccount` or IAM statement appears in the
+6. No `Role`, `RoleBinding`, `ServiceAccount` or IAM statement appears in the
    rendered output or in `terraform plan` as a result of this spec.
 
 ## 7. Status history
