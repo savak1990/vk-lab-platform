@@ -114,10 +114,11 @@ runs:
         tar -xzf "$HCLOUD_TAR" hcloud
         sudo mv hcloud /usr/local/bin/hcloud
 
-    # Only the terragrunt/argo path reads it (provider.sh's TLS export and
-    # import); configure_test_kubeconfig does not.
+    # argo-up.sh reads vkllm.instances with it on every provider now, not
+    # just civo/hetzner's TLS export/import; configure_test_kubeconfig does
+    # not, so scope: full (every provider) or an explicit request installs it.
     - name: Set up yq
-      if: (inputs.provider != 'aws' && inputs.scope == 'full') || inputs.yq == 'true'
+      if: inputs.scope == 'full' || inputs.yq == 'true'
       shell: bash
       run: |
         # yq publishes its checksums in a multi-column format that needs a
